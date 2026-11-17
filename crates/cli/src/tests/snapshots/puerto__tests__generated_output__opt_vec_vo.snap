@@ -164,9 +164,10 @@ comando.
    lado. `generar caso-de-uso` deja la impl en `todo!()`, unos `Params` de relleno y un test marcado
    `#[ignore = "escribe este test"]` en `contextos/<c>/aplicacion/src/<accion>.rs`: quita el
    `ignore`, escribe el test y míralo fallar.
-4. **Verde.** Primero el dominio: los invariantes en el `new` del modelo o en un objeto valor
-   (`contextos/<c>/dominio/`); después los `Params`, el trait y la impl del caso de uso, en un solo
-   fichero.
+4. **Verde.** Primero el dominio: los invariantes en el `validar` del modelo (lo llaman `new` y
+   `actualizar`) o en un objeto valor (`contextos/<c>/dominio/`); si uno rechaza un valor por
+   defecto de la madre, cámbialo en la madre: los tests generados toman de ahí sus valores. Después
+   los `Params`, el trait y la impl del caso de uso, en un solo fichero.
 5. **El endpoint, API primero.** `generar caso-de-uso` pone el caso de uso en `Api<Entidad>` pero no
    añade ninguna ruta: escribe `dto.rs`, `respuestas.rs`, el brazo de `errores.rs` de cada error
    nuevo (con su test), después el handler en `rutas.rs` y un test de ruta por cada código de estado
@@ -384,19 +385,17 @@ impl ActualizarPersona for ActualizarPersonaImpl {
 mod tests {
     use super::*;
     use dominio_persona::{
-        modelo::{IdPersona, Persona, PropsPersona},
+        modelo::IdPersona, pruebas::madres::MadrePersona,
         repositorio::dobles::MockRepositorioPersona,
     };
 
     #[tokio::test]
     async fn deberia_actualizar_persona_cuando_los_parametros_son_validos() {
         // Preparar
-        let entidad = Persona::new(PropsPersona {
-            name: "original".to_string(),
-            middle_name: None,
-            tags: vec![],
-        })
-        .unwrap();
+        let props = MadrePersona::new().construir_props();
+        let mut entidad = MadrePersona::aleatorio();
+        // Lo que estaba guardado, distinto de lo que trae la actualización.
+        entidad.name = "original".to_string();
         let id_entidad = entidad.id;
         let mut repositorio_doble = MockRepositorioPersona::new();
         repositorio_doble
@@ -411,19 +410,27 @@ mod tests {
         let resultado = caso_de_uso
             .ejecutar(ParamsActualizarPersona {
                 id: id_entidad,
-                name: "updated".to_string(),
-                middle_name: None,
-                tags: vec![],
+                name: props.name,
+                middle_name: props.middle_name.as_ref().map(|v| v.valor().to_string()),
+                tags: props
+                    .tags
+                    .iter()
+                    .map(|v| v.valor().to_string())
+                    .collect::<Vec<_>>(),
             })
             .await;
 
         // Comprobar
-        assert_eq!(resultado.unwrap().name, "updated");
+        assert_eq!(
+            resultado.unwrap().name,
+            MadrePersona::new().construir_props().name
+        );
     }
 
     #[tokio::test]
     async fn deberia_devolver_no_encontrado_cuando_persona_no_existe() {
         // Preparar
+        let props = MadrePersona::new().construir_props();
         let mut repositorio_doble = MockRepositorioPersona::new();
         repositorio_doble
             .expect_buscar_por_id()
@@ -436,9 +443,13 @@ mod tests {
         let resultado = caso_de_uso
             .ejecutar(ParamsActualizarPersona {
                 id: IdPersona::generar(),
-                name: "new".to_string(),
-                middle_name: None,
-                tags: vec![],
+                name: props.name,
+                middle_name: props.middle_name.as_ref().map(|v| v.valor().to_string()),
+                tags: props
+                    .tags
+                    .iter()
+                    .map(|v| v.valor().to_string())
+                    .collect::<Vec<_>>(),
             })
             .await;
 
@@ -450,12 +461,8 @@ mod tests {
     #[tokio::test]
     async fn deberia_devolver_error_cuando_name_es_una_cadena_vacia() {
         // Preparar
-        let entidad = Persona::new(PropsPersona {
-            name: "original".to_string(),
-            middle_name: None,
-            tags: vec![],
-        })
-        .unwrap();
+        let props = MadrePersona::new().construir_props();
+        let entidad = MadrePersona::aleatorio();
         let id_entidad = entidad.id;
         let mut repositorio_doble = MockRepositorioPersona::new();
         repositorio_doble
@@ -470,8 +477,12 @@ mod tests {
             .ejecutar(ParamsActualizarPersona {
                 id: id_entidad,
                 name: "".to_string(),
-                middle_name: None,
-                tags: vec![],
+                middle_name: props.middle_name.as_ref().map(|v| v.valor().to_string()),
+                tags: props
+                    .tags
+                    .iter()
+                    .map(|v| v.valor().to_string())
+                    .collect::<Vec<_>>(),
             })
             .await;
 
@@ -550,18 +561,13 @@ impl BorrarPersona for BorrarPersonaImpl {
 mod tests {
     use super::*;
     use dominio_persona::{
-        modelo::{IdPersona, Persona, PropsPersona},
+        modelo::IdPersona, pruebas::madres::MadrePersona,
         repositorio::dobles::MockRepositorioPersona,
     };
 
     #[tokio::test]
     async fn deberia_hacer_borrado_logico_de_persona_cuando_el_id_existe() {
-        let entidad = Persona::new(PropsPersona {
-            name: "example".to_string(),
-            middle_name: None,
-            tags: vec![],
-        })
-        .unwrap();
+        let entidad = MadrePersona::aleatorio();
         let id_entidad = entidad.id;
         let mut repositorio_doble = MockRepositorioPersona::new();
         repositorio_doble
@@ -668,12 +674,14 @@ impl CrearPersona for CrearPersonaImpl {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use dominio_persona::pruebas::madres::MadrePersona;
     use dominio_persona::repositorio::dobles::MockRepositorioPersona;
     use puerto_nucleo::ErrorRepositorio;
 
     #[tokio::test]
     async fn deberia_crear_persona_cuando_los_campos_son_validos() {
         // Preparar
+        let props = MadrePersona::new().construir_props();
         let mut repositorio_doble = MockRepositorioPersona::new();
         repositorio_doble.expect_guardar().returning(|_| Ok(()));
         let caso_de_uso = CrearPersonaImpl {
@@ -683,20 +691,28 @@ mod tests {
         // Actuar
         let resultado = caso_de_uso
             .ejecutar(ParamsCrearPersona {
-                name: "example".to_string(),
-                middle_name: None,
-                tags: vec![],
+                name: props.name,
+                middle_name: props.middle_name.as_ref().map(|v| v.valor().to_string()),
+                tags: props
+                    .tags
+                    .iter()
+                    .map(|v| v.valor().to_string())
+                    .collect::<Vec<_>>(),
             })
             .await;
 
         // Comprobar
         assert!(resultado.is_ok());
-        assert_eq!(resultado.unwrap().name, "example");
+        assert_eq!(
+            resultado.unwrap().name,
+            MadrePersona::new().construir_props().name
+        );
     }
 
     #[tokio::test]
     async fn deberia_devolver_duplicado_cuando_el_almacen_rechaza_un_duplicado() {
         // Preparar
+        let props = MadrePersona::new().construir_props();
         let mut repositorio_doble = MockRepositorioPersona::new();
         repositorio_doble
             .expect_guardar()
@@ -708,9 +724,13 @@ mod tests {
         // Actuar
         let resultado = caso_de_uso
             .ejecutar(ParamsCrearPersona {
-                name: "example".to_string(),
-                middle_name: None,
-                tags: vec![],
+                name: props.name,
+                middle_name: props.middle_name.as_ref().map(|v| v.valor().to_string()),
+                tags: props
+                    .tags
+                    .iter()
+                    .map(|v| v.valor().to_string())
+                    .collect::<Vec<_>>(),
             })
             .await;
 
@@ -722,6 +742,7 @@ mod tests {
     #[tokio::test]
     async fn deberia_devolver_error_cuando_name_es_una_cadena_vacia() {
         // Preparar
+        let props = MadrePersona::new().construir_props();
         let repositorio_doble = MockRepositorioPersona::new();
         let caso_de_uso = CrearPersonaImpl {
             repositorio: Arc::new(repositorio_doble),
@@ -731,8 +752,12 @@ mod tests {
         let resultado = caso_de_uso
             .ejecutar(ParamsCrearPersona {
                 name: "".to_string(),
-                middle_name: None,
-                tags: vec![],
+                middle_name: props.middle_name.as_ref().map(|v| v.valor().to_string()),
+                tags: props
+                    .tags
+                    .iter()
+                    .map(|v| v.valor().to_string())
+                    .collect::<Vec<_>>(),
             })
             .await;
 
@@ -814,27 +839,13 @@ impl ListarPersonas for ListarPersonasImpl {
 mod tests {
     use super::*;
     use dominio_persona::{
-        modelo::{Persona, PropsPersona},
-        repositorio::dobles::MockRepositorioPersona,
+        pruebas::madres::MadrePersona, repositorio::dobles::MockRepositorioPersona,
     };
     use puerto_nucleo::PeticionPagina;
 
     #[tokio::test]
     async fn deberia_devolver_la_pagina_de_personas() {
-        let entidades = vec![
-            Persona::new(PropsPersona {
-                name: "first".to_string(),
-                middle_name: None,
-                tags: vec![],
-            })
-            .unwrap(),
-            Persona::new(PropsPersona {
-                name: "second".to_string(),
-                middle_name: None,
-                tags: vec![],
-            })
-            .unwrap(),
-        ];
+        let entidades = MadrePersona::aleatorios(2);
         let mut repositorio_doble = MockRepositorioPersona::new();
         repositorio_doble
             .expect_buscar_todos()
@@ -956,19 +967,14 @@ impl ObtenerPersona for ObtenerPersonaImpl {
 mod tests {
     use super::*;
     use dominio_persona::{
-        modelo::{IdPersona, Persona, PropsPersona},
+        modelo::IdPersona, pruebas::madres::MadrePersona,
         repositorio::dobles::MockRepositorioPersona,
     };
     use puerto_nucleo::ErrorRepositorio;
 
     #[tokio::test]
     async fn deberia_devolver_persona_cuando_el_id_existe() {
-        let entidad = Persona::new(PropsPersona {
-            name: "example".to_string(),
-            middle_name: None,
-            tags: vec![],
-        })
-        .unwrap();
+        let entidad = MadrePersona::aleatorio();
         let id_entidad = entidad.id;
         let mut repositorio_doble = MockRepositorioPersona::new();
         repositorio_doble
@@ -982,8 +988,7 @@ mod tests {
             .ejecutar(ParamsObtenerPersona { id: id_entidad })
             .await;
 
-        assert!(resultado.is_ok());
-        assert_eq!(resultado.unwrap().name, "example");
+        assert_eq!(resultado.unwrap().id, id_entidad);
     }
 
     #[tokio::test]
@@ -1217,24 +1222,20 @@ impl Persona {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::pruebas::madres::MadrePersona;
 
     #[test]
     fn deberia_crear_persona_cuando_los_campos_son_validos() {
-        let resultado = Persona::new(PropsPersona {
-            name: "example".to_string(),
-            middle_name: None,
-            tags: vec![],
-        });
-        assert_eq!(resultado.unwrap().name, "example");
+        let resultado = Persona::new(MadrePersona::new().construir_props());
+        assert_eq!(
+            resultado.unwrap().name,
+            MadrePersona::new().construir_props().name
+        );
     }
 
     #[test]
     fn deberia_rechazar_persona_cuando_name_es_una_cadena_vacia() {
-        let resultado = Persona::new(PropsPersona {
-            name: "".into(),
-            middle_name: None,
-            tags: vec![],
-        });
+        let resultado = Persona::new(MadrePersona::new().con_name_vacio().construir_props());
         assert!(resultado.is_err());
         assert_eq!(
             resultado.unwrap_err().to_string(),
@@ -1244,27 +1245,14 @@ mod tests {
 
     #[test]
     fn deberia_rechazar_persona_cuando_name_solo_tiene_espacios() {
-        let resultado = Persona::new(PropsPersona {
-            name: "   ".into(),
-            middle_name: None,
-            tags: vec![],
-        });
+        let resultado = Persona::new(MadrePersona::new().con_name("   ").construir_props());
         assert!(resultado.is_err());
     }
 
     #[test]
     fn deberia_rechazar_actualizar_persona_cuando_name_es_una_cadena_vacia() {
-        let mut entidad = Persona::new(PropsPersona {
-            name: "example".to_string(),
-            middle_name: None,
-            tags: vec![],
-        })
-        .unwrap();
-        let resultado = entidad.actualizar(PropsPersona {
-            name: "".into(),
-            middle_name: None,
-            tags: vec![],
-        });
+        let mut entidad = MadrePersona::aleatorio();
+        let resultado = entidad.actualizar(MadrePersona::new().con_name_vacio().construir_props());
         assert_eq!(
             resultado.unwrap_err().to_string(),
             "persona.validacion.name_vacio"
@@ -1523,15 +1511,11 @@ impl RepositorioPersona for RepositorioPersonaEnMemoria {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use dominio_persona::modelo::PropsPersona;
+    use dominio_persona::pruebas::madres::MadrePersona;
 
+    /// Una entidad válida, con los valores de la madre.
     fn nuevo_persona() -> Persona {
-        Persona::new(PropsPersona {
-            name: "example".to_string(),
-            middle_name: None,
-            tags: vec![],
-        })
-        .unwrap()
+        MadrePersona::aleatorio()
     }
 
     #[tokio::test]

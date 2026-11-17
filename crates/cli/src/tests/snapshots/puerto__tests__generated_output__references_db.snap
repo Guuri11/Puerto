@@ -180,9 +180,10 @@ comando.
    lado. `generar caso-de-uso` deja la impl en `todo!()`, unos `Params` de relleno y un test marcado
    `#[ignore = "escribe este test"]` en `contextos/<c>/aplicacion/src/<accion>.rs`: quita el
    `ignore`, escribe el test y míralo fallar.
-4. **Verde.** Primero el dominio: los invariantes en el `new` del modelo o en un objeto valor
-   (`contextos/<c>/dominio/`); después los `Params`, el trait y la impl del caso de uso, en un solo
-   fichero.
+4. **Verde.** Primero el dominio: los invariantes en el `validar` del modelo (lo llaman `new` y
+   `actualizar`) o en un objeto valor (`contextos/<c>/dominio/`); si uno rechaza un valor por
+   defecto de la madre, cámbialo en la madre: los tests generados toman de ahí sus valores. Después
+   los `Params`, el trait y la impl del caso de uso, en un solo fichero.
 5. **El endpoint, API primero.** `generar caso-de-uso` pone el caso de uso en `Api<Entidad>` pero no
    añade ninguna ruta: escribe `dto.rs`, `respuestas.rs`, el brazo de `errores.rs` de cada error
    nuevo (con su test), después el handler en `rutas.rs` y un test de ruta por cada código de estado
@@ -605,20 +606,18 @@ impl ActualizarCliente for ActualizarClienteImpl {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use dominio_cliente::valores::Name;
     use dominio_cliente::{
-        modelo::{Cliente, IdCliente, PropsCliente},
+        modelo::IdCliente, pruebas::madres::MadreCliente,
         repositorio::dobles::MockRepositorioCliente,
     };
 
     #[tokio::test]
     async fn deberia_actualizar_cliente_cuando_los_parametros_son_validos() {
         // Preparar
-        let entidad = Cliente::new(PropsCliente {
-            name: Name::new("original".to_string()).expect("el literal de Name es válido"),
-            email: "original".to_string(),
-        })
-        .unwrap();
+        let props = MadreCliente::new().construir_props();
+        let mut entidad = MadreCliente::aleatorio();
+        // Lo que estaba guardado, distinto de lo que trae la actualización.
+        entidad.email = "original".to_string();
         let id_entidad = entidad.id;
         let mut repositorio_doble = MockRepositorioCliente::new();
         repositorio_doble
@@ -633,18 +632,22 @@ mod tests {
         let resultado = caso_de_uso
             .ejecutar(ParamsActualizarCliente {
                 id: id_entidad,
-                name: "updated".to_string(),
-                email: "updated".to_string(),
+                name: props.name.valor().to_string(),
+                email: props.email,
             })
             .await;
 
         // Comprobar
-        assert_eq!(resultado.unwrap().email, "updated");
+        assert_eq!(
+            resultado.unwrap().email,
+            MadreCliente::new().construir_props().email
+        );
     }
 
     #[tokio::test]
     async fn deberia_devolver_no_encontrado_cuando_cliente_no_existe() {
         // Preparar
+        let props = MadreCliente::new().construir_props();
         let mut repositorio_doble = MockRepositorioCliente::new();
         repositorio_doble
             .expect_buscar_por_id()
@@ -657,8 +660,8 @@ mod tests {
         let resultado = caso_de_uso
             .ejecutar(ParamsActualizarCliente {
                 id: IdCliente::generar(),
-                name: "new".to_string(),
-                email: "new".to_string(),
+                name: props.name.valor().to_string(),
+                email: props.email,
             })
             .await;
 
@@ -670,11 +673,8 @@ mod tests {
     #[tokio::test]
     async fn deberia_devolver_error_cuando_email_es_una_cadena_vacia() {
         // Preparar
-        let entidad = Cliente::new(PropsCliente {
-            name: Name::new("original".to_string()).expect("el literal de Name es válido"),
-            email: "original".to_string(),
-        })
-        .unwrap();
+        let props = MadreCliente::new().construir_props();
+        let entidad = MadreCliente::aleatorio();
         let id_entidad = entidad.id;
         let mut repositorio_doble = MockRepositorioCliente::new();
         repositorio_doble
@@ -688,7 +688,7 @@ mod tests {
         let resultado = caso_de_uso
             .ejecutar(ParamsActualizarCliente {
                 id: id_entidad,
-                name: "updated".to_string(),
+                name: props.name.valor().to_string(),
                 email: "".to_string(),
             })
             .await;
@@ -704,11 +704,8 @@ mod tests {
     #[tokio::test]
     async fn deberia_devolver_error_cuando_name_es_una_cadena_vacia() {
         // Preparar
-        let entidad = Cliente::new(PropsCliente {
-            name: Name::new("original".to_string()).expect("el literal de Name es válido"),
-            email: "original".to_string(),
-        })
-        .unwrap();
+        let props = MadreCliente::new().construir_props();
+        let entidad = MadreCliente::aleatorio();
         let id_entidad = entidad.id;
         let mut repositorio_doble = MockRepositorioCliente::new();
         repositorio_doble
@@ -723,7 +720,7 @@ mod tests {
             .ejecutar(ParamsActualizarCliente {
                 id: id_entidad,
                 name: "".to_string(),
-                email: "updated".to_string(),
+                email: props.email,
             })
             .await;
 
@@ -798,19 +795,14 @@ impl BorrarCliente for BorrarClienteImpl {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use dominio_cliente::valores::Name;
     use dominio_cliente::{
-        modelo::{Cliente, IdCliente, PropsCliente},
+        modelo::IdCliente, pruebas::madres::MadreCliente,
         repositorio::dobles::MockRepositorioCliente,
     };
 
     #[tokio::test]
     async fn deberia_hacer_borrado_logico_de_cliente_cuando_el_id_existe() {
-        let entidad = Cliente::new(PropsCliente {
-            name: Name::new("example".to_string()).expect("el literal de Name es válido"),
-            email: "example".to_string(),
-        })
-        .unwrap();
+        let entidad = MadreCliente::aleatorio();
         let id_entidad = entidad.id;
         let mut repositorio_doble = MockRepositorioCliente::new();
         repositorio_doble
@@ -910,12 +902,14 @@ impl CrearCliente for CrearClienteImpl {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use dominio_cliente::pruebas::madres::MadreCliente;
     use dominio_cliente::repositorio::dobles::MockRepositorioCliente;
     use puerto_nucleo::ErrorRepositorio;
 
     #[tokio::test]
     async fn deberia_crear_cliente_cuando_los_campos_son_validos() {
         // Preparar
+        let props = MadreCliente::new().construir_props();
         let mut repositorio_doble = MockRepositorioCliente::new();
         repositorio_doble.expect_guardar().returning(|_| Ok(()));
         let caso_de_uso = CrearClienteImpl {
@@ -925,19 +919,23 @@ mod tests {
         // Actuar
         let resultado = caso_de_uso
             .ejecutar(ParamsCrearCliente {
-                name: "example".to_string(),
-                email: "example".to_string(),
+                name: props.name.valor().to_string(),
+                email: props.email,
             })
             .await;
 
         // Comprobar
         assert!(resultado.is_ok());
-        assert_eq!(resultado.unwrap().email, "example");
+        assert_eq!(
+            resultado.unwrap().email,
+            MadreCliente::new().construir_props().email
+        );
     }
 
     #[tokio::test]
     async fn deberia_devolver_duplicado_cuando_el_almacen_rechaza_un_duplicado() {
         // Preparar
+        let props = MadreCliente::new().construir_props();
         let mut repositorio_doble = MockRepositorioCliente::new();
         repositorio_doble
             .expect_guardar()
@@ -949,8 +947,8 @@ mod tests {
         // Actuar
         let resultado = caso_de_uso
             .ejecutar(ParamsCrearCliente {
-                name: "example".to_string(),
-                email: "example".to_string(),
+                name: props.name.valor().to_string(),
+                email: props.email,
             })
             .await;
 
@@ -962,6 +960,7 @@ mod tests {
     #[tokio::test]
     async fn deberia_devolver_error_cuando_email_es_una_cadena_vacia() {
         // Preparar
+        let props = MadreCliente::new().construir_props();
         let repositorio_doble = MockRepositorioCliente::new();
         let caso_de_uso = CrearClienteImpl {
             repositorio: Arc::new(repositorio_doble),
@@ -970,7 +969,7 @@ mod tests {
         // Actuar
         let resultado = caso_de_uso
             .ejecutar(ParamsCrearCliente {
-                name: "example".to_string(),
+                name: props.name.valor().to_string(),
                 email: "".to_string(),
             })
             .await;
@@ -986,6 +985,7 @@ mod tests {
     #[tokio::test]
     async fn deberia_devolver_error_cuando_name_es_una_cadena_vacia() {
         // Preparar
+        let props = MadreCliente::new().construir_props();
         let repositorio_doble = MockRepositorioCliente::new();
         let caso_de_uso = CrearClienteImpl {
             repositorio: Arc::new(repositorio_doble),
@@ -995,7 +995,7 @@ mod tests {
         let resultado = caso_de_uso
             .ejecutar(ParamsCrearCliente {
                 name: "".to_string(),
-                email: "example".to_string(),
+                email: props.email,
             })
             .await;
 
@@ -1073,27 +1073,14 @@ impl ListarClientes for ListarClientesImpl {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use dominio_cliente::valores::Name;
     use dominio_cliente::{
-        modelo::{Cliente, PropsCliente},
-        repositorio::dobles::MockRepositorioCliente,
+        pruebas::madres::MadreCliente, repositorio::dobles::MockRepositorioCliente,
     };
     use puerto_nucleo::PeticionPagina;
 
     #[tokio::test]
     async fn deberia_devolver_la_pagina_de_clientes() {
-        let entidades = vec![
-            Cliente::new(PropsCliente {
-                name: Name::new("first".to_string()).expect("el literal de Name es válido"),
-                email: "first".to_string(),
-            })
-            .unwrap(),
-            Cliente::new(PropsCliente {
-                name: Name::new("second".to_string()).expect("el literal de Name es válido"),
-                email: "second".to_string(),
-            })
-            .unwrap(),
-        ];
+        let entidades = MadreCliente::aleatorios(2);
         let mut repositorio_doble = MockRepositorioCliente::new();
         repositorio_doble
             .expect_buscar_todos()
@@ -1214,20 +1201,15 @@ impl ObtenerCliente for ObtenerClienteImpl {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use dominio_cliente::valores::Name;
     use dominio_cliente::{
-        modelo::{Cliente, IdCliente, PropsCliente},
+        modelo::IdCliente, pruebas::madres::MadreCliente,
         repositorio::dobles::MockRepositorioCliente,
     };
     use puerto_nucleo::ErrorRepositorio;
 
     #[tokio::test]
     async fn deberia_devolver_cliente_cuando_el_id_existe() {
-        let entidad = Cliente::new(PropsCliente {
-            name: Name::new("example".to_string()).expect("el literal de Name es válido"),
-            email: "example".to_string(),
-        })
-        .unwrap();
+        let entidad = MadreCliente::aleatorio();
         let id_entidad = entidad.id;
         let mut repositorio_doble = MockRepositorioCliente::new();
         repositorio_doble
@@ -1241,8 +1223,7 @@ mod tests {
             .ejecutar(ParamsObtenerCliente { id: id_entidad })
             .await;
 
-        assert!(resultado.is_ok());
-        assert_eq!(resultado.unwrap().email, "example");
+        assert_eq!(resultado.unwrap().id, id_entidad);
     }
 
     #[tokio::test]
@@ -1469,22 +1450,20 @@ impl Cliente {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::pruebas::madres::MadreCliente;
 
     #[test]
     fn deberia_crear_cliente_cuando_los_campos_son_validos() {
-        let resultado = Cliente::new(PropsCliente {
-            name: Name::new("example".to_string()).expect("Name::new rechazó el valor de ejemplo"),
-            email: "example".to_string(),
-        });
-        assert_eq!(resultado.unwrap().email, "example");
+        let resultado = Cliente::new(MadreCliente::new().construir_props());
+        assert_eq!(
+            resultado.unwrap().email,
+            MadreCliente::new().construir_props().email
+        );
     }
 
     #[test]
     fn deberia_rechazar_cliente_cuando_email_es_una_cadena_vacia() {
-        let resultado = Cliente::new(PropsCliente {
-            name: Name::new("example".to_string()).expect("Name::new rechazó el valor de ejemplo"),
-            email: "".into(),
-        });
+        let resultado = Cliente::new(MadreCliente::new().con_email_vacio().construir_props());
         assert!(resultado.is_err());
         assert_eq!(
             resultado.unwrap_err().to_string(),
@@ -1494,24 +1473,14 @@ mod tests {
 
     #[test]
     fn deberia_rechazar_cliente_cuando_email_solo_tiene_espacios() {
-        let resultado = Cliente::new(PropsCliente {
-            name: Name::new("example".to_string()).expect("Name::new rechazó el valor de ejemplo"),
-            email: "   ".into(),
-        });
+        let resultado = Cliente::new(MadreCliente::new().con_email("   ").construir_props());
         assert!(resultado.is_err());
     }
 
     #[test]
     fn deberia_rechazar_actualizar_cliente_cuando_email_es_una_cadena_vacia() {
-        let mut entidad = Cliente::new(PropsCliente {
-            name: Name::new("example".to_string()).expect("Name::new rechazó el valor de ejemplo"),
-            email: "example".to_string(),
-        })
-        .unwrap();
-        let resultado = entidad.actualizar(PropsCliente {
-            name: Name::new("example".to_string()).expect("Name::new rechazó el valor de ejemplo"),
-            email: "".into(),
-        });
+        let mut entidad = MadreCliente::aleatorio();
+        let resultado = entidad.actualizar(MadreCliente::new().con_email_vacio().construir_props());
         assert_eq!(
             resultado.unwrap_err().to_string(),
             "cliente.validacion.email_vacio"
@@ -1742,19 +1711,22 @@ pub mod pruebas {
 //! Las filas que necesitan los tests de Postgres —una entidad cliente válida y otra guardada—,
 //! para los tests de este crate y para los de los contextos que la referencian (ADR-0023 § 5 de
 //! Puerto).
-use dominio_cliente::modelo::{Cliente, PropsCliente};
+use dominio_cliente::modelo::Cliente;
+use dominio_cliente::modelo::PropsCliente;
+use dominio_cliente::pruebas::madres::MadreCliente;
 use dominio_cliente::repositorio::RepositorioCliente;
-use dominio_cliente::valores::Name;
 use sqlx::PgPool;
 use uuid::Uuid;
 
 use crate::repositorio::RepositorioClientePostgres;
 
-/// Una entidad cliente válida, sin guardar.
+/// Una entidad cliente válida, sin guardar, con los valores de la madre salvo en los
+/// campos únicos (uno nuevo cada vez), las fechas (un segundo exacto, lo que Postgres guarda) y las
+/// referencias (una fila sembrada).
 pub fn construir() -> Cliente {
     Cliente::new(PropsCliente {
-        name: Name::new("example".to_string()).expect("Name::new rechazó el valor de ejemplo"),
         email: Uuid::new_v4().to_string(),
+        ..MadreCliente::new().construir_props()
     })
     .unwrap()
 }
@@ -2847,20 +2819,16 @@ impl ActualizarEnvio for ActualizarEnvioImpl {
 mod tests {
     use super::*;
     use dominio_envio::{
-        modelo::{Envio, IdEnvio, PropsEnvio},
-        repositorio::dobles::MockRepositorioEnvio,
+        modelo::IdEnvio, pruebas::madres::MadreEnvio, repositorio::dobles::MockRepositorioEnvio,
     };
-    use dominio_pedido::modelo::IdPedido;
 
     #[tokio::test]
     async fn deberia_actualizar_envio_cuando_los_parametros_son_validos() {
         // Preparar
-        let entidad = Envio::new(PropsEnvio {
-            pedido_id: IdPedido::generar(),
-            destinatario_id: None,
-            carrier: "original".to_string(),
-        })
-        .unwrap();
+        let props = MadreEnvio::new().construir_props();
+        let mut entidad = MadreEnvio::aleatorio();
+        // Lo que estaba guardado, distinto de lo que trae la actualización.
+        entidad.carrier = "original".to_string();
         let id_entidad = entidad.id;
         let mut repositorio_doble = MockRepositorioEnvio::new();
         repositorio_doble
@@ -2875,19 +2843,23 @@ mod tests {
         let resultado = caso_de_uso
             .ejecutar(ParamsActualizarEnvio {
                 id: id_entidad,
-                pedido_id: IdPedido::generar(),
-                destinatario_id: None,
-                carrier: "updated".to_string(),
+                pedido_id: props.pedido_id,
+                destinatario_id: props.destinatario_id,
+                carrier: props.carrier,
             })
             .await;
 
         // Comprobar
-        assert_eq!(resultado.unwrap().carrier, "updated");
+        assert_eq!(
+            resultado.unwrap().carrier,
+            MadreEnvio::new().construir_props().carrier
+        );
     }
 
     #[tokio::test]
     async fn deberia_devolver_no_encontrado_cuando_envio_no_existe() {
         // Preparar
+        let props = MadreEnvio::new().construir_props();
         let mut repositorio_doble = MockRepositorioEnvio::new();
         repositorio_doble
             .expect_buscar_por_id()
@@ -2900,9 +2872,9 @@ mod tests {
         let resultado = caso_de_uso
             .ejecutar(ParamsActualizarEnvio {
                 id: IdEnvio::generar(),
-                pedido_id: IdPedido::generar(),
-                destinatario_id: None,
-                carrier: "new".to_string(),
+                pedido_id: props.pedido_id,
+                destinatario_id: props.destinatario_id,
+                carrier: props.carrier,
             })
             .await;
 
@@ -2914,12 +2886,8 @@ mod tests {
     #[tokio::test]
     async fn deberia_devolver_error_cuando_carrier_es_una_cadena_vacia() {
         // Preparar
-        let entidad = Envio::new(PropsEnvio {
-            pedido_id: IdPedido::generar(),
-            destinatario_id: None,
-            carrier: "original".to_string(),
-        })
-        .unwrap();
+        let props = MadreEnvio::new().construir_props();
+        let entidad = MadreEnvio::aleatorio();
         let id_entidad = entidad.id;
         let mut repositorio_doble = MockRepositorioEnvio::new();
         repositorio_doble
@@ -2933,8 +2901,8 @@ mod tests {
         let resultado = caso_de_uso
             .ejecutar(ParamsActualizarEnvio {
                 id: id_entidad,
-                pedido_id: IdPedido::generar(),
-                destinatario_id: None,
+                pedido_id: props.pedido_id,
+                destinatario_id: props.destinatario_id,
                 carrier: "".to_string(),
             })
             .await;
@@ -3015,19 +2983,12 @@ impl BorrarEnvio for BorrarEnvioImpl {
 mod tests {
     use super::*;
     use dominio_envio::{
-        modelo::{Envio, IdEnvio, PropsEnvio},
-        repositorio::dobles::MockRepositorioEnvio,
+        modelo::IdEnvio, pruebas::madres::MadreEnvio, repositorio::dobles::MockRepositorioEnvio,
     };
-    use dominio_pedido::modelo::IdPedido;
 
     #[tokio::test]
     async fn deberia_hacer_borrado_logico_de_envio_cuando_el_id_existe() {
-        let entidad = Envio::new(PropsEnvio {
-            pedido_id: IdPedido::generar(),
-            destinatario_id: None,
-            carrier: "example".to_string(),
-        })
-        .unwrap();
+        let entidad = MadreEnvio::aleatorio();
         let id_entidad = entidad.id;
         let mut repositorio_doble = MockRepositorioEnvio::new();
         repositorio_doble
@@ -3129,13 +3090,14 @@ impl CrearEnvio for CrearEnvioImpl {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use dominio_envio::pruebas::madres::MadreEnvio;
     use dominio_envio::repositorio::dobles::MockRepositorioEnvio;
-    use dominio_pedido::modelo::IdPedido;
     use puerto_nucleo::ErrorRepositorio;
 
     #[tokio::test]
     async fn deberia_crear_envio_cuando_los_campos_son_validos() {
         // Preparar
+        let props = MadreEnvio::new().construir_props();
         let mut repositorio_doble = MockRepositorioEnvio::new();
         repositorio_doble.expect_guardar().returning(|_| Ok(()));
         let caso_de_uso = CrearEnvioImpl {
@@ -3145,20 +3107,24 @@ mod tests {
         // Actuar
         let resultado = caso_de_uso
             .ejecutar(ParamsCrearEnvio {
-                pedido_id: IdPedido::generar(),
-                destinatario_id: None,
-                carrier: "example".to_string(),
+                pedido_id: props.pedido_id,
+                destinatario_id: props.destinatario_id,
+                carrier: props.carrier,
             })
             .await;
 
         // Comprobar
         assert!(resultado.is_ok());
-        assert_eq!(resultado.unwrap().carrier, "example");
+        assert_eq!(
+            resultado.unwrap().carrier,
+            MadreEnvio::new().construir_props().carrier
+        );
     }
 
     #[tokio::test]
     async fn deberia_devolver_duplicado_cuando_el_almacen_rechaza_un_duplicado() {
         // Preparar
+        let props = MadreEnvio::new().construir_props();
         let mut repositorio_doble = MockRepositorioEnvio::new();
         repositorio_doble
             .expect_guardar()
@@ -3170,9 +3136,9 @@ mod tests {
         // Actuar
         let resultado = caso_de_uso
             .ejecutar(ParamsCrearEnvio {
-                pedido_id: IdPedido::generar(),
-                destinatario_id: None,
-                carrier: "example".to_string(),
+                pedido_id: props.pedido_id,
+                destinatario_id: props.destinatario_id,
+                carrier: props.carrier,
             })
             .await;
 
@@ -3184,6 +3150,7 @@ mod tests {
     #[tokio::test]
     async fn deberia_devolver_un_error_de_validacion_cuando_pedido_id_no_existe() {
         // Preparar: en el almacén no hay Pedido con ese id.
+        let props = MadreEnvio::new().construir_props();
         let mut repositorio_doble = MockRepositorioEnvio::new();
         repositorio_doble
             .expect_guardar()
@@ -3195,9 +3162,9 @@ mod tests {
         // Actuar
         let resultado = caso_de_uso
             .ejecutar(ParamsCrearEnvio {
-                pedido_id: IdPedido::generar(),
-                destinatario_id: None,
-                carrier: "example".to_string(),
+                pedido_id: props.pedido_id,
+                destinatario_id: props.destinatario_id,
+                carrier: props.carrier,
             })
             .await;
 
@@ -3212,6 +3179,7 @@ mod tests {
     #[tokio::test]
     async fn deberia_devolver_un_error_de_validacion_cuando_destinatario_id_no_existe() {
         // Preparar: en el almacén no hay Cliente con ese id.
+        let props = MadreEnvio::new().construir_props();
         let mut repositorio_doble = MockRepositorioEnvio::new();
         repositorio_doble
             .expect_guardar()
@@ -3223,9 +3191,9 @@ mod tests {
         // Actuar
         let resultado = caso_de_uso
             .ejecutar(ParamsCrearEnvio {
-                pedido_id: IdPedido::generar(),
-                destinatario_id: None,
-                carrier: "example".to_string(),
+                pedido_id: props.pedido_id,
+                destinatario_id: props.destinatario_id,
+                carrier: props.carrier,
             })
             .await;
 
@@ -3240,6 +3208,7 @@ mod tests {
     #[tokio::test]
     async fn deberia_devolver_error_cuando_carrier_es_una_cadena_vacia() {
         // Preparar
+        let props = MadreEnvio::new().construir_props();
         let repositorio_doble = MockRepositorioEnvio::new();
         let caso_de_uso = CrearEnvioImpl {
             repositorio: Arc::new(repositorio_doble),
@@ -3248,8 +3217,8 @@ mod tests {
         // Actuar
         let resultado = caso_de_uso
             .ejecutar(ParamsCrearEnvio {
-                pedido_id: IdPedido::generar(),
-                destinatario_id: None,
+                pedido_id: props.pedido_id,
+                destinatario_id: props.destinatario_id,
                 carrier: "".to_string(),
             })
             .await;
@@ -3340,29 +3309,13 @@ impl ListarEnvios for ListarEnviosImpl {
 mod tests {
     use super::*;
     use dominio_cliente::modelo::IdCliente;
-    use dominio_envio::{
-        modelo::{Envio, PropsEnvio},
-        repositorio::dobles::MockRepositorioEnvio,
-    };
+    use dominio_envio::{pruebas::madres::MadreEnvio, repositorio::dobles::MockRepositorioEnvio};
     use dominio_pedido::modelo::IdPedido;
     use puerto_nucleo::PeticionPagina;
 
     #[tokio::test]
     async fn deberia_devolver_la_pagina_de_envios() {
-        let entidades = vec![
-            Envio::new(PropsEnvio {
-                pedido_id: IdPedido::generar(),
-                destinatario_id: None,
-                carrier: "first".to_string(),
-            })
-            .unwrap(),
-            Envio::new(PropsEnvio {
-                pedido_id: IdPedido::generar(),
-                destinatario_id: None,
-                carrier: "second".to_string(),
-            })
-            .unwrap(),
-        ];
+        let entidades = MadreEnvio::aleatorios(2);
         let mut repositorio_doble = MockRepositorioEnvio::new();
         repositorio_doble
             .expect_buscar_todos()
@@ -3514,20 +3467,13 @@ impl ObtenerEnvio for ObtenerEnvioImpl {
 mod tests {
     use super::*;
     use dominio_envio::{
-        modelo::{Envio, IdEnvio, PropsEnvio},
-        repositorio::dobles::MockRepositorioEnvio,
+        modelo::IdEnvio, pruebas::madres::MadreEnvio, repositorio::dobles::MockRepositorioEnvio,
     };
-    use dominio_pedido::modelo::IdPedido;
     use puerto_nucleo::ErrorRepositorio;
 
     #[tokio::test]
     async fn deberia_devolver_envio_cuando_el_id_existe() {
-        let entidad = Envio::new(PropsEnvio {
-            pedido_id: IdPedido::generar(),
-            destinatario_id: None,
-            carrier: "example".to_string(),
-        })
-        .unwrap();
+        let entidad = MadreEnvio::aleatorio();
         let id_entidad = entidad.id;
         let mut repositorio_doble = MockRepositorioEnvio::new();
         repositorio_doble
@@ -3541,8 +3487,7 @@ mod tests {
             .ejecutar(ParamsObtenerEnvio { id: id_entidad })
             .await;
 
-        assert!(resultado.is_ok());
-        assert_eq!(resultado.unwrap().carrier, "example");
+        assert_eq!(resultado.unwrap().id, id_entidad);
     }
 
     #[tokio::test]
@@ -3783,24 +3728,20 @@ impl Envio {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::pruebas::madres::MadreEnvio;
 
     #[test]
     fn deberia_crear_envio_cuando_los_campos_son_validos() {
-        let resultado = Envio::new(PropsEnvio {
-            pedido_id: IdPedido::generar(),
-            destinatario_id: None,
-            carrier: "example".to_string(),
-        });
-        assert_eq!(resultado.unwrap().carrier, "example");
+        let resultado = Envio::new(MadreEnvio::new().construir_props());
+        assert_eq!(
+            resultado.unwrap().carrier,
+            MadreEnvio::new().construir_props().carrier
+        );
     }
 
     #[test]
     fn deberia_rechazar_envio_cuando_carrier_es_una_cadena_vacia() {
-        let resultado = Envio::new(PropsEnvio {
-            pedido_id: IdPedido::generar(),
-            destinatario_id: None,
-            carrier: "".into(),
-        });
+        let resultado = Envio::new(MadreEnvio::new().con_carrier_vacio().construir_props());
         assert!(resultado.is_err());
         assert_eq!(
             resultado.unwrap_err().to_string(),
@@ -3810,27 +3751,14 @@ mod tests {
 
     #[test]
     fn deberia_rechazar_envio_cuando_carrier_solo_tiene_espacios() {
-        let resultado = Envio::new(PropsEnvio {
-            pedido_id: IdPedido::generar(),
-            destinatario_id: None,
-            carrier: "   ".into(),
-        });
+        let resultado = Envio::new(MadreEnvio::new().con_carrier("   ").construir_props());
         assert!(resultado.is_err());
     }
 
     #[test]
     fn deberia_rechazar_actualizar_envio_cuando_carrier_es_una_cadena_vacia() {
-        let mut entidad = Envio::new(PropsEnvio {
-            pedido_id: IdPedido::generar(),
-            destinatario_id: None,
-            carrier: "example".to_string(),
-        })
-        .unwrap();
-        let resultado = entidad.actualizar(PropsEnvio {
-            pedido_id: IdPedido::generar(),
-            destinatario_id: None,
-            carrier: "".into(),
-        });
+        let mut entidad = MadreEnvio::aleatorio();
+        let resultado = entidad.actualizar(MadreEnvio::new().con_carrier_vacio().construir_props());
         assert_eq!(
             resultado.unwrap_err().to_string(),
             "envio.validacion.carrier_vacio"
@@ -4058,18 +3986,21 @@ pub mod pruebas {
 //! Las filas que necesitan los tests de Postgres —una entidad envio válida y otra guardada—,
 //! para los tests de este crate y para los de los contextos que la referencian (ADR-0023 § 5 de
 //! Puerto).
-use dominio_envio::modelo::{Envio, PropsEnvio};
+use dominio_envio::modelo::Envio;
+use dominio_envio::modelo::PropsEnvio;
+use dominio_envio::pruebas::madres::MadreEnvio;
 use dominio_envio::repositorio::RepositorioEnvio;
 use sqlx::PgPool;
 
 use crate::repositorio::RepositorioEnvioPostgres;
 
-/// Una entidad envio válida, sin guardar: antes siembra las filas que referencia.
+/// Una entidad envio válida, sin guardar, con los valores de la madre salvo en los
+/// campos únicos (uno nuevo cada vez), las fechas (un segundo exacto, lo que Postgres guarda) y las
+/// referencias (una fila sembrada).
 pub async fn construir(pool: &PgPool) -> Envio {
     Envio::new(PropsEnvio {
         pedido_id: infra_pedido::pruebas::siembra::sembrar(pool).await.id,
-        destinatario_id: None,
-        carrier: "example".to_string(),
+        ..MadreEnvio::new().construir_props()
     })
     .unwrap()
 }
@@ -5402,21 +5333,15 @@ impl ActualizarPedido for ActualizarPedidoImpl {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use dominio_cliente::modelo::IdCliente;
     use dominio_pedido::{
-        modelo::{IdPedido, Pedido, PropsPedido},
-        repositorio::dobles::MockRepositorioPedido,
+        modelo::IdPedido, pruebas::madres::MadrePedido, repositorio::dobles::MockRepositorioPedido,
     };
 
     #[tokio::test]
     async fn deberia_actualizar_pedido_cuando_los_parametros_son_validos() {
         // Preparar
-        let entidad = Pedido::new(PropsPedido {
-            cliente_id: IdCliente::generar(),
-            reviewer_id: None,
-            total: 42,
-        })
-        .unwrap();
+        let props = MadrePedido::new().construir_props();
+        let entidad = MadrePedido::aleatorio();
         let id_entidad = entidad.id;
         let mut repositorio_doble = MockRepositorioPedido::new();
         repositorio_doble
@@ -5431,9 +5356,9 @@ mod tests {
         let resultado = caso_de_uso
             .ejecutar(ParamsActualizarPedido {
                 id: id_entidad,
-                cliente_id: IdCliente::generar(),
-                reviewer_id: None,
-                total: 42,
+                cliente_id: props.cliente_id,
+                reviewer_id: props.reviewer_id,
+                total: props.total,
             })
             .await;
 
@@ -5444,6 +5369,7 @@ mod tests {
     #[tokio::test]
     async fn deberia_devolver_no_encontrado_cuando_pedido_no_existe() {
         // Preparar
+        let props = MadrePedido::new().construir_props();
         let mut repositorio_doble = MockRepositorioPedido::new();
         repositorio_doble
             .expect_buscar_por_id()
@@ -5456,9 +5382,9 @@ mod tests {
         let resultado = caso_de_uso
             .ejecutar(ParamsActualizarPedido {
                 id: IdPedido::generar(),
-                cliente_id: IdCliente::generar(),
-                reviewer_id: None,
-                total: 42,
+                cliente_id: props.cliente_id,
+                reviewer_id: props.reviewer_id,
+                total: props.total,
             })
             .await;
 
@@ -5534,20 +5460,13 @@ impl BorrarPedido for BorrarPedidoImpl {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use dominio_cliente::modelo::IdCliente;
     use dominio_pedido::{
-        modelo::{IdPedido, Pedido, PropsPedido},
-        repositorio::dobles::MockRepositorioPedido,
+        modelo::IdPedido, pruebas::madres::MadrePedido, repositorio::dobles::MockRepositorioPedido,
     };
 
     #[tokio::test]
     async fn deberia_hacer_borrado_logico_de_pedido_cuando_el_id_existe() {
-        let entidad = Pedido::new(PropsPedido {
-            cliente_id: IdCliente::generar(),
-            reviewer_id: None,
-            total: 42,
-        })
-        .unwrap();
+        let entidad = MadrePedido::aleatorio();
         let id_entidad = entidad.id;
         let mut repositorio_doble = MockRepositorioPedido::new();
         repositorio_doble
@@ -5648,13 +5567,14 @@ impl CrearPedido for CrearPedidoImpl {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use dominio_cliente::modelo::IdCliente;
+    use dominio_pedido::pruebas::madres::MadrePedido;
     use dominio_pedido::repositorio::dobles::MockRepositorioPedido;
     use puerto_nucleo::ErrorRepositorio;
 
     #[tokio::test]
     async fn deberia_crear_pedido_cuando_los_campos_son_validos() {
         // Preparar
+        let props = MadrePedido::new().construir_props();
         let mut repositorio_doble = MockRepositorioPedido::new();
         repositorio_doble.expect_guardar().returning(|_| Ok(()));
         let caso_de_uso = CrearPedidoImpl {
@@ -5664,9 +5584,9 @@ mod tests {
         // Actuar
         let resultado = caso_de_uso
             .ejecutar(ParamsCrearPedido {
-                cliente_id: IdCliente::generar(),
-                reviewer_id: None,
-                total: 42,
+                cliente_id: props.cliente_id,
+                reviewer_id: props.reviewer_id,
+                total: props.total,
             })
             .await;
 
@@ -5677,6 +5597,7 @@ mod tests {
     #[tokio::test]
     async fn deberia_devolver_duplicado_cuando_el_almacen_rechaza_un_duplicado() {
         // Preparar
+        let props = MadrePedido::new().construir_props();
         let mut repositorio_doble = MockRepositorioPedido::new();
         repositorio_doble
             .expect_guardar()
@@ -5688,9 +5609,9 @@ mod tests {
         // Actuar
         let resultado = caso_de_uso
             .ejecutar(ParamsCrearPedido {
-                cliente_id: IdCliente::generar(),
-                reviewer_id: None,
-                total: 42,
+                cliente_id: props.cliente_id,
+                reviewer_id: props.reviewer_id,
+                total: props.total,
             })
             .await;
 
@@ -5702,6 +5623,7 @@ mod tests {
     #[tokio::test]
     async fn deberia_devolver_un_error_de_validacion_cuando_cliente_id_no_existe() {
         // Preparar: en el almacén no hay Cliente con ese id.
+        let props = MadrePedido::new().construir_props();
         let mut repositorio_doble = MockRepositorioPedido::new();
         repositorio_doble
             .expect_guardar()
@@ -5713,9 +5635,9 @@ mod tests {
         // Actuar
         let resultado = caso_de_uso
             .ejecutar(ParamsCrearPedido {
-                cliente_id: IdCliente::generar(),
-                reviewer_id: None,
-                total: 42,
+                cliente_id: props.cliente_id,
+                reviewer_id: props.reviewer_id,
+                total: props.total,
             })
             .await;
 
@@ -5730,6 +5652,7 @@ mod tests {
     #[tokio::test]
     async fn deberia_devolver_un_error_de_validacion_cuando_reviewer_id_no_existe() {
         // Preparar: en el almacén no hay Cliente con ese id.
+        let props = MadrePedido::new().construir_props();
         let mut repositorio_doble = MockRepositorioPedido::new();
         repositorio_doble
             .expect_guardar()
@@ -5741,9 +5664,9 @@ mod tests {
         // Actuar
         let resultado = caso_de_uso
             .ejecutar(ParamsCrearPedido {
-                cliente_id: IdCliente::generar(),
-                reviewer_id: None,
-                total: 42,
+                cliente_id: props.cliente_id,
+                reviewer_id: props.reviewer_id,
+                total: props.total,
             })
             .await;
 
@@ -5833,27 +5756,13 @@ mod tests {
     use super::*;
     use dominio_cliente::modelo::IdCliente;
     use dominio_pedido::{
-        modelo::{Pedido, PropsPedido},
-        repositorio::dobles::MockRepositorioPedido,
+        pruebas::madres::MadrePedido, repositorio::dobles::MockRepositorioPedido,
     };
     use puerto_nucleo::PeticionPagina;
 
     #[tokio::test]
     async fn deberia_devolver_la_pagina_de_pedidos() {
-        let entidades = vec![
-            Pedido::new(PropsPedido {
-                cliente_id: IdCliente::generar(),
-                reviewer_id: None,
-                total: 42,
-            })
-            .unwrap(),
-            Pedido::new(PropsPedido {
-                cliente_id: IdCliente::generar(),
-                reviewer_id: None,
-                total: 42,
-            })
-            .unwrap(),
-        ];
+        let entidades = MadrePedido::aleatorios(2);
         let mut repositorio_doble = MockRepositorioPedido::new();
         repositorio_doble
             .expect_buscar_todos()
@@ -6006,21 +5915,14 @@ impl ObtenerPedido for ObtenerPedidoImpl {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use dominio_cliente::modelo::IdCliente;
     use dominio_pedido::{
-        modelo::{IdPedido, Pedido, PropsPedido},
-        repositorio::dobles::MockRepositorioPedido,
+        modelo::IdPedido, pruebas::madres::MadrePedido, repositorio::dobles::MockRepositorioPedido,
     };
     use puerto_nucleo::ErrorRepositorio;
 
     #[tokio::test]
     async fn deberia_devolver_pedido_cuando_el_id_existe() {
-        let entidad = Pedido::new(PropsPedido {
-            cliente_id: IdCliente::generar(),
-            reviewer_id: None,
-            total: 42,
-        })
-        .unwrap();
+        let entidad = MadrePedido::aleatorio();
         let id_entidad = entidad.id;
         let mut repositorio_doble = MockRepositorioPedido::new();
         repositorio_doble
@@ -6034,7 +5936,7 @@ mod tests {
             .ejecutar(ParamsObtenerPedido { id: id_entidad })
             .await;
 
-        assert!(resultado.is_ok());
+        assert_eq!(resultado.unwrap().id, id_entidad);
     }
 
     #[tokio::test]
@@ -6273,14 +6175,11 @@ impl Pedido {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::pruebas::madres::MadrePedido;
 
     #[test]
     fn deberia_crear_pedido_cuando_los_campos_son_validos() {
-        let resultado = Pedido::new(PropsPedido {
-            cliente_id: IdCliente::generar(),
-            reviewer_id: None,
-            total: 42,
-        });
+        let resultado = Pedido::new(MadrePedido::new().construir_props());
         assert!(resultado.is_ok());
     }
 }
@@ -6494,18 +6393,21 @@ pub mod pruebas {
 //! Las filas que necesitan los tests de Postgres —una entidad pedido válida y otra guardada—,
 //! para los tests de este crate y para los de los contextos que la referencian (ADR-0023 § 5 de
 //! Puerto).
-use dominio_pedido::modelo::{Pedido, PropsPedido};
+use dominio_pedido::modelo::Pedido;
+use dominio_pedido::modelo::PropsPedido;
+use dominio_pedido::pruebas::madres::MadrePedido;
 use dominio_pedido::repositorio::RepositorioPedido;
 use sqlx::PgPool;
 
 use crate::repositorio::RepositorioPedidoPostgres;
 
-/// Una entidad pedido válida, sin guardar: antes siembra las filas que referencia.
+/// Una entidad pedido válida, sin guardar, con los valores de la madre salvo en los
+/// campos únicos (uno nuevo cada vez), las fechas (un segundo exacto, lo que Postgres guarda) y las
+/// referencias (una fila sembrada).
 pub async fn construir(pool: &PgPool) -> Pedido {
     Pedido::new(PropsPedido {
         cliente_id: infra_cliente::pruebas::siembra::sembrar(pool).await.id,
-        reviewer_id: None,
-        total: 42,
+        ..MadrePedido::new().construir_props()
     })
     .unwrap()
 }

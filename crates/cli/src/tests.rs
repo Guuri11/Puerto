@@ -50,6 +50,7 @@ fn wiring(base: &Path) -> String {
 mod auth;
 mod auth_e2e;
 mod bootstrap_gen;
+mod canasta_gaps;
 mod cli_surface;
 mod compile_matrix;
 mod conventions;

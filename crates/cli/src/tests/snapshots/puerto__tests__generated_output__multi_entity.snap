@@ -164,9 +164,10 @@ comando.
    lado. `generar caso-de-uso` deja la impl en `todo!()`, unos `Params` de relleno y un test marcado
    `#[ignore = "escribe este test"]` en `contextos/<c>/aplicacion/src/<accion>.rs`: quita el
    `ignore`, escribe el test y míralo fallar.
-4. **Verde.** Primero el dominio: los invariantes en el `new` del modelo o en un objeto valor
-   (`contextos/<c>/dominio/`); después los `Params`, el trait y la impl del caso de uso, en un solo
-   fichero.
+4. **Verde.** Primero el dominio: los invariantes en el `validar` del modelo (lo llaman `new` y
+   `actualizar`) o en un objeto valor (`contextos/<c>/dominio/`); si uno rechaza un valor por
+   defecto de la madre, cámbialo en la madre: los tests generados toman de ahí sus valores. Después
+   los `Params`, el trait y la impl del caso de uso, en un solo fichero.
 5. **El endpoint, API primero.** `generar caso-de-uso` pone el caso de uso en `Api<Entidad>` pero no
    añade ninguna ruta: escribe `dto.rs`, `respuestas.rs`, el brazo de `errores.rs` de cada error
    nuevo (con su test), después el handler en `rutas.rs` y un test de ruta por cada código de estado
@@ -382,19 +383,16 @@ impl ActualizarCategoria for ActualizarCategoriaImpl {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use dominio_categoria::valores::Name;
     use dominio_categoria::{
-        modelo::{Categoria, IdCategoria, PropsCategoria},
+        modelo::IdCategoria, pruebas::madres::MadreCategoria,
         repositorio::dobles::MockRepositorioCategoria,
     };
 
     #[tokio::test]
     async fn deberia_actualizar_categoria_cuando_los_parametros_son_validos() {
         // Preparar
-        let entidad = Categoria::new(PropsCategoria {
-            name: Name::new("original".to_string()).expect("el literal de Name es válido"),
-        })
-        .unwrap();
+        let props = MadreCategoria::new().construir_props();
+        let entidad = MadreCategoria::aleatorio();
         let id_entidad = entidad.id;
         let mut repositorio_doble = MockRepositorioCategoria::new();
         repositorio_doble
@@ -409,17 +407,18 @@ mod tests {
         let resultado = caso_de_uso
             .ejecutar(ParamsActualizarCategoria {
                 id: id_entidad,
-                name: "updated".to_string(),
+                name: props.name.valor().to_string(),
             })
             .await;
 
         // Comprobar
-        assert_eq!(resultado.unwrap().name.valor(), "updated");
+        assert!(resultado.is_ok());
     }
 
     #[tokio::test]
     async fn deberia_devolver_no_encontrado_cuando_categoria_no_existe() {
         // Preparar
+        let props = MadreCategoria::new().construir_props();
         let mut repositorio_doble = MockRepositorioCategoria::new();
         repositorio_doble
             .expect_buscar_por_id()
@@ -432,7 +431,7 @@ mod tests {
         let resultado = caso_de_uso
             .ejecutar(ParamsActualizarCategoria {
                 id: IdCategoria::generar(),
-                name: "new".to_string(),
+                name: props.name.valor().to_string(),
             })
             .await;
 
@@ -447,10 +446,7 @@ mod tests {
     #[tokio::test]
     async fn deberia_devolver_error_cuando_name_es_una_cadena_vacia() {
         // Preparar
-        let entidad = Categoria::new(PropsCategoria {
-            name: Name::new("original".to_string()).expect("el literal de Name es válido"),
-        })
-        .unwrap();
+        let entidad = MadreCategoria::aleatorio();
         let id_entidad = entidad.id;
         let mut repositorio_doble = MockRepositorioCategoria::new();
         repositorio_doble
@@ -544,18 +540,14 @@ impl BorrarCategoria for BorrarCategoriaImpl {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use dominio_categoria::valores::Name;
     use dominio_categoria::{
-        modelo::{Categoria, IdCategoria, PropsCategoria},
+        modelo::IdCategoria, pruebas::madres::MadreCategoria,
         repositorio::dobles::MockRepositorioCategoria,
     };
 
     #[tokio::test]
     async fn deberia_hacer_borrado_logico_de_categoria_cuando_el_id_existe() {
-        let entidad = Categoria::new(PropsCategoria {
-            name: Name::new("example".to_string()).expect("el literal de Name es válido"),
-        })
-        .unwrap();
+        let entidad = MadreCategoria::aleatorio();
         let id_entidad = entidad.id;
         let mut repositorio_doble = MockRepositorioCategoria::new();
         repositorio_doble
@@ -653,12 +645,14 @@ impl CrearCategoria for CrearCategoriaImpl {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use dominio_categoria::pruebas::madres::MadreCategoria;
     use dominio_categoria::repositorio::dobles::MockRepositorioCategoria;
     use puerto_nucleo::ErrorRepositorio;
 
     #[tokio::test]
     async fn deberia_crear_categoria_cuando_los_campos_son_validos() {
         // Preparar
+        let props = MadreCategoria::new().construir_props();
         let mut repositorio_doble = MockRepositorioCategoria::new();
         repositorio_doble.expect_guardar().returning(|_| Ok(()));
         let caso_de_uso = CrearCategoriaImpl {
@@ -668,18 +662,22 @@ mod tests {
         // Actuar
         let resultado = caso_de_uso
             .ejecutar(ParamsCrearCategoria {
-                name: "example".to_string(),
+                name: props.name.valor().to_string(),
             })
             .await;
 
         // Comprobar
         assert!(resultado.is_ok());
-        assert_eq!(resultado.unwrap().name.valor(), "example");
+        assert_eq!(
+            resultado.unwrap().name,
+            MadreCategoria::new().construir_props().name
+        );
     }
 
     #[tokio::test]
     async fn deberia_devolver_duplicado_cuando_el_almacen_rechaza_un_duplicado() {
         // Preparar
+        let props = MadreCategoria::new().construir_props();
         let mut repositorio_doble = MockRepositorioCategoria::new();
         repositorio_doble
             .expect_guardar()
@@ -691,7 +689,7 @@ mod tests {
         // Actuar
         let resultado = caso_de_uso
             .ejecutar(ParamsCrearCategoria {
-                name: "example".to_string(),
+                name: props.name.valor().to_string(),
             })
             .await;
 
@@ -796,25 +794,14 @@ impl ListarCategorias for ListarCategoriasImpl {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use dominio_categoria::valores::Name;
     use dominio_categoria::{
-        modelo::{Categoria, PropsCategoria},
-        repositorio::dobles::MockRepositorioCategoria,
+        pruebas::madres::MadreCategoria, repositorio::dobles::MockRepositorioCategoria,
     };
     use puerto_nucleo::PeticionPagina;
 
     #[tokio::test]
     async fn deberia_devolver_la_pagina_de_categorias() {
-        let entidades = vec![
-            Categoria::new(PropsCategoria {
-                name: Name::new("first".to_string()).expect("el literal de Name es válido"),
-            })
-            .unwrap(),
-            Categoria::new(PropsCategoria {
-                name: Name::new("second".to_string()).expect("el literal de Name es válido"),
-            })
-            .unwrap(),
-        ];
+        let entidades = MadreCategoria::aleatorios(2);
         let mut repositorio_doble = MockRepositorioCategoria::new();
         repositorio_doble
             .expect_buscar_todos()
@@ -935,19 +922,15 @@ impl ObtenerCategoria for ObtenerCategoriaImpl {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use dominio_categoria::valores::Name;
     use dominio_categoria::{
-        modelo::{Categoria, IdCategoria, PropsCategoria},
+        modelo::IdCategoria, pruebas::madres::MadreCategoria,
         repositorio::dobles::MockRepositorioCategoria,
     };
     use puerto_nucleo::ErrorRepositorio;
 
     #[tokio::test]
     async fn deberia_devolver_categoria_cuando_el_id_existe() {
-        let entidad = Categoria::new(PropsCategoria {
-            name: Name::new("example".to_string()).expect("el literal de Name es válido"),
-        })
-        .unwrap();
+        let entidad = MadreCategoria::aleatorio();
         let id_entidad = entidad.id;
         let mut repositorio_doble = MockRepositorioCategoria::new();
         repositorio_doble
@@ -961,8 +944,7 @@ mod tests {
             .ejecutar(ParamsObtenerCategoria { id: id_entidad })
             .await;
 
-        assert!(resultado.is_ok());
-        assert_eq!(resultado.unwrap().name.valor(), "example");
+        assert_eq!(resultado.unwrap().id, id_entidad);
     }
 
     #[tokio::test]
@@ -1185,12 +1167,11 @@ impl Categoria {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::pruebas::madres::MadreCategoria;
 
     #[test]
     fn deberia_crear_categoria_cuando_los_campos_son_validos() {
-        let resultado = Categoria::new(PropsCategoria {
-            name: Name::new("example".to_string()).expect("Name::new rechazó el valor de ejemplo"),
-        });
+        let resultado = Categoria::new(MadreCategoria::new().construir_props());
         assert!(resultado.is_ok());
     }
 
@@ -1415,14 +1396,11 @@ impl RepositorioCategoria for RepositorioCategoriaEnMemoria {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use dominio_categoria::modelo::PropsCategoria;
-    use dominio_categoria::valores::Name;
+    use dominio_categoria::pruebas::madres::MadreCategoria;
 
+    /// Una entidad válida, con los valores de la madre.
     fn nuevo_categoria() -> Categoria {
-        Categoria::new(PropsCategoria {
-            name: Name::new("example".to_string()).expect("Name::new rechazó el valor de ejemplo"),
-        })
-        .unwrap()
+        MadreCategoria::aleatorio()
     }
 
     #[tokio::test]
@@ -2338,18 +2316,17 @@ impl ActualizarProducto for ActualizarProductoImpl {
 mod tests {
     use super::*;
     use dominio_producto::{
-        modelo::{IdProducto, Producto, PropsProducto},
+        modelo::IdProducto, pruebas::madres::MadreProducto,
         repositorio::dobles::MockRepositorioProducto,
     };
 
     #[tokio::test]
     async fn deberia_actualizar_producto_cuando_los_parametros_son_validos() {
         // Preparar
-        let entidad = Producto::new(PropsProducto {
-            title: "original".to_string(),
-            price: 42,
-        })
-        .unwrap();
+        let props = MadreProducto::new().construir_props();
+        let mut entidad = MadreProducto::aleatorio();
+        // Lo que estaba guardado, distinto de lo que trae la actualización.
+        entidad.title = "original".to_string();
         let id_entidad = entidad.id;
         let mut repositorio_doble = MockRepositorioProducto::new();
         repositorio_doble
@@ -2364,18 +2341,22 @@ mod tests {
         let resultado = caso_de_uso
             .ejecutar(ParamsActualizarProducto {
                 id: id_entidad,
-                title: "updated".to_string(),
-                price: 42,
+                title: props.title,
+                price: props.price,
             })
             .await;
 
         // Comprobar
-        assert_eq!(resultado.unwrap().title, "updated");
+        assert_eq!(
+            resultado.unwrap().title,
+            MadreProducto::new().construir_props().title
+        );
     }
 
     #[tokio::test]
     async fn deberia_devolver_no_encontrado_cuando_producto_no_existe() {
         // Preparar
+        let props = MadreProducto::new().construir_props();
         let mut repositorio_doble = MockRepositorioProducto::new();
         repositorio_doble
             .expect_buscar_por_id()
@@ -2388,8 +2369,8 @@ mod tests {
         let resultado = caso_de_uso
             .ejecutar(ParamsActualizarProducto {
                 id: IdProducto::generar(),
-                title: "new".to_string(),
-                price: 42,
+                title: props.title,
+                price: props.price,
             })
             .await;
 
@@ -2401,11 +2382,8 @@ mod tests {
     #[tokio::test]
     async fn deberia_devolver_error_cuando_title_es_una_cadena_vacia() {
         // Preparar
-        let entidad = Producto::new(PropsProducto {
-            title: "original".to_string(),
-            price: 42,
-        })
-        .unwrap();
+        let props = MadreProducto::new().construir_props();
+        let entidad = MadreProducto::aleatorio();
         let id_entidad = entidad.id;
         let mut repositorio_doble = MockRepositorioProducto::new();
         repositorio_doble
@@ -2420,7 +2398,7 @@ mod tests {
             .ejecutar(ParamsActualizarProducto {
                 id: id_entidad,
                 title: "".to_string(),
-                price: 42,
+                price: props.price,
             })
             .await;
 
@@ -2499,17 +2477,13 @@ impl BorrarProducto for BorrarProductoImpl {
 mod tests {
     use super::*;
     use dominio_producto::{
-        modelo::{IdProducto, Producto, PropsProducto},
+        modelo::IdProducto, pruebas::madres::MadreProducto,
         repositorio::dobles::MockRepositorioProducto,
     };
 
     #[tokio::test]
     async fn deberia_hacer_borrado_logico_de_producto_cuando_el_id_existe() {
-        let entidad = Producto::new(PropsProducto {
-            title: "example".to_string(),
-            price: 42,
-        })
-        .unwrap();
+        let entidad = MadreProducto::aleatorio();
         let id_entidad = entidad.id;
         let mut repositorio_doble = MockRepositorioProducto::new();
         repositorio_doble
@@ -2606,12 +2580,14 @@ impl CrearProducto for CrearProductoImpl {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use dominio_producto::pruebas::madres::MadreProducto;
     use dominio_producto::repositorio::dobles::MockRepositorioProducto;
     use puerto_nucleo::ErrorRepositorio;
 
     #[tokio::test]
     async fn deberia_crear_producto_cuando_los_campos_son_validos() {
         // Preparar
+        let props = MadreProducto::new().construir_props();
         let mut repositorio_doble = MockRepositorioProducto::new();
         repositorio_doble.expect_guardar().returning(|_| Ok(()));
         let caso_de_uso = CrearProductoImpl {
@@ -2621,19 +2597,23 @@ mod tests {
         // Actuar
         let resultado = caso_de_uso
             .ejecutar(ParamsCrearProducto {
-                title: "example".to_string(),
-                price: 42,
+                title: props.title,
+                price: props.price,
             })
             .await;
 
         // Comprobar
         assert!(resultado.is_ok());
-        assert_eq!(resultado.unwrap().title, "example");
+        assert_eq!(
+            resultado.unwrap().title,
+            MadreProducto::new().construir_props().title
+        );
     }
 
     #[tokio::test]
     async fn deberia_devolver_duplicado_cuando_el_almacen_rechaza_un_duplicado() {
         // Preparar
+        let props = MadreProducto::new().construir_props();
         let mut repositorio_doble = MockRepositorioProducto::new();
         repositorio_doble
             .expect_guardar()
@@ -2645,8 +2625,8 @@ mod tests {
         // Actuar
         let resultado = caso_de_uso
             .ejecutar(ParamsCrearProducto {
-                title: "example".to_string(),
-                price: 42,
+                title: props.title,
+                price: props.price,
             })
             .await;
 
@@ -2658,6 +2638,7 @@ mod tests {
     #[tokio::test]
     async fn deberia_devolver_error_cuando_title_es_una_cadena_vacia() {
         // Preparar
+        let props = MadreProducto::new().construir_props();
         let repositorio_doble = MockRepositorioProducto::new();
         let caso_de_uso = CrearProductoImpl {
             repositorio: Arc::new(repositorio_doble),
@@ -2667,7 +2648,7 @@ mod tests {
         let resultado = caso_de_uso
             .ejecutar(ParamsCrearProducto {
                 title: "".to_string(),
-                price: 42,
+                price: props.price,
             })
             .await;
 
@@ -2751,25 +2732,13 @@ impl ListarProductos for ListarProductosImpl {
 mod tests {
     use super::*;
     use dominio_producto::{
-        modelo::{Producto, PropsProducto},
-        repositorio::dobles::MockRepositorioProducto,
+        pruebas::madres::MadreProducto, repositorio::dobles::MockRepositorioProducto,
     };
     use puerto_nucleo::PeticionPagina;
 
     #[tokio::test]
     async fn deberia_devolver_la_pagina_de_productos() {
-        let entidades = vec![
-            Producto::new(PropsProducto {
-                title: "first".to_string(),
-                price: 42,
-            })
-            .unwrap(),
-            Producto::new(PropsProducto {
-                title: "second".to_string(),
-                price: 42,
-            })
-            .unwrap(),
-        ];
+        let entidades = MadreProducto::aleatorios(2);
         let mut repositorio_doble = MockRepositorioProducto::new();
         repositorio_doble
             .expect_buscar_todos()
@@ -2891,18 +2860,14 @@ impl ObtenerProducto for ObtenerProductoImpl {
 mod tests {
     use super::*;
     use dominio_producto::{
-        modelo::{IdProducto, Producto, PropsProducto},
+        modelo::IdProducto, pruebas::madres::MadreProducto,
         repositorio::dobles::MockRepositorioProducto,
     };
     use puerto_nucleo::ErrorRepositorio;
 
     #[tokio::test]
     async fn deberia_devolver_producto_cuando_el_id_existe() {
-        let entidad = Producto::new(PropsProducto {
-            title: "example".to_string(),
-            price: 42,
-        })
-        .unwrap();
+        let entidad = MadreProducto::aleatorio();
         let id_entidad = entidad.id;
         let mut repositorio_doble = MockRepositorioProducto::new();
         repositorio_doble
@@ -2916,8 +2881,7 @@ mod tests {
             .ejecutar(ParamsObtenerProducto { id: id_entidad })
             .await;
 
-        assert!(resultado.is_ok());
-        assert_eq!(resultado.unwrap().title, "example");
+        assert_eq!(resultado.unwrap().id, id_entidad);
     }
 
     #[tokio::test]
@@ -3140,22 +3104,20 @@ impl Producto {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::pruebas::madres::MadreProducto;
 
     #[test]
     fn deberia_crear_producto_cuando_los_campos_son_validos() {
-        let resultado = Producto::new(PropsProducto {
-            title: "example".to_string(),
-            price: 42,
-        });
-        assert_eq!(resultado.unwrap().title, "example");
+        let resultado = Producto::new(MadreProducto::new().construir_props());
+        assert_eq!(
+            resultado.unwrap().title,
+            MadreProducto::new().construir_props().title
+        );
     }
 
     #[test]
     fn deberia_rechazar_producto_cuando_title_es_una_cadena_vacia() {
-        let resultado = Producto::new(PropsProducto {
-            title: "".into(),
-            price: 42,
-        });
+        let resultado = Producto::new(MadreProducto::new().con_title_vacio().construir_props());
         assert!(resultado.is_err());
         assert_eq!(
             resultado.unwrap_err().to_string(),
@@ -3165,24 +3127,15 @@ mod tests {
 
     #[test]
     fn deberia_rechazar_producto_cuando_title_solo_tiene_espacios() {
-        let resultado = Producto::new(PropsProducto {
-            title: "   ".into(),
-            price: 42,
-        });
+        let resultado = Producto::new(MadreProducto::new().con_title("   ").construir_props());
         assert!(resultado.is_err());
     }
 
     #[test]
     fn deberia_rechazar_actualizar_producto_cuando_title_es_una_cadena_vacia() {
-        let mut entidad = Producto::new(PropsProducto {
-            title: "example".to_string(),
-            price: 42,
-        })
-        .unwrap();
-        let resultado = entidad.actualizar(PropsProducto {
-            title: "".into(),
-            price: 42,
-        });
+        let mut entidad = MadreProducto::aleatorio();
+        let resultado =
+            entidad.actualizar(MadreProducto::new().con_title_vacio().construir_props());
         assert_eq!(
             resultado.unwrap_err().to_string(),
             "producto.validacion.title_vacio"
@@ -3389,14 +3342,11 @@ impl RepositorioProducto for RepositorioProductoEnMemoria {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use dominio_producto::modelo::PropsProducto;
+    use dominio_producto::pruebas::madres::MadreProducto;
 
+    /// Una entidad válida, con los valores de la madre.
     fn nuevo_producto() -> Producto {
-        Producto::new(PropsProducto {
-            title: "example".to_string(),
-            price: 42,
-        })
-        .unwrap()
+        MadreProducto::aleatorio()
     }
 
     #[tokio::test]

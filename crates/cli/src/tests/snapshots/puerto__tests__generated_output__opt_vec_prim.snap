@@ -164,9 +164,10 @@ comando.
    lado. `generar caso-de-uso` deja la impl en `todo!()`, unos `Params` de relleno y un test marcado
    `#[ignore = "escribe este test"]` en `contextos/<c>/aplicacion/src/<accion>.rs`: quita el
    `ignore`, escribe el test y míralo fallar.
-4. **Verde.** Primero el dominio: los invariantes en el `new` del modelo o en un objeto valor
-   (`contextos/<c>/dominio/`); después los `Params`, el trait y la impl del caso de uso, en un solo
-   fichero.
+4. **Verde.** Primero el dominio: los invariantes en el `validar` del modelo (lo llaman `new` y
+   `actualizar`) o en un objeto valor (`contextos/<c>/dominio/`); si uno rechaza un valor por
+   defecto de la madre, cámbialo en la madre: los tests generados toman de ahí sus valores. Después
+   los `Params`, el trait y la impl del caso de uso, en un solo fichero.
 5. **El endpoint, API primero.** `generar caso-de-uso` pone el caso de uso en `Api<Entidad>` pero no
    añade ninguna ruta: escribe `dto.rs`, `respuestas.rs`, el brazo de `errores.rs` de cada error
    nuevo (con su test), después el handler en `rutas.rs` y un test de ruta por cada código de estado
@@ -381,21 +382,17 @@ impl ActualizarArticle for ActualizarArticleImpl {
 mod tests {
     use super::*;
     use dominio_article::{
-        modelo::{Article, IdArticle, PropsArticle},
+        modelo::IdArticle, pruebas::madres::MadreArticle,
         repositorio::dobles::MockRepositorioArticle,
     };
 
     #[tokio::test]
     async fn deberia_actualizar_article_cuando_los_parametros_son_validos() {
         // Preparar
-        let entidad = Article::new(PropsArticle {
-            title: "original".to_string(),
-            summary: None,
-            views: None,
-            tags: vec![],
-            scores: vec![],
-        })
-        .unwrap();
+        let props = MadreArticle::new().construir_props();
+        let mut entidad = MadreArticle::aleatorio();
+        // Lo que estaba guardado, distinto de lo que trae la actualización.
+        entidad.title = "original".to_string();
         let id_entidad = entidad.id;
         let mut repositorio_doble = MockRepositorioArticle::new();
         repositorio_doble
@@ -410,21 +407,25 @@ mod tests {
         let resultado = caso_de_uso
             .ejecutar(ParamsActualizarArticle {
                 id: id_entidad,
-                title: "updated".to_string(),
-                summary: None,
-                views: None,
-                tags: vec![],
-                scores: vec![],
+                title: props.title,
+                summary: props.summary,
+                views: props.views,
+                tags: props.tags,
+                scores: props.scores,
             })
             .await;
 
         // Comprobar
-        assert_eq!(resultado.unwrap().title, "updated");
+        assert_eq!(
+            resultado.unwrap().title,
+            MadreArticle::new().construir_props().title
+        );
     }
 
     #[tokio::test]
     async fn deberia_devolver_no_encontrado_cuando_article_no_existe() {
         // Preparar
+        let props = MadreArticle::new().construir_props();
         let mut repositorio_doble = MockRepositorioArticle::new();
         repositorio_doble
             .expect_buscar_por_id()
@@ -437,11 +438,11 @@ mod tests {
         let resultado = caso_de_uso
             .ejecutar(ParamsActualizarArticle {
                 id: IdArticle::generar(),
-                title: "new".to_string(),
-                summary: None,
-                views: None,
-                tags: vec![],
-                scores: vec![],
+                title: props.title,
+                summary: props.summary,
+                views: props.views,
+                tags: props.tags,
+                scores: props.scores,
             })
             .await;
 
@@ -453,14 +454,8 @@ mod tests {
     #[tokio::test]
     async fn deberia_devolver_error_cuando_title_es_una_cadena_vacia() {
         // Preparar
-        let entidad = Article::new(PropsArticle {
-            title: "original".to_string(),
-            summary: None,
-            views: None,
-            tags: vec![],
-            scores: vec![],
-        })
-        .unwrap();
+        let props = MadreArticle::new().construir_props();
+        let entidad = MadreArticle::aleatorio();
         let id_entidad = entidad.id;
         let mut repositorio_doble = MockRepositorioArticle::new();
         repositorio_doble
@@ -475,10 +470,10 @@ mod tests {
             .ejecutar(ParamsActualizarArticle {
                 id: id_entidad,
                 title: "".to_string(),
-                summary: None,
-                views: None,
-                tags: vec![],
-                scores: vec![],
+                summary: props.summary,
+                views: props.views,
+                tags: props.tags,
+                scores: props.scores,
             })
             .await;
 
@@ -557,20 +552,13 @@ impl BorrarArticle for BorrarArticleImpl {
 mod tests {
     use super::*;
     use dominio_article::{
-        modelo::{Article, IdArticle, PropsArticle},
+        modelo::IdArticle, pruebas::madres::MadreArticle,
         repositorio::dobles::MockRepositorioArticle,
     };
 
     #[tokio::test]
     async fn deberia_hacer_borrado_logico_de_article_cuando_el_id_existe() {
-        let entidad = Article::new(PropsArticle {
-            title: "example".to_string(),
-            summary: None,
-            views: None,
-            tags: vec![],
-            scores: vec![],
-        })
-        .unwrap();
+        let entidad = MadreArticle::aleatorio();
         let id_entidad = entidad.id;
         let mut repositorio_doble = MockRepositorioArticle::new();
         repositorio_doble
@@ -674,12 +662,14 @@ impl CrearArticle for CrearArticleImpl {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use dominio_article::pruebas::madres::MadreArticle;
     use dominio_article::repositorio::dobles::MockRepositorioArticle;
     use puerto_nucleo::ErrorRepositorio;
 
     #[tokio::test]
     async fn deberia_crear_article_cuando_los_campos_son_validos() {
         // Preparar
+        let props = MadreArticle::new().construir_props();
         let mut repositorio_doble = MockRepositorioArticle::new();
         repositorio_doble.expect_guardar().returning(|_| Ok(()));
         let caso_de_uso = CrearArticleImpl {
@@ -689,22 +679,26 @@ mod tests {
         // Actuar
         let resultado = caso_de_uso
             .ejecutar(ParamsCrearArticle {
-                title: "example".to_string(),
-                summary: None,
-                views: None,
-                tags: vec![],
-                scores: vec![],
+                title: props.title,
+                summary: props.summary,
+                views: props.views,
+                tags: props.tags,
+                scores: props.scores,
             })
             .await;
 
         // Comprobar
         assert!(resultado.is_ok());
-        assert_eq!(resultado.unwrap().title, "example");
+        assert_eq!(
+            resultado.unwrap().title,
+            MadreArticle::new().construir_props().title
+        );
     }
 
     #[tokio::test]
     async fn deberia_devolver_duplicado_cuando_el_almacen_rechaza_un_duplicado() {
         // Preparar
+        let props = MadreArticle::new().construir_props();
         let mut repositorio_doble = MockRepositorioArticle::new();
         repositorio_doble
             .expect_guardar()
@@ -716,11 +710,11 @@ mod tests {
         // Actuar
         let resultado = caso_de_uso
             .ejecutar(ParamsCrearArticle {
-                title: "example".to_string(),
-                summary: None,
-                views: None,
-                tags: vec![],
-                scores: vec![],
+                title: props.title,
+                summary: props.summary,
+                views: props.views,
+                tags: props.tags,
+                scores: props.scores,
             })
             .await;
 
@@ -732,6 +726,7 @@ mod tests {
     #[tokio::test]
     async fn deberia_devolver_error_cuando_title_es_una_cadena_vacia() {
         // Preparar
+        let props = MadreArticle::new().construir_props();
         let repositorio_doble = MockRepositorioArticle::new();
         let caso_de_uso = CrearArticleImpl {
             repositorio: Arc::new(repositorio_doble),
@@ -741,10 +736,10 @@ mod tests {
         let resultado = caso_de_uso
             .ejecutar(ParamsCrearArticle {
                 title: "".to_string(),
-                summary: None,
-                views: None,
-                tags: vec![],
-                scores: vec![],
+                summary: props.summary,
+                views: props.views,
+                tags: props.tags,
+                scores: props.scores,
             })
             .await;
 
@@ -826,31 +821,13 @@ impl ListarArticles for ListarArticlesImpl {
 mod tests {
     use super::*;
     use dominio_article::{
-        modelo::{Article, PropsArticle},
-        repositorio::dobles::MockRepositorioArticle,
+        pruebas::madres::MadreArticle, repositorio::dobles::MockRepositorioArticle,
     };
     use puerto_nucleo::PeticionPagina;
 
     #[tokio::test]
     async fn deberia_devolver_la_pagina_de_articles() {
-        let entidades = vec![
-            Article::new(PropsArticle {
-                title: "first".to_string(),
-                summary: None,
-                views: None,
-                tags: vec![],
-                scores: vec![],
-            })
-            .unwrap(),
-            Article::new(PropsArticle {
-                title: "second".to_string(),
-                summary: None,
-                views: None,
-                tags: vec![],
-                scores: vec![],
-            })
-            .unwrap(),
-        ];
+        let entidades = MadreArticle::aleatorios(2);
         let mut repositorio_doble = MockRepositorioArticle::new();
         repositorio_doble
             .expect_buscar_todos()
@@ -972,21 +949,14 @@ impl ObtenerArticle for ObtenerArticleImpl {
 mod tests {
     use super::*;
     use dominio_article::{
-        modelo::{Article, IdArticle, PropsArticle},
+        modelo::IdArticle, pruebas::madres::MadreArticle,
         repositorio::dobles::MockRepositorioArticle,
     };
     use puerto_nucleo::ErrorRepositorio;
 
     #[tokio::test]
     async fn deberia_devolver_article_cuando_el_id_existe() {
-        let entidad = Article::new(PropsArticle {
-            title: "example".to_string(),
-            summary: None,
-            views: None,
-            tags: vec![],
-            scores: vec![],
-        })
-        .unwrap();
+        let entidad = MadreArticle::aleatorio();
         let id_entidad = entidad.id;
         let mut repositorio_doble = MockRepositorioArticle::new();
         repositorio_doble
@@ -1000,8 +970,7 @@ mod tests {
             .ejecutar(ParamsObtenerArticle { id: id_entidad })
             .await;
 
-        assert!(resultado.is_ok());
-        assert_eq!(resultado.unwrap().title, "example");
+        assert_eq!(resultado.unwrap().id, id_entidad);
     }
 
     #[tokio::test]
@@ -1236,28 +1205,20 @@ impl Article {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::pruebas::madres::MadreArticle;
 
     #[test]
     fn deberia_crear_article_cuando_los_campos_son_validos() {
-        let resultado = Article::new(PropsArticle {
-            title: "example".to_string(),
-            summary: None,
-            views: None,
-            tags: vec![],
-            scores: vec![],
-        });
-        assert_eq!(resultado.unwrap().title, "example");
+        let resultado = Article::new(MadreArticle::new().construir_props());
+        assert_eq!(
+            resultado.unwrap().title,
+            MadreArticle::new().construir_props().title
+        );
     }
 
     #[test]
     fn deberia_rechazar_article_cuando_title_es_una_cadena_vacia() {
-        let resultado = Article::new(PropsArticle {
-            title: "".into(),
-            summary: None,
-            views: None,
-            tags: vec![],
-            scores: vec![],
-        });
+        let resultado = Article::new(MadreArticle::new().con_title_vacio().construir_props());
         assert!(resultado.is_err());
         assert_eq!(
             resultado.unwrap_err().to_string(),
@@ -1267,33 +1228,14 @@ mod tests {
 
     #[test]
     fn deberia_rechazar_article_cuando_title_solo_tiene_espacios() {
-        let resultado = Article::new(PropsArticle {
-            title: "   ".into(),
-            summary: None,
-            views: None,
-            tags: vec![],
-            scores: vec![],
-        });
+        let resultado = Article::new(MadreArticle::new().con_title("   ").construir_props());
         assert!(resultado.is_err());
     }
 
     #[test]
     fn deberia_rechazar_actualizar_article_cuando_title_es_una_cadena_vacia() {
-        let mut entidad = Article::new(PropsArticle {
-            title: "example".to_string(),
-            summary: None,
-            views: None,
-            tags: vec![],
-            scores: vec![],
-        })
-        .unwrap();
-        let resultado = entidad.actualizar(PropsArticle {
-            title: "".into(),
-            summary: None,
-            views: None,
-            tags: vec![],
-            scores: vec![],
-        });
+        let mut entidad = MadreArticle::aleatorio();
+        let resultado = entidad.actualizar(MadreArticle::new().con_title_vacio().construir_props());
         assert_eq!(
             resultado.unwrap_err().to_string(),
             "article.validacion.title_vacio"
@@ -1527,17 +1469,11 @@ impl RepositorioArticle for RepositorioArticleEnMemoria {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use dominio_article::modelo::PropsArticle;
+    use dominio_article::pruebas::madres::MadreArticle;
 
+    /// Una entidad válida, con los valores de la madre.
     fn nuevo_article() -> Article {
-        Article::new(PropsArticle {
-            title: "example".to_string(),
-            summary: None,
-            views: None,
-            tags: vec![],
-            scores: vec![],
-        })
-        .unwrap()
+        MadreArticle::aleatorio()
     }
 
     #[tokio::test]

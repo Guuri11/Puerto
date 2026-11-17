@@ -157,7 +157,7 @@ fn scaffold_substitutes_pascal_name_in_use_case_impl() {
 }
 
 #[test]
-fn scaffold_crud_impls_import_model_struct_in_tests() {
+fn scaffold_crud_impls_import_the_mother_in_tests() {
     let dir = temp_dir("scaffold_model_import");
     cleanup(&dir);
     setup_puerto_stubs(&dir);
@@ -172,9 +172,8 @@ fn scaffold_crud_impls_import_model_struct_in_tests() {
         let path = dir.join(format!("contextos/producto/aplicacion/src/{uc}.rs"));
         let content = fs::read_to_string(&path).unwrap();
         assert!(
-            content.contains("modelo::{Producto, PropsProducto}")
-                || content.contains("modelo::{Producto, IdProducto, PropsProducto}"),
-            "{uc}.rs test block missing the `modelo::{{Producto, …PropsProducto}}` import"
+            content.contains("pruebas::madres::MadreProducto"),
+            "{uc}.rs test block missing the `pruebas::madres::MadreProducto` import"
         );
     }
 

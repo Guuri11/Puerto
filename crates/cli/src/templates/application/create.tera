@@ -33,12 +33,13 @@ mod tests {
 {% if actor %}    use puerto_nucleo::auth::dobles::MadrePrincipal;
 {% endif %}    use dominio_{{ snake }}::repositorio::dobles::MockRepositorio{{ pascal }};
     use puerto_nucleo::ErrorRepositorio;
-{% for import in test_imports %}    use {{ import }};
-{% endfor %}
+    use dominio_{{ snake }}::pruebas::madres::Madre{{ pascal }};
+
 
     #[tokio::test]
     async fn deberia_crear_{{ snake }}_cuando_{% if fields | length == 1 and required | length == 1 and fields.0.name == "nombre" %}el_nombre_es_valido{% else %}los_campos_son_validos{% endif %}() {
         // Preparar
+        let props = Madre{{ pascal }}::new().construir_props();
         let mut repositorio_doble = MockRepositorio{{ pascal }}::new();
         repositorio_doble.expect_guardar().returning(|_| Ok(()));
         let caso_de_uso = Crear{{ pascal }}Impl {
@@ -49,19 +50,18 @@ mod tests {
         let resultado = caso_de_uso
             .ejecutar(ParamsCrear{{ pascal }} {
 {% if actor %}                actor: MadrePrincipal::aleatorio(),
-{% endif %}{{ macros::params(fields=fields, word="example") }}            })
+{% endif %}{{ macros::params_madre(fields=fields) }}            })
             .await;
 
         // Comprobar
-        assert!(resultado.is_ok());{% set enum_vos = fields | filter(attribute="is_enum_vo", value=true) %}{% if required %}
-        assert_eq!(resultado.unwrap().{{ required.0.name }}, "example");{% elif string_vos %}
-        assert_eq!(resultado.unwrap().{{ string_vos.0.name }}.valor(), "example");{% elif enum_vos %}
-        assert_eq!(resultado.unwrap().{{ enum_vos.0.name }}.as_str(), "{{ enum_vos.0.first_variant }}");{% endif %}
+        assert!(resultado.is_ok());{% set enum_vos = fields | filter(attribute="is_enum_vo", value=true) %}{% set checked = required | concat(with=string_vos) | concat(with=enum_vos) %}{% if checked %}
+        assert_eq!(resultado.unwrap().{{ checked.0.name }}, Madre{{ pascal }}::new().construir_props().{{ checked.0.name }});{% endif %}
     }
 
     #[tokio::test]
     async fn deberia_devolver_duplicado_cuando_el_almacen_rechaza_un_duplicado() {
         // Preparar
+        let props = Madre{{ pascal }}::new().construir_props();
         let mut repositorio_doble = MockRepositorio{{ pascal }}::new();
         repositorio_doble
             .expect_guardar()
@@ -74,7 +74,7 @@ mod tests {
         let resultado = caso_de_uso
             .ejecutar(ParamsCrear{{ pascal }} {
 {% if actor %}                actor: MadrePrincipal::aleatorio(),
-{% endif %}{{ macros::params(fields=fields, word="example") }}            })
+{% endif %}{{ macros::params_madre(fields=fields) }}            })
             .await;
 
         // Comprobar
@@ -85,6 +85,7 @@ mod tests {
     #[tokio::test]
     async fn deberia_devolver_un_error_de_validacion_cuando_{{ r.name }}_no_existe() {
         // Preparar: en el almacén no hay {{ r.ref_target }} con ese id.
+        let props = Madre{{ pascal }}::new().construir_props();
         let mut repositorio_doble = MockRepositorio{{ pascal }}::new();
         repositorio_doble
             .expect_guardar()
@@ -97,7 +98,7 @@ mod tests {
         let resultado = caso_de_uso
             .ejecutar(ParamsCrear{{ pascal }} {
 {% if actor %}                actor: MadrePrincipal::aleatorio(),
-{% endif %}{{ macros::params(fields=fields, word="example") }}            })
+{% endif %}{{ macros::params_madre(fields=fields) }}            })
             .await;
 
         // Comprobar
@@ -111,7 +112,8 @@ mod tests {
     #[tokio::test]
     async fn deberia_devolver_error_cuando_{{ f.name }}_es_una_cadena_vacia() {
         // Preparar
-        let repositorio_doble = MockRepositorio{{ pascal }}::new();
+{% if fields | length > 1 %}        let props = Madre{{ pascal }}::new().construir_props();
+{% endif %}        let repositorio_doble = MockRepositorio{{ pascal }}::new();
         let caso_de_uso = Crear{{ pascal }}Impl {
             repositorio: Arc::new(repositorio_doble),
         };
@@ -120,7 +122,7 @@ mod tests {
         let resultado = caso_de_uso
             .ejecutar(ParamsCrear{{ pascal }} {
 {% if actor %}                actor: MadrePrincipal::aleatorio(),
-{% endif %}{{ macros::params(fields=fields, word="example", empty=f.name) }}            })
+{% endif %}{{ macros::params_madre(fields=fields, empty=f.name) }}            })
             .await;
 
         // Comprobar

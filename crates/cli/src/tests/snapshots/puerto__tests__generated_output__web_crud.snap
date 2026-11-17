@@ -164,9 +164,10 @@ comando.
    lado. `generar caso-de-uso` deja la impl en `todo!()`, unos `Params` de relleno y un test marcado
    `#[ignore = "escribe este test"]` en `contextos/<c>/aplicacion/src/<accion>.rs`: quita el
    `ignore`, escribe el test y míralo fallar.
-4. **Verde.** Primero el dominio: los invariantes en el `new` del modelo o en un objeto valor
-   (`contextos/<c>/dominio/`); después los `Params`, el trait y la impl del caso de uso, en un solo
-   fichero.
+4. **Verde.** Primero el dominio: los invariantes en el `validar` del modelo (lo llaman `new` y
+   `actualizar`) o en un objeto valor (`contextos/<c>/dominio/`); si uno rechaza un valor por
+   defecto de la madre, cámbialo en la madre: los tests generados toman de ahí sus valores. Después
+   los `Params`, el trait y la impl del caso de uso, en un solo fichero.
 5. **El endpoint, API primero.** `generar caso-de-uso` pone el caso de uso en `Api<Entidad>` pero no
    añade ninguna ruta: escribe `dto.rs`, `respuestas.rs`, el brazo de `errores.rs` de cada error
    nuevo (con su test), después el handler en `rutas.rs` y un test de ruta por cada código de estado
@@ -391,25 +392,18 @@ impl ActualizarLineaPedido for ActualizarLineaPedidoImpl {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use dominio_linea_pedido::valores::Sku;
     use dominio_linea_pedido::{
-        modelo::{IdLineaPedido, LineaPedido, PropsLineaPedido},
+        modelo::IdLineaPedido, pruebas::madres::MadreLineaPedido,
         repositorio::dobles::MockRepositorioLineaPedido,
     };
-    use uuid::Uuid;
 
     #[tokio::test]
     async fn deberia_actualizar_linea_pedido_cuando_los_parametros_son_validos() {
         // Preparar
-        let entidad = LineaPedido::new(PropsLineaPedido {
-            title: "original".to_string(),
-            quantity: 42,
-            rate: 1.5,
-            in_stock: true,
-            ref_id: Uuid::new_v4(),
-            sku: Sku::new("original".to_string()).expect("el literal de Sku es válido"),
-        })
-        .unwrap();
+        let props = MadreLineaPedido::new().construir_props();
+        let mut entidad = MadreLineaPedido::aleatorio();
+        // Lo que estaba guardado, distinto de lo que trae la actualización.
+        entidad.title = "original".to_string();
         let id_entidad = entidad.id;
         let mut repositorio_doble = MockRepositorioLineaPedido::new();
         repositorio_doble
@@ -424,22 +418,26 @@ mod tests {
         let resultado = caso_de_uso
             .ejecutar(ParamsActualizarLineaPedido {
                 id: id_entidad,
-                title: "updated".to_string(),
-                quantity: 42,
-                rate: 1.5,
-                in_stock: true,
-                ref_id: Uuid::new_v4(),
-                sku: "updated".to_string(),
+                title: props.title,
+                quantity: props.quantity,
+                rate: props.rate,
+                in_stock: props.in_stock,
+                ref_id: props.ref_id,
+                sku: props.sku.valor().to_string(),
             })
             .await;
 
         // Comprobar
-        assert_eq!(resultado.unwrap().title, "updated");
+        assert_eq!(
+            resultado.unwrap().title,
+            MadreLineaPedido::new().construir_props().title
+        );
     }
 
     #[tokio::test]
     async fn deberia_devolver_no_encontrado_cuando_linea_pedido_no_existe() {
         // Preparar
+        let props = MadreLineaPedido::new().construir_props();
         let mut repositorio_doble = MockRepositorioLineaPedido::new();
         repositorio_doble
             .expect_buscar_por_id()
@@ -452,12 +450,12 @@ mod tests {
         let resultado = caso_de_uso
             .ejecutar(ParamsActualizarLineaPedido {
                 id: IdLineaPedido::generar(),
-                title: "new".to_string(),
-                quantity: 42,
-                rate: 1.5,
-                in_stock: true,
-                ref_id: Uuid::new_v4(),
-                sku: "new".to_string(),
+                title: props.title,
+                quantity: props.quantity,
+                rate: props.rate,
+                in_stock: props.in_stock,
+                ref_id: props.ref_id,
+                sku: props.sku.valor().to_string(),
             })
             .await;
 
@@ -472,15 +470,8 @@ mod tests {
     #[tokio::test]
     async fn deberia_devolver_error_cuando_title_es_una_cadena_vacia() {
         // Preparar
-        let entidad = LineaPedido::new(PropsLineaPedido {
-            title: "original".to_string(),
-            quantity: 42,
-            rate: 1.5,
-            in_stock: true,
-            ref_id: Uuid::new_v4(),
-            sku: Sku::new("original".to_string()).expect("el literal de Sku es válido"),
-        })
-        .unwrap();
+        let props = MadreLineaPedido::new().construir_props();
+        let entidad = MadreLineaPedido::aleatorio();
         let id_entidad = entidad.id;
         let mut repositorio_doble = MockRepositorioLineaPedido::new();
         repositorio_doble
@@ -495,11 +486,11 @@ mod tests {
             .ejecutar(ParamsActualizarLineaPedido {
                 id: id_entidad,
                 title: "".to_string(),
-                quantity: 42,
-                rate: 1.5,
-                in_stock: true,
-                ref_id: Uuid::new_v4(),
-                sku: "updated".to_string(),
+                quantity: props.quantity,
+                rate: props.rate,
+                in_stock: props.in_stock,
+                ref_id: props.ref_id,
+                sku: props.sku.valor().to_string(),
             })
             .await;
 
@@ -514,15 +505,8 @@ mod tests {
     #[tokio::test]
     async fn deberia_devolver_error_cuando_sku_es_una_cadena_vacia() {
         // Preparar
-        let entidad = LineaPedido::new(PropsLineaPedido {
-            title: "original".to_string(),
-            quantity: 42,
-            rate: 1.5,
-            in_stock: true,
-            ref_id: Uuid::new_v4(),
-            sku: Sku::new("original".to_string()).expect("el literal de Sku es válido"),
-        })
-        .unwrap();
+        let props = MadreLineaPedido::new().construir_props();
+        let entidad = MadreLineaPedido::aleatorio();
         let id_entidad = entidad.id;
         let mut repositorio_doble = MockRepositorioLineaPedido::new();
         repositorio_doble
@@ -536,11 +520,11 @@ mod tests {
         let resultado = caso_de_uso
             .ejecutar(ParamsActualizarLineaPedido {
                 id: id_entidad,
-                title: "updated".to_string(),
-                quantity: 42,
-                rate: 1.5,
-                in_stock: true,
-                ref_id: Uuid::new_v4(),
+                title: props.title,
+                quantity: props.quantity,
+                rate: props.rate,
+                in_stock: props.in_stock,
+                ref_id: props.ref_id,
                 sku: "".to_string(),
             })
             .await;
@@ -621,24 +605,14 @@ impl BorrarLineaPedido for BorrarLineaPedidoImpl {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use dominio_linea_pedido::valores::Sku;
     use dominio_linea_pedido::{
-        modelo::{IdLineaPedido, LineaPedido, PropsLineaPedido},
+        modelo::IdLineaPedido, pruebas::madres::MadreLineaPedido,
         repositorio::dobles::MockRepositorioLineaPedido,
     };
-    use uuid::Uuid;
 
     #[tokio::test]
     async fn deberia_hacer_borrado_logico_de_linea_pedido_cuando_el_id_existe() {
-        let entidad = LineaPedido::new(PropsLineaPedido {
-            title: "example".to_string(),
-            quantity: 42,
-            rate: 1.5,
-            in_stock: true,
-            ref_id: Uuid::new_v4(),
-            sku: Sku::new("example".to_string()).expect("el literal de Sku es válido"),
-        })
-        .unwrap();
+        let entidad = MadreLineaPedido::aleatorio();
         let id_entidad = entidad.id;
         let mut repositorio_doble = MockRepositorioLineaPedido::new();
         repositorio_doble
@@ -755,13 +729,14 @@ impl CrearLineaPedido for CrearLineaPedidoImpl {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use dominio_linea_pedido::pruebas::madres::MadreLineaPedido;
     use dominio_linea_pedido::repositorio::dobles::MockRepositorioLineaPedido;
     use puerto_nucleo::ErrorRepositorio;
-    use uuid::Uuid;
 
     #[tokio::test]
     async fn deberia_crear_linea_pedido_cuando_los_campos_son_validos() {
         // Preparar
+        let props = MadreLineaPedido::new().construir_props();
         let mut repositorio_doble = MockRepositorioLineaPedido::new();
         repositorio_doble.expect_guardar().returning(|_| Ok(()));
         let caso_de_uso = CrearLineaPedidoImpl {
@@ -771,23 +746,27 @@ mod tests {
         // Actuar
         let resultado = caso_de_uso
             .ejecutar(ParamsCrearLineaPedido {
-                title: "example".to_string(),
-                quantity: 42,
-                rate: 1.5,
-                in_stock: true,
-                ref_id: Uuid::new_v4(),
-                sku: "example".to_string(),
+                title: props.title,
+                quantity: props.quantity,
+                rate: props.rate,
+                in_stock: props.in_stock,
+                ref_id: props.ref_id,
+                sku: props.sku.valor().to_string(),
             })
             .await;
 
         // Comprobar
         assert!(resultado.is_ok());
-        assert_eq!(resultado.unwrap().title, "example");
+        assert_eq!(
+            resultado.unwrap().title,
+            MadreLineaPedido::new().construir_props().title
+        );
     }
 
     #[tokio::test]
     async fn deberia_devolver_duplicado_cuando_el_almacen_rechaza_un_duplicado() {
         // Preparar
+        let props = MadreLineaPedido::new().construir_props();
         let mut repositorio_doble = MockRepositorioLineaPedido::new();
         repositorio_doble
             .expect_guardar()
@@ -799,12 +778,12 @@ mod tests {
         // Actuar
         let resultado = caso_de_uso
             .ejecutar(ParamsCrearLineaPedido {
-                title: "example".to_string(),
-                quantity: 42,
-                rate: 1.5,
-                in_stock: true,
-                ref_id: Uuid::new_v4(),
-                sku: "example".to_string(),
+                title: props.title,
+                quantity: props.quantity,
+                rate: props.rate,
+                in_stock: props.in_stock,
+                ref_id: props.ref_id,
+                sku: props.sku.valor().to_string(),
             })
             .await;
 
@@ -816,6 +795,7 @@ mod tests {
     #[tokio::test]
     async fn deberia_devolver_error_cuando_title_es_una_cadena_vacia() {
         // Preparar
+        let props = MadreLineaPedido::new().construir_props();
         let repositorio_doble = MockRepositorioLineaPedido::new();
         let caso_de_uso = CrearLineaPedidoImpl {
             repositorio: Arc::new(repositorio_doble),
@@ -825,11 +805,11 @@ mod tests {
         let resultado = caso_de_uso
             .ejecutar(ParamsCrearLineaPedido {
                 title: "".to_string(),
-                quantity: 42,
-                rate: 1.5,
-                in_stock: true,
-                ref_id: Uuid::new_v4(),
-                sku: "example".to_string(),
+                quantity: props.quantity,
+                rate: props.rate,
+                in_stock: props.in_stock,
+                ref_id: props.ref_id,
+                sku: props.sku.valor().to_string(),
             })
             .await;
 
@@ -844,6 +824,7 @@ mod tests {
     #[tokio::test]
     async fn deberia_devolver_error_cuando_sku_es_una_cadena_vacia() {
         // Preparar
+        let props = MadreLineaPedido::new().construir_props();
         let repositorio_doble = MockRepositorioLineaPedido::new();
         let caso_de_uso = CrearLineaPedidoImpl {
             repositorio: Arc::new(repositorio_doble),
@@ -852,11 +833,11 @@ mod tests {
         // Actuar
         let resultado = caso_de_uso
             .ejecutar(ParamsCrearLineaPedido {
-                title: "example".to_string(),
-                quantity: 42,
-                rate: 1.5,
-                in_stock: true,
-                ref_id: Uuid::new_v4(),
+                title: props.title,
+                quantity: props.quantity,
+                rate: props.rate,
+                in_stock: props.in_stock,
+                ref_id: props.ref_id,
                 sku: "".to_string(),
             })
             .await;
@@ -942,36 +923,14 @@ impl ListarLineasPedido for ListarLineasPedidoImpl {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use dominio_linea_pedido::valores::Sku;
     use dominio_linea_pedido::{
-        modelo::{LineaPedido, PropsLineaPedido},
-        repositorio::dobles::MockRepositorioLineaPedido,
+        pruebas::madres::MadreLineaPedido, repositorio::dobles::MockRepositorioLineaPedido,
     };
     use puerto_nucleo::PeticionPagina;
-    use uuid::Uuid;
 
     #[tokio::test]
     async fn deberia_devolver_la_pagina_de_lineas_pedido() {
-        let entidades = vec![
-            LineaPedido::new(PropsLineaPedido {
-                title: "first".to_string(),
-                quantity: 42,
-                rate: 1.5,
-                in_stock: true,
-                ref_id: Uuid::new_v4(),
-                sku: Sku::new("first".to_string()).expect("el literal de Sku es válido"),
-            })
-            .unwrap(),
-            LineaPedido::new(PropsLineaPedido {
-                title: "second".to_string(),
-                quantity: 42,
-                rate: 1.5,
-                in_stock: true,
-                ref_id: Uuid::new_v4(),
-                sku: Sku::new("second".to_string()).expect("el literal de Sku es válido"),
-            })
-            .unwrap(),
-        ];
+        let entidades = MadreLineaPedido::aleatorios(2);
         let mut repositorio_doble = MockRepositorioLineaPedido::new();
         repositorio_doble
             .expect_buscar_todos()
@@ -1098,25 +1057,15 @@ impl ObtenerLineaPedido for ObtenerLineaPedidoImpl {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use dominio_linea_pedido::valores::Sku;
     use dominio_linea_pedido::{
-        modelo::{IdLineaPedido, LineaPedido, PropsLineaPedido},
+        modelo::IdLineaPedido, pruebas::madres::MadreLineaPedido,
         repositorio::dobles::MockRepositorioLineaPedido,
     };
     use puerto_nucleo::ErrorRepositorio;
-    use uuid::Uuid;
 
     #[tokio::test]
     async fn deberia_devolver_linea_pedido_cuando_el_id_existe() {
-        let entidad = LineaPedido::new(PropsLineaPedido {
-            title: "example".to_string(),
-            quantity: 42,
-            rate: 1.5,
-            in_stock: true,
-            ref_id: Uuid::new_v4(),
-            sku: Sku::new("example".to_string()).expect("el literal de Sku es válido"),
-        })
-        .unwrap();
+        let entidad = MadreLineaPedido::aleatorio();
         let id_entidad = entidad.id;
         let mut repositorio_doble = MockRepositorioLineaPedido::new();
         repositorio_doble
@@ -1130,8 +1079,7 @@ mod tests {
             .ejecutar(ParamsObtenerLineaPedido { id: id_entidad })
             .await;
 
-        assert!(resultado.is_ok());
-        assert_eq!(resultado.unwrap().title, "example");
+        assert_eq!(resultado.unwrap().id, id_entidad);
     }
 
     #[tokio::test]
@@ -1380,30 +1328,21 @@ impl LineaPedido {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::pruebas::madres::MadreLineaPedido;
 
     #[test]
     fn deberia_crear_linea_pedido_cuando_los_campos_son_validos() {
-        let resultado = LineaPedido::new(PropsLineaPedido {
-            title: "example".to_string(),
-            quantity: 42,
-            rate: 1.5,
-            in_stock: true,
-            ref_id: Uuid::new_v4(),
-            sku: Sku::new("example".to_string()).expect("Sku::new rechazó el valor de ejemplo"),
-        });
-        assert_eq!(resultado.unwrap().title, "example");
+        let resultado = LineaPedido::new(MadreLineaPedido::new().construir_props());
+        assert_eq!(
+            resultado.unwrap().title,
+            MadreLineaPedido::new().construir_props().title
+        );
     }
 
     #[test]
     fn deberia_rechazar_linea_pedido_cuando_title_es_una_cadena_vacia() {
-        let resultado = LineaPedido::new(PropsLineaPedido {
-            title: "".into(),
-            quantity: 42,
-            rate: 1.5,
-            in_stock: true,
-            ref_id: Uuid::new_v4(),
-            sku: Sku::new("example".to_string()).expect("Sku::new rechazó el valor de ejemplo"),
-        });
+        let resultado =
+            LineaPedido::new(MadreLineaPedido::new().con_title_vacio().construir_props());
         assert!(resultado.is_err());
         assert_eq!(
             resultado.unwrap_err().to_string(),
@@ -1413,36 +1352,16 @@ mod tests {
 
     #[test]
     fn deberia_rechazar_linea_pedido_cuando_title_solo_tiene_espacios() {
-        let resultado = LineaPedido::new(PropsLineaPedido {
-            title: "   ".into(),
-            quantity: 42,
-            rate: 1.5,
-            in_stock: true,
-            ref_id: Uuid::new_v4(),
-            sku: Sku::new("example".to_string()).expect("Sku::new rechazó el valor de ejemplo"),
-        });
+        let resultado =
+            LineaPedido::new(MadreLineaPedido::new().con_title("   ").construir_props());
         assert!(resultado.is_err());
     }
 
     #[test]
     fn deberia_rechazar_actualizar_linea_pedido_cuando_title_es_una_cadena_vacia() {
-        let mut entidad = LineaPedido::new(PropsLineaPedido {
-            title: "example".to_string(),
-            quantity: 42,
-            rate: 1.5,
-            in_stock: true,
-            ref_id: Uuid::new_v4(),
-            sku: Sku::new("example".to_string()).expect("Sku::new rechazó el valor de ejemplo"),
-        })
-        .unwrap();
-        let resultado = entidad.actualizar(PropsLineaPedido {
-            title: "".into(),
-            quantity: 42,
-            rate: 1.5,
-            in_stock: true,
-            ref_id: Uuid::new_v4(),
-            sku: Sku::new("example".to_string()).expect("Sku::new rechazó el valor de ejemplo"),
-        });
+        let mut entidad = MadreLineaPedido::aleatorio();
+        let resultado =
+            entidad.actualizar(MadreLineaPedido::new().con_title_vacio().construir_props());
         assert_eq!(
             resultado.unwrap_err().to_string(),
             "linea_pedido.validacion.title_vacio"
@@ -1729,20 +1648,11 @@ impl RepositorioLineaPedido for RepositorioLineaPedidoEnMemoria {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use dominio_linea_pedido::modelo::PropsLineaPedido;
-    use dominio_linea_pedido::valores::Sku;
-    use uuid::Uuid;
+    use dominio_linea_pedido::pruebas::madres::MadreLineaPedido;
 
+    /// Una entidad válida, con los valores de la madre.
     fn nuevo_linea_pedido() -> LineaPedido {
-        LineaPedido::new(PropsLineaPedido {
-            title: "example".to_string(),
-            quantity: 42,
-            rate: 1.5,
-            in_stock: true,
-            ref_id: Uuid::new_v4(),
-            sku: Sku::new("example".to_string()).expect("Sku::new rechazó el valor de ejemplo"),
-        })
-        .unwrap()
+        MadreLineaPedido::aleatorio()
     }
 
     #[tokio::test]

@@ -186,9 +186,10 @@ comando.
    lado. `generar caso-de-uso` deja la impl en `todo!()`, unos `Params` de relleno y un test marcado
    `#[ignore = "escribe este test"]` en `contextos/<c>/aplicacion/src/<accion>.rs`: quita el
    `ignore`, escribe el test y míralo fallar.
-4. **Verde.** Primero el dominio: los invariantes en el `new` del modelo o en un objeto valor
-   (`contextos/<c>/dominio/`); después los `Params`, el trait y la impl del caso de uso, en un solo
-   fichero.
+4. **Verde.** Primero el dominio: los invariantes en el `validar` del modelo (lo llaman `new` y
+   `actualizar`) o en un objeto valor (`contextos/<c>/dominio/`); si uno rechaza un valor por
+   defecto de la madre, cámbialo en la madre: los tests generados toman de ahí sus valores. Después
+   los `Params`, el trait y la impl del caso de uso, en un solo fichero.
 5. **El endpoint, API primero.** `generar caso-de-uso` pone el caso de uso en `Api<Entidad>` pero no
    añade ninguna ruta: escribe `dto.rs`, `respuestas.rs`, el brazo de `errores.rs` de cada error
    nuevo (con su test), después el handler en `rutas.rs` y un test de ruta por cada código de estado
@@ -652,11 +653,9 @@ impl ActualizarCompra for ActualizarCompraImpl {
 mod tests {
     use super::*;
     use dominio_compra::{
-        modelo::{IdCompra, PropsCompra},
-        repositorio::dobles::MockRepositorioCompra,
+        modelo::IdCompra, pruebas::madres::MadreCompra, repositorio::dobles::MockRepositorioCompra,
         unit_of_work::dobles::UnitOfWorkFactoryGrabadora,
     };
-    use dominio_proveedor::modelo::IdProveedor;
     use puerto_nucleo::EventoDominio;
 
     fn repositorio_con(entidad: Compra) -> MockRepositorioCompra {
@@ -670,12 +669,8 @@ mod tests {
     #[tokio::test]
     async fn deberia_registrar_el_evento_compra_actualizado_cuando_los_parametros_son_validos() {
         // Preparar
-        let entidad = Compra::new(PropsCompra {
-            proveedor_id: IdProveedor::generar(),
-            approver_id: None,
-            total: 42,
-        })
-        .unwrap();
+        let props = MadreCompra::new().construir_props();
+        let entidad = MadreCompra::aleatorio();
         let id_entidad = entidad.id;
         let uow_factory = UnitOfWorkFactoryGrabadora::new();
         let caso_de_uso = ActualizarCompraImpl {
@@ -687,9 +682,9 @@ mod tests {
         let resultado = caso_de_uso
             .ejecutar(ParamsActualizarCompra {
                 id: id_entidad,
-                proveedor_id: IdProveedor::generar(),
-                approver_id: None,
-                total: 42,
+                proveedor_id: props.proveedor_id,
+                approver_id: props.approver_id,
+                total: props.total,
             })
             .await;
 
@@ -705,6 +700,7 @@ mod tests {
     #[tokio::test]
     async fn deberia_devolver_no_encontrado_sin_registrar_nada_cuando_compra_no_existe() {
         // Preparar
+        let props = MadreCompra::new().construir_props();
         let mut repositorio_doble = MockRepositorioCompra::new();
         repositorio_doble
             .expect_buscar_por_id()
@@ -719,9 +715,9 @@ mod tests {
         let resultado = caso_de_uso
             .ejecutar(ParamsActualizarCompra {
                 id: IdCompra::generar(),
-                proveedor_id: IdProveedor::generar(),
-                approver_id: None,
-                total: 42,
+                proveedor_id: props.proveedor_id,
+                approver_id: props.approver_id,
+                total: props.total,
             })
             .await;
 
@@ -810,22 +806,15 @@ impl BorrarCompra for BorrarCompraImpl {
 mod tests {
     use super::*;
     use dominio_compra::{
-        modelo::{Compra, IdCompra, PropsCompra},
-        repositorio::dobles::MockRepositorioCompra,
+        modelo::IdCompra, pruebas::madres::MadreCompra, repositorio::dobles::MockRepositorioCompra,
         unit_of_work::dobles::UnitOfWorkFactoryGrabadora,
     };
-    use dominio_proveedor::modelo::IdProveedor;
     use puerto_nucleo::EventoDominio;
 
     #[tokio::test]
     async fn deberia_registrar_el_evento_compra_borrado_cuando_el_id_existe() {
         // Preparar
-        let entidad = Compra::new(PropsCompra {
-            proveedor_id: IdProveedor::generar(),
-            approver_id: None,
-            total: 42,
-        })
-        .unwrap();
+        let entidad = MadreCompra::aleatorio();
         let id_entidad = entidad.id;
         let mut repositorio_doble = MockRepositorioCompra::new();
         repositorio_doble
@@ -946,13 +935,14 @@ impl CrearCompra for CrearCompraImpl {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use dominio_compra::pruebas::madres::MadreCompra;
     use dominio_compra::unit_of_work::dobles::{FallarEn, UnitOfWorkFactoryGrabadora};
-    use dominio_proveedor::modelo::IdProveedor;
     use puerto_nucleo::EventoDominio;
 
     #[tokio::test]
     async fn deberia_registrar_el_evento_compra_creado_cuando_los_campos_son_validos() {
         // Preparar
+        let props = MadreCompra::new().construir_props();
         let uow_factory = UnitOfWorkFactoryGrabadora::new();
         let caso_de_uso = CrearCompraImpl {
             uow_factory: Arc::new(uow_factory.clone()),
@@ -961,9 +951,9 @@ mod tests {
         // Actuar
         let resultado = caso_de_uso
             .ejecutar(ParamsCrearCompra {
-                proveedor_id: IdProveedor::generar(),
-                approver_id: None,
-                total: 42,
+                proveedor_id: props.proveedor_id,
+                approver_id: props.approver_id,
+                total: props.total,
             })
             .await;
 
@@ -983,6 +973,7 @@ mod tests {
     #[tokio::test]
     async fn no_deberia_hacer_commit_cuando_el_almacen_rechaza_un_duplicado() {
         // Preparar
+        let props = MadreCompra::new().construir_props();
         let uow_factory =
             UnitOfWorkFactoryGrabadora::fallando_en(FallarEn::Guardar, ErrorRepositorio::Duplicado);
         let caso_de_uso = CrearCompraImpl {
@@ -992,9 +983,9 @@ mod tests {
         // Actuar
         let resultado = caso_de_uso
             .ejecutar(ParamsCrearCompra {
-                proveedor_id: IdProveedor::generar(),
-                approver_id: None,
-                total: 42,
+                proveedor_id: props.proveedor_id,
+                approver_id: props.approver_id,
+                total: props.total,
             })
             .await;
 
@@ -1009,6 +1000,7 @@ mod tests {
     #[tokio::test]
     async fn deberia_devolver_un_error_de_validacion_cuando_proveedor_id_no_existe() {
         // Preparar: en el almacén no hay Proveedor con ese id.
+        let props = MadreCompra::new().construir_props();
         let uow_factory = UnitOfWorkFactoryGrabadora::fallando_en(
             FallarEn::Guardar,
             ErrorRepositorio::ReferenciaInexistente("proveedor_id"),
@@ -1020,9 +1012,9 @@ mod tests {
         // Actuar
         let resultado = caso_de_uso
             .ejecutar(ParamsCrearCompra {
-                proveedor_id: IdProveedor::generar(),
-                approver_id: None,
-                total: 42,
+                proveedor_id: props.proveedor_id,
+                approver_id: props.approver_id,
+                total: props.total,
             })
             .await;
 
@@ -1038,6 +1030,7 @@ mod tests {
     #[tokio::test]
     async fn deberia_devolver_un_error_de_validacion_cuando_approver_id_no_existe() {
         // Preparar: en el almacén no hay Proveedor con ese id.
+        let props = MadreCompra::new().construir_props();
         let uow_factory = UnitOfWorkFactoryGrabadora::fallando_en(
             FallarEn::Guardar,
             ErrorRepositorio::ReferenciaInexistente("approver_id"),
@@ -1049,9 +1042,9 @@ mod tests {
         // Actuar
         let resultado = caso_de_uso
             .ejecutar(ParamsCrearCompra {
-                proveedor_id: IdProveedor::generar(),
-                approver_id: None,
-                total: 42,
+                proveedor_id: props.proveedor_id,
+                approver_id: props.approver_id,
+                total: props.total,
             })
             .await;
 
@@ -1067,6 +1060,7 @@ mod tests {
     #[tokio::test]
     async fn deberia_devolver_error_de_repositorio_cuando_falla_el_commit() {
         // Preparar
+        let props = MadreCompra::new().construir_props();
         let uow_factory = UnitOfWorkFactoryGrabadora::fallando_en(
             FallarEn::Commit,
             ErrorRepositorio::NoDisponible,
@@ -1078,9 +1072,9 @@ mod tests {
         // Actuar
         let resultado = caso_de_uso
             .ejecutar(ParamsCrearCompra {
-                proveedor_id: IdProveedor::generar(),
-                approver_id: None,
-                total: 42,
+                proveedor_id: props.proveedor_id,
+                approver_id: props.approver_id,
+                total: props.total,
             })
             .await;
 
@@ -1167,28 +1161,14 @@ impl ListarCompras for ListarComprasImpl {
 mod tests {
     use super::*;
     use dominio_compra::{
-        modelo::{Compra, PropsCompra},
-        repositorio::dobles::MockRepositorioCompra,
+        pruebas::madres::MadreCompra, repositorio::dobles::MockRepositorioCompra,
     };
     use dominio_proveedor::modelo::IdProveedor;
     use puerto_nucleo::PeticionPagina;
 
     #[tokio::test]
     async fn deberia_devolver_la_pagina_de_compras() {
-        let entidades = vec![
-            Compra::new(PropsCompra {
-                proveedor_id: IdProveedor::generar(),
-                approver_id: None,
-                total: 42,
-            })
-            .unwrap(),
-            Compra::new(PropsCompra {
-                proveedor_id: IdProveedor::generar(),
-                approver_id: None,
-                total: 42,
-            })
-            .unwrap(),
-        ];
+        let entidades = MadreCompra::aleatorios(2);
         let mut repositorio_doble = MockRepositorioCompra::new();
         repositorio_doble
             .expect_buscar_todos()
@@ -1342,20 +1322,13 @@ impl ObtenerCompra for ObtenerCompraImpl {
 mod tests {
     use super::*;
     use dominio_compra::{
-        modelo::{Compra, IdCompra, PropsCompra},
-        repositorio::dobles::MockRepositorioCompra,
+        modelo::IdCompra, pruebas::madres::MadreCompra, repositorio::dobles::MockRepositorioCompra,
     };
-    use dominio_proveedor::modelo::IdProveedor;
     use puerto_nucleo::ErrorRepositorio;
 
     #[tokio::test]
     async fn deberia_devolver_compra_cuando_el_id_existe() {
-        let entidad = Compra::new(PropsCompra {
-            proveedor_id: IdProveedor::generar(),
-            approver_id: None,
-            total: 42,
-        })
-        .unwrap();
+        let entidad = MadreCompra::aleatorio();
         let id_entidad = entidad.id;
         let mut repositorio_doble = MockRepositorioCompra::new();
         repositorio_doble
@@ -1369,7 +1342,7 @@ mod tests {
             .ejecutar(ParamsObtenerCompra { id: id_entidad })
             .await;
 
-        assert!(resultado.is_ok());
+        assert_eq!(resultado.unwrap().id, id_entidad);
     }
 
     #[tokio::test]
@@ -1745,14 +1718,11 @@ impl Compra {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::pruebas::madres::MadreCompra;
 
     #[test]
     fn deberia_crear_compra_cuando_los_campos_son_validos() {
-        let resultado = Compra::new(PropsCompra {
-            proveedor_id: IdProveedor::generar(),
-            approver_id: None,
-            total: 42,
-        });
+        let resultado = Compra::new(MadreCompra::new().construir_props());
         assert!(resultado.is_ok());
     }
 }
@@ -2087,18 +2057,21 @@ pub mod pruebas {
 //! Las filas que necesitan los tests de Postgres —una entidad compra válida y otra guardada—,
 //! para los tests de este crate y para los de los contextos que la referencian (ADR-0023 § 5 de
 //! Puerto).
-use dominio_compra::modelo::{Compra, PropsCompra};
+use dominio_compra::modelo::Compra;
+use dominio_compra::modelo::PropsCompra;
+use dominio_compra::pruebas::madres::MadreCompra;
 use dominio_compra::unit_of_work::UnitOfWorkFactoryCompra;
 use sqlx::PgPool;
 
 use crate::unit_of_work::UnitOfWorkFactoryCompraPostgres;
 
-/// Una entidad compra válida, sin guardar: antes siembra las filas que referencia.
+/// Una entidad compra válida, sin guardar, con los valores de la madre salvo en los
+/// campos únicos (uno nuevo cada vez), las fechas (un segundo exacto, lo que Postgres guarda) y las
+/// referencias (una fila sembrada).
 pub async fn construir(pool: &PgPool) -> Compra {
     Compra::new(PropsCompra {
         proveedor_id: infra_proveedor::pruebas::siembra::sembrar(pool).await.id,
-        approver_id: None,
-        total: 42,
+        ..MadreCompra::new().construir_props()
     })
     .unwrap()
 }
@@ -3536,9 +3509,8 @@ impl ActualizarEntrega for ActualizarEntregaImpl {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use dominio_compra::modelo::IdCompra;
     use dominio_entrega::{
-        modelo::{IdEntrega, PropsEntrega},
+        modelo::IdEntrega, pruebas::madres::MadreEntrega,
         repositorio::dobles::MockRepositorioEntrega,
         unit_of_work::dobles::UnitOfWorkFactoryGrabadora,
     };
@@ -3555,12 +3527,10 @@ mod tests {
     #[tokio::test]
     async fn deberia_registrar_el_evento_entrega_actualizado_cuando_los_parametros_son_validos() {
         // Preparar
-        let entidad = Entrega::new(PropsEntrega {
-            compra_id: IdCompra::generar(),
-            destinatario_id: None,
-            carrier: "original".to_string(),
-        })
-        .unwrap();
+        let props = MadreEntrega::new().construir_props();
+        let mut entidad = MadreEntrega::aleatorio();
+        // Lo que estaba guardado, distinto de lo que trae la actualización.
+        entidad.carrier = "original".to_string();
         let id_entidad = entidad.id;
         let uow_factory = UnitOfWorkFactoryGrabadora::new();
         let caso_de_uso = ActualizarEntregaImpl {
@@ -3572,14 +3542,17 @@ mod tests {
         let resultado = caso_de_uso
             .ejecutar(ParamsActualizarEntrega {
                 id: id_entidad,
-                compra_id: IdCompra::generar(),
-                destinatario_id: None,
-                carrier: "updated".to_string(),
+                compra_id: props.compra_id,
+                destinatario_id: props.destinatario_id,
+                carrier: props.carrier,
             })
             .await;
 
         // Comprobar
-        assert_eq!(resultado.unwrap().carrier, "updated");
+        assert_eq!(
+            resultado.unwrap().carrier,
+            MadreEntrega::new().construir_props().carrier
+        );
         let grabado = uow_factory.grabado();
         assert!(grabado.confirmado);
         assert_eq!(grabado.eventos.len(), 1);
@@ -3590,6 +3563,7 @@ mod tests {
     #[tokio::test]
     async fn deberia_devolver_no_encontrado_sin_registrar_nada_cuando_entrega_no_existe() {
         // Preparar
+        let props = MadreEntrega::new().construir_props();
         let mut repositorio_doble = MockRepositorioEntrega::new();
         repositorio_doble
             .expect_buscar_por_id()
@@ -3604,9 +3578,9 @@ mod tests {
         let resultado = caso_de_uso
             .ejecutar(ParamsActualizarEntrega {
                 id: IdEntrega::generar(),
-                compra_id: IdCompra::generar(),
-                destinatario_id: None,
-                carrier: "new".to_string(),
+                compra_id: props.compra_id,
+                destinatario_id: props.destinatario_id,
+                carrier: props.carrier,
             })
             .await;
 
@@ -3621,12 +3595,8 @@ mod tests {
     #[tokio::test]
     async fn deberia_devolver_error_sin_registrar_nada_cuando_carrier_es_una_cadena_vacia() {
         // Preparar
-        let entidad = Entrega::new(PropsEntrega {
-            compra_id: IdCompra::generar(),
-            destinatario_id: None,
-            carrier: "original".to_string(),
-        })
-        .unwrap();
+        let props = MadreEntrega::new().construir_props();
+        let entidad = MadreEntrega::aleatorio();
         let id_entidad = entidad.id;
         let uow_factory = UnitOfWorkFactoryGrabadora::new();
         let caso_de_uso = ActualizarEntregaImpl {
@@ -3638,8 +3608,8 @@ mod tests {
         let resultado = caso_de_uso
             .ejecutar(ParamsActualizarEntrega {
                 id: id_entidad,
-                compra_id: IdCompra::generar(),
-                destinatario_id: None,
+                compra_id: props.compra_id,
+                destinatario_id: props.destinatario_id,
                 carrier: "".to_string(),
             })
             .await;
@@ -3729,9 +3699,8 @@ impl BorrarEntrega for BorrarEntregaImpl {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use dominio_compra::modelo::IdCompra;
     use dominio_entrega::{
-        modelo::{Entrega, IdEntrega, PropsEntrega},
+        modelo::IdEntrega, pruebas::madres::MadreEntrega,
         repositorio::dobles::MockRepositorioEntrega,
         unit_of_work::dobles::UnitOfWorkFactoryGrabadora,
     };
@@ -3740,12 +3709,7 @@ mod tests {
     #[tokio::test]
     async fn deberia_registrar_el_evento_entrega_borrado_cuando_el_id_existe() {
         // Preparar
-        let entidad = Entrega::new(PropsEntrega {
-            compra_id: IdCompra::generar(),
-            destinatario_id: None,
-            carrier: "example".to_string(),
-        })
-        .unwrap();
+        let entidad = MadreEntrega::aleatorio();
         let id_entidad = entidad.id;
         let mut repositorio_doble = MockRepositorioEntrega::new();
         repositorio_doble
@@ -3869,13 +3833,14 @@ impl CrearEntrega for CrearEntregaImpl {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use dominio_compra::modelo::IdCompra;
+    use dominio_entrega::pruebas::madres::MadreEntrega;
     use dominio_entrega::unit_of_work::dobles::{FallarEn, UnitOfWorkFactoryGrabadora};
     use puerto_nucleo::EventoDominio;
 
     #[tokio::test]
     async fn deberia_registrar_el_evento_entrega_creado_cuando_los_campos_son_validos() {
         // Preparar
+        let props = MadreEntrega::new().construir_props();
         let uow_factory = UnitOfWorkFactoryGrabadora::new();
         let caso_de_uso = CrearEntregaImpl {
             uow_factory: Arc::new(uow_factory.clone()),
@@ -3884,9 +3849,9 @@ mod tests {
         // Actuar
         let resultado = caso_de_uso
             .ejecutar(ParamsCrearEntrega {
-                compra_id: IdCompra::generar(),
-                destinatario_id: None,
-                carrier: "example".to_string(),
+                compra_id: props.compra_id,
+                destinatario_id: props.destinatario_id,
+                carrier: props.carrier,
             })
             .await;
 
@@ -3895,7 +3860,10 @@ mod tests {
             Ok(entidad) => entidad,
             Err(e) => panic!("la creación falló: {e}"),
         };
-        assert_eq!(entidad.carrier, "example");
+        assert_eq!(
+            entidad.carrier,
+            MadreEntrega::new().construir_props().carrier
+        );
         let grabado = uow_factory.grabado();
         assert!(grabado.confirmado);
         assert_eq!(grabado.guardados.len(), 1);
@@ -3907,6 +3875,7 @@ mod tests {
     #[tokio::test]
     async fn no_deberia_hacer_commit_cuando_el_almacen_rechaza_un_duplicado() {
         // Preparar
+        let props = MadreEntrega::new().construir_props();
         let uow_factory =
             UnitOfWorkFactoryGrabadora::fallando_en(FallarEn::Guardar, ErrorRepositorio::Duplicado);
         let caso_de_uso = CrearEntregaImpl {
@@ -3916,9 +3885,9 @@ mod tests {
         // Actuar
         let resultado = caso_de_uso
             .ejecutar(ParamsCrearEntrega {
-                compra_id: IdCompra::generar(),
-                destinatario_id: None,
-                carrier: "example".to_string(),
+                compra_id: props.compra_id,
+                destinatario_id: props.destinatario_id,
+                carrier: props.carrier,
             })
             .await;
 
@@ -3933,6 +3902,7 @@ mod tests {
     #[tokio::test]
     async fn deberia_devolver_un_error_de_validacion_cuando_compra_id_no_existe() {
         // Preparar: en el almacén no hay Compra con ese id.
+        let props = MadreEntrega::new().construir_props();
         let uow_factory = UnitOfWorkFactoryGrabadora::fallando_en(
             FallarEn::Guardar,
             ErrorRepositorio::ReferenciaInexistente("compra_id"),
@@ -3944,9 +3914,9 @@ mod tests {
         // Actuar
         let resultado = caso_de_uso
             .ejecutar(ParamsCrearEntrega {
-                compra_id: IdCompra::generar(),
-                destinatario_id: None,
-                carrier: "example".to_string(),
+                compra_id: props.compra_id,
+                destinatario_id: props.destinatario_id,
+                carrier: props.carrier,
             })
             .await;
 
@@ -3962,6 +3932,7 @@ mod tests {
     #[tokio::test]
     async fn deberia_devolver_un_error_de_validacion_cuando_destinatario_id_no_existe() {
         // Preparar: en el almacén no hay Proveedor con ese id.
+        let props = MadreEntrega::new().construir_props();
         let uow_factory = UnitOfWorkFactoryGrabadora::fallando_en(
             FallarEn::Guardar,
             ErrorRepositorio::ReferenciaInexistente("destinatario_id"),
@@ -3973,9 +3944,9 @@ mod tests {
         // Actuar
         let resultado = caso_de_uso
             .ejecutar(ParamsCrearEntrega {
-                compra_id: IdCompra::generar(),
-                destinatario_id: None,
-                carrier: "example".to_string(),
+                compra_id: props.compra_id,
+                destinatario_id: props.destinatario_id,
+                carrier: props.carrier,
             })
             .await;
 
@@ -3991,6 +3962,7 @@ mod tests {
     #[tokio::test]
     async fn deberia_devolver_error_de_repositorio_cuando_falla_el_commit() {
         // Preparar
+        let props = MadreEntrega::new().construir_props();
         let uow_factory = UnitOfWorkFactoryGrabadora::fallando_en(
             FallarEn::Commit,
             ErrorRepositorio::NoDisponible,
@@ -4002,9 +3974,9 @@ mod tests {
         // Actuar
         let resultado = caso_de_uso
             .ejecutar(ParamsCrearEntrega {
-                compra_id: IdCompra::generar(),
-                destinatario_id: None,
-                carrier: "example".to_string(),
+                compra_id: props.compra_id,
+                destinatario_id: props.destinatario_id,
+                carrier: props.carrier,
             })
             .await;
 
@@ -4017,6 +3989,7 @@ mod tests {
     #[tokio::test]
     async fn deberia_devolver_error_sin_registrar_nada_cuando_carrier_es_una_cadena_vacia() {
         // Preparar
+        let props = MadreEntrega::new().construir_props();
         let uow_factory = UnitOfWorkFactoryGrabadora::new();
         let caso_de_uso = CrearEntregaImpl {
             uow_factory: Arc::new(uow_factory.clone()),
@@ -4025,8 +3998,8 @@ mod tests {
         // Actuar
         let resultado = caso_de_uso
             .ejecutar(ParamsCrearEntrega {
-                compra_id: IdCompra::generar(),
-                destinatario_id: None,
+                compra_id: props.compra_id,
+                destinatario_id: props.destinatario_id,
                 carrier: "".to_string(),
             })
             .await;
@@ -4123,28 +4096,14 @@ mod tests {
     use super::*;
     use dominio_compra::modelo::IdCompra;
     use dominio_entrega::{
-        modelo::{Entrega, PropsEntrega},
-        repositorio::dobles::MockRepositorioEntrega,
+        pruebas::madres::MadreEntrega, repositorio::dobles::MockRepositorioEntrega,
     };
     use dominio_proveedor::modelo::IdProveedor;
     use puerto_nucleo::PeticionPagina;
 
     #[tokio::test]
     async fn deberia_devolver_la_pagina_de_entregas() {
-        let entidades = vec![
-            Entrega::new(PropsEntrega {
-                compra_id: IdCompra::generar(),
-                destinatario_id: None,
-                carrier: "first".to_string(),
-            })
-            .unwrap(),
-            Entrega::new(PropsEntrega {
-                compra_id: IdCompra::generar(),
-                destinatario_id: None,
-                carrier: "second".to_string(),
-            })
-            .unwrap(),
-        ];
+        let entidades = MadreEntrega::aleatorios(2);
         let mut repositorio_doble = MockRepositorioEntrega::new();
         repositorio_doble
             .expect_buscar_todos()
@@ -4297,21 +4256,15 @@ impl ObtenerEntrega for ObtenerEntregaImpl {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use dominio_compra::modelo::IdCompra;
     use dominio_entrega::{
-        modelo::{Entrega, IdEntrega, PropsEntrega},
+        modelo::IdEntrega, pruebas::madres::MadreEntrega,
         repositorio::dobles::MockRepositorioEntrega,
     };
     use puerto_nucleo::ErrorRepositorio;
 
     #[tokio::test]
     async fn deberia_devolver_entrega_cuando_el_id_existe() {
-        let entidad = Entrega::new(PropsEntrega {
-            compra_id: IdCompra::generar(),
-            destinatario_id: None,
-            carrier: "example".to_string(),
-        })
-        .unwrap();
+        let entidad = MadreEntrega::aleatorio();
         let id_entidad = entidad.id;
         let mut repositorio_doble = MockRepositorioEntrega::new();
         repositorio_doble
@@ -4325,8 +4278,7 @@ mod tests {
             .ejecutar(ParamsObtenerEntrega { id: id_entidad })
             .await;
 
-        assert!(resultado.is_ok());
-        assert_eq!(resultado.unwrap().carrier, "example");
+        assert_eq!(resultado.unwrap().id, id_entidad);
     }
 
     #[tokio::test]
@@ -4707,24 +4659,20 @@ impl Entrega {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::pruebas::madres::MadreEntrega;
 
     #[test]
     fn deberia_crear_entrega_cuando_los_campos_son_validos() {
-        let resultado = Entrega::new(PropsEntrega {
-            compra_id: IdCompra::generar(),
-            destinatario_id: None,
-            carrier: "example".to_string(),
-        });
-        assert_eq!(resultado.unwrap().carrier, "example");
+        let resultado = Entrega::new(MadreEntrega::new().construir_props());
+        assert_eq!(
+            resultado.unwrap().carrier,
+            MadreEntrega::new().construir_props().carrier
+        );
     }
 
     #[test]
     fn deberia_rechazar_entrega_cuando_carrier_es_una_cadena_vacia() {
-        let resultado = Entrega::new(PropsEntrega {
-            compra_id: IdCompra::generar(),
-            destinatario_id: None,
-            carrier: "".into(),
-        });
+        let resultado = Entrega::new(MadreEntrega::new().con_carrier_vacio().construir_props());
         assert!(resultado.is_err());
         assert_eq!(
             resultado.unwrap_err().to_string(),
@@ -4734,27 +4682,15 @@ mod tests {
 
     #[test]
     fn deberia_rechazar_entrega_cuando_carrier_solo_tiene_espacios() {
-        let resultado = Entrega::new(PropsEntrega {
-            compra_id: IdCompra::generar(),
-            destinatario_id: None,
-            carrier: "   ".into(),
-        });
+        let resultado = Entrega::new(MadreEntrega::new().con_carrier("   ").construir_props());
         assert!(resultado.is_err());
     }
 
     #[test]
     fn deberia_rechazar_actualizar_entrega_cuando_carrier_es_una_cadena_vacia() {
-        let mut entidad = Entrega::new(PropsEntrega {
-            compra_id: IdCompra::generar(),
-            destinatario_id: None,
-            carrier: "example".to_string(),
-        })
-        .unwrap();
-        let resultado = entidad.actualizar(PropsEntrega {
-            compra_id: IdCompra::generar(),
-            destinatario_id: None,
-            carrier: "".into(),
-        });
+        let mut entidad = MadreEntrega::aleatorio();
+        let resultado =
+            entidad.actualizar(MadreEntrega::new().con_carrier_vacio().construir_props());
         assert_eq!(
             resultado.unwrap_err().to_string(),
             "entrega.validacion.carrier_vacio"
@@ -5103,18 +5039,21 @@ pub mod pruebas {
 //! Las filas que necesitan los tests de Postgres —una entidad entrega válida y otra guardada—,
 //! para los tests de este crate y para los de los contextos que la referencian (ADR-0023 § 5 de
 //! Puerto).
-use dominio_entrega::modelo::{Entrega, PropsEntrega};
+use dominio_entrega::modelo::Entrega;
+use dominio_entrega::modelo::PropsEntrega;
+use dominio_entrega::pruebas::madres::MadreEntrega;
 use dominio_entrega::unit_of_work::UnitOfWorkFactoryEntrega;
 use sqlx::PgPool;
 
 use crate::unit_of_work::UnitOfWorkFactoryEntregaPostgres;
 
-/// Una entidad entrega válida, sin guardar: antes siembra las filas que referencia.
+/// Una entidad entrega válida, sin guardar, con los valores de la madre salvo en los
+/// campos únicos (uno nuevo cada vez), las fechas (un segundo exacto, lo que Postgres guarda) y las
+/// referencias (una fila sembrada).
 pub async fn construir(pool: &PgPool) -> Entrega {
     Entrega::new(PropsEntrega {
         compra_id: infra_compra::pruebas::siembra::sembrar(pool).await.id,
-        destinatario_id: None,
-        carrier: "example".to_string(),
+        ..MadreEntrega::new().construir_props()
     })
     .unwrap()
 }
@@ -6590,9 +6529,8 @@ impl ActualizarProveedor for ActualizarProveedorImpl {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use dominio_proveedor::valores::Name;
     use dominio_proveedor::{
-        modelo::{IdProveedor, PropsProveedor},
+        modelo::IdProveedor, pruebas::madres::MadreProveedor,
         repositorio::dobles::MockRepositorioProveedor,
         unit_of_work::dobles::UnitOfWorkFactoryGrabadora,
     };
@@ -6609,11 +6547,10 @@ mod tests {
     #[tokio::test]
     async fn deberia_registrar_el_evento_proveedor_actualizado_cuando_los_parametros_son_validos() {
         // Preparar
-        let entidad = Proveedor::new(PropsProveedor {
-            name: Name::new("original".to_string()).expect("el literal de Name es válido"),
-            email: "original".to_string(),
-        })
-        .unwrap();
+        let props = MadreProveedor::new().construir_props();
+        let mut entidad = MadreProveedor::aleatorio();
+        // Lo que estaba guardado, distinto de lo que trae la actualización.
+        entidad.email = "original".to_string();
         let id_entidad = entidad.id;
         let uow_factory = UnitOfWorkFactoryGrabadora::new();
         let caso_de_uso = ActualizarProveedorImpl {
@@ -6625,13 +6562,16 @@ mod tests {
         let resultado = caso_de_uso
             .ejecutar(ParamsActualizarProveedor {
                 id: id_entidad,
-                name: "updated".to_string(),
-                email: "updated".to_string(),
+                name: props.name.valor().to_string(),
+                email: props.email,
             })
             .await;
 
         // Comprobar
-        assert_eq!(resultado.unwrap().email, "updated");
+        assert_eq!(
+            resultado.unwrap().email,
+            MadreProveedor::new().construir_props().email
+        );
         let grabado = uow_factory.grabado();
         assert!(grabado.confirmado);
         assert_eq!(grabado.eventos.len(), 1);
@@ -6642,6 +6582,7 @@ mod tests {
     #[tokio::test]
     async fn deberia_devolver_no_encontrado_sin_registrar_nada_cuando_proveedor_no_existe() {
         // Preparar
+        let props = MadreProveedor::new().construir_props();
         let mut repositorio_doble = MockRepositorioProveedor::new();
         repositorio_doble
             .expect_buscar_por_id()
@@ -6656,8 +6597,8 @@ mod tests {
         let resultado = caso_de_uso
             .ejecutar(ParamsActualizarProveedor {
                 id: IdProveedor::generar(),
-                name: "new".to_string(),
-                email: "new".to_string(),
+                name: props.name.valor().to_string(),
+                email: props.email,
             })
             .await;
 
@@ -6675,11 +6616,8 @@ mod tests {
     #[tokio::test]
     async fn deberia_devolver_error_sin_registrar_nada_cuando_email_es_una_cadena_vacia() {
         // Preparar
-        let entidad = Proveedor::new(PropsProveedor {
-            name: Name::new("original".to_string()).expect("el literal de Name es válido"),
-            email: "original".to_string(),
-        })
-        .unwrap();
+        let props = MadreProveedor::new().construir_props();
+        let entidad = MadreProveedor::aleatorio();
         let id_entidad = entidad.id;
         let uow_factory = UnitOfWorkFactoryGrabadora::new();
         let caso_de_uso = ActualizarProveedorImpl {
@@ -6691,7 +6629,7 @@ mod tests {
         let resultado = caso_de_uso
             .ejecutar(ParamsActualizarProveedor {
                 id: id_entidad,
-                name: "updated".to_string(),
+                name: props.name.valor().to_string(),
                 email: "".to_string(),
             })
             .await;
@@ -6708,11 +6646,8 @@ mod tests {
     #[tokio::test]
     async fn deberia_devolver_error_sin_registrar_nada_cuando_name_es_una_cadena_vacia() {
         // Preparar
-        let entidad = Proveedor::new(PropsProveedor {
-            name: Name::new("original".to_string()).expect("el literal de Name es válido"),
-            email: "original".to_string(),
-        })
-        .unwrap();
+        let props = MadreProveedor::new().construir_props();
+        let entidad = MadreProveedor::aleatorio();
         let id_entidad = entidad.id;
         let uow_factory = UnitOfWorkFactoryGrabadora::new();
         let caso_de_uso = ActualizarProveedorImpl {
@@ -6725,7 +6660,7 @@ mod tests {
             .ejecutar(ParamsActualizarProveedor {
                 id: id_entidad,
                 name: "".to_string(),
-                email: "updated".to_string(),
+                email: props.email,
             })
             .await;
 
@@ -6814,9 +6749,8 @@ impl BorrarProveedor for BorrarProveedorImpl {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use dominio_proveedor::valores::Name;
     use dominio_proveedor::{
-        modelo::{IdProveedor, PropsProveedor, Proveedor},
+        modelo::IdProveedor, pruebas::madres::MadreProveedor,
         repositorio::dobles::MockRepositorioProveedor,
         unit_of_work::dobles::UnitOfWorkFactoryGrabadora,
     };
@@ -6825,11 +6759,7 @@ mod tests {
     #[tokio::test]
     async fn deberia_registrar_el_evento_proveedor_borrado_cuando_el_id_existe() {
         // Preparar
-        let entidad = Proveedor::new(PropsProveedor {
-            name: Name::new("example".to_string()).expect("el literal de Name es válido"),
-            email: "example".to_string(),
-        })
-        .unwrap();
+        let entidad = MadreProveedor::aleatorio();
         let id_entidad = entidad.id;
         let mut repositorio_doble = MockRepositorioProveedor::new();
         repositorio_doble
@@ -6954,12 +6884,14 @@ impl CrearProveedor for CrearProveedorImpl {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use dominio_proveedor::pruebas::madres::MadreProveedor;
     use dominio_proveedor::unit_of_work::dobles::{FallarEn, UnitOfWorkFactoryGrabadora};
     use puerto_nucleo::EventoDominio;
 
     #[tokio::test]
     async fn deberia_registrar_el_evento_proveedor_creado_cuando_los_campos_son_validos() {
         // Preparar
+        let props = MadreProveedor::new().construir_props();
         let uow_factory = UnitOfWorkFactoryGrabadora::new();
         let caso_de_uso = CrearProveedorImpl {
             uow_factory: Arc::new(uow_factory.clone()),
@@ -6968,8 +6900,8 @@ mod tests {
         // Actuar
         let resultado = caso_de_uso
             .ejecutar(ParamsCrearProveedor {
-                name: "example".to_string(),
-                email: "example".to_string(),
+                name: props.name.valor().to_string(),
+                email: props.email,
             })
             .await;
 
@@ -6978,7 +6910,7 @@ mod tests {
             Ok(entidad) => entidad,
             Err(e) => panic!("la creación falló: {e}"),
         };
-        assert_eq!(entidad.email, "example");
+        assert_eq!(entidad.email, MadreProveedor::new().construir_props().email);
         let grabado = uow_factory.grabado();
         assert!(grabado.confirmado);
         assert_eq!(grabado.guardados.len(), 1);
@@ -6990,6 +6922,7 @@ mod tests {
     #[tokio::test]
     async fn no_deberia_hacer_commit_cuando_el_almacen_rechaza_un_duplicado() {
         // Preparar
+        let props = MadreProveedor::new().construir_props();
         let uow_factory =
             UnitOfWorkFactoryGrabadora::fallando_en(FallarEn::Guardar, ErrorRepositorio::Duplicado);
         let caso_de_uso = CrearProveedorImpl {
@@ -6999,8 +6932,8 @@ mod tests {
         // Actuar
         let resultado = caso_de_uso
             .ejecutar(ParamsCrearProveedor {
-                name: "example".to_string(),
-                email: "example".to_string(),
+                name: props.name.valor().to_string(),
+                email: props.email,
             })
             .await;
 
@@ -7015,6 +6948,7 @@ mod tests {
     #[tokio::test]
     async fn deberia_devolver_error_de_repositorio_cuando_falla_el_commit() {
         // Preparar
+        let props = MadreProveedor::new().construir_props();
         let uow_factory = UnitOfWorkFactoryGrabadora::fallando_en(
             FallarEn::Commit,
             ErrorRepositorio::NoDisponible,
@@ -7026,8 +6960,8 @@ mod tests {
         // Actuar
         let resultado = caso_de_uso
             .ejecutar(ParamsCrearProveedor {
-                name: "example".to_string(),
-                email: "example".to_string(),
+                name: props.name.valor().to_string(),
+                email: props.email,
             })
             .await;
 
@@ -7040,6 +6974,7 @@ mod tests {
     #[tokio::test]
     async fn deberia_devolver_error_sin_registrar_nada_cuando_email_es_una_cadena_vacia() {
         // Preparar
+        let props = MadreProveedor::new().construir_props();
         let uow_factory = UnitOfWorkFactoryGrabadora::new();
         let caso_de_uso = CrearProveedorImpl {
             uow_factory: Arc::new(uow_factory.clone()),
@@ -7048,7 +6983,7 @@ mod tests {
         // Actuar
         let resultado = caso_de_uso
             .ejecutar(ParamsCrearProveedor {
-                name: "example".to_string(),
+                name: props.name.valor().to_string(),
                 email: "".to_string(),
             })
             .await;
@@ -7065,6 +7000,7 @@ mod tests {
     #[tokio::test]
     async fn deberia_devolver_error_sin_registrar_nada_cuando_name_es_una_cadena_vacia() {
         // Preparar
+        let props = MadreProveedor::new().construir_props();
         let uow_factory = UnitOfWorkFactoryGrabadora::new();
         let caso_de_uso = CrearProveedorImpl {
             uow_factory: Arc::new(uow_factory.clone()),
@@ -7074,7 +7010,7 @@ mod tests {
         let resultado = caso_de_uso
             .ejecutar(ParamsCrearProveedor {
                 name: "".to_string(),
-                email: "example".to_string(),
+                email: props.email,
             })
             .await;
 
@@ -7160,27 +7096,14 @@ impl ListarProveedores for ListarProveedoresImpl {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use dominio_proveedor::valores::Name;
     use dominio_proveedor::{
-        modelo::{PropsProveedor, Proveedor},
-        repositorio::dobles::MockRepositorioProveedor,
+        pruebas::madres::MadreProveedor, repositorio::dobles::MockRepositorioProveedor,
     };
     use puerto_nucleo::PeticionPagina;
 
     #[tokio::test]
     async fn deberia_devolver_la_pagina_de_proveedores() {
-        let entidades = vec![
-            Proveedor::new(PropsProveedor {
-                name: Name::new("first".to_string()).expect("el literal de Name es válido"),
-                email: "first".to_string(),
-            })
-            .unwrap(),
-            Proveedor::new(PropsProveedor {
-                name: Name::new("second".to_string()).expect("el literal de Name es válido"),
-                email: "second".to_string(),
-            })
-            .unwrap(),
-        ];
+        let entidades = MadreProveedor::aleatorios(2);
         let mut repositorio_doble = MockRepositorioProveedor::new();
         repositorio_doble
             .expect_buscar_todos()
@@ -7301,20 +7224,15 @@ impl ObtenerProveedor for ObtenerProveedorImpl {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use dominio_proveedor::valores::Name;
     use dominio_proveedor::{
-        modelo::{IdProveedor, PropsProveedor, Proveedor},
+        modelo::IdProveedor, pruebas::madres::MadreProveedor,
         repositorio::dobles::MockRepositorioProveedor,
     };
     use puerto_nucleo::ErrorRepositorio;
 
     #[tokio::test]
     async fn deberia_devolver_proveedor_cuando_el_id_existe() {
-        let entidad = Proveedor::new(PropsProveedor {
-            name: Name::new("example".to_string()).expect("el literal de Name es válido"),
-            email: "example".to_string(),
-        })
-        .unwrap();
+        let entidad = MadreProveedor::aleatorio();
         let id_entidad = entidad.id;
         let mut repositorio_doble = MockRepositorioProveedor::new();
         repositorio_doble
@@ -7328,8 +7246,7 @@ mod tests {
             .ejecutar(ParamsObtenerProveedor { id: id_entidad })
             .await;
 
-        assert!(resultado.is_ok());
-        assert_eq!(resultado.unwrap().email, "example");
+        assert_eq!(resultado.unwrap().id, id_entidad);
     }
 
     #[tokio::test]
@@ -7700,22 +7617,20 @@ impl Proveedor {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::pruebas::madres::MadreProveedor;
 
     #[test]
     fn deberia_crear_proveedor_cuando_los_campos_son_validos() {
-        let resultado = Proveedor::new(PropsProveedor {
-            name: Name::new("example".to_string()).expect("Name::new rechazó el valor de ejemplo"),
-            email: "example".to_string(),
-        });
-        assert_eq!(resultado.unwrap().email, "example");
+        let resultado = Proveedor::new(MadreProveedor::new().construir_props());
+        assert_eq!(
+            resultado.unwrap().email,
+            MadreProveedor::new().construir_props().email
+        );
     }
 
     #[test]
     fn deberia_rechazar_proveedor_cuando_email_es_una_cadena_vacia() {
-        let resultado = Proveedor::new(PropsProveedor {
-            name: Name::new("example".to_string()).expect("Name::new rechazó el valor de ejemplo"),
-            email: "".into(),
-        });
+        let resultado = Proveedor::new(MadreProveedor::new().con_email_vacio().construir_props());
         assert!(resultado.is_err());
         assert_eq!(
             resultado.unwrap_err().to_string(),
@@ -7725,24 +7640,15 @@ mod tests {
 
     #[test]
     fn deberia_rechazar_proveedor_cuando_email_solo_tiene_espacios() {
-        let resultado = Proveedor::new(PropsProveedor {
-            name: Name::new("example".to_string()).expect("Name::new rechazó el valor de ejemplo"),
-            email: "   ".into(),
-        });
+        let resultado = Proveedor::new(MadreProveedor::new().con_email("   ").construir_props());
         assert!(resultado.is_err());
     }
 
     #[test]
     fn deberia_rechazar_actualizar_proveedor_cuando_email_es_una_cadena_vacia() {
-        let mut entidad = Proveedor::new(PropsProveedor {
-            name: Name::new("example".to_string()).expect("Name::new rechazó el valor de ejemplo"),
-            email: "example".to_string(),
-        })
-        .unwrap();
-        let resultado = entidad.actualizar(PropsProveedor {
-            name: Name::new("example".to_string()).expect("Name::new rechazó el valor de ejemplo"),
-            email: "".into(),
-        });
+        let mut entidad = MadreProveedor::aleatorio();
+        let resultado =
+            entidad.actualizar(MadreProveedor::new().con_email_vacio().construir_props());
         assert_eq!(
             resultado.unwrap_err().to_string(),
             "proveedor.validacion.email_vacio"
@@ -8097,19 +8003,22 @@ pub mod pruebas {
 //! Las filas que necesitan los tests de Postgres —una entidad proveedor válida y otra guardada—,
 //! para los tests de este crate y para los de los contextos que la referencian (ADR-0023 § 5 de
 //! Puerto).
-use dominio_proveedor::modelo::{PropsProveedor, Proveedor};
+use dominio_proveedor::modelo::PropsProveedor;
+use dominio_proveedor::modelo::Proveedor;
+use dominio_proveedor::pruebas::madres::MadreProveedor;
 use dominio_proveedor::unit_of_work::UnitOfWorkFactoryProveedor;
-use dominio_proveedor::valores::Name;
 use sqlx::PgPool;
 use uuid::Uuid;
 
 use crate::unit_of_work::UnitOfWorkFactoryProveedorPostgres;
 
-/// Una entidad proveedor válida, sin guardar.
+/// Una entidad proveedor válida, sin guardar, con los valores de la madre salvo en los
+/// campos únicos (uno nuevo cada vez), las fechas (un segundo exacto, lo que Postgres guarda) y las
+/// referencias (una fila sembrada).
 pub fn construir() -> Proveedor {
     Proveedor::new(PropsProveedor {
-        name: Name::new("example".to_string()).expect("Name::new rechazó el valor de ejemplo"),
         email: Uuid::new_v4().to_string(),
+        ..MadreProveedor::new().construir_props()
     })
     .unwrap()
 }

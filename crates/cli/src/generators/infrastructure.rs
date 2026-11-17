@@ -173,6 +173,11 @@ fn pg_crud_ctx(
     // A row's references must exist: it is seeded with a target seeded first, through the
     // target's own repository tests (transitively, for the target's own references).
     let mut field_ctxs = field_ctxs(&eff, pascal, shared_vos);
+    let mut seeded: Vec<String> = eff
+        .iter()
+        .filter(|f| seeds_its_own_value(f))
+        .map(|f| f.name.clone())
+        .collect();
     for f in field_ctxs
         .iter_mut()
         .filter(|f| f.is_ref && !f.field_type.starts_with("Option<"))
@@ -181,8 +186,12 @@ fn pg_crud_ctx(
             "infra_{}::pruebas::siembra::sembrar(pool).await.id",
             f.ref_target_snake
         );
+        if !seeded.contains(&f.name) {
+            seeded.push(f.name.clone());
+        }
     }
     ctx.insert("fields", &field_ctxs);
+    ctx.insert("seeded", &seeded);
     let table = pluralize(snake);
     let references: Vec<serde_json::Value> = eff
         .iter()
@@ -248,11 +257,12 @@ fn seed_ctx_with(
     more_test_imports: &[String],
 ) -> tera::Context {
     let eff = effective_fields(fields);
+    let seeded: Vec<&Field> = eff.iter().filter(|f| seeds_its_own_value(f)).collect();
 
     // The seed names every plain and enum VO it constructs (`Name::new(…)`, `Status::Active`);
     // Option/Vec VOs are seeded as `None` / `vec![]` and need no import.
     let mut test_imports: Vec<String> = vec![];
-    for f in eff.iter().filter(|f| literal_names_vo(f)) {
+    for f in seeded.iter().filter(|f| literal_names_vo(f)) {
         let import = vo_import_path(f, snake, shared_vos, false);
         if !test_imports.contains(&import) {
             test_imports.push(import);
@@ -260,7 +270,7 @@ fn seed_ctx_with(
     }
     // A `Uuid` field and every `unique` seed draw on `Uuid::new_v4()`; the file itself names no
     // `Uuid` since ids are `{Entity}Id`.
-    if eff.iter().any(|f| seed_literal(f).contains("Uuid::")) {
+    if seeded.iter().any(|f| seed_literal(f).contains("Uuid::")) {
         test_imports.push("uuid::Uuid".to_string());
     }
     for import in more_test_imports {
@@ -271,8 +281,19 @@ fn seed_ctx_with(
 
     let mut ctx = entity_ctx(pascal, snake);
     ctx.insert("test_imports", &test_imports);
+    ctx.insert(
+        "seeded",
+        &seeded.iter().map(|f| f.name.as_str()).collect::<Vec<_>>(),
+    );
     ctx.insert("fields", &field_ctxs(&eff, pascal, shared_vos));
     ctx
+}
+
+/// A seeded entity takes the mother's values (Phase 20.5) but where one would not do for a stored
+/// row: a unique field gets a fresh value per row, a timestamp a whole second Postgres stores
+/// exactly (see [`seed_literal`]).
+fn seeds_its_own_value(field: &Field) -> bool {
+    field.unique || seed_literal(field).contains("from_timestamp")
 }
 
 fn field_ctxs(eff: &[Field], pascal: &str, shared_vos: &[ValueObjectDefinition]) -> Vec<FieldCtx> {

@@ -8,38 +8,22 @@ use crate::generators::naming::{
     crud_use_case, entity_ctx, pascal_to_snake, to_pascal_case, write_file,
 };
 use crate::generators::render::{RenderError, render};
-use crate::generators::types::{
-    FieldCtx, field_ctx, is_value_object, literal_import, literal_names_vo, reference_import,
-    vo_import_path,
-};
+use crate::generators::types::{FieldCtx, field_ctx, is_value_object, vo_import_path};
 use crate::puerto_toml::{Field, ValueObjectDefinition};
 
 // ── Context ───────────────────────────────────────────────────────────────────
 
-/// Which imports a use case's test module needs.
-#[derive(Clone, Copy)]
-enum TestImports {
-    /// Create: its tests build `CreateEntityParams` literals only — always primitives — so no VO
-    /// import, which would be unused.
-    ParamsOnly,
-    /// Get / list / update / delete: their tests build `EntityProps` literals, naming the VOs they
-    /// construct. A missing id is `EntityId::generate()`, imported by the template.
-    Props,
-}
-
 /// The context every application template renders from.
 ///
-/// Imports are split by where they are used. The impls construct VOs (`Name::new(params.name)?`)
-/// but never name a primitive type — the params carry those — so the file level gets VO imports
-/// only; a primitive import there is dead in a non-test build (`unused_imports`, `-D warnings` in
-/// the generated project's `make lint`). The test module is where a `Uuid`, `DateTime<Utc>` or
-/// `HashMap` literal needs its type in scope (E0433 otherwise).
+/// The impls construct VOs (`Name::new(params.name)?`) but never name a primitive type — the params
+/// carry those — so the file level gets VO imports only; a primitive import there is dead in a
+/// non-test build (`unused_imports`, `-D warnings` in the generated project's `make lint`). The
+/// tests write no literal of their own: their values come from the mother (Phase 20.5).
 fn use_case_context(
     pascal: &str,
     snake: &str,
     fields: &[Field],
     shared_vos: &[ValueObjectDefinition],
-    test_imports: TestImports,
 ) -> tera::Context {
     let eff = effective_fields(fields);
 
@@ -54,23 +38,6 @@ fn use_case_context(
         }
     }
 
-    let mut tests: Vec<String> = vec![];
-    let literal_imports = eff.iter().filter_map(literal_import).map(str::to_string);
-    let named_vos = eff
-        .iter()
-        .filter(|f| !matches!(test_imports, TestImports::ParamsOnly) && literal_names_vo(f))
-        .map(|f| vo_import_path(f, snake, shared_vos, false));
-    // `CustomerId::generate()` in Params and Props literals; an optional reference's is `None`.
-    let required_references = eff
-        .iter()
-        .filter(|f| !f.field_type.starts_with("Option<"))
-        .filter_map(reference_import);
-    for import in literal_imports.chain(named_vos).chain(required_references) {
-        if !tests.contains(&import) {
-            tests.push(import);
-        }
-    }
-
     let field_ctxs: Vec<FieldCtx> = eff
         .iter()
         .map(|f| field_ctx(f, pascal, shared_vos))
@@ -78,7 +45,6 @@ fn use_case_context(
     let mut ctx = entity_ctx(pascal, snake);
     ctx.insert("fields", &field_ctxs);
     ctx.insert("vo_imports", &vo_imports);
-    ctx.insert("test_imports", &tests);
     // Every reference's id: the list's filter test names the optional ones too.
     let mut reference_imports = vec![];
     crate::generators::domain::push_reference_imports(&mut reference_imports, &eff);
@@ -89,34 +55,24 @@ fn use_case_context(
 #[cfg(test)]
 fn render_use_case(
     action: &str,
-    test_imports: TestImports,
     pascal: &str,
     snake: &str,
     fields: &[Field],
     shared_vos: &[ValueObjectDefinition],
 ) -> Result<String, RenderError> {
-    render_use_case_as(
-        action,
-        test_imports,
-        pascal,
-        snake,
-        fields,
-        shared_vos,
-        false,
-    )
+    render_use_case_as(action, pascal, snake, fields, shared_vos, false)
 }
 
 /// `actor`: a protected use case of an auth project — its tests pass a `PrincipalMother` caller.
 fn render_use_case_as(
     action: &str,
-    test_imports: TestImports,
     pascal: &str,
     snake: &str,
     fields: &[Field],
     shared_vos: &[ValueObjectDefinition],
     actor: bool,
 ) -> Result<String, RenderError> {
-    let mut ctx = use_case_context(pascal, snake, fields, shared_vos, test_imports);
+    let mut ctx = use_case_context(pascal, snake, fields, shared_vos);
     ctx.insert("actor", &actor);
     render(&format!("application/{action}.tera"), &ctx)
 }
@@ -124,14 +80,13 @@ fn render_use_case_as(
 /// The writes of an `events` project: through the unit of work, recording their event.
 fn render_write_use_case_with_events(
     action: &str,
-    test_imports: TestImports,
     pascal: &str,
     snake: &str,
     fields: &[Field],
     shared_vos: &[ValueObjectDefinition],
     actor: bool,
 ) -> Result<String, RenderError> {
-    let mut ctx = use_case_context(pascal, snake, fields, shared_vos, test_imports);
+    let mut ctx = use_case_context(pascal, snake, fields, shared_vos);
     ctx.insert("actor", &actor);
     render(&format!("application/{action}_events.tera"), &ctx)
 }
@@ -145,14 +100,7 @@ pub fn generate_create_use_case_impl(
     fields: &[Field],
     shared_vos: &[ValueObjectDefinition],
 ) -> Result<String, RenderError> {
-    render_use_case(
-        "create",
-        TestImports::ParamsOnly,
-        pascal,
-        snake,
-        fields,
-        shared_vos,
-    )
+    render_use_case("create", pascal, snake, fields, shared_vos)
 }
 
 #[cfg(test)]
@@ -162,7 +110,7 @@ pub fn generate_get_use_case_impl(
     fields: &[Field],
     shared_vos: &[ValueObjectDefinition],
 ) -> Result<String, RenderError> {
-    render_use_case("get", TestImports::Props, pascal, snake, fields, shared_vos)
+    render_use_case("get", pascal, snake, fields, shared_vos)
 }
 
 #[cfg(test)]
@@ -172,14 +120,7 @@ pub fn generate_list_use_case_impl(
     fields: &[Field],
     shared_vos: &[ValueObjectDefinition],
 ) -> Result<String, RenderError> {
-    render_use_case(
-        "list",
-        TestImports::Props,
-        pascal,
-        snake,
-        fields,
-        shared_vos,
-    )
+    render_use_case("list", pascal, snake, fields, shared_vos)
 }
 
 #[cfg(test)]
@@ -189,14 +130,7 @@ pub fn generate_update_use_case_impl(
     fields: &[Field],
     shared_vos: &[ValueObjectDefinition],
 ) -> Result<String, RenderError> {
-    render_use_case(
-        "update",
-        TestImports::Props,
-        pascal,
-        snake,
-        fields,
-        shared_vos,
-    )
+    render_use_case("update", pascal, snake, fields, shared_vos)
 }
 
 #[cfg(test)]
@@ -206,14 +140,7 @@ pub fn generate_delete_use_case_impl(
     fields: &[Field],
     shared_vos: &[ValueObjectDefinition],
 ) -> Result<String, RenderError> {
-    render_use_case(
-        "delete",
-        TestImports::Props,
-        pascal,
-        snake,
-        fields,
-        shared_vos,
-    )
+    render_use_case("delete", pascal, snake, fields, shared_vos)
 }
 
 // ── File writers ──────────────────────────────────────────────────────────────
@@ -265,23 +192,14 @@ pub fn write_application_files(
     let access = crate::generators::auth::Access::of(base, pascal);
     let config = crate::puerto_toml::read(base).ok();
     let events = config.as_ref().is_some_and(|c| c.project.has_events());
-    let use_cases = [
-        ("create", TestImports::ParamsOnly),
-        ("get", TestImports::Props),
-        ("list", TestImports::Props),
-        ("update", TestImports::Props),
-        ("delete", TestImports::Props),
-    ];
-    for (action, imports) in use_cases {
+    for action in ["create", "get", "list", "update", "delete"] {
         let use_case = crud_use_case(action, snake);
         let actor = access.is_protected(&use_case);
         // An `events` project's writes go through the unit of work, recording their event.
         let implementation = if events && matches!(action, "create" | "update" | "delete") {
-            render_write_use_case_with_events(
-                action, imports, pascal, snake, fields, shared_vos, actor,
-            )?
+            render_write_use_case_with_events(action, pascal, snake, fields, shared_vos, actor)?
         } else {
-            render_use_case_as(action, imports, pascal, snake, fields, shared_vos, actor)?
+            render_use_case_as(action, pascal, snake, fields, shared_vos, actor)?
         };
         let contract = render_contract(action, pascal, snake, fields, shared_vos, actor)?;
         write_file(

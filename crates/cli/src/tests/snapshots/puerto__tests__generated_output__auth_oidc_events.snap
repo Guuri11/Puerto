@@ -202,9 +202,10 @@ comando.
    lado. `generar caso-de-uso` deja la impl en `todo!()`, unos `Params` de relleno y un test marcado
    `#[ignore = "escribe este test"]` en `contextos/<c>/aplicacion/src/<accion>.rs`: quita el
    `ignore`, escribe el test y míralo fallar.
-4. **Verde.** Primero el dominio: los invariantes en el `new` del modelo o en un objeto valor
-   (`contextos/<c>/dominio/`); después los `Params`, el trait y la impl del caso de uso, en un solo
-   fichero.
+4. **Verde.** Primero el dominio: los invariantes en el `validar` del modelo (lo llaman `new` y
+   `actualizar`) o en un objeto valor (`contextos/<c>/dominio/`); si uno rechaza un valor por
+   defecto de la madre, cámbialo en la madre: los tests generados toman de ahí sus valores. Después
+   los `Params`, el trait y la impl del caso de uso, en un solo fichero.
 5. **El endpoint, API primero.** `generar caso-de-uso` pone el caso de uso en `Api<Entidad>` pero no
    añade ninguna ruta: escribe `dto.rs`, `respuestas.rs`, el brazo de `errores.rs` de cada error
    nuevo (con su test), después el handler en `rutas.rs` y un test de ruta por cada código de estado
@@ -743,17 +744,13 @@ impl ActualizarProducto for ActualizarProductoImpl {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use dominio_producto::valores::Name;
-    use dominio_producto::valores::Sku;
-    use dominio_producto::valores::Status;
     use dominio_producto::{
-        modelo::{IdProducto, PropsProducto},
+        modelo::IdProducto, pruebas::madres::MadreProducto,
         repositorio::dobles::MockRepositorioProducto,
         unit_of_work::dobles::UnitOfWorkFactoryGrabadora,
     };
     use puerto_nucleo::EventoDominio;
     use puerto_nucleo::auth::dobles::MadrePrincipal;
-    use std::collections::HashMap;
 
     fn repositorio_con(entidad: Producto) -> MockRepositorioProducto {
         let mut repositorio_doble = MockRepositorioProducto::new();
@@ -766,16 +763,8 @@ mod tests {
     #[tokio::test]
     async fn deberia_registrar_el_evento_producto_actualizado_cuando_los_parametros_son_validos() {
         // Preparar
-        let entidad = Producto::new(PropsProducto {
-            name: Name::new("original".to_string()).expect("el literal de Name es válido"),
-            sku: Sku::new("original".to_string()).expect("el literal de Sku es válido"),
-            price: 42,
-            status: Status::Draft,
-            tags: vec![],
-            released_at: None,
-            meta: HashMap::new(),
-        })
-        .unwrap();
+        let props = MadreProducto::new().construir_props();
+        let entidad = MadreProducto::aleatorio();
         let id_entidad = entidad.id;
         let uow_factory = UnitOfWorkFactoryGrabadora::new();
         let caso_de_uso = ActualizarProductoImpl {
@@ -788,18 +777,18 @@ mod tests {
             .ejecutar(ParamsActualizarProducto {
                 actor: MadrePrincipal::aleatorio(),
                 id: id_entidad,
-                name: "updated".to_string(),
-                sku: "updated".to_string(),
-                price: 42,
-                status: "Draft".to_string(),
-                tags: vec![],
-                released_at: None,
-                meta: HashMap::new(),
+                name: props.name.valor().to_string(),
+                sku: props.sku.valor().to_string(),
+                price: props.price,
+                status: props.status.as_str().to_string(),
+                tags: props.tags,
+                released_at: props.released_at,
+                meta: props.meta,
             })
             .await;
 
         // Comprobar
-        assert_eq!(resultado.unwrap().name.valor(), "updated");
+        assert!(resultado.is_ok());
         let grabado = uow_factory.grabado();
         assert!(grabado.confirmado);
         assert_eq!(grabado.eventos.len(), 1);
@@ -810,6 +799,7 @@ mod tests {
     #[tokio::test]
     async fn deberia_devolver_no_encontrado_sin_registrar_nada_cuando_producto_no_existe() {
         // Preparar
+        let props = MadreProducto::new().construir_props();
         let mut repositorio_doble = MockRepositorioProducto::new();
         repositorio_doble
             .expect_buscar_por_id()
@@ -825,13 +815,13 @@ mod tests {
             .ejecutar(ParamsActualizarProducto {
                 actor: MadrePrincipal::aleatorio(),
                 id: IdProducto::generar(),
-                name: "new".to_string(),
-                sku: "new".to_string(),
-                price: 42,
-                status: "Draft".to_string(),
-                tags: vec![],
-                released_at: None,
-                meta: HashMap::new(),
+                name: props.name.valor().to_string(),
+                sku: props.sku.valor().to_string(),
+                price: props.price,
+                status: props.status.as_str().to_string(),
+                tags: props.tags,
+                released_at: props.released_at,
+                meta: props.meta,
             })
             .await;
 
@@ -846,16 +836,8 @@ mod tests {
     #[tokio::test]
     async fn deberia_devolver_error_sin_registrar_nada_cuando_name_es_una_cadena_vacia() {
         // Preparar
-        let entidad = Producto::new(PropsProducto {
-            name: Name::new("original".to_string()).expect("el literal de Name es válido"),
-            sku: Sku::new("original".to_string()).expect("el literal de Sku es válido"),
-            price: 42,
-            status: Status::Draft,
-            tags: vec![],
-            released_at: None,
-            meta: HashMap::new(),
-        })
-        .unwrap();
+        let props = MadreProducto::new().construir_props();
+        let entidad = MadreProducto::aleatorio();
         let id_entidad = entidad.id;
         let uow_factory = UnitOfWorkFactoryGrabadora::new();
         let caso_de_uso = ActualizarProductoImpl {
@@ -869,12 +851,12 @@ mod tests {
                 actor: MadrePrincipal::aleatorio(),
                 id: id_entidad,
                 name: "".to_string(),
-                sku: "updated".to_string(),
-                price: 42,
-                status: "Draft".to_string(),
-                tags: vec![],
-                released_at: None,
-                meta: HashMap::new(),
+                sku: props.sku.valor().to_string(),
+                price: props.price,
+                status: props.status.as_str().to_string(),
+                tags: props.tags,
+                released_at: props.released_at,
+                meta: props.meta,
             })
             .await;
 
@@ -887,16 +869,8 @@ mod tests {
     #[tokio::test]
     async fn deberia_devolver_error_sin_registrar_nada_cuando_sku_es_una_cadena_vacia() {
         // Preparar
-        let entidad = Producto::new(PropsProducto {
-            name: Name::new("original".to_string()).expect("el literal de Name es válido"),
-            sku: Sku::new("original".to_string()).expect("el literal de Sku es válido"),
-            price: 42,
-            status: Status::Draft,
-            tags: vec![],
-            released_at: None,
-            meta: HashMap::new(),
-        })
-        .unwrap();
+        let props = MadreProducto::new().construir_props();
+        let entidad = MadreProducto::aleatorio();
         let id_entidad = entidad.id;
         let uow_factory = UnitOfWorkFactoryGrabadora::new();
         let caso_de_uso = ActualizarProductoImpl {
@@ -909,13 +883,13 @@ mod tests {
             .ejecutar(ParamsActualizarProducto {
                 actor: MadrePrincipal::aleatorio(),
                 id: id_entidad,
-                name: "updated".to_string(),
+                name: props.name.valor().to_string(),
                 sku: "".to_string(),
-                price: 42,
-                status: "Draft".to_string(),
-                tags: vec![],
-                released_at: None,
-                meta: HashMap::new(),
+                price: props.price,
+                status: props.status.as_str().to_string(),
+                tags: props.tags,
+                released_at: props.released_at,
+                meta: props.meta,
             })
             .await;
 
@@ -1005,31 +979,18 @@ impl BorrarProducto for BorrarProductoImpl {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use dominio_producto::valores::Name;
-    use dominio_producto::valores::Sku;
-    use dominio_producto::valores::Status;
     use dominio_producto::{
-        modelo::{IdProducto, Producto, PropsProducto},
+        modelo::IdProducto, pruebas::madres::MadreProducto,
         repositorio::dobles::MockRepositorioProducto,
         unit_of_work::dobles::UnitOfWorkFactoryGrabadora,
     };
     use puerto_nucleo::EventoDominio;
     use puerto_nucleo::auth::dobles::MadrePrincipal;
-    use std::collections::HashMap;
 
     #[tokio::test]
     async fn deberia_registrar_el_evento_producto_borrado_cuando_el_id_existe() {
         // Preparar
-        let entidad = Producto::new(PropsProducto {
-            name: Name::new("example".to_string()).expect("el literal de Name es válido"),
-            sku: Sku::new("example".to_string()).expect("el literal de Sku es válido"),
-            price: 42,
-            status: Status::Draft,
-            tags: vec![],
-            released_at: None,
-            meta: HashMap::new(),
-        })
-        .unwrap();
+        let entidad = MadreProducto::aleatorio();
         let id_entidad = entidad.id;
         let mut repositorio_doble = MockRepositorioProducto::new();
         repositorio_doble
@@ -1173,14 +1134,15 @@ impl CrearProducto for CrearProductoImpl {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use dominio_producto::pruebas::madres::MadreProducto;
     use dominio_producto::unit_of_work::dobles::{FallarEn, UnitOfWorkFactoryGrabadora};
     use puerto_nucleo::EventoDominio;
     use puerto_nucleo::auth::dobles::MadrePrincipal;
-    use std::collections::HashMap;
 
     #[tokio::test]
     async fn deberia_registrar_el_evento_producto_creado_cuando_los_campos_son_validos() {
         // Preparar
+        let props = MadreProducto::new().construir_props();
         let uow_factory = UnitOfWorkFactoryGrabadora::new();
         let caso_de_uso = CrearProductoImpl {
             uow_factory: Arc::new(uow_factory.clone()),
@@ -1190,13 +1152,13 @@ mod tests {
         let resultado = caso_de_uso
             .ejecutar(ParamsCrearProducto {
                 actor: MadrePrincipal::aleatorio(),
-                name: "example".to_string(),
-                sku: "example".to_string(),
-                price: 42,
-                status: "Draft".to_string(),
-                tags: vec![],
-                released_at: None,
-                meta: HashMap::new(),
+                name: props.name.valor().to_string(),
+                sku: props.sku.valor().to_string(),
+                price: props.price,
+                status: props.status.as_str().to_string(),
+                tags: props.tags,
+                released_at: props.released_at,
+                meta: props.meta,
             })
             .await;
 
@@ -1205,7 +1167,7 @@ mod tests {
             Ok(entidad) => entidad,
             Err(e) => panic!("la creación falló: {e}"),
         };
-        assert_eq!(entidad.name.valor(), "example");
+        assert_eq!(entidad.name, MadreProducto::new().construir_props().name);
         let grabado = uow_factory.grabado();
         assert!(grabado.confirmado);
         assert_eq!(grabado.guardados.len(), 1);
@@ -1217,6 +1179,7 @@ mod tests {
     #[tokio::test]
     async fn no_deberia_hacer_commit_cuando_el_almacen_rechaza_un_duplicado() {
         // Preparar
+        let props = MadreProducto::new().construir_props();
         let uow_factory =
             UnitOfWorkFactoryGrabadora::fallando_en(FallarEn::Guardar, ErrorRepositorio::Duplicado);
         let caso_de_uso = CrearProductoImpl {
@@ -1227,13 +1190,13 @@ mod tests {
         let resultado = caso_de_uso
             .ejecutar(ParamsCrearProducto {
                 actor: MadrePrincipal::aleatorio(),
-                name: "example".to_string(),
-                sku: "example".to_string(),
-                price: 42,
-                status: "Draft".to_string(),
-                tags: vec![],
-                released_at: None,
-                meta: HashMap::new(),
+                name: props.name.valor().to_string(),
+                sku: props.sku.valor().to_string(),
+                price: props.price,
+                status: props.status.as_str().to_string(),
+                tags: props.tags,
+                released_at: props.released_at,
+                meta: props.meta,
             })
             .await;
 
@@ -1248,6 +1211,7 @@ mod tests {
     #[tokio::test]
     async fn deberia_devolver_error_de_repositorio_cuando_falla_el_commit() {
         // Preparar
+        let props = MadreProducto::new().construir_props();
         let uow_factory = UnitOfWorkFactoryGrabadora::fallando_en(
             FallarEn::Commit,
             ErrorRepositorio::NoDisponible,
@@ -1260,13 +1224,13 @@ mod tests {
         let resultado = caso_de_uso
             .ejecutar(ParamsCrearProducto {
                 actor: MadrePrincipal::aleatorio(),
-                name: "example".to_string(),
-                sku: "example".to_string(),
-                price: 42,
-                status: "Draft".to_string(),
-                tags: vec![],
-                released_at: None,
-                meta: HashMap::new(),
+                name: props.name.valor().to_string(),
+                sku: props.sku.valor().to_string(),
+                price: props.price,
+                status: props.status.as_str().to_string(),
+                tags: props.tags,
+                released_at: props.released_at,
+                meta: props.meta,
             })
             .await;
 
@@ -1279,6 +1243,7 @@ mod tests {
     #[tokio::test]
     async fn deberia_devolver_error_sin_registrar_nada_cuando_name_es_una_cadena_vacia() {
         // Preparar
+        let props = MadreProducto::new().construir_props();
         let uow_factory = UnitOfWorkFactoryGrabadora::new();
         let caso_de_uso = CrearProductoImpl {
             uow_factory: Arc::new(uow_factory.clone()),
@@ -1289,12 +1254,12 @@ mod tests {
             .ejecutar(ParamsCrearProducto {
                 actor: MadrePrincipal::aleatorio(),
                 name: "".to_string(),
-                sku: "example".to_string(),
-                price: 42,
-                status: "Draft".to_string(),
-                tags: vec![],
-                released_at: None,
-                meta: HashMap::new(),
+                sku: props.sku.valor().to_string(),
+                price: props.price,
+                status: props.status.as_str().to_string(),
+                tags: props.tags,
+                released_at: props.released_at,
+                meta: props.meta,
             })
             .await;
 
@@ -1307,6 +1272,7 @@ mod tests {
     #[tokio::test]
     async fn deberia_devolver_error_sin_registrar_nada_cuando_sku_es_una_cadena_vacia() {
         // Preparar
+        let props = MadreProducto::new().construir_props();
         let uow_factory = UnitOfWorkFactoryGrabadora::new();
         let caso_de_uso = CrearProductoImpl {
             uow_factory: Arc::new(uow_factory.clone()),
@@ -1316,13 +1282,13 @@ mod tests {
         let resultado = caso_de_uso
             .ejecutar(ParamsCrearProducto {
                 actor: MadrePrincipal::aleatorio(),
-                name: "example".to_string(),
+                name: props.name.valor().to_string(),
                 sku: "".to_string(),
-                price: 42,
-                status: "Draft".to_string(),
-                tags: vec![],
-                released_at: None,
-                meta: HashMap::new(),
+                price: props.price,
+                status: props.status.as_str().to_string(),
+                tags: props.tags,
+                released_at: props.released_at,
+                meta: props.meta,
             })
             .await;
 
@@ -1335,6 +1301,7 @@ mod tests {
     #[tokio::test]
     async fn deberia_devolver_error_sin_registrar_nada_cuando_status_es_una_cadena_vacia() {
         // Preparar
+        let props = MadreProducto::new().construir_props();
         let uow_factory = UnitOfWorkFactoryGrabadora::new();
         let caso_de_uso = CrearProductoImpl {
             uow_factory: Arc::new(uow_factory.clone()),
@@ -1344,13 +1311,13 @@ mod tests {
         let resultado = caso_de_uso
             .ejecutar(ParamsCrearProducto {
                 actor: MadrePrincipal::aleatorio(),
-                name: "example".to_string(),
-                sku: "example".to_string(),
-                price: 42,
+                name: props.name.valor().to_string(),
+                sku: props.sku.valor().to_string(),
+                price: props.price,
                 status: "".to_string(),
-                tags: vec![],
-                released_at: None,
-                meta: HashMap::new(),
+                tags: props.tags,
+                released_at: props.released_at,
+                meta: props.meta,
             })
             .await;
 
@@ -1435,40 +1402,14 @@ impl ListarProductos for ListarProductosImpl {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use dominio_producto::valores::Name;
-    use dominio_producto::valores::Sku;
-    use dominio_producto::valores::Status;
     use dominio_producto::{
-        modelo::{Producto, PropsProducto},
-        repositorio::dobles::MockRepositorioProducto,
+        pruebas::madres::MadreProducto, repositorio::dobles::MockRepositorioProducto,
     };
     use puerto_nucleo::PeticionPagina;
-    use std::collections::HashMap;
 
     #[tokio::test]
     async fn deberia_devolver_la_pagina_de_productos() {
-        let entidades = vec![
-            Producto::new(PropsProducto {
-                name: Name::new("first".to_string()).expect("el literal de Name es válido"),
-                sku: Sku::new("first".to_string()).expect("el literal de Sku es válido"),
-                price: 42,
-                status: Status::Draft,
-                tags: vec![],
-                released_at: None,
-                meta: HashMap::new(),
-            })
-            .unwrap(),
-            Producto::new(PropsProducto {
-                name: Name::new("second".to_string()).expect("el literal de Name es válido"),
-                sku: Sku::new("second".to_string()).expect("el literal de Sku es válido"),
-                price: 42,
-                status: Status::Draft,
-                tags: vec![],
-                released_at: None,
-                meta: HashMap::new(),
-            })
-            .unwrap(),
-        ];
+        let entidades = MadreProducto::aleatorios(2);
         let mut repositorio_doble = MockRepositorioProducto::new();
         repositorio_doble
             .expect_buscar_todos()
@@ -1593,29 +1534,16 @@ impl ObtenerProducto for ObtenerProductoImpl {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use dominio_producto::valores::Name;
-    use dominio_producto::valores::Sku;
-    use dominio_producto::valores::Status;
     use dominio_producto::{
-        modelo::{IdProducto, Producto, PropsProducto},
+        modelo::IdProducto, pruebas::madres::MadreProducto,
         repositorio::dobles::MockRepositorioProducto,
     };
     use puerto_nucleo::ErrorRepositorio;
     use puerto_nucleo::auth::dobles::MadrePrincipal;
-    use std::collections::HashMap;
 
     #[tokio::test]
     async fn deberia_devolver_producto_cuando_el_id_existe() {
-        let entidad = Producto::new(PropsProducto {
-            name: Name::new("example".to_string()).expect("el literal de Name es válido"),
-            sku: Sku::new("example".to_string()).expect("el literal de Sku es válido"),
-            price: 42,
-            status: Status::Draft,
-            tags: vec![],
-            released_at: None,
-            meta: HashMap::new(),
-        })
-        .unwrap();
+        let entidad = MadreProducto::aleatorio();
         let id_entidad = entidad.id;
         let mut repositorio_doble = MockRepositorioProducto::new();
         repositorio_doble
@@ -1632,8 +1560,7 @@ mod tests {
             })
             .await;
 
-        assert!(resultado.is_ok());
-        assert_eq!(resultado.unwrap().name.valor(), "example");
+        assert_eq!(resultado.unwrap().id, id_entidad);
     }
 
     #[tokio::test]
@@ -2137,18 +2064,11 @@ impl Producto {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::pruebas::madres::MadreProducto;
 
     #[test]
     fn deberia_crear_producto_cuando_los_campos_son_validos() {
-        let resultado = Producto::new(PropsProducto {
-            name: Name::new("example".to_string()).expect("Name::new rechazó el valor de ejemplo"),
-            sku: Sku::new("example".to_string()).expect("Sku::new rechazó el valor de ejemplo"),
-            price: 42,
-            status: Status::Draft,
-            tags: vec![],
-            released_at: None,
-            meta: HashMap::new(),
-        });
+        let resultado = Producto::new(MadreProducto::new().construir_props());
         assert!(resultado.is_ok());
     }
 
@@ -2627,26 +2547,23 @@ pub mod pruebas {
 //! Las filas que necesitan los tests de Postgres —una entidad producto válida y otra guardada—,
 //! para los tests de este crate y para los de los contextos que la referencian (ADR-0023 § 5 de
 //! Puerto).
-use dominio_producto::modelo::{Producto, PropsProducto};
+use dominio_producto::modelo::Producto;
+use dominio_producto::modelo::PropsProducto;
+use dominio_producto::pruebas::madres::MadreProducto;
 use dominio_producto::unit_of_work::UnitOfWorkFactoryProducto;
-use dominio_producto::valores::Name;
 use dominio_producto::valores::Sku;
-use dominio_producto::valores::Status;
 use sqlx::PgPool;
 use uuid::Uuid;
 
 use crate::unit_of_work::UnitOfWorkFactoryProductoPostgres;
 
-/// Una entidad producto válida, sin guardar.
+/// Una entidad producto válida, sin guardar, con los valores de la madre salvo en los
+/// campos únicos (uno nuevo cada vez), las fechas (un segundo exacto, lo que Postgres guarda) y las
+/// referencias (una fila sembrada).
 pub fn construir() -> Producto {
     Producto::new(PropsProducto {
-        name: Name::new("example".to_string()).expect("Name::new rechazó el valor de ejemplo"),
         sku: Sku::new(Uuid::new_v4().to_string()).expect("Sku::new rechazó el valor de ejemplo"),
-        price: 42,
-        status: Status::Draft,
-        tags: vec![],
-        released_at: None,
-        meta: std::collections::HashMap::new(),
+        ..MadreProducto::new().construir_props()
     })
     .unwrap()
 }

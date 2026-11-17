@@ -428,10 +428,7 @@ fn should_hold_the_target_id_type_in_the_domain() {
     assert!(!mother.contains("uuid::Uuid"), "{mother}");
 
     let create = read(&output, "contextos/pedido/aplicacion/src/crear_pedido.rs");
-    assert!(
-        create.contains("cliente_id: IdCliente::generar(),"),
-        "{create}"
-    );
+    assert!(create.contains("cliente_id: props.cliente_id,"), "{create}");
 
     cleanup(&dir);
 }

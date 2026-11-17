@@ -85,14 +85,18 @@ impl Repositorio{{ pascal }} for Repositorio{{ pascal }}EnMemoria {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use dominio_{{ snake }}::modelo::Props{{ pascal }};
-{% for import in test_imports %}    use {{ import }};
+{% if seeded %}    use dominio_{{ snake }}::modelo::Props{{ pascal }};
+{% endif %}{% if seeded | length < fields | length %}    use dominio_{{ snake }}::pruebas::madres::Madre{{ pascal }};
+{% endif %}{% for import in test_imports %}    use {{ import }};
 {% endfor %}
+    /// Una entidad válida, con los valores de la madre{% if seeded %} salvo en los campos únicos (uno
+    /// nuevo cada vez) y las fechas (un segundo exacto){% endif %}.
     fn nuevo_{{ snake }}() -> {{ pascal }} {
-        {{ pascal }}::new(Props{{ pascal }} {
-{% for f in fields %}            {{ f.name }}: {{ f.seed_literal }},
-{% endfor %}        })
-        .unwrap()
+        {% if seeded %}{{ pascal }}::new(Props{{ pascal }} {
+{% for f in fields %}{% if f.name in seeded %}            {{ f.name }}: {{ f.seed_literal }},
+{% endif %}{% endfor %}{% if seeded | length < fields | length %}            ..Madre{{ pascal }}::new().construir_props()
+{% endif %}        })
+        .unwrap(){% else %}Madre{{ pascal }}::aleatorio(){% endif %}
     }
 
     #[tokio::test]

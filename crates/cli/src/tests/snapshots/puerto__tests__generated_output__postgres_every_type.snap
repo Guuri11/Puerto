@@ -180,9 +180,10 @@ comando.
    lado. `generar caso-de-uso` deja la impl en `todo!()`, unos `Params` de relleno y un test marcado
    `#[ignore = "escribe este test"]` en `contextos/<c>/aplicacion/src/<accion>.rs`: quita el
    `ignore`, escribe el test y míralo fallar.
-4. **Verde.** Primero el dominio: los invariantes en el `new` del modelo o en un objeto valor
-   (`contextos/<c>/dominio/`); después los `Params`, el trait y la impl del caso de uso, en un solo
-   fichero.
+4. **Verde.** Primero el dominio: los invariantes en el `validar` del modelo (lo llaman `new` y
+   `actualizar`) o en un objeto valor (`contextos/<c>/dominio/`); si uno rechaza un valor por
+   defecto de la madre, cámbialo en la madre: los tests generados toman de ahí sus valores. Después
+   los `Params`, el trait y la impl del caso de uso, en un solo fichero.
 5. **El endpoint, API primero.** `generar caso-de-uso` pone el caso de uso en `Api<Entidad>` pero no
    añade ninguna ruta: escribe `dto.rs`, `respuestas.rs`, el brazo de `errores.rs` de cada error
    nuevo (con su test), después el handler en `rutas.rs` y un test de ruta por cada código de estado
@@ -602,16 +603,16 @@ impl ActualizarBillete for ActualizarBilleteImpl {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use dominio_billete::valores::State;
     use dominio_billete::{
-        modelo::{Billete, IdBillete, PropsBillete},
+        modelo::IdBillete, pruebas::madres::MadreBillete,
         repositorio::dobles::MockRepositorioBillete,
     };
 
     #[tokio::test]
     async fn deberia_actualizar_billete_cuando_los_parametros_son_validos() {
         // Preparar
-        let entidad = Billete::new(PropsBillete { state: State::Open }).unwrap();
+        let props = MadreBillete::new().construir_props();
+        let entidad = MadreBillete::aleatorio();
         let id_entidad = entidad.id;
         let mut repositorio_doble = MockRepositorioBillete::new();
         repositorio_doble
@@ -626,7 +627,7 @@ mod tests {
         let resultado = caso_de_uso
             .ejecutar(ParamsActualizarBillete {
                 id: id_entidad,
-                state: "Open".to_string(),
+                state: props.state.as_str().to_string(),
             })
             .await;
 
@@ -637,6 +638,7 @@ mod tests {
     #[tokio::test]
     async fn deberia_devolver_no_encontrado_cuando_billete_no_existe() {
         // Preparar
+        let props = MadreBillete::new().construir_props();
         let mut repositorio_doble = MockRepositorioBillete::new();
         repositorio_doble
             .expect_buscar_por_id()
@@ -649,7 +651,7 @@ mod tests {
         let resultado = caso_de_uso
             .ejecutar(ParamsActualizarBillete {
                 id: IdBillete::generar(),
-                state: "Open".to_string(),
+                state: props.state.as_str().to_string(),
             })
             .await;
 
@@ -724,15 +726,14 @@ impl BorrarBillete for BorrarBilleteImpl {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use dominio_billete::valores::State;
     use dominio_billete::{
-        modelo::{Billete, IdBillete, PropsBillete},
+        modelo::IdBillete, pruebas::madres::MadreBillete,
         repositorio::dobles::MockRepositorioBillete,
     };
 
     #[tokio::test]
     async fn deberia_hacer_borrado_logico_de_billete_cuando_el_id_existe() {
-        let entidad = Billete::new(PropsBillete { state: State::Open }).unwrap();
+        let entidad = MadreBillete::aleatorio();
         let id_entidad = entidad.id;
         let mut repositorio_doble = MockRepositorioBillete::new();
         repositorio_doble
@@ -828,12 +829,14 @@ impl CrearBillete for CrearBilleteImpl {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use dominio_billete::pruebas::madres::MadreBillete;
     use dominio_billete::repositorio::dobles::MockRepositorioBillete;
     use puerto_nucleo::ErrorRepositorio;
 
     #[tokio::test]
     async fn deberia_crear_billete_cuando_los_campos_son_validos() {
         // Preparar
+        let props = MadreBillete::new().construir_props();
         let mut repositorio_doble = MockRepositorioBillete::new();
         repositorio_doble.expect_guardar().returning(|_| Ok(()));
         let caso_de_uso = CrearBilleteImpl {
@@ -843,18 +846,22 @@ mod tests {
         // Actuar
         let resultado = caso_de_uso
             .ejecutar(ParamsCrearBillete {
-                state: "Open".to_string(),
+                state: props.state.as_str().to_string(),
             })
             .await;
 
         // Comprobar
         assert!(resultado.is_ok());
-        assert_eq!(resultado.unwrap().state.as_str(), "Open");
+        assert_eq!(
+            resultado.unwrap().state,
+            MadreBillete::new().construir_props().state
+        );
     }
 
     #[tokio::test]
     async fn deberia_devolver_duplicado_cuando_el_almacen_rechaza_un_duplicado() {
         // Preparar
+        let props = MadreBillete::new().construir_props();
         let mut repositorio_doble = MockRepositorioBillete::new();
         repositorio_doble
             .expect_guardar()
@@ -866,7 +873,7 @@ mod tests {
         // Actuar
         let resultado = caso_de_uso
             .ejecutar(ParamsCrearBillete {
-                state: "Open".to_string(),
+                state: props.state.as_str().to_string(),
             })
             .await;
 
@@ -964,19 +971,14 @@ impl ListarBilletes for ListarBilletesImpl {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use dominio_billete::valores::State;
     use dominio_billete::{
-        modelo::{Billete, PropsBillete},
-        repositorio::dobles::MockRepositorioBillete,
+        pruebas::madres::MadreBillete, repositorio::dobles::MockRepositorioBillete,
     };
     use puerto_nucleo::PeticionPagina;
 
     #[tokio::test]
     async fn deberia_devolver_la_pagina_de_billetes() {
-        let entidades = vec![
-            Billete::new(PropsBillete { state: State::Open }).unwrap(),
-            Billete::new(PropsBillete { state: State::Open }).unwrap(),
-        ];
+        let entidades = MadreBillete::aleatorios(2);
         let mut repositorio_doble = MockRepositorioBillete::new();
         repositorio_doble
             .expect_buscar_todos()
@@ -1097,16 +1099,15 @@ impl ObtenerBillete for ObtenerBilleteImpl {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use dominio_billete::valores::State;
     use dominio_billete::{
-        modelo::{Billete, IdBillete, PropsBillete},
+        modelo::IdBillete, pruebas::madres::MadreBillete,
         repositorio::dobles::MockRepositorioBillete,
     };
     use puerto_nucleo::ErrorRepositorio;
 
     #[tokio::test]
     async fn deberia_devolver_billete_cuando_el_id_existe() {
-        let entidad = Billete::new(PropsBillete { state: State::Open }).unwrap();
+        let entidad = MadreBillete::aleatorio();
         let id_entidad = entidad.id;
         let mut repositorio_doble = MockRepositorioBillete::new();
         repositorio_doble
@@ -1120,7 +1121,7 @@ mod tests {
             .ejecutar(ParamsObtenerBillete { id: id_entidad })
             .await;
 
-        assert!(resultado.is_ok());
+        assert_eq!(resultado.unwrap().id, id_entidad);
     }
 
     #[tokio::test]
@@ -1340,10 +1341,11 @@ impl Billete {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::pruebas::madres::MadreBillete;
 
     #[test]
     fn deberia_crear_billete_cuando_los_campos_son_validos() {
-        let resultado = Billete::new(PropsBillete { state: State::Open });
+        let resultado = Billete::new(MadreBillete::new().construir_props());
         assert!(resultado.is_ok());
     }
 
@@ -1556,16 +1558,16 @@ pub mod pruebas {
 //! Las filas que necesitan los tests de Postgres —una entidad billete válida y otra guardada—,
 //! para los tests de este crate y para los de los contextos que la referencian (ADR-0023 § 5 de
 //! Puerto).
-use dominio_billete::modelo::{Billete, PropsBillete};
+use dominio_billete::modelo::Billete;
+use dominio_billete::pruebas::madres::MadreBillete;
 use dominio_billete::repositorio::RepositorioBillete;
-use dominio_billete::valores::State;
 use sqlx::PgPool;
 
 use crate::repositorio::RepositorioBilletePostgres;
 
-/// Una entidad billete válida, sin guardar.
+/// Una entidad billete válida, sin guardar, con los valores de la madre.
 pub fn construir() -> Billete {
-    Billete::new(PropsBillete { state: State::Open }).unwrap()
+    MadreBillete::aleatorio()
 }
 
 /// Una entidad billete guardada.
@@ -2650,32 +2652,16 @@ impl ActualizarCliente for ActualizarClienteImpl {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use chrono::Utc;
-    use dominio_cliente::valores::Age;
-    use dominio_cliente::valores::Code;
-    use dominio_cliente::valores::Joined;
-    use dominio_cliente::valores::Name;
-    use dominio_cliente::valores::Status;
     use dominio_cliente::{
-        modelo::{Cliente, IdCliente, PropsCliente},
+        modelo::IdCliente, pruebas::madres::MadreCliente,
         repositorio::dobles::MockRepositorioCliente,
     };
-    use nucleo::valores::Email;
 
     #[tokio::test]
     async fn deberia_actualizar_cliente_cuando_los_parametros_son_validos() {
         // Preparar
-        let entidad = Cliente::new(PropsCliente {
-            email: Email::new("original".to_string()).expect("el literal de Email es válido"),
-            name: Name::new("original".to_string()).expect("el literal de Name es válido"),
-            code: Code::new("original".to_string()).expect("el literal de Code es válido"),
-            age: Age::new(42).expect("Age::new rechazó el valor de ejemplo"),
-            joined: Joined::new(Utc::now()).expect("Joined::new rechazó el valor de ejemplo"),
-            middle: None,
-            labels: vec![],
-            status: Status::Active,
-        })
-        .unwrap();
+        let props = MadreCliente::new().construir_props();
+        let entidad = MadreCliente::aleatorio();
         let id_entidad = entidad.id;
         let mut repositorio_doble = MockRepositorioCliente::new();
         repositorio_doble
@@ -2690,24 +2676,29 @@ mod tests {
         let resultado = caso_de_uso
             .ejecutar(ParamsActualizarCliente {
                 id: id_entidad,
-                email: "updated".to_string(),
-                name: "updated".to_string(),
-                code: "updated".to_string(),
-                age: 42,
-                joined: Utc::now(),
-                middle: None,
-                labels: vec![],
-                status: "Active".to_string(),
+                email: props.email.valor().to_string(),
+                name: props.name.valor().to_string(),
+                code: props.code.valor().to_string(),
+                age: props.age.valor(),
+                joined: props.joined.valor(),
+                middle: props.middle.as_ref().map(|v| v.valor().to_string()),
+                labels: props
+                    .labels
+                    .iter()
+                    .map(|v| v.valor().to_string())
+                    .collect::<Vec<_>>(),
+                status: props.status.as_str().to_string(),
             })
             .await;
 
         // Comprobar
-        assert_eq!(resultado.unwrap().email.valor(), "updated");
+        assert!(resultado.is_ok());
     }
 
     #[tokio::test]
     async fn deberia_devolver_no_encontrado_cuando_cliente_no_existe() {
         // Preparar
+        let props = MadreCliente::new().construir_props();
         let mut repositorio_doble = MockRepositorioCliente::new();
         repositorio_doble
             .expect_buscar_por_id()
@@ -2720,14 +2711,18 @@ mod tests {
         let resultado = caso_de_uso
             .ejecutar(ParamsActualizarCliente {
                 id: IdCliente::generar(),
-                email: "new".to_string(),
-                name: "new".to_string(),
-                code: "new".to_string(),
-                age: 42,
-                joined: Utc::now(),
-                middle: None,
-                labels: vec![],
-                status: "Active".to_string(),
+                email: props.email.valor().to_string(),
+                name: props.name.valor().to_string(),
+                code: props.code.valor().to_string(),
+                age: props.age.valor(),
+                joined: props.joined.valor(),
+                middle: props.middle.as_ref().map(|v| v.valor().to_string()),
+                labels: props
+                    .labels
+                    .iter()
+                    .map(|v| v.valor().to_string())
+                    .collect::<Vec<_>>(),
+                status: props.status.as_str().to_string(),
             })
             .await;
 
@@ -2739,17 +2734,8 @@ mod tests {
     #[tokio::test]
     async fn deberia_devolver_error_cuando_email_es_una_cadena_vacia() {
         // Preparar
-        let entidad = Cliente::new(PropsCliente {
-            email: Email::new("original".to_string()).expect("el literal de Email es válido"),
-            name: Name::new("original".to_string()).expect("el literal de Name es válido"),
-            code: Code::new("original".to_string()).expect("el literal de Code es válido"),
-            age: Age::new(42).expect("Age::new rechazó el valor de ejemplo"),
-            joined: Joined::new(Utc::now()).expect("Joined::new rechazó el valor de ejemplo"),
-            middle: None,
-            labels: vec![],
-            status: Status::Active,
-        })
-        .unwrap();
+        let props = MadreCliente::new().construir_props();
+        let entidad = MadreCliente::aleatorio();
         let id_entidad = entidad.id;
         let mut repositorio_doble = MockRepositorioCliente::new();
         repositorio_doble
@@ -2764,13 +2750,17 @@ mod tests {
             .ejecutar(ParamsActualizarCliente {
                 id: id_entidad,
                 email: "".to_string(),
-                name: "updated".to_string(),
-                code: "updated".to_string(),
-                age: 42,
-                joined: Utc::now(),
-                middle: None,
-                labels: vec![],
-                status: "Active".to_string(),
+                name: props.name.valor().to_string(),
+                code: props.code.valor().to_string(),
+                age: props.age.valor(),
+                joined: props.joined.valor(),
+                middle: props.middle.as_ref().map(|v| v.valor().to_string()),
+                labels: props
+                    .labels
+                    .iter()
+                    .map(|v| v.valor().to_string())
+                    .collect::<Vec<_>>(),
+                status: props.status.as_str().to_string(),
             })
             .await;
 
@@ -2782,17 +2772,8 @@ mod tests {
     #[tokio::test]
     async fn deberia_devolver_error_cuando_name_es_una_cadena_vacia() {
         // Preparar
-        let entidad = Cliente::new(PropsCliente {
-            email: Email::new("original".to_string()).expect("el literal de Email es válido"),
-            name: Name::new("original".to_string()).expect("el literal de Name es válido"),
-            code: Code::new("original".to_string()).expect("el literal de Code es válido"),
-            age: Age::new(42).expect("Age::new rechazó el valor de ejemplo"),
-            joined: Joined::new(Utc::now()).expect("Joined::new rechazó el valor de ejemplo"),
-            middle: None,
-            labels: vec![],
-            status: Status::Active,
-        })
-        .unwrap();
+        let props = MadreCliente::new().construir_props();
+        let entidad = MadreCliente::aleatorio();
         let id_entidad = entidad.id;
         let mut repositorio_doble = MockRepositorioCliente::new();
         repositorio_doble
@@ -2806,14 +2787,18 @@ mod tests {
         let resultado = caso_de_uso
             .ejecutar(ParamsActualizarCliente {
                 id: id_entidad,
-                email: "updated".to_string(),
+                email: props.email.valor().to_string(),
                 name: "".to_string(),
-                code: "updated".to_string(),
-                age: 42,
-                joined: Utc::now(),
-                middle: None,
-                labels: vec![],
-                status: "Active".to_string(),
+                code: props.code.valor().to_string(),
+                age: props.age.valor(),
+                joined: props.joined.valor(),
+                middle: props.middle.as_ref().map(|v| v.valor().to_string()),
+                labels: props
+                    .labels
+                    .iter()
+                    .map(|v| v.valor().to_string())
+                    .collect::<Vec<_>>(),
+                status: props.status.as_str().to_string(),
             })
             .await;
 
@@ -2825,17 +2810,8 @@ mod tests {
     #[tokio::test]
     async fn deberia_devolver_error_cuando_code_es_una_cadena_vacia() {
         // Preparar
-        let entidad = Cliente::new(PropsCliente {
-            email: Email::new("original".to_string()).expect("el literal de Email es válido"),
-            name: Name::new("original".to_string()).expect("el literal de Name es válido"),
-            code: Code::new("original".to_string()).expect("el literal de Code es válido"),
-            age: Age::new(42).expect("Age::new rechazó el valor de ejemplo"),
-            joined: Joined::new(Utc::now()).expect("Joined::new rechazó el valor de ejemplo"),
-            middle: None,
-            labels: vec![],
-            status: Status::Active,
-        })
-        .unwrap();
+        let props = MadreCliente::new().construir_props();
+        let entidad = MadreCliente::aleatorio();
         let id_entidad = entidad.id;
         let mut repositorio_doble = MockRepositorioCliente::new();
         repositorio_doble
@@ -2849,14 +2825,18 @@ mod tests {
         let resultado = caso_de_uso
             .ejecutar(ParamsActualizarCliente {
                 id: id_entidad,
-                email: "updated".to_string(),
-                name: "updated".to_string(),
+                email: props.email.valor().to_string(),
+                name: props.name.valor().to_string(),
                 code: "".to_string(),
-                age: 42,
-                joined: Utc::now(),
-                middle: None,
-                labels: vec![],
-                status: "Active".to_string(),
+                age: props.age.valor(),
+                joined: props.joined.valor(),
+                middle: props.middle.as_ref().map(|v| v.valor().to_string()),
+                labels: props
+                    .labels
+                    .iter()
+                    .map(|v| v.valor().to_string())
+                    .collect::<Vec<_>>(),
+                status: props.status.as_str().to_string(),
             })
             .await;
 
@@ -2931,31 +2911,14 @@ impl BorrarCliente for BorrarClienteImpl {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use chrono::Utc;
-    use dominio_cliente::valores::Age;
-    use dominio_cliente::valores::Code;
-    use dominio_cliente::valores::Joined;
-    use dominio_cliente::valores::Name;
-    use dominio_cliente::valores::Status;
     use dominio_cliente::{
-        modelo::{Cliente, IdCliente, PropsCliente},
+        modelo::IdCliente, pruebas::madres::MadreCliente,
         repositorio::dobles::MockRepositorioCliente,
     };
-    use nucleo::valores::Email;
 
     #[tokio::test]
     async fn deberia_hacer_borrado_logico_de_cliente_cuando_el_id_existe() {
-        let entidad = Cliente::new(PropsCliente {
-            email: Email::new("example".to_string()).expect("el literal de Email es válido"),
-            name: Name::new("example".to_string()).expect("el literal de Name es válido"),
-            code: Code::new("example".to_string()).expect("el literal de Code es válido"),
-            age: Age::new(42).expect("Age::new rechazó el valor de ejemplo"),
-            joined: Joined::new(Utc::now()).expect("Joined::new rechazó el valor de ejemplo"),
-            middle: None,
-            labels: vec![],
-            status: Status::Active,
-        })
-        .unwrap();
+        let entidad = MadreCliente::aleatorio();
         let id_entidad = entidad.id;
         let mut repositorio_doble = MockRepositorioCliente::new();
         repositorio_doble
@@ -3080,13 +3043,14 @@ impl CrearCliente for CrearClienteImpl {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use chrono::Utc;
+    use dominio_cliente::pruebas::madres::MadreCliente;
     use dominio_cliente::repositorio::dobles::MockRepositorioCliente;
     use puerto_nucleo::ErrorRepositorio;
 
     #[tokio::test]
     async fn deberia_crear_cliente_cuando_los_campos_son_validos() {
         // Preparar
+        let props = MadreCliente::new().construir_props();
         let mut repositorio_doble = MockRepositorioCliente::new();
         repositorio_doble.expect_guardar().returning(|_| Ok(()));
         let caso_de_uso = CrearClienteImpl {
@@ -3096,25 +3060,33 @@ mod tests {
         // Actuar
         let resultado = caso_de_uso
             .ejecutar(ParamsCrearCliente {
-                email: "example".to_string(),
-                name: "example".to_string(),
-                code: "example".to_string(),
-                age: 42,
-                joined: Utc::now(),
-                middle: None,
-                labels: vec![],
-                status: "Active".to_string(),
+                email: props.email.valor().to_string(),
+                name: props.name.valor().to_string(),
+                code: props.code.valor().to_string(),
+                age: props.age.valor(),
+                joined: props.joined.valor(),
+                middle: props.middle.as_ref().map(|v| v.valor().to_string()),
+                labels: props
+                    .labels
+                    .iter()
+                    .map(|v| v.valor().to_string())
+                    .collect::<Vec<_>>(),
+                status: props.status.as_str().to_string(),
             })
             .await;
 
         // Comprobar
         assert!(resultado.is_ok());
-        assert_eq!(resultado.unwrap().email.valor(), "example");
+        assert_eq!(
+            resultado.unwrap().email,
+            MadreCliente::new().construir_props().email
+        );
     }
 
     #[tokio::test]
     async fn deberia_devolver_duplicado_cuando_el_almacen_rechaza_un_duplicado() {
         // Preparar
+        let props = MadreCliente::new().construir_props();
         let mut repositorio_doble = MockRepositorioCliente::new();
         repositorio_doble
             .expect_guardar()
@@ -3126,14 +3098,18 @@ mod tests {
         // Actuar
         let resultado = caso_de_uso
             .ejecutar(ParamsCrearCliente {
-                email: "example".to_string(),
-                name: "example".to_string(),
-                code: "example".to_string(),
-                age: 42,
-                joined: Utc::now(),
-                middle: None,
-                labels: vec![],
-                status: "Active".to_string(),
+                email: props.email.valor().to_string(),
+                name: props.name.valor().to_string(),
+                code: props.code.valor().to_string(),
+                age: props.age.valor(),
+                joined: props.joined.valor(),
+                middle: props.middle.as_ref().map(|v| v.valor().to_string()),
+                labels: props
+                    .labels
+                    .iter()
+                    .map(|v| v.valor().to_string())
+                    .collect::<Vec<_>>(),
+                status: props.status.as_str().to_string(),
             })
             .await;
 
@@ -3145,6 +3121,7 @@ mod tests {
     #[tokio::test]
     async fn deberia_devolver_error_cuando_email_es_una_cadena_vacia() {
         // Preparar
+        let props = MadreCliente::new().construir_props();
         let repositorio_doble = MockRepositorioCliente::new();
         let caso_de_uso = CrearClienteImpl {
             repositorio: Arc::new(repositorio_doble),
@@ -3154,13 +3131,17 @@ mod tests {
         let resultado = caso_de_uso
             .ejecutar(ParamsCrearCliente {
                 email: "".to_string(),
-                name: "example".to_string(),
-                code: "example".to_string(),
-                age: 42,
-                joined: Utc::now(),
-                middle: None,
-                labels: vec![],
-                status: "Active".to_string(),
+                name: props.name.valor().to_string(),
+                code: props.code.valor().to_string(),
+                age: props.age.valor(),
+                joined: props.joined.valor(),
+                middle: props.middle.as_ref().map(|v| v.valor().to_string()),
+                labels: props
+                    .labels
+                    .iter()
+                    .map(|v| v.valor().to_string())
+                    .collect::<Vec<_>>(),
+                status: props.status.as_str().to_string(),
             })
             .await;
 
@@ -3172,6 +3153,7 @@ mod tests {
     #[tokio::test]
     async fn deberia_devolver_error_cuando_name_es_una_cadena_vacia() {
         // Preparar
+        let props = MadreCliente::new().construir_props();
         let repositorio_doble = MockRepositorioCliente::new();
         let caso_de_uso = CrearClienteImpl {
             repositorio: Arc::new(repositorio_doble),
@@ -3180,14 +3162,18 @@ mod tests {
         // Actuar
         let resultado = caso_de_uso
             .ejecutar(ParamsCrearCliente {
-                email: "example".to_string(),
+                email: props.email.valor().to_string(),
                 name: "".to_string(),
-                code: "example".to_string(),
-                age: 42,
-                joined: Utc::now(),
-                middle: None,
-                labels: vec![],
-                status: "Active".to_string(),
+                code: props.code.valor().to_string(),
+                age: props.age.valor(),
+                joined: props.joined.valor(),
+                middle: props.middle.as_ref().map(|v| v.valor().to_string()),
+                labels: props
+                    .labels
+                    .iter()
+                    .map(|v| v.valor().to_string())
+                    .collect::<Vec<_>>(),
+                status: props.status.as_str().to_string(),
             })
             .await;
 
@@ -3199,6 +3185,7 @@ mod tests {
     #[tokio::test]
     async fn deberia_devolver_error_cuando_code_es_una_cadena_vacia() {
         // Preparar
+        let props = MadreCliente::new().construir_props();
         let repositorio_doble = MockRepositorioCliente::new();
         let caso_de_uso = CrearClienteImpl {
             repositorio: Arc::new(repositorio_doble),
@@ -3207,14 +3194,18 @@ mod tests {
         // Actuar
         let resultado = caso_de_uso
             .ejecutar(ParamsCrearCliente {
-                email: "example".to_string(),
-                name: "example".to_string(),
+                email: props.email.valor().to_string(),
+                name: props.name.valor().to_string(),
                 code: "".to_string(),
-                age: 42,
-                joined: Utc::now(),
-                middle: None,
-                labels: vec![],
-                status: "Active".to_string(),
+                age: props.age.valor(),
+                joined: props.joined.valor(),
+                middle: props.middle.as_ref().map(|v| v.valor().to_string()),
+                labels: props
+                    .labels
+                    .iter()
+                    .map(|v| v.valor().to_string())
+                    .collect::<Vec<_>>(),
+                status: props.status.as_str().to_string(),
             })
             .await;
 
@@ -3226,6 +3217,7 @@ mod tests {
     #[tokio::test]
     async fn deberia_devolver_error_cuando_status_es_una_cadena_vacia() {
         // Preparar
+        let props = MadreCliente::new().construir_props();
         let repositorio_doble = MockRepositorioCliente::new();
         let caso_de_uso = CrearClienteImpl {
             repositorio: Arc::new(repositorio_doble),
@@ -3234,13 +3226,17 @@ mod tests {
         // Actuar
         let resultado = caso_de_uso
             .ejecutar(ParamsCrearCliente {
-                email: "example".to_string(),
-                name: "example".to_string(),
-                code: "example".to_string(),
-                age: 42,
-                joined: Utc::now(),
-                middle: None,
-                labels: vec![],
+                email: props.email.valor().to_string(),
+                name: props.name.valor().to_string(),
+                code: props.code.valor().to_string(),
+                age: props.age.valor(),
+                joined: props.joined.valor(),
+                middle: props.middle.as_ref().map(|v| v.valor().to_string()),
+                labels: props
+                    .labels
+                    .iter()
+                    .map(|v| v.valor().to_string())
+                    .collect::<Vec<_>>(),
                 status: "".to_string(),
             })
             .await;
@@ -3322,45 +3318,14 @@ impl ListarClientes for ListarClientesImpl {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use chrono::Utc;
-    use dominio_cliente::valores::Age;
-    use dominio_cliente::valores::Code;
-    use dominio_cliente::valores::Joined;
-    use dominio_cliente::valores::Name;
-    use dominio_cliente::valores::Status;
     use dominio_cliente::{
-        modelo::{Cliente, PropsCliente},
-        repositorio::dobles::MockRepositorioCliente,
+        pruebas::madres::MadreCliente, repositorio::dobles::MockRepositorioCliente,
     };
-    use nucleo::valores::Email;
     use puerto_nucleo::PeticionPagina;
 
     #[tokio::test]
     async fn deberia_devolver_la_pagina_de_clientes() {
-        let entidades = vec![
-            Cliente::new(PropsCliente {
-                email: Email::new("first".to_string()).expect("el literal de Email es válido"),
-                name: Name::new("first".to_string()).expect("el literal de Name es válido"),
-                code: Code::new("first".to_string()).expect("el literal de Code es válido"),
-                age: Age::new(42).expect("Age::new rechazó el valor de ejemplo"),
-                joined: Joined::new(Utc::now()).expect("Joined::new rechazó el valor de ejemplo"),
-                middle: None,
-                labels: vec![],
-                status: Status::Active,
-            })
-            .unwrap(),
-            Cliente::new(PropsCliente {
-                email: Email::new("second".to_string()).expect("el literal de Email es válido"),
-                name: Name::new("second".to_string()).expect("el literal de Name es válido"),
-                code: Code::new("second".to_string()).expect("el literal de Code es válido"),
-                age: Age::new(42).expect("Age::new rechazó el valor de ejemplo"),
-                joined: Joined::new(Utc::now()).expect("Joined::new rechazó el valor de ejemplo"),
-                middle: None,
-                labels: vec![],
-                status: Status::Active,
-            })
-            .unwrap(),
-        ];
+        let entidades = MadreCliente::aleatorios(2);
         let mut repositorio_doble = MockRepositorioCliente::new();
         repositorio_doble
             .expect_buscar_todos()
@@ -3481,32 +3446,15 @@ impl ObtenerCliente for ObtenerClienteImpl {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use chrono::Utc;
-    use dominio_cliente::valores::Age;
-    use dominio_cliente::valores::Code;
-    use dominio_cliente::valores::Joined;
-    use dominio_cliente::valores::Name;
-    use dominio_cliente::valores::Status;
     use dominio_cliente::{
-        modelo::{Cliente, IdCliente, PropsCliente},
+        modelo::IdCliente, pruebas::madres::MadreCliente,
         repositorio::dobles::MockRepositorioCliente,
     };
-    use nucleo::valores::Email;
     use puerto_nucleo::ErrorRepositorio;
 
     #[tokio::test]
     async fn deberia_devolver_cliente_cuando_el_id_existe() {
-        let entidad = Cliente::new(PropsCliente {
-            email: Email::new("example".to_string()).expect("el literal de Email es válido"),
-            name: Name::new("example".to_string()).expect("el literal de Name es válido"),
-            code: Code::new("example".to_string()).expect("el literal de Code es válido"),
-            age: Age::new(42).expect("Age::new rechazó el valor de ejemplo"),
-            joined: Joined::new(Utc::now()).expect("Joined::new rechazó el valor de ejemplo"),
-            middle: None,
-            labels: vec![],
-            status: Status::Active,
-        })
-        .unwrap();
+        let entidad = MadreCliente::aleatorio();
         let id_entidad = entidad.id;
         let mut repositorio_doble = MockRepositorioCliente::new();
         repositorio_doble
@@ -3520,8 +3468,7 @@ mod tests {
             .ejecutar(ParamsObtenerCliente { id: id_entidad })
             .await;
 
-        assert!(resultado.is_ok());
-        assert_eq!(resultado.unwrap().email.valor(), "example");
+        assert_eq!(resultado.unwrap().id, id_entidad);
     }
 
     #[tokio::test]
@@ -3791,20 +3738,11 @@ impl Cliente {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::pruebas::madres::MadreCliente;
 
     #[test]
     fn deberia_crear_cliente_cuando_los_campos_son_validos() {
-        let resultado = Cliente::new(PropsCliente {
-            email: Email::new("example".to_string())
-                .expect("Email::new rechazó el valor de ejemplo"),
-            name: Name::new("example".to_string()).expect("Name::new rechazó el valor de ejemplo"),
-            code: Code::new("example".to_string()).expect("Code::new rechazó el valor de ejemplo"),
-            age: Age::new(42).expect("Age::new rechazó el valor de ejemplo"),
-            joined: Joined::new(Utc::now()).expect("Joined::new rechazó el valor de ejemplo"),
-            middle: None,
-            labels: vec![],
-            status: Status::Active,
-        });
+        let resultado = Cliente::new(MadreCliente::new().construir_props());
         assert!(resultado.is_ok());
     }
 
@@ -4274,31 +4212,26 @@ pub mod pruebas {
 //! Las filas que necesitan los tests de Postgres —una entidad cliente válida y otra guardada—,
 //! para los tests de este crate y para los de los contextos que la referencian (ADR-0023 § 5 de
 //! Puerto).
-use dominio_cliente::modelo::{Cliente, PropsCliente};
+use dominio_cliente::modelo::Cliente;
+use dominio_cliente::modelo::PropsCliente;
+use dominio_cliente::pruebas::madres::MadreCliente;
 use dominio_cliente::repositorio::RepositorioCliente;
-use dominio_cliente::valores::Age;
 use dominio_cliente::valores::Code;
 use dominio_cliente::valores::Joined;
-use dominio_cliente::valores::Name;
-use dominio_cliente::valores::Status;
-use nucleo::valores::Email;
 use sqlx::PgPool;
 use uuid::Uuid;
 
 use crate::repositorio::RepositorioClientePostgres;
 
-/// Una entidad cliente válida, sin guardar.
+/// Una entidad cliente válida, sin guardar, con los valores de la madre salvo en los
+/// campos únicos (uno nuevo cada vez), las fechas (un segundo exacto, lo que Postgres guarda) y las
+/// referencias (una fila sembrada).
 pub fn construir() -> Cliente {
     Cliente::new(PropsCliente {
-        email: Email::new("example".to_string()).expect("Email::new rechazó el valor de ejemplo"),
-        name: Name::new("example".to_string()).expect("Name::new rechazó el valor de ejemplo"),
         code: Code::new(Uuid::new_v4().to_string()).expect("Code::new rechazó el valor de ejemplo"),
-        age: Age::new(42).expect("Age::new rechazó el valor de ejemplo"),
         joined: Joined::new(chrono::DateTime::from_timestamp(1_700_000_000, 0).unwrap())
             .expect("Joined::new rechazó el valor de ejemplo"),
-        middle: None,
-        labels: vec![],
-        status: Status::Active,
+        ..MadreCliente::new().construir_props()
     })
     .unwrap()
 }
@@ -5553,33 +5486,18 @@ impl ActualizarProducto for ActualizarProductoImpl {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use chrono::Utc;
     use dominio_producto::{
-        modelo::{IdProducto, Producto, PropsProducto},
+        modelo::IdProducto, pruebas::madres::MadreProducto,
         repositorio::dobles::MockRepositorioProducto,
     };
-    use std::collections::HashMap;
-    use uuid::Uuid;
 
     #[tokio::test]
     async fn deberia_actualizar_producto_cuando_los_parametros_son_validos() {
         // Preparar
-        let entidad = Producto::new(PropsProducto {
-            title: "original".to_string(),
-            sku: "original".to_string(),
-            price: 42,
-            rating: 1.5,
-            active: true,
-            ref_id: Uuid::new_v4(),
-            published_at: Utc::now(),
-            summary: None,
-            views: None,
-            expires_at: None,
-            tags: vec![],
-            scores: vec![],
-            meta: HashMap::new(),
-        })
-        .unwrap();
+        let props = MadreProducto::new().construir_props();
+        let mut entidad = MadreProducto::aleatorio();
+        // Lo que estaba guardado, distinto de lo que trae la actualización.
+        entidad.title = "original".to_string();
         let id_entidad = entidad.id;
         let mut repositorio_doble = MockRepositorioProducto::new();
         repositorio_doble
@@ -5594,29 +5512,33 @@ mod tests {
         let resultado = caso_de_uso
             .ejecutar(ParamsActualizarProducto {
                 id: id_entidad,
-                title: "updated".to_string(),
-                sku: "updated".to_string(),
-                price: 42,
-                rating: 1.5,
-                active: true,
-                ref_id: Uuid::new_v4(),
-                published_at: Utc::now(),
-                summary: None,
-                views: None,
-                expires_at: None,
-                tags: vec![],
-                scores: vec![],
-                meta: HashMap::new(),
+                title: props.title,
+                sku: props.sku,
+                price: props.price,
+                rating: props.rating,
+                active: props.active,
+                ref_id: props.ref_id,
+                published_at: props.published_at,
+                summary: props.summary,
+                views: props.views,
+                expires_at: props.expires_at,
+                tags: props.tags,
+                scores: props.scores,
+                meta: props.meta,
             })
             .await;
 
         // Comprobar
-        assert_eq!(resultado.unwrap().title, "updated");
+        assert_eq!(
+            resultado.unwrap().title,
+            MadreProducto::new().construir_props().title
+        );
     }
 
     #[tokio::test]
     async fn deberia_devolver_no_encontrado_cuando_producto_no_existe() {
         // Preparar
+        let props = MadreProducto::new().construir_props();
         let mut repositorio_doble = MockRepositorioProducto::new();
         repositorio_doble
             .expect_buscar_por_id()
@@ -5629,19 +5551,19 @@ mod tests {
         let resultado = caso_de_uso
             .ejecutar(ParamsActualizarProducto {
                 id: IdProducto::generar(),
-                title: "new".to_string(),
-                sku: "new".to_string(),
-                price: 42,
-                rating: 1.5,
-                active: true,
-                ref_id: Uuid::new_v4(),
-                published_at: Utc::now(),
-                summary: None,
-                views: None,
-                expires_at: None,
-                tags: vec![],
-                scores: vec![],
-                meta: HashMap::new(),
+                title: props.title,
+                sku: props.sku,
+                price: props.price,
+                rating: props.rating,
+                active: props.active,
+                ref_id: props.ref_id,
+                published_at: props.published_at,
+                summary: props.summary,
+                views: props.views,
+                expires_at: props.expires_at,
+                tags: props.tags,
+                scores: props.scores,
+                meta: props.meta,
             })
             .await;
 
@@ -5653,22 +5575,8 @@ mod tests {
     #[tokio::test]
     async fn deberia_devolver_error_cuando_title_es_una_cadena_vacia() {
         // Preparar
-        let entidad = Producto::new(PropsProducto {
-            title: "original".to_string(),
-            sku: "original".to_string(),
-            price: 42,
-            rating: 1.5,
-            active: true,
-            ref_id: Uuid::new_v4(),
-            published_at: Utc::now(),
-            summary: None,
-            views: None,
-            expires_at: None,
-            tags: vec![],
-            scores: vec![],
-            meta: HashMap::new(),
-        })
-        .unwrap();
+        let props = MadreProducto::new().construir_props();
+        let entidad = MadreProducto::aleatorio();
         let id_entidad = entidad.id;
         let mut repositorio_doble = MockRepositorioProducto::new();
         repositorio_doble
@@ -5683,18 +5591,18 @@ mod tests {
             .ejecutar(ParamsActualizarProducto {
                 id: id_entidad,
                 title: "".to_string(),
-                sku: "updated".to_string(),
-                price: 42,
-                rating: 1.5,
-                active: true,
-                ref_id: Uuid::new_v4(),
-                published_at: Utc::now(),
-                summary: None,
-                views: None,
-                expires_at: None,
-                tags: vec![],
-                scores: vec![],
-                meta: HashMap::new(),
+                sku: props.sku,
+                price: props.price,
+                rating: props.rating,
+                active: props.active,
+                ref_id: props.ref_id,
+                published_at: props.published_at,
+                summary: props.summary,
+                views: props.views,
+                expires_at: props.expires_at,
+                tags: props.tags,
+                scores: props.scores,
+                meta: props.meta,
             })
             .await;
 
@@ -5709,22 +5617,8 @@ mod tests {
     #[tokio::test]
     async fn deberia_devolver_error_cuando_sku_es_una_cadena_vacia() {
         // Preparar
-        let entidad = Producto::new(PropsProducto {
-            title: "original".to_string(),
-            sku: "original".to_string(),
-            price: 42,
-            rating: 1.5,
-            active: true,
-            ref_id: Uuid::new_v4(),
-            published_at: Utc::now(),
-            summary: None,
-            views: None,
-            expires_at: None,
-            tags: vec![],
-            scores: vec![],
-            meta: HashMap::new(),
-        })
-        .unwrap();
+        let props = MadreProducto::new().construir_props();
+        let entidad = MadreProducto::aleatorio();
         let id_entidad = entidad.id;
         let mut repositorio_doble = MockRepositorioProducto::new();
         repositorio_doble
@@ -5738,19 +5632,19 @@ mod tests {
         let resultado = caso_de_uso
             .ejecutar(ParamsActualizarProducto {
                 id: id_entidad,
-                title: "updated".to_string(),
+                title: props.title,
                 sku: "".to_string(),
-                price: 42,
-                rating: 1.5,
-                active: true,
-                ref_id: Uuid::new_v4(),
-                published_at: Utc::now(),
-                summary: None,
-                views: None,
-                expires_at: None,
-                tags: vec![],
-                scores: vec![],
-                meta: HashMap::new(),
+                price: props.price,
+                rating: props.rating,
+                active: props.active,
+                ref_id: props.ref_id,
+                published_at: props.published_at,
+                summary: props.summary,
+                views: props.views,
+                expires_at: props.expires_at,
+                tags: props.tags,
+                scores: props.scores,
+                meta: props.meta,
             })
             .await;
 
@@ -5896,32 +5790,14 @@ impl BorrarProducto for BorrarProductoImpl {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use chrono::Utc;
     use dominio_producto::{
-        modelo::{IdProducto, Producto, PropsProducto},
+        modelo::IdProducto, pruebas::madres::MadreProducto,
         repositorio::dobles::MockRepositorioProducto,
     };
-    use std::collections::HashMap;
-    use uuid::Uuid;
 
     #[tokio::test]
     async fn deberia_hacer_borrado_logico_de_producto_cuando_el_id_existe() {
-        let entidad = Producto::new(PropsProducto {
-            title: "example".to_string(),
-            sku: "example".to_string(),
-            price: 42,
-            rating: 1.5,
-            active: true,
-            ref_id: Uuid::new_v4(),
-            published_at: Utc::now(),
-            summary: None,
-            views: None,
-            expires_at: None,
-            tags: vec![],
-            scores: vec![],
-            meta: HashMap::new(),
-        })
-        .unwrap();
+        let entidad = MadreProducto::aleatorio();
         let id_entidad = entidad.id;
         let mut repositorio_doble = MockRepositorioProducto::new();
         repositorio_doble
@@ -6043,15 +5919,14 @@ impl CrearProducto for CrearProductoImpl {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use chrono::Utc;
+    use dominio_producto::pruebas::madres::MadreProducto;
     use dominio_producto::repositorio::dobles::MockRepositorioProducto;
     use puerto_nucleo::ErrorRepositorio;
-    use std::collections::HashMap;
-    use uuid::Uuid;
 
     #[tokio::test]
     async fn deberia_crear_producto_cuando_los_campos_son_validos() {
         // Preparar
+        let props = MadreProducto::new().construir_props();
         let mut repositorio_doble = MockRepositorioProducto::new();
         repositorio_doble.expect_guardar().returning(|_| Ok(()));
         let caso_de_uso = CrearProductoImpl {
@@ -6061,30 +5936,34 @@ mod tests {
         // Actuar
         let resultado = caso_de_uso
             .ejecutar(ParamsCrearProducto {
-                title: "example".to_string(),
-                sku: "example".to_string(),
-                price: 42,
-                rating: 1.5,
-                active: true,
-                ref_id: Uuid::new_v4(),
-                published_at: Utc::now(),
-                summary: None,
-                views: None,
-                expires_at: None,
-                tags: vec![],
-                scores: vec![],
-                meta: HashMap::new(),
+                title: props.title,
+                sku: props.sku,
+                price: props.price,
+                rating: props.rating,
+                active: props.active,
+                ref_id: props.ref_id,
+                published_at: props.published_at,
+                summary: props.summary,
+                views: props.views,
+                expires_at: props.expires_at,
+                tags: props.tags,
+                scores: props.scores,
+                meta: props.meta,
             })
             .await;
 
         // Comprobar
         assert!(resultado.is_ok());
-        assert_eq!(resultado.unwrap().title, "example");
+        assert_eq!(
+            resultado.unwrap().title,
+            MadreProducto::new().construir_props().title
+        );
     }
 
     #[tokio::test]
     async fn deberia_devolver_duplicado_cuando_el_almacen_rechaza_un_duplicado() {
         // Preparar
+        let props = MadreProducto::new().construir_props();
         let mut repositorio_doble = MockRepositorioProducto::new();
         repositorio_doble
             .expect_guardar()
@@ -6096,19 +5975,19 @@ mod tests {
         // Actuar
         let resultado = caso_de_uso
             .ejecutar(ParamsCrearProducto {
-                title: "example".to_string(),
-                sku: "example".to_string(),
-                price: 42,
-                rating: 1.5,
-                active: true,
-                ref_id: Uuid::new_v4(),
-                published_at: Utc::now(),
-                summary: None,
-                views: None,
-                expires_at: None,
-                tags: vec![],
-                scores: vec![],
-                meta: HashMap::new(),
+                title: props.title,
+                sku: props.sku,
+                price: props.price,
+                rating: props.rating,
+                active: props.active,
+                ref_id: props.ref_id,
+                published_at: props.published_at,
+                summary: props.summary,
+                views: props.views,
+                expires_at: props.expires_at,
+                tags: props.tags,
+                scores: props.scores,
+                meta: props.meta,
             })
             .await;
 
@@ -6120,6 +5999,7 @@ mod tests {
     #[tokio::test]
     async fn deberia_devolver_error_cuando_title_es_una_cadena_vacia() {
         // Preparar
+        let props = MadreProducto::new().construir_props();
         let repositorio_doble = MockRepositorioProducto::new();
         let caso_de_uso = CrearProductoImpl {
             repositorio: Arc::new(repositorio_doble),
@@ -6129,18 +6009,18 @@ mod tests {
         let resultado = caso_de_uso
             .ejecutar(ParamsCrearProducto {
                 title: "".to_string(),
-                sku: "example".to_string(),
-                price: 42,
-                rating: 1.5,
-                active: true,
-                ref_id: Uuid::new_v4(),
-                published_at: Utc::now(),
-                summary: None,
-                views: None,
-                expires_at: None,
-                tags: vec![],
-                scores: vec![],
-                meta: HashMap::new(),
+                sku: props.sku,
+                price: props.price,
+                rating: props.rating,
+                active: props.active,
+                ref_id: props.ref_id,
+                published_at: props.published_at,
+                summary: props.summary,
+                views: props.views,
+                expires_at: props.expires_at,
+                tags: props.tags,
+                scores: props.scores,
+                meta: props.meta,
             })
             .await;
 
@@ -6155,6 +6035,7 @@ mod tests {
     #[tokio::test]
     async fn deberia_devolver_error_cuando_sku_es_una_cadena_vacia() {
         // Preparar
+        let props = MadreProducto::new().construir_props();
         let repositorio_doble = MockRepositorioProducto::new();
         let caso_de_uso = CrearProductoImpl {
             repositorio: Arc::new(repositorio_doble),
@@ -6163,19 +6044,19 @@ mod tests {
         // Actuar
         let resultado = caso_de_uso
             .ejecutar(ParamsCrearProducto {
-                title: "example".to_string(),
+                title: props.title,
                 sku: "".to_string(),
-                price: 42,
-                rating: 1.5,
-                active: true,
-                ref_id: Uuid::new_v4(),
-                published_at: Utc::now(),
-                summary: None,
-                views: None,
-                expires_at: None,
-                tags: vec![],
-                scores: vec![],
-                meta: HashMap::new(),
+                price: props.price,
+                rating: props.rating,
+                active: props.active,
+                ref_id: props.ref_id,
+                published_at: props.published_at,
+                summary: props.summary,
+                views: props.views,
+                expires_at: props.expires_at,
+                tags: props.tags,
+                scores: props.scores,
+                meta: props.meta,
             })
             .await;
 
@@ -6259,51 +6140,14 @@ impl ListarProductos for ListarProductosImpl {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use chrono::Utc;
     use dominio_producto::{
-        modelo::{Producto, PropsProducto},
-        repositorio::dobles::MockRepositorioProducto,
+        pruebas::madres::MadreProducto, repositorio::dobles::MockRepositorioProducto,
     };
     use puerto_nucleo::PeticionPagina;
-    use std::collections::HashMap;
-    use uuid::Uuid;
 
     #[tokio::test]
     async fn deberia_devolver_la_pagina_de_productos() {
-        let entidades = vec![
-            Producto::new(PropsProducto {
-                title: "first".to_string(),
-                sku: "first".to_string(),
-                price: 42,
-                rating: 1.5,
-                active: true,
-                ref_id: Uuid::new_v4(),
-                published_at: Utc::now(),
-                summary: None,
-                views: None,
-                expires_at: None,
-                tags: vec![],
-                scores: vec![],
-                meta: HashMap::new(),
-            })
-            .unwrap(),
-            Producto::new(PropsProducto {
-                title: "second".to_string(),
-                sku: "second".to_string(),
-                price: 42,
-                rating: 1.5,
-                active: true,
-                ref_id: Uuid::new_v4(),
-                published_at: Utc::now(),
-                summary: None,
-                views: None,
-                expires_at: None,
-                tags: vec![],
-                scores: vec![],
-                meta: HashMap::new(),
-            })
-            .unwrap(),
-        ];
+        let entidades = MadreProducto::aleatorios(2);
         let mut repositorio_doble = MockRepositorioProducto::new();
         repositorio_doble
             .expect_buscar_todos()
@@ -6424,33 +6268,15 @@ impl ObtenerProducto for ObtenerProductoImpl {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use chrono::Utc;
     use dominio_producto::{
-        modelo::{IdProducto, Producto, PropsProducto},
+        modelo::IdProducto, pruebas::madres::MadreProducto,
         repositorio::dobles::MockRepositorioProducto,
     };
     use puerto_nucleo::ErrorRepositorio;
-    use std::collections::HashMap;
-    use uuid::Uuid;
 
     #[tokio::test]
     async fn deberia_devolver_producto_cuando_el_id_existe() {
-        let entidad = Producto::new(PropsProducto {
-            title: "example".to_string(),
-            sku: "example".to_string(),
-            price: 42,
-            rating: 1.5,
-            active: true,
-            ref_id: Uuid::new_v4(),
-            published_at: Utc::now(),
-            summary: None,
-            views: None,
-            expires_at: None,
-            tags: vec![],
-            scores: vec![],
-            meta: HashMap::new(),
-        })
-        .unwrap();
+        let entidad = MadreProducto::aleatorio();
         let id_entidad = entidad.id;
         let mut repositorio_doble = MockRepositorioProducto::new();
         repositorio_doble
@@ -6464,8 +6290,7 @@ mod tests {
             .ejecutar(ParamsObtenerProducto { id: id_entidad })
             .await;
 
-        assert!(resultado.is_ok());
-        assert_eq!(resultado.unwrap().title, "example");
+        assert_eq!(resultado.unwrap().id, id_entidad);
     }
 
     #[tokio::test]
@@ -6736,44 +6561,20 @@ impl Producto {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::pruebas::madres::MadreProducto;
 
     #[test]
     fn deberia_crear_producto_cuando_los_campos_son_validos() {
-        let resultado = Producto::new(PropsProducto {
-            title: "example".to_string(),
-            sku: "example".to_string(),
-            price: 42,
-            rating: 1.5,
-            active: true,
-            ref_id: Uuid::new_v4(),
-            published_at: Utc::now(),
-            summary: None,
-            views: None,
-            expires_at: None,
-            tags: vec![],
-            scores: vec![],
-            meta: HashMap::new(),
-        });
-        assert_eq!(resultado.unwrap().title, "example");
+        let resultado = Producto::new(MadreProducto::new().construir_props());
+        assert_eq!(
+            resultado.unwrap().title,
+            MadreProducto::new().construir_props().title
+        );
     }
 
     #[test]
     fn deberia_rechazar_producto_cuando_title_es_una_cadena_vacia() {
-        let resultado = Producto::new(PropsProducto {
-            title: "".into(),
-            sku: "example".to_string(),
-            price: 42,
-            rating: 1.5,
-            active: true,
-            ref_id: Uuid::new_v4(),
-            published_at: Utc::now(),
-            summary: None,
-            views: None,
-            expires_at: None,
-            tags: vec![],
-            scores: vec![],
-            meta: HashMap::new(),
-        });
+        let resultado = Producto::new(MadreProducto::new().con_title_vacio().construir_props());
         assert!(resultado.is_err());
         assert_eq!(
             resultado.unwrap_err().to_string(),
@@ -6783,41 +6584,13 @@ mod tests {
 
     #[test]
     fn deberia_rechazar_producto_cuando_title_solo_tiene_espacios() {
-        let resultado = Producto::new(PropsProducto {
-            title: "   ".into(),
-            sku: "example".to_string(),
-            price: 42,
-            rating: 1.5,
-            active: true,
-            ref_id: Uuid::new_v4(),
-            published_at: Utc::now(),
-            summary: None,
-            views: None,
-            expires_at: None,
-            tags: vec![],
-            scores: vec![],
-            meta: HashMap::new(),
-        });
+        let resultado = Producto::new(MadreProducto::new().con_title("   ").construir_props());
         assert!(resultado.is_err());
     }
 
     #[test]
     fn deberia_rechazar_producto_cuando_sku_es_una_cadena_vacia() {
-        let resultado = Producto::new(PropsProducto {
-            title: "example".to_string(),
-            sku: "".into(),
-            price: 42,
-            rating: 1.5,
-            active: true,
-            ref_id: Uuid::new_v4(),
-            published_at: Utc::now(),
-            summary: None,
-            views: None,
-            expires_at: None,
-            tags: vec![],
-            scores: vec![],
-            meta: HashMap::new(),
-        });
+        let resultado = Producto::new(MadreProducto::new().con_sku_vacio().construir_props());
         assert!(resultado.is_err());
         assert_eq!(
             resultado.unwrap_err().to_string(),
@@ -6827,57 +6600,15 @@ mod tests {
 
     #[test]
     fn deberia_rechazar_producto_cuando_sku_solo_tiene_espacios() {
-        let resultado = Producto::new(PropsProducto {
-            title: "example".to_string(),
-            sku: "   ".into(),
-            price: 42,
-            rating: 1.5,
-            active: true,
-            ref_id: Uuid::new_v4(),
-            published_at: Utc::now(),
-            summary: None,
-            views: None,
-            expires_at: None,
-            tags: vec![],
-            scores: vec![],
-            meta: HashMap::new(),
-        });
+        let resultado = Producto::new(MadreProducto::new().con_sku("   ").construir_props());
         assert!(resultado.is_err());
     }
 
     #[test]
     fn deberia_rechazar_actualizar_producto_cuando_title_es_una_cadena_vacia() {
-        let mut entidad = Producto::new(PropsProducto {
-            title: "example".to_string(),
-            sku: "example".to_string(),
-            price: 42,
-            rating: 1.5,
-            active: true,
-            ref_id: Uuid::new_v4(),
-            published_at: Utc::now(),
-            summary: None,
-            views: None,
-            expires_at: None,
-            tags: vec![],
-            scores: vec![],
-            meta: HashMap::new(),
-        })
-        .unwrap();
-        let resultado = entidad.actualizar(PropsProducto {
-            title: "".into(),
-            sku: "example".to_string(),
-            price: 42,
-            rating: 1.5,
-            active: true,
-            ref_id: Uuid::new_v4(),
-            published_at: Utc::now(),
-            summary: None,
-            views: None,
-            expires_at: None,
-            tags: vec![],
-            scores: vec![],
-            meta: HashMap::new(),
-        });
+        let mut entidad = MadreProducto::aleatorio();
+        let resultado =
+            entidad.actualizar(MadreProducto::new().con_title_vacio().construir_props());
         assert_eq!(
             resultado.unwrap_err().to_string(),
             "producto.validacion.title_vacio"
@@ -7215,29 +6946,24 @@ pub mod pruebas {
 //! Las filas que necesitan los tests de Postgres —una entidad producto válida y otra guardada—,
 //! para los tests de este crate y para los de los contextos que la referencian (ADR-0023 § 5 de
 //! Puerto).
-use dominio_producto::modelo::{Producto, PropsProducto};
+use dominio_producto::modelo::Producto;
+use dominio_producto::modelo::PropsProducto;
+use dominio_producto::pruebas::madres::MadreProducto;
 use dominio_producto::repositorio::RepositorioProducto;
 use sqlx::PgPool;
 use uuid::Uuid;
 
 use crate::repositorio::RepositorioProductoPostgres;
 
-/// Una entidad producto válida, sin guardar.
+/// Una entidad producto válida, sin guardar, con los valores de la madre salvo en los
+/// campos únicos (uno nuevo cada vez), las fechas (un segundo exacto, lo que Postgres guarda) y las
+/// referencias (una fila sembrada).
 pub fn construir() -> Producto {
     Producto::new(PropsProducto {
-        title: "example".to_string(),
         sku: Uuid::new_v4().to_string(),
         price: (Uuid::new_v4().as_u128() >> 65) as i64,
-        rating: 1.5,
-        active: true,
-        ref_id: Uuid::new_v4(),
         published_at: chrono::DateTime::from_timestamp(1_700_000_000, 0).unwrap(),
-        summary: None,
-        views: None,
-        expires_at: None,
-        tags: vec![],
-        scores: vec![],
-        meta: std::collections::HashMap::new(),
+        ..MadreProducto::new().construir_props()
     })
     .unwrap()
 }

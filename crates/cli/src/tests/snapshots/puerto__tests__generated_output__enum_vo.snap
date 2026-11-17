@@ -164,9 +164,10 @@ comando.
    lado. `generar caso-de-uso` deja la impl en `todo!()`, unos `Params` de relleno y un test marcado
    `#[ignore = "escribe este test"]` en `contextos/<c>/aplicacion/src/<accion>.rs`: quita el
    `ignore`, escribe el test y míralo fallar.
-4. **Verde.** Primero el dominio: los invariantes en el `new` del modelo o en un objeto valor
-   (`contextos/<c>/dominio/`); después los `Params`, el trait y la impl del caso de uso, en un solo
-   fichero.
+4. **Verde.** Primero el dominio: los invariantes en el `validar` del modelo (lo llaman `new` y
+   `actualizar`) o en un objeto valor (`contextos/<c>/dominio/`); si uno rechaza un valor por
+   defecto de la madre, cámbialo en la madre: los tests generados toman de ahí sus valores. Después
+   los `Params`, el trait y la impl del caso de uso, en un solo fichero.
 5. **El endpoint, API primero.** `generar caso-de-uso` pone el caso de uso en `Api<Entidad>` pero no
    añade ninguna ruta: escribe `dto.rs`, `respuestas.rs`, el brazo de `errores.rs` de cada error
    nuevo (con su test), después el handler en `rutas.rs` y un test de ruta por cada código de estado
@@ -376,20 +377,17 @@ impl ActualizarPedido for ActualizarPedidoImpl {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use dominio_pedido::valores::Status;
     use dominio_pedido::{
-        modelo::{IdPedido, Pedido, PropsPedido},
-        repositorio::dobles::MockRepositorioPedido,
+        modelo::IdPedido, pruebas::madres::MadrePedido, repositorio::dobles::MockRepositorioPedido,
     };
 
     #[tokio::test]
     async fn deberia_actualizar_pedido_cuando_los_parametros_son_validos() {
         // Preparar
-        let entidad = Pedido::new(PropsPedido {
-            reference: "original".to_string(),
-            status: Status::Pending,
-        })
-        .unwrap();
+        let props = MadrePedido::new().construir_props();
+        let mut entidad = MadrePedido::aleatorio();
+        // Lo que estaba guardado, distinto de lo que trae la actualización.
+        entidad.reference = "original".to_string();
         let id_entidad = entidad.id;
         let mut repositorio_doble = MockRepositorioPedido::new();
         repositorio_doble
@@ -404,18 +402,22 @@ mod tests {
         let resultado = caso_de_uso
             .ejecutar(ParamsActualizarPedido {
                 id: id_entidad,
-                reference: "updated".to_string(),
-                status: "Pending".to_string(),
+                reference: props.reference,
+                status: props.status.as_str().to_string(),
             })
             .await;
 
         // Comprobar
-        assert_eq!(resultado.unwrap().reference, "updated");
+        assert_eq!(
+            resultado.unwrap().reference,
+            MadrePedido::new().construir_props().reference
+        );
     }
 
     #[tokio::test]
     async fn deberia_devolver_no_encontrado_cuando_pedido_no_existe() {
         // Preparar
+        let props = MadrePedido::new().construir_props();
         let mut repositorio_doble = MockRepositorioPedido::new();
         repositorio_doble
             .expect_buscar_por_id()
@@ -428,8 +430,8 @@ mod tests {
         let resultado = caso_de_uso
             .ejecutar(ParamsActualizarPedido {
                 id: IdPedido::generar(),
-                reference: "new".to_string(),
-                status: "Pending".to_string(),
+                reference: props.reference,
+                status: props.status.as_str().to_string(),
             })
             .await;
 
@@ -441,11 +443,8 @@ mod tests {
     #[tokio::test]
     async fn deberia_devolver_error_cuando_reference_es_una_cadena_vacia() {
         // Preparar
-        let entidad = Pedido::new(PropsPedido {
-            reference: "original".to_string(),
-            status: Status::Pending,
-        })
-        .unwrap();
+        let props = MadrePedido::new().construir_props();
+        let entidad = MadrePedido::aleatorio();
         let id_entidad = entidad.id;
         let mut repositorio_doble = MockRepositorioPedido::new();
         repositorio_doble
@@ -460,7 +459,7 @@ mod tests {
             .ejecutar(ParamsActualizarPedido {
                 id: id_entidad,
                 reference: "".to_string(),
-                status: "Pending".to_string(),
+                status: props.status.as_str().to_string(),
             })
             .await;
 
@@ -539,19 +538,13 @@ impl BorrarPedido for BorrarPedidoImpl {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use dominio_pedido::valores::Status;
     use dominio_pedido::{
-        modelo::{IdPedido, Pedido, PropsPedido},
-        repositorio::dobles::MockRepositorioPedido,
+        modelo::IdPedido, pruebas::madres::MadrePedido, repositorio::dobles::MockRepositorioPedido,
     };
 
     #[tokio::test]
     async fn deberia_hacer_borrado_logico_de_pedido_cuando_el_id_existe() {
-        let entidad = Pedido::new(PropsPedido {
-            reference: "example".to_string(),
-            status: Status::Pending,
-        })
-        .unwrap();
+        let entidad = MadrePedido::aleatorio();
         let id_entidad = entidad.id;
         let mut repositorio_doble = MockRepositorioPedido::new();
         repositorio_doble
@@ -651,12 +644,14 @@ impl CrearPedido for CrearPedidoImpl {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use dominio_pedido::pruebas::madres::MadrePedido;
     use dominio_pedido::repositorio::dobles::MockRepositorioPedido;
     use puerto_nucleo::ErrorRepositorio;
 
     #[tokio::test]
     async fn deberia_crear_pedido_cuando_los_campos_son_validos() {
         // Preparar
+        let props = MadrePedido::new().construir_props();
         let mut repositorio_doble = MockRepositorioPedido::new();
         repositorio_doble.expect_guardar().returning(|_| Ok(()));
         let caso_de_uso = CrearPedidoImpl {
@@ -666,19 +661,23 @@ mod tests {
         // Actuar
         let resultado = caso_de_uso
             .ejecutar(ParamsCrearPedido {
-                reference: "example".to_string(),
-                status: "Pending".to_string(),
+                reference: props.reference,
+                status: props.status.as_str().to_string(),
             })
             .await;
 
         // Comprobar
         assert!(resultado.is_ok());
-        assert_eq!(resultado.unwrap().reference, "example");
+        assert_eq!(
+            resultado.unwrap().reference,
+            MadrePedido::new().construir_props().reference
+        );
     }
 
     #[tokio::test]
     async fn deberia_devolver_duplicado_cuando_el_almacen_rechaza_un_duplicado() {
         // Preparar
+        let props = MadrePedido::new().construir_props();
         let mut repositorio_doble = MockRepositorioPedido::new();
         repositorio_doble
             .expect_guardar()
@@ -690,8 +689,8 @@ mod tests {
         // Actuar
         let resultado = caso_de_uso
             .ejecutar(ParamsCrearPedido {
-                reference: "example".to_string(),
-                status: "Pending".to_string(),
+                reference: props.reference,
+                status: props.status.as_str().to_string(),
             })
             .await;
 
@@ -703,6 +702,7 @@ mod tests {
     #[tokio::test]
     async fn deberia_devolver_error_cuando_reference_es_una_cadena_vacia() {
         // Preparar
+        let props = MadrePedido::new().construir_props();
         let repositorio_doble = MockRepositorioPedido::new();
         let caso_de_uso = CrearPedidoImpl {
             repositorio: Arc::new(repositorio_doble),
@@ -712,7 +712,7 @@ mod tests {
         let resultado = caso_de_uso
             .ejecutar(ParamsCrearPedido {
                 reference: "".to_string(),
-                status: "Pending".to_string(),
+                status: props.status.as_str().to_string(),
             })
             .await;
 
@@ -727,6 +727,7 @@ mod tests {
     #[tokio::test]
     async fn deberia_devolver_error_cuando_status_es_una_cadena_vacia() {
         // Preparar
+        let props = MadrePedido::new().construir_props();
         let repositorio_doble = MockRepositorioPedido::new();
         let caso_de_uso = CrearPedidoImpl {
             repositorio: Arc::new(repositorio_doble),
@@ -735,7 +736,7 @@ mod tests {
         // Actuar
         let resultado = caso_de_uso
             .ejecutar(ParamsCrearPedido {
-                reference: "example".to_string(),
+                reference: props.reference,
                 status: "".to_string(),
             })
             .await;
@@ -810,27 +811,14 @@ impl ListarPedidos for ListarPedidosImpl {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use dominio_pedido::valores::Status;
     use dominio_pedido::{
-        modelo::{Pedido, PropsPedido},
-        repositorio::dobles::MockRepositorioPedido,
+        pruebas::madres::MadrePedido, repositorio::dobles::MockRepositorioPedido,
     };
     use puerto_nucleo::PeticionPagina;
 
     #[tokio::test]
     async fn deberia_devolver_la_pagina_de_pedidos() {
-        let entidades = vec![
-            Pedido::new(PropsPedido {
-                reference: "first".to_string(),
-                status: Status::Pending,
-            })
-            .unwrap(),
-            Pedido::new(PropsPedido {
-                reference: "second".to_string(),
-                status: Status::Pending,
-            })
-            .unwrap(),
-        ];
+        let entidades = MadrePedido::aleatorios(2);
         let mut repositorio_doble = MockRepositorioPedido::new();
         repositorio_doble
             .expect_buscar_todos()
@@ -951,20 +939,14 @@ impl ObtenerPedido for ObtenerPedidoImpl {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use dominio_pedido::valores::Status;
     use dominio_pedido::{
-        modelo::{IdPedido, Pedido, PropsPedido},
-        repositorio::dobles::MockRepositorioPedido,
+        modelo::IdPedido, pruebas::madres::MadrePedido, repositorio::dobles::MockRepositorioPedido,
     };
     use puerto_nucleo::ErrorRepositorio;
 
     #[tokio::test]
     async fn deberia_devolver_pedido_cuando_el_id_existe() {
-        let entidad = Pedido::new(PropsPedido {
-            reference: "example".to_string(),
-            status: Status::Pending,
-        })
-        .unwrap();
+        let entidad = MadrePedido::aleatorio();
         let id_entidad = entidad.id;
         let mut repositorio_doble = MockRepositorioPedido::new();
         repositorio_doble
@@ -978,8 +960,7 @@ mod tests {
             .ejecutar(ParamsObtenerPedido { id: id_entidad })
             .await;
 
-        assert!(resultado.is_ok());
-        assert_eq!(resultado.unwrap().reference, "example");
+        assert_eq!(resultado.unwrap().id, id_entidad);
     }
 
     #[tokio::test]
@@ -1206,22 +1187,20 @@ impl Pedido {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::pruebas::madres::MadrePedido;
 
     #[test]
     fn deberia_crear_pedido_cuando_los_campos_son_validos() {
-        let resultado = Pedido::new(PropsPedido {
-            reference: "example".to_string(),
-            status: Status::Pending,
-        });
-        assert_eq!(resultado.unwrap().reference, "example");
+        let resultado = Pedido::new(MadrePedido::new().construir_props());
+        assert_eq!(
+            resultado.unwrap().reference,
+            MadrePedido::new().construir_props().reference
+        );
     }
 
     #[test]
     fn deberia_rechazar_pedido_cuando_reference_es_una_cadena_vacia() {
-        let resultado = Pedido::new(PropsPedido {
-            reference: "".into(),
-            status: Status::Pending,
-        });
+        let resultado = Pedido::new(MadrePedido::new().con_reference_vacio().construir_props());
         assert!(resultado.is_err());
         assert_eq!(
             resultado.unwrap_err().to_string(),
@@ -1231,24 +1210,15 @@ mod tests {
 
     #[test]
     fn deberia_rechazar_pedido_cuando_reference_solo_tiene_espacios() {
-        let resultado = Pedido::new(PropsPedido {
-            reference: "   ".into(),
-            status: Status::Pending,
-        });
+        let resultado = Pedido::new(MadrePedido::new().con_reference("   ").construir_props());
         assert!(resultado.is_err());
     }
 
     #[test]
     fn deberia_rechazar_actualizar_pedido_cuando_reference_es_una_cadena_vacia() {
-        let mut entidad = Pedido::new(PropsPedido {
-            reference: "example".to_string(),
-            status: Status::Pending,
-        })
-        .unwrap();
-        let resultado = entidad.actualizar(PropsPedido {
-            reference: "".into(),
-            status: Status::Pending,
-        });
+        let mut entidad = MadrePedido::aleatorio();
+        let resultado =
+            entidad.actualizar(MadrePedido::new().con_reference_vacio().construir_props());
         assert_eq!(
             resultado.unwrap_err().to_string(),
             "pedido.validacion.reference_vacio"
@@ -1496,15 +1466,11 @@ impl RepositorioPedido for RepositorioPedidoEnMemoria {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use dominio_pedido::modelo::PropsPedido;
-    use dominio_pedido::valores::Status;
+    use dominio_pedido::pruebas::madres::MadrePedido;
 
+    /// Una entidad válida, con los valores de la madre.
     fn nuevo_pedido() -> Pedido {
-        Pedido::new(PropsPedido {
-            reference: "example".to_string(),
-            status: Status::Pending,
-        })
-        .unwrap()
+        MadrePedido::aleatorio()
     }
 
     #[tokio::test]

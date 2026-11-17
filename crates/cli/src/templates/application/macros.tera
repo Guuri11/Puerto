@@ -1,8 +1,4 @@
-{# Literales de test. `word`: el valor de los campos de texto ("example", "first", "updated", …). #}
-{# Un literal `Props…` de la entidad: tipos del dominio (objetos valor construidos, los enum en
-   su primera variante). #}
-{% macro props(fields, word) %}{% for f in fields %}            {{ f.name }}: {% if f.field_type == "String" and not f.is_enum_vo %}{% if f.is_vo %}{{ f.vo }}::new("{{ word }}".to_string()).expect("el literal de {{ f.vo }} es válido"){% else %}"{{ word }}".to_string(){% endif %}{% else %}{{ f.props_literal }}{% endif %},
-{% endfor %}{% endmacro props %}
-{# Un literal `Params…` de un caso de uso: solo primitivos. `empty` nombra el campo que va a "". #}
-{% macro params(fields, word, empty="") %}{% for f in fields %}            {{ f.name }}: {% if f.name == empty %}"".to_string(){% elif f.field_type == "String" %}"{% if f.is_enum_vo %}{{ f.first_variant }}{% else %}{{ word }}{% endif %}".to_string(){% else %}{{ f.params_literal }}{% endif %},
-{% endfor %}{% endmacro params %}
+{# Un literal `Params…` con los valores de la madre: `props` es `Madre<Entidad>::new().construir_props()`,
+   así que una regla nueva del modelo solo pide cambiar la madre. `empty` nombra el campo que va a "". #}
+{% macro params_madre(fields, empty="") %}{% for f in fields %}            {{ f.name }}: {% if f.name == empty %}"".to_string(){% else %}{{ f.from_props }}{% endif %},
+{% endfor %}{% endmacro params_madre %}

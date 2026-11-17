@@ -164,9 +164,10 @@ comando.
    lado. `generar caso-de-uso` deja la impl en `todo!()`, unos `Params` de relleno y un test marcado
    `#[ignore = "escribe este test"]` en `contextos/<c>/aplicacion/src/<accion>.rs`: quita el
    `ignore`, escribe el test y míralo fallar.
-4. **Verde.** Primero el dominio: los invariantes en el `new` del modelo o en un objeto valor
-   (`contextos/<c>/dominio/`); después los `Params`, el trait y la impl del caso de uso, en un solo
-   fichero.
+4. **Verde.** Primero el dominio: los invariantes en el `validar` del modelo (lo llaman `new` y
+   `actualizar`) o en un objeto valor (`contextos/<c>/dominio/`); si uno rechaza un valor por
+   defecto de la madre, cámbialo en la madre: los tests generados toman de ahí sus valores. Después
+   los `Params`, el trait y la impl del caso de uso, en un solo fichero.
 5. **El endpoint, API primero.** `generar caso-de-uso` pone el caso de uso en `Api<Entidad>` pero no
    añade ninguna ruta: escribe `dto.rs`, `respuestas.rs`, el brazo de `errores.rs` de cada error
    nuevo (con su test), después el handler en `rutas.rs` y un test de ruta por cada código de estado
@@ -372,16 +373,16 @@ impl ActualizarBillete for ActualizarBilleteImpl {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use dominio_billete::valores::State;
     use dominio_billete::{
-        modelo::{Billete, IdBillete, PropsBillete},
+        modelo::IdBillete, pruebas::madres::MadreBillete,
         repositorio::dobles::MockRepositorioBillete,
     };
 
     #[tokio::test]
     async fn deberia_actualizar_billete_cuando_los_parametros_son_validos() {
         // Preparar
-        let entidad = Billete::new(PropsBillete { state: State::Open }).unwrap();
+        let props = MadreBillete::new().construir_props();
+        let entidad = MadreBillete::aleatorio();
         let id_entidad = entidad.id;
         let mut repositorio_doble = MockRepositorioBillete::new();
         repositorio_doble
@@ -396,7 +397,7 @@ mod tests {
         let resultado = caso_de_uso
             .ejecutar(ParamsActualizarBillete {
                 id: id_entidad,
-                state: "Open".to_string(),
+                state: props.state.as_str().to_string(),
             })
             .await;
 
@@ -407,6 +408,7 @@ mod tests {
     #[tokio::test]
     async fn deberia_devolver_no_encontrado_cuando_billete_no_existe() {
         // Preparar
+        let props = MadreBillete::new().construir_props();
         let mut repositorio_doble = MockRepositorioBillete::new();
         repositorio_doble
             .expect_buscar_por_id()
@@ -419,7 +421,7 @@ mod tests {
         let resultado = caso_de_uso
             .ejecutar(ParamsActualizarBillete {
                 id: IdBillete::generar(),
-                state: "Open".to_string(),
+                state: props.state.as_str().to_string(),
             })
             .await;
 
@@ -494,15 +496,14 @@ impl BorrarBillete for BorrarBilleteImpl {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use dominio_billete::valores::State;
     use dominio_billete::{
-        modelo::{Billete, IdBillete, PropsBillete},
+        modelo::IdBillete, pruebas::madres::MadreBillete,
         repositorio::dobles::MockRepositorioBillete,
     };
 
     #[tokio::test]
     async fn deberia_hacer_borrado_logico_de_billete_cuando_el_id_existe() {
-        let entidad = Billete::new(PropsBillete { state: State::Open }).unwrap();
+        let entidad = MadreBillete::aleatorio();
         let id_entidad = entidad.id;
         let mut repositorio_doble = MockRepositorioBillete::new();
         repositorio_doble
@@ -598,12 +599,14 @@ impl CrearBillete for CrearBilleteImpl {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use dominio_billete::pruebas::madres::MadreBillete;
     use dominio_billete::repositorio::dobles::MockRepositorioBillete;
     use puerto_nucleo::ErrorRepositorio;
 
     #[tokio::test]
     async fn deberia_crear_billete_cuando_los_campos_son_validos() {
         // Preparar
+        let props = MadreBillete::new().construir_props();
         let mut repositorio_doble = MockRepositorioBillete::new();
         repositorio_doble.expect_guardar().returning(|_| Ok(()));
         let caso_de_uso = CrearBilleteImpl {
@@ -613,18 +616,22 @@ mod tests {
         // Actuar
         let resultado = caso_de_uso
             .ejecutar(ParamsCrearBillete {
-                state: "Open".to_string(),
+                state: props.state.as_str().to_string(),
             })
             .await;
 
         // Comprobar
         assert!(resultado.is_ok());
-        assert_eq!(resultado.unwrap().state.as_str(), "Open");
+        assert_eq!(
+            resultado.unwrap().state,
+            MadreBillete::new().construir_props().state
+        );
     }
 
     #[tokio::test]
     async fn deberia_devolver_duplicado_cuando_el_almacen_rechaza_un_duplicado() {
         // Preparar
+        let props = MadreBillete::new().construir_props();
         let mut repositorio_doble = MockRepositorioBillete::new();
         repositorio_doble
             .expect_guardar()
@@ -636,7 +643,7 @@ mod tests {
         // Actuar
         let resultado = caso_de_uso
             .ejecutar(ParamsCrearBillete {
-                state: "Open".to_string(),
+                state: props.state.as_str().to_string(),
             })
             .await;
 
@@ -734,19 +741,14 @@ impl ListarBilletes for ListarBilletesImpl {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use dominio_billete::valores::State;
     use dominio_billete::{
-        modelo::{Billete, PropsBillete},
-        repositorio::dobles::MockRepositorioBillete,
+        pruebas::madres::MadreBillete, repositorio::dobles::MockRepositorioBillete,
     };
     use puerto_nucleo::PeticionPagina;
 
     #[tokio::test]
     async fn deberia_devolver_la_pagina_de_billetes() {
-        let entidades = vec![
-            Billete::new(PropsBillete { state: State::Open }).unwrap(),
-            Billete::new(PropsBillete { state: State::Open }).unwrap(),
-        ];
+        let entidades = MadreBillete::aleatorios(2);
         let mut repositorio_doble = MockRepositorioBillete::new();
         repositorio_doble
             .expect_buscar_todos()
@@ -867,16 +869,15 @@ impl ObtenerBillete for ObtenerBilleteImpl {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use dominio_billete::valores::State;
     use dominio_billete::{
-        modelo::{Billete, IdBillete, PropsBillete},
+        modelo::IdBillete, pruebas::madres::MadreBillete,
         repositorio::dobles::MockRepositorioBillete,
     };
     use puerto_nucleo::ErrorRepositorio;
 
     #[tokio::test]
     async fn deberia_devolver_billete_cuando_el_id_existe() {
-        let entidad = Billete::new(PropsBillete { state: State::Open }).unwrap();
+        let entidad = MadreBillete::aleatorio();
         let id_entidad = entidad.id;
         let mut repositorio_doble = MockRepositorioBillete::new();
         repositorio_doble
@@ -890,7 +891,7 @@ mod tests {
             .ejecutar(ParamsObtenerBillete { id: id_entidad })
             .await;
 
-        assert!(resultado.is_ok());
+        assert_eq!(resultado.unwrap().id, id_entidad);
     }
 
     #[tokio::test]
@@ -1110,10 +1111,11 @@ impl Billete {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::pruebas::madres::MadreBillete;
 
     #[test]
     fn deberia_crear_billete_cuando_los_campos_son_validos() {
-        let resultado = Billete::new(PropsBillete { state: State::Open });
+        let resultado = Billete::new(MadreBillete::new().construir_props());
         assert!(resultado.is_ok());
     }
 
@@ -1339,11 +1341,11 @@ impl RepositorioBillete for RepositorioBilleteEnMemoria {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use dominio_billete::modelo::PropsBillete;
-    use dominio_billete::valores::State;
+    use dominio_billete::pruebas::madres::MadreBillete;
 
+    /// Una entidad válida, con los valores de la madre.
     fn nuevo_billete() -> Billete {
-        Billete::new(PropsBillete { state: State::Open }).unwrap()
+        MadreBillete::aleatorio()
     }
 
     #[tokio::test]

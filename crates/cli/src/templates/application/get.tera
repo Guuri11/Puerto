@@ -1,4 +1,4 @@
-{% import "application/macros.tera" as macros %}{% set required = fields | filter(attribute="required_string", value=true) %}{% set string_vos = fields | filter(attribute="string_vo", value=true) %}use std::sync::Arc;
+{% set required = fields | filter(attribute="required_string", value=true) %}{% set string_vos = fields | filter(attribute="string_vo", value=true) %}use std::sync::Arc;
 
 use async_trait::async_trait;
 
@@ -30,17 +30,16 @@ mod tests {
     use super::*;
 {% if actor %}    use puerto_nucleo::auth::dobles::MadrePrincipal;
 {% endif %}    use dominio_{{ snake }}::{
-        modelo::{{ "{" }}{{ pascal }}, Id{{ pascal }}, Props{{ pascal }}},
+        modelo::Id{{ pascal }},
+        pruebas::madres::Madre{{ pascal }},
         repositorio::dobles::MockRepositorio{{ pascal }},
     };
     use puerto_nucleo::ErrorRepositorio;
-{% for import in test_imports %}    use {{ import }};
-{% endfor %}
+
 
     #[tokio::test]
     async fn deberia_devolver_{{ snake }}_cuando_el_id_existe() {
-        let entidad = {{ pascal }}::new(Props{{ pascal }} {
-{{ macros::props(fields=fields, word="example") }}        }).unwrap();
+        let entidad = Madre{{ pascal }}::aleatorio();
         let id_entidad = entidad.id;
         let mut repositorio_doble = MockRepositorio{{ pascal }}::new();
         repositorio_doble
@@ -52,9 +51,7 @@ mod tests {
 
         let resultado = caso_de_uso.ejecutar(ParamsObtener{{ pascal }} { {% if actor %}actor: MadrePrincipal::aleatorio(), {% endif %}id: id_entidad }).await;
 
-        assert!(resultado.is_ok());{% if required %}
-        assert_eq!(resultado.unwrap().{{ required.0.name }}, "example");{% elif string_vos %}
-        assert_eq!(resultado.unwrap().{{ string_vos.0.name }}.valor(), "example");{% endif %}
+        assert_eq!(resultado.unwrap().id, id_entidad);
     }
 
     #[tokio::test]

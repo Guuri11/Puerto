@@ -1,8 +1,10 @@
 //! Las filas que necesitan los tests de Postgres —una entidad {{ snake }} válida y otra guardada—,
 //! para los tests de este crate y para los de los contextos que la referencian (ADR-0023 § 5 de
 //! Puerto).
-use dominio_{{ snake }}::modelo::{{ "{" }}{{ pascal }}, Props{{ pascal }}};
-{% if events %}use dominio_{{ snake }}::unit_of_work::UnitOfWorkFactory{{ pascal }};
+use dominio_{{ snake }}::modelo::{{ pascal }};
+{% if seeded %}use dominio_{{ snake }}::modelo::Props{{ pascal }};
+{% endif %}{% if seeded | length < fields | length %}use dominio_{{ snake }}::pruebas::madres::Madre{{ pascal }};
+{% endif %}{% if events %}use dominio_{{ snake }}::unit_of_work::UnitOfWorkFactory{{ pascal }};
 {% else %}use dominio_{{ snake }}::repositorio::Repositorio{{ pascal }};
 {% endif %}use sqlx::PgPool;
 {% for import in test_imports %}use {{ import }};
@@ -10,12 +12,15 @@ use dominio_{{ snake }}::modelo::{{ "{" }}{{ pascal }}, Props{{ pascal }}};
 {% if events %}use crate::unit_of_work::UnitOfWorkFactory{{ pascal }}Postgres;
 {% else %}use crate::repositorio::Repositorio{{ pascal }}Postgres;
 {% endif %}
-/// Una entidad {{ snake }} válida, sin guardar{% if seeds_references %}: antes siembra las filas que referencia{% endif %}.
+/// Una entidad {{ snake }} válida, sin guardar, con los valores de la madre{% if seeded %} salvo en los
+/// campos únicos (uno nuevo cada vez), las fechas (un segundo exacto, lo que Postgres guarda) y las
+/// referencias (una fila sembrada){% endif %}.
 pub {% if seeds_references %}async fn construir(pool: &PgPool){% else %}fn construir(){% endif %} -> {{ pascal }} {
-    {{ pascal }}::new(Props{{ pascal }} {
-{% for f in fields %}        {{ f.name }}: {{ f.seed_literal }},
-{% endfor %}    })
-    .unwrap()
+    {% if seeded %}{{ pascal }}::new(Props{{ pascal }} {
+{% for f in fields %}{% if f.name in seeded %}        {{ f.name }}: {{ f.seed_literal }},
+{% endif %}{% endfor %}{% if seeded | length < fields | length %}        ..Madre{{ pascal }}::new().construir_props()
+{% endif %}    })
+    .unwrap(){% else %}Madre{{ pascal }}::aleatorio(){% endif %}
 }
 {% if events %}
 /// Guarda la entidad a través de la unidad de trabajo: el repositorio solo lee.

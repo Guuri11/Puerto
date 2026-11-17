@@ -617,8 +617,9 @@ fn generate_update_use_case_impl_with_custom_fields() {
     assert!(result.contains(".actualizar(PropsProducto {"), "{result}");
     assert!(result.contains("title: params.title,"));
     assert!(result.contains("price: params.price,"));
-    assert!(!result.contains("trim().is_empty()"), "{result}");
-    assert!(!result.contains("entidad.title ="), "{result}");
+    let implementation = &result[..result.find("#[cfg(test)]").unwrap()];
+    assert!(!implementation.contains("trim().is_empty()"), "{result}");
+    assert!(!implementation.contains("entidad.title ="), "{result}");
 }
 
 #[test]
@@ -644,14 +645,9 @@ fn generate_update_use_case_impl_assigns_uuid_fields() {
 
     assert!(result.contains("name: params.name,"));
     assert!(result.contains("categoria_id: params.categoria_id,"));
-    // `Uuid` belongs to the test module (the impl names no primitive type); at file level it would
-    // be an unused import in a non-test build, which `-D warnings` rejects.
-    assert!(result.contains("    use uuid::Uuid;"));
-    assert!(
-        !result.contains("\nuse uuid::Uuid;"),
-        "primitive imports must not sit at file level in the impl"
-    );
-    assert_eq!(result.matches("use uuid::Uuid;").count(), 1);
+    // The impl names no primitive type and the tests write no literal (the mother's values): a
+    // `Uuid` import would be unused, which `-D warnings` rejects.
+    assert!(!result.contains("use uuid::Uuid;"), "{result}");
 }
 
 #[test]
@@ -677,9 +673,9 @@ fn generate_create_use_case_impl_passes_uuid_fields_to_props() {
 
     assert!(result.contains("categoria_id: params.categoria_id,"));
     assert!(result.contains("name: params.name,"));
-    // The generated test builds the params, so it needs `Uuid` — inside `mod tests`, once.
-    assert!(result.contains("            categoria_id: Uuid::new_v4(),"));
-    assert!(result.contains("    use uuid::Uuid;"));
+    // The generated test builds the params from the mother's props: no `Uuid` literal, no import.
+    assert!(result.contains("            categoria_id: props.categoria_id,"));
+    assert!(!result.contains("use uuid::Uuid;"));
     assert!(
         !result.contains("\nuse uuid::Uuid;"),
         "primitive imports must not sit at file level in the impl"
@@ -809,9 +805,7 @@ fn generate_get_use_case_impl_with_custom_fields() {
     assert!(result.contains("ParamsObtenerProducto"));
     assert!(result.contains("deberia_devolver_producto_cuando_el_id_existe"));
     assert!(result.contains("deberia_devolver_no_encontrado_cuando_el_id_no_existe"));
-    assert!(result.contains("Producto::new(PropsProducto"));
-    assert!(result.contains("title: \"example\".to_string(),"));
-    assert!(result.contains("price: 42,"));
+    assert!(result.contains("MadreProducto::aleatorio"));
     assert!(!result.contains("logger"));
 }
 
@@ -822,8 +816,7 @@ fn generate_get_use_case_impl_backward_compat_no_fields() {
     let result = generate_get_use_case_impl("Producto", "producto", &[], &[]).unwrap();
 
     assert!(result.contains("ObtenerProductoImpl"));
-    assert!(result.contains("Producto::new(PropsProducto"));
-    assert!(result.contains("nombre: \"example\".to_string(),"));
+    assert!(result.contains("MadreProducto::aleatorio"));
     assert!(result.contains("deberia_devolver_producto_cuando_el_id_existe"));
 }
 
@@ -849,12 +842,10 @@ fn generate_list_use_case_impl_with_custom_fields() {
     let result = generate_list_use_case_impl("Producto", "producto", &fields, &[]).unwrap();
 
     assert!(result.contains("ListarProductosImpl"));
-    assert!(result.contains("Producto::new(PropsProducto"));
+    assert!(result.contains("MadreProducto::aleatorio"));
     assert!(result.contains("deberia_devolver_la_pagina_de_productos"));
     assert!(result.contains("deberia_devolver_una_pagina_vacia_cuando_no_hay_productos"));
-    assert!(result.contains("title: \"first\".to_string(),"));
-    assert!(result.contains("title: \"second\".to_string(),"));
-    assert!(result.contains("price: 42,"));
+    assert!(result.contains("MadreProducto::aleatorios(2)"));
     assert!(!result.contains("logger"));
 }
 
@@ -880,11 +871,9 @@ fn generate_delete_use_case_impl_with_custom_fields() {
     let result = generate_delete_use_case_impl("Producto", "producto", &fields, &[]).unwrap();
 
     assert!(result.contains("BorrarProductoImpl"));
-    assert!(result.contains("Producto::new(PropsProducto"));
+    assert!(result.contains("MadreProducto::aleatorio"));
     assert!(result.contains("deberia_hacer_borrado_logico_de_producto_cuando_el_id_existe"));
     assert!(result.contains("deberia_devolver_no_encontrado_cuando_producto_no_existe"));
-    assert!(result.contains("title: \"example\".to_string(),"));
-    assert!(result.contains("price: 42,"));
     assert!(!result.contains("logger"));
 }
 
@@ -914,8 +903,9 @@ fn generate_create_use_case_impl_with_custom_fields_has_tests() {
     assert!(result.contains("deberia_devolver_error_cuando_title_es_una_cadena_vacia"));
     assert!(!result.contains("logger"));
     assert!(result.contains("MockRepositorioProducto"));
-    assert!(result.contains("title: \"example\".to_string(),"));
-    assert!(result.contains("price: 42,"));
+    assert!(result.contains("let props = MadreProducto::new().construir_props();"));
+    assert!(result.contains("title: props.title,"));
+    assert!(result.contains("price: props.price,"));
 }
 
 #[test]
@@ -943,11 +933,11 @@ fn generate_update_use_case_impl_with_custom_fields_has_tests() {
     assert!(result.contains("deberia_actualizar_producto_cuando_los_parametros_son_validos"));
     assert!(result.contains("deberia_devolver_no_encontrado_cuando_producto_no_existe"));
     assert!(result.contains("deberia_devolver_error_cuando_title_es_una_cadena_vacia"));
-    assert!(result.contains("Producto::new(PropsProducto"));
+    assert!(result.contains("MadreProducto::aleatorio"));
     assert!(!result.contains("logger"));
-    assert!(result.contains("title: \"original\".to_string(),"));
-    assert!(result.contains("title: \"updated\".to_string(),"));
-    assert!(result.contains("price: 42,"));
+    assert!(result.contains("entidad.title = \"original\".to_string();"));
+    assert!(result.contains("title: props.title,"));
+    assert!(result.contains("price: props.price,"));
 }
 
 #[test]
@@ -986,15 +976,14 @@ fn write_application_files_with_fields_generates_dynamic_get_list_delete() {
             .unwrap();
     assert!(get_content.contains("ObtenerProductoImpl"));
     assert!(get_content.contains("deberia_devolver_producto_cuando_el_id_existe"));
-    assert!(get_content.contains("Producto::new(PropsProducto"));
-    assert!(get_content.contains("title: \"example\".to_string(),"));
+    assert!(get_content.contains("MadreProducto::aleatorio"));
 
     let list_content =
         fs::read_to_string(dir.join("contextos/producto/aplicacion/src/listar_productos.rs"))
             .unwrap();
     assert!(list_content.contains("ListarProductosImpl"));
     assert!(list_content.contains("deberia_devolver_la_pagina_de_productos"));
-    assert!(list_content.contains("title: \"first\".to_string(),"));
+    assert!(list_content.contains("MadreProducto::aleatorios(2)"));
 
     let delete_content =
         fs::read_to_string(dir.join("contextos/producto/aplicacion/src/borrar_producto.rs"))
@@ -1003,7 +992,7 @@ fn write_application_files_with_fields_generates_dynamic_get_list_delete() {
     assert!(
         delete_content.contains("deberia_hacer_borrado_logico_de_producto_cuando_el_id_existe")
     );
-    assert!(delete_content.contains("Producto::new(PropsProducto"));
+    assert!(delete_content.contains("MadreProducto::aleatorio"));
 
     cleanup(&dir);
 }
@@ -1203,8 +1192,9 @@ fn generate_crud_infra_db_repository_backward_compat() {
         false,
     )
     .unwrap();
-    assert!(seed.contains("PropsProducto"), "{seed}");
-    assert!(seed.contains("nombre: \"example\".to_string()"), "{seed}");
+    // Nothing a stored row needs of its own: the mother's entity as it is.
+    assert!(seed.contains("MadreProducto::aleatorio()"), "{seed}");
+    assert!(!seed.contains("PropsProducto"), "{seed}");
 }
 
 #[test]
@@ -1242,8 +1232,8 @@ fn generate_crud_infra_db_repository_with_custom_fields() {
         false,
     )
     .unwrap();
-    assert!(seed.contains("title: \"example\".to_string()"), "{seed}");
-    assert!(seed.contains("price: 42"), "{seed}");
+    assert!(seed.contains("MadreProducto::aleatorio()"), "{seed}");
+    assert!(!seed.contains("price: 42"), "{seed}");
     assert!(result.contains("assert_eq!(encontrado.title, entidad.title)"));
     assert!(result.contains("assert_eq!(encontrado.price, entidad.price)"));
     assert!(result.contains("entidad.title = \"updated\".to_string()"));
@@ -1574,10 +1564,16 @@ fn pg_repository_tests_import_what_their_seed_names() {
     )
     .unwrap();
 
+    // The timestamp is the seed's own whole second; the enum comes from the mother, unnamed here.
     assert!(
-        repo.contains("use dominio_producto::valores::Status;"),
+        repo.contains("published_at: chrono::DateTime::from_timestamp(1_700_000_000, 0).unwrap(),"),
         "{repo}"
     );
+    assert!(
+        repo.contains("..MadreProducto::new().construir_props()"),
+        "{repo}"
+    );
+    assert!(!repo.contains("valores::Status"), "{repo}");
     assert!(
         !repo.contains("Utc::now()"),
         "a ns-precision timestamp cannot round-trip Postgres"

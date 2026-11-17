@@ -164,9 +164,10 @@ comando.
    lado. `generar caso-de-uso` deja la impl en `todo!()`, unos `Params` de relleno y un test marcado
    `#[ignore = "escribe este test"]` en `contextos/<c>/aplicacion/src/<accion>.rs`: quita el
    `ignore`, escribe el test y míralo fallar.
-4. **Verde.** Primero el dominio: los invariantes en el `new` del modelo o en un objeto valor
-   (`contextos/<c>/dominio/`); después los `Params`, el trait y la impl del caso de uso, en un solo
-   fichero.
+4. **Verde.** Primero el dominio: los invariantes en el `validar` del modelo (lo llaman `new` y
+   `actualizar`) o en un objeto valor (`contextos/<c>/dominio/`); si uno rechaza un valor por
+   defecto de la madre, cámbialo en la madre: los tests generados toman de ahí sus valores. Después
+   los `Params`, el trait y la impl del caso de uso, en un solo fichero.
 5. **El endpoint, API primero.** `generar caso-de-uso` pone el caso de uso en `Api<Entidad>` pero no
    añade ninguna ruta: escribe `dto.rs`, `respuestas.rs`, el brazo de `errores.rs` de cada error
    nuevo (con su test), después el handler en `rutas.rs` y un test de ruta por cada código de estado
@@ -404,33 +405,17 @@ impl ActualizarCase for ActualizarCaseImpl {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use chrono::Utc;
-    use dominio_case::valores::Status;
     use dominio_case::{
-        modelo::{Case, IdCase, PropsCase},
-        repositorio::dobles::MockRepositorioCase,
+        modelo::IdCase, pruebas::madres::MadreCase, repositorio::dobles::MockRepositorioCase,
     };
-    use std::collections::HashMap;
 
     #[tokio::test]
     async fn deberia_actualizar_case_cuando_los_parametros_son_validos() {
         // Preparar
-        let entidad = Case::new(PropsCase {
-            title: "original".to_string(),
-            summary: None,
-            views: None,
-            ratio: None,
-            urgent: None,
-            due_at: None,
-            opened_at: Utc::now(),
-            tags: vec![],
-            scores: vec![],
-            meta: HashMap::new(),
-            status: Status::Open,
-            middle_name: None,
-            labels: vec![],
-        })
-        .unwrap();
+        let props = MadreCase::new().construir_props();
+        let mut entidad = MadreCase::aleatorio();
+        // Lo que estaba guardado, distinto de lo que trae la actualización.
+        entidad.title = "original".to_string();
         let id_entidad = entidad.id;
         let mut repositorio_doble = MockRepositorioCase::new();
         repositorio_doble
@@ -445,29 +430,37 @@ mod tests {
         let resultado = caso_de_uso
             .ejecutar(ParamsActualizarCase {
                 id: id_entidad,
-                title: "updated".to_string(),
-                summary: None,
-                views: None,
-                ratio: None,
-                urgent: None,
-                due_at: None,
-                opened_at: Utc::now(),
-                tags: vec![],
-                scores: vec![],
-                meta: HashMap::new(),
-                status: "Open".to_string(),
-                middle_name: None,
-                labels: vec![],
+                title: props.title,
+                summary: props.summary,
+                views: props.views,
+                ratio: props.ratio,
+                urgent: props.urgent,
+                due_at: props.due_at,
+                opened_at: props.opened_at,
+                tags: props.tags,
+                scores: props.scores,
+                meta: props.meta,
+                status: props.status.as_str().to_string(),
+                middle_name: props.middle_name.as_ref().map(|v| v.valor().to_string()),
+                labels: props
+                    .labels
+                    .iter()
+                    .map(|v| v.valor().to_string())
+                    .collect::<Vec<_>>(),
             })
             .await;
 
         // Comprobar
-        assert_eq!(resultado.unwrap().title, "updated");
+        assert_eq!(
+            resultado.unwrap().title,
+            MadreCase::new().construir_props().title
+        );
     }
 
     #[tokio::test]
     async fn deberia_devolver_no_encontrado_cuando_case_no_existe() {
         // Preparar
+        let props = MadreCase::new().construir_props();
         let mut repositorio_doble = MockRepositorioCase::new();
         repositorio_doble
             .expect_buscar_por_id()
@@ -480,19 +473,23 @@ mod tests {
         let resultado = caso_de_uso
             .ejecutar(ParamsActualizarCase {
                 id: IdCase::generar(),
-                title: "new".to_string(),
-                summary: None,
-                views: None,
-                ratio: None,
-                urgent: None,
-                due_at: None,
-                opened_at: Utc::now(),
-                tags: vec![],
-                scores: vec![],
-                meta: HashMap::new(),
-                status: "Open".to_string(),
-                middle_name: None,
-                labels: vec![],
+                title: props.title,
+                summary: props.summary,
+                views: props.views,
+                ratio: props.ratio,
+                urgent: props.urgent,
+                due_at: props.due_at,
+                opened_at: props.opened_at,
+                tags: props.tags,
+                scores: props.scores,
+                meta: props.meta,
+                status: props.status.as_str().to_string(),
+                middle_name: props.middle_name.as_ref().map(|v| v.valor().to_string()),
+                labels: props
+                    .labels
+                    .iter()
+                    .map(|v| v.valor().to_string())
+                    .collect::<Vec<_>>(),
             })
             .await;
 
@@ -504,22 +501,8 @@ mod tests {
     #[tokio::test]
     async fn deberia_devolver_error_cuando_title_es_una_cadena_vacia() {
         // Preparar
-        let entidad = Case::new(PropsCase {
-            title: "original".to_string(),
-            summary: None,
-            views: None,
-            ratio: None,
-            urgent: None,
-            due_at: None,
-            opened_at: Utc::now(),
-            tags: vec![],
-            scores: vec![],
-            meta: HashMap::new(),
-            status: Status::Open,
-            middle_name: None,
-            labels: vec![],
-        })
-        .unwrap();
+        let props = MadreCase::new().construir_props();
+        let entidad = MadreCase::aleatorio();
         let id_entidad = entidad.id;
         let mut repositorio_doble = MockRepositorioCase::new();
         repositorio_doble
@@ -534,18 +517,22 @@ mod tests {
             .ejecutar(ParamsActualizarCase {
                 id: id_entidad,
                 title: "".to_string(),
-                summary: None,
-                views: None,
-                ratio: None,
-                urgent: None,
-                due_at: None,
-                opened_at: Utc::now(),
-                tags: vec![],
-                scores: vec![],
-                meta: HashMap::new(),
-                status: "Open".to_string(),
-                middle_name: None,
-                labels: vec![],
+                summary: props.summary,
+                views: props.views,
+                ratio: props.ratio,
+                urgent: props.urgent,
+                due_at: props.due_at,
+                opened_at: props.opened_at,
+                tags: props.tags,
+                scores: props.scores,
+                meta: props.meta,
+                status: props.status.as_str().to_string(),
+                middle_name: props.middle_name.as_ref().map(|v| v.valor().to_string()),
+                labels: props
+                    .labels
+                    .iter()
+                    .map(|v| v.valor().to_string())
+                    .collect::<Vec<_>>(),
             })
             .await;
 
@@ -624,32 +611,13 @@ impl BorrarCase for BorrarCaseImpl {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use chrono::Utc;
-    use dominio_case::valores::Status;
     use dominio_case::{
-        modelo::{Case, IdCase, PropsCase},
-        repositorio::dobles::MockRepositorioCase,
+        modelo::IdCase, pruebas::madres::MadreCase, repositorio::dobles::MockRepositorioCase,
     };
-    use std::collections::HashMap;
 
     #[tokio::test]
     async fn deberia_hacer_borrado_logico_de_case_cuando_el_id_existe() {
-        let entidad = Case::new(PropsCase {
-            title: "example".to_string(),
-            summary: None,
-            views: None,
-            ratio: None,
-            urgent: None,
-            due_at: None,
-            opened_at: Utc::now(),
-            tags: vec![],
-            scores: vec![],
-            meta: HashMap::new(),
-            status: Status::Open,
-            middle_name: None,
-            labels: vec![],
-        })
-        .unwrap();
+        let entidad = MadreCase::aleatorio();
         let id_entidad = entidad.id;
         let mut repositorio_doble = MockRepositorioCase::new();
         repositorio_doble
@@ -779,14 +747,14 @@ impl CrearCase for CrearCaseImpl {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use chrono::Utc;
+    use dominio_case::pruebas::madres::MadreCase;
     use dominio_case::repositorio::dobles::MockRepositorioCase;
     use puerto_nucleo::ErrorRepositorio;
-    use std::collections::HashMap;
 
     #[tokio::test]
     async fn deberia_crear_case_cuando_los_campos_son_validos() {
         // Preparar
+        let props = MadreCase::new().construir_props();
         let mut repositorio_doble = MockRepositorioCase::new();
         repositorio_doble.expect_guardar().returning(|_| Ok(()));
         let caso_de_uso = CrearCaseImpl {
@@ -796,30 +764,38 @@ mod tests {
         // Actuar
         let resultado = caso_de_uso
             .ejecutar(ParamsCrearCase {
-                title: "example".to_string(),
-                summary: None,
-                views: None,
-                ratio: None,
-                urgent: None,
-                due_at: None,
-                opened_at: Utc::now(),
-                tags: vec![],
-                scores: vec![],
-                meta: HashMap::new(),
-                status: "Open".to_string(),
-                middle_name: None,
-                labels: vec![],
+                title: props.title,
+                summary: props.summary,
+                views: props.views,
+                ratio: props.ratio,
+                urgent: props.urgent,
+                due_at: props.due_at,
+                opened_at: props.opened_at,
+                tags: props.tags,
+                scores: props.scores,
+                meta: props.meta,
+                status: props.status.as_str().to_string(),
+                middle_name: props.middle_name.as_ref().map(|v| v.valor().to_string()),
+                labels: props
+                    .labels
+                    .iter()
+                    .map(|v| v.valor().to_string())
+                    .collect::<Vec<_>>(),
             })
             .await;
 
         // Comprobar
         assert!(resultado.is_ok());
-        assert_eq!(resultado.unwrap().title, "example");
+        assert_eq!(
+            resultado.unwrap().title,
+            MadreCase::new().construir_props().title
+        );
     }
 
     #[tokio::test]
     async fn deberia_devolver_duplicado_cuando_el_almacen_rechaza_un_duplicado() {
         // Preparar
+        let props = MadreCase::new().construir_props();
         let mut repositorio_doble = MockRepositorioCase::new();
         repositorio_doble
             .expect_guardar()
@@ -831,19 +807,23 @@ mod tests {
         // Actuar
         let resultado = caso_de_uso
             .ejecutar(ParamsCrearCase {
-                title: "example".to_string(),
-                summary: None,
-                views: None,
-                ratio: None,
-                urgent: None,
-                due_at: None,
-                opened_at: Utc::now(),
-                tags: vec![],
-                scores: vec![],
-                meta: HashMap::new(),
-                status: "Open".to_string(),
-                middle_name: None,
-                labels: vec![],
+                title: props.title,
+                summary: props.summary,
+                views: props.views,
+                ratio: props.ratio,
+                urgent: props.urgent,
+                due_at: props.due_at,
+                opened_at: props.opened_at,
+                tags: props.tags,
+                scores: props.scores,
+                meta: props.meta,
+                status: props.status.as_str().to_string(),
+                middle_name: props.middle_name.as_ref().map(|v| v.valor().to_string()),
+                labels: props
+                    .labels
+                    .iter()
+                    .map(|v| v.valor().to_string())
+                    .collect::<Vec<_>>(),
             })
             .await;
 
@@ -855,6 +835,7 @@ mod tests {
     #[tokio::test]
     async fn deberia_devolver_error_cuando_title_es_una_cadena_vacia() {
         // Preparar
+        let props = MadreCase::new().construir_props();
         let repositorio_doble = MockRepositorioCase::new();
         let caso_de_uso = CrearCaseImpl {
             repositorio: Arc::new(repositorio_doble),
@@ -864,18 +845,22 @@ mod tests {
         let resultado = caso_de_uso
             .ejecutar(ParamsCrearCase {
                 title: "".to_string(),
-                summary: None,
-                views: None,
-                ratio: None,
-                urgent: None,
-                due_at: None,
-                opened_at: Utc::now(),
-                tags: vec![],
-                scores: vec![],
-                meta: HashMap::new(),
-                status: "Open".to_string(),
-                middle_name: None,
-                labels: vec![],
+                summary: props.summary,
+                views: props.views,
+                ratio: props.ratio,
+                urgent: props.urgent,
+                due_at: props.due_at,
+                opened_at: props.opened_at,
+                tags: props.tags,
+                scores: props.scores,
+                meta: props.meta,
+                status: props.status.as_str().to_string(),
+                middle_name: props.middle_name.as_ref().map(|v| v.valor().to_string()),
+                labels: props
+                    .labels
+                    .iter()
+                    .map(|v| v.valor().to_string())
+                    .collect::<Vec<_>>(),
             })
             .await;
 
@@ -890,6 +875,7 @@ mod tests {
     #[tokio::test]
     async fn deberia_devolver_error_cuando_status_es_una_cadena_vacia() {
         // Preparar
+        let props = MadreCase::new().construir_props();
         let repositorio_doble = MockRepositorioCase::new();
         let caso_de_uso = CrearCaseImpl {
             repositorio: Arc::new(repositorio_doble),
@@ -898,19 +884,23 @@ mod tests {
         // Actuar
         let resultado = caso_de_uso
             .ejecutar(ParamsCrearCase {
-                title: "example".to_string(),
-                summary: None,
-                views: None,
-                ratio: None,
-                urgent: None,
-                due_at: None,
-                opened_at: Utc::now(),
-                tags: vec![],
-                scores: vec![],
-                meta: HashMap::new(),
+                title: props.title,
+                summary: props.summary,
+                views: props.views,
+                ratio: props.ratio,
+                urgent: props.urgent,
+                due_at: props.due_at,
+                opened_at: props.opened_at,
+                tags: props.tags,
+                scores: props.scores,
+                meta: props.meta,
                 status: "".to_string(),
-                middle_name: None,
-                labels: vec![],
+                middle_name: props.middle_name.as_ref().map(|v| v.valor().to_string()),
+                labels: props
+                    .labels
+                    .iter()
+                    .map(|v| v.valor().to_string())
+                    .collect::<Vec<_>>(),
             })
             .await;
 
@@ -984,51 +974,12 @@ impl ListarCases for ListarCasesImpl {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use chrono::Utc;
-    use dominio_case::valores::Status;
-    use dominio_case::{
-        modelo::{Case, PropsCase},
-        repositorio::dobles::MockRepositorioCase,
-    };
+    use dominio_case::{pruebas::madres::MadreCase, repositorio::dobles::MockRepositorioCase};
     use puerto_nucleo::PeticionPagina;
-    use std::collections::HashMap;
 
     #[tokio::test]
     async fn deberia_devolver_la_pagina_de_cases() {
-        let entidades = vec![
-            Case::new(PropsCase {
-                title: "first".to_string(),
-                summary: None,
-                views: None,
-                ratio: None,
-                urgent: None,
-                due_at: None,
-                opened_at: Utc::now(),
-                tags: vec![],
-                scores: vec![],
-                meta: HashMap::new(),
-                status: Status::Open,
-                middle_name: None,
-                labels: vec![],
-            })
-            .unwrap(),
-            Case::new(PropsCase {
-                title: "second".to_string(),
-                summary: None,
-                views: None,
-                ratio: None,
-                urgent: None,
-                due_at: None,
-                opened_at: Utc::now(),
-                tags: vec![],
-                scores: vec![],
-                meta: HashMap::new(),
-                status: Status::Open,
-                middle_name: None,
-                labels: vec![],
-            })
-            .unwrap(),
-        ];
+        let entidades = MadreCase::aleatorios(2);
         let mut repositorio_doble = MockRepositorioCase::new();
         repositorio_doble
             .expect_buscar_todos()
@@ -1147,33 +1098,14 @@ impl ObtenerCase for ObtenerCaseImpl {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use chrono::Utc;
-    use dominio_case::valores::Status;
     use dominio_case::{
-        modelo::{Case, IdCase, PropsCase},
-        repositorio::dobles::MockRepositorioCase,
+        modelo::IdCase, pruebas::madres::MadreCase, repositorio::dobles::MockRepositorioCase,
     };
     use puerto_nucleo::ErrorRepositorio;
-    use std::collections::HashMap;
 
     #[tokio::test]
     async fn deberia_devolver_case_cuando_el_id_existe() {
-        let entidad = Case::new(PropsCase {
-            title: "example".to_string(),
-            summary: None,
-            views: None,
-            ratio: None,
-            urgent: None,
-            due_at: None,
-            opened_at: Utc::now(),
-            tags: vec![],
-            scores: vec![],
-            meta: HashMap::new(),
-            status: Status::Open,
-            middle_name: None,
-            labels: vec![],
-        })
-        .unwrap();
+        let entidad = MadreCase::aleatorio();
         let id_entidad = entidad.id;
         let mut repositorio_doble = MockRepositorioCase::new();
         repositorio_doble
@@ -1187,8 +1119,7 @@ mod tests {
             .ejecutar(ParamsObtenerCase { id: id_entidad })
             .await;
 
-        assert!(resultado.is_ok());
-        assert_eq!(resultado.unwrap().title, "example");
+        assert_eq!(resultado.unwrap().id, id_entidad);
     }
 
     #[tokio::test]
@@ -1466,44 +1397,20 @@ impl Case {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::pruebas::madres::MadreCase;
 
     #[test]
     fn deberia_crear_case_cuando_los_campos_son_validos() {
-        let resultado = Case::new(PropsCase {
-            title: "example".to_string(),
-            summary: None,
-            views: None,
-            ratio: None,
-            urgent: None,
-            due_at: None,
-            opened_at: Utc::now(),
-            tags: vec![],
-            scores: vec![],
-            meta: HashMap::new(),
-            status: Status::Open,
-            middle_name: None,
-            labels: vec![],
-        });
-        assert_eq!(resultado.unwrap().title, "example");
+        let resultado = Case::new(MadreCase::new().construir_props());
+        assert_eq!(
+            resultado.unwrap().title,
+            MadreCase::new().construir_props().title
+        );
     }
 
     #[test]
     fn deberia_rechazar_case_cuando_title_es_una_cadena_vacia() {
-        let resultado = Case::new(PropsCase {
-            title: "".into(),
-            summary: None,
-            views: None,
-            ratio: None,
-            urgent: None,
-            due_at: None,
-            opened_at: Utc::now(),
-            tags: vec![],
-            scores: vec![],
-            meta: HashMap::new(),
-            status: Status::Open,
-            middle_name: None,
-            labels: vec![],
-        });
+        let resultado = Case::new(MadreCase::new().con_title_vacio().construir_props());
         assert!(resultado.is_err());
         assert_eq!(
             resultado.unwrap_err().to_string(),
@@ -1513,57 +1420,14 @@ mod tests {
 
     #[test]
     fn deberia_rechazar_case_cuando_title_solo_tiene_espacios() {
-        let resultado = Case::new(PropsCase {
-            title: "   ".into(),
-            summary: None,
-            views: None,
-            ratio: None,
-            urgent: None,
-            due_at: None,
-            opened_at: Utc::now(),
-            tags: vec![],
-            scores: vec![],
-            meta: HashMap::new(),
-            status: Status::Open,
-            middle_name: None,
-            labels: vec![],
-        });
+        let resultado = Case::new(MadreCase::new().con_title("   ").construir_props());
         assert!(resultado.is_err());
     }
 
     #[test]
     fn deberia_rechazar_actualizar_case_cuando_title_es_una_cadena_vacia() {
-        let mut entidad = Case::new(PropsCase {
-            title: "example".to_string(),
-            summary: None,
-            views: None,
-            ratio: None,
-            urgent: None,
-            due_at: None,
-            opened_at: Utc::now(),
-            tags: vec![],
-            scores: vec![],
-            meta: HashMap::new(),
-            status: Status::Open,
-            middle_name: None,
-            labels: vec![],
-        })
-        .unwrap();
-        let resultado = entidad.actualizar(PropsCase {
-            title: "".into(),
-            summary: None,
-            views: None,
-            ratio: None,
-            urgent: None,
-            due_at: None,
-            opened_at: Utc::now(),
-            tags: vec![],
-            scores: vec![],
-            meta: HashMap::new(),
-            status: Status::Open,
-            middle_name: None,
-            labels: vec![],
-        });
+        let mut entidad = MadreCase::aleatorio();
+        let resultado = entidad.actualizar(MadreCase::new().con_title_vacio().construir_props());
         assert_eq!(
             resultado.unwrap_err().to_string(),
             "case.validacion.title_vacio"
@@ -1944,23 +1808,14 @@ impl RepositorioCase for RepositorioCaseEnMemoria {
 mod tests {
     use super::*;
     use dominio_case::modelo::PropsCase;
-    use dominio_case::valores::Status;
+    use dominio_case::pruebas::madres::MadreCase;
 
+    /// Una entidad válida, con los valores de la madre salvo en los campos únicos (uno
+    /// nuevo cada vez) y las fechas (un segundo exacto).
     fn nuevo_case() -> Case {
         Case::new(PropsCase {
-            title: "example".to_string(),
-            summary: None,
-            views: None,
-            ratio: None,
-            urgent: None,
-            due_at: None,
             opened_at: chrono::DateTime::from_timestamp(1_700_000_000, 0).unwrap(),
-            tags: vec![],
-            scores: vec![],
-            meta: std::collections::HashMap::new(),
-            status: Status::Open,
-            middle_name: None,
-            labels: vec![],
+            ..MadreCase::new().construir_props()
         })
         .unwrap()
     }

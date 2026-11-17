@@ -164,9 +164,10 @@ comando.
    lado. `generar caso-de-uso` deja la impl en `todo!()`, unos `Params` de relleno y un test marcado
    `#[ignore = "escribe este test"]` en `contextos/<c>/aplicacion/src/<accion>.rs`: quita el
    `ignore`, escribe el test y míralo fallar.
-4. **Verde.** Primero el dominio: los invariantes en el `new` del modelo o en un objeto valor
-   (`contextos/<c>/dominio/`); después los `Params`, el trait y la impl del caso de uso, en un solo
-   fichero.
+4. **Verde.** Primero el dominio: los invariantes en el `validar` del modelo (lo llaman `new` y
+   `actualizar`) o en un objeto valor (`contextos/<c>/dominio/`); si uno rechaza un valor por
+   defecto de la madre, cámbialo en la madre: los tests generados toman de ahí sus valores. Después
+   los `Params`, el trait y la impl del caso de uso, en un solo fichero.
 5. **El endpoint, API primero.** `generar caso-de-uso` pone el caso de uso en `Api<Entidad>` pero no
    añade ninguna ruta: escribe `dto.rs`, `respuestas.rs`, el brazo de `errores.rs` de cada error
    nuevo (con su test), después el handler en `rutas.rs` y un test de ruta por cada código de estado
@@ -376,23 +377,16 @@ impl ActualizarArticulo for ActualizarArticuloImpl {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use dominio_articulo::valores::Name;
-    use dominio_articulo::valores::Sku;
-    use dominio_articulo::valores::Weight;
     use dominio_articulo::{
-        modelo::{Articulo, IdArticulo, PropsArticulo},
+        modelo::IdArticulo, pruebas::madres::MadreArticulo,
         repositorio::dobles::MockRepositorioArticulo,
     };
 
     #[tokio::test]
     async fn deberia_actualizar_articulo_cuando_los_parametros_son_validos() {
         // Preparar
-        let entidad = Articulo::new(PropsArticulo {
-            name: Name::new("original".to_string()).expect("el literal de Name es válido"),
-            sku: Sku::new("original".to_string()).expect("el literal de Sku es válido"),
-            weight: Weight::new(42).expect("Weight::new rechazó el valor de ejemplo"),
-        })
-        .unwrap();
+        let props = MadreArticulo::new().construir_props();
+        let entidad = MadreArticulo::aleatorio();
         let id_entidad = entidad.id;
         let mut repositorio_doble = MockRepositorioArticulo::new();
         repositorio_doble
@@ -407,19 +401,20 @@ mod tests {
         let resultado = caso_de_uso
             .ejecutar(ParamsActualizarArticulo {
                 id: id_entidad,
-                name: "updated".to_string(),
-                sku: "updated".to_string(),
-                weight: 42,
+                name: props.name.valor().to_string(),
+                sku: props.sku.valor().to_string(),
+                weight: props.weight.valor(),
             })
             .await;
 
         // Comprobar
-        assert_eq!(resultado.unwrap().name.valor(), "updated");
+        assert!(resultado.is_ok());
     }
 
     #[tokio::test]
     async fn deberia_devolver_no_encontrado_cuando_articulo_no_existe() {
         // Preparar
+        let props = MadreArticulo::new().construir_props();
         let mut repositorio_doble = MockRepositorioArticulo::new();
         repositorio_doble
             .expect_buscar_por_id()
@@ -432,9 +427,9 @@ mod tests {
         let resultado = caso_de_uso
             .ejecutar(ParamsActualizarArticulo {
                 id: IdArticulo::generar(),
-                name: "new".to_string(),
-                sku: "new".to_string(),
-                weight: 42,
+                name: props.name.valor().to_string(),
+                sku: props.sku.valor().to_string(),
+                weight: props.weight.valor(),
             })
             .await;
 
@@ -446,12 +441,8 @@ mod tests {
     #[tokio::test]
     async fn deberia_devolver_error_cuando_name_es_una_cadena_vacia() {
         // Preparar
-        let entidad = Articulo::new(PropsArticulo {
-            name: Name::new("original".to_string()).expect("el literal de Name es válido"),
-            sku: Sku::new("original".to_string()).expect("el literal de Sku es válido"),
-            weight: Weight::new(42).expect("Weight::new rechazó el valor de ejemplo"),
-        })
-        .unwrap();
+        let props = MadreArticulo::new().construir_props();
+        let entidad = MadreArticulo::aleatorio();
         let id_entidad = entidad.id;
         let mut repositorio_doble = MockRepositorioArticulo::new();
         repositorio_doble
@@ -466,8 +457,8 @@ mod tests {
             .ejecutar(ParamsActualizarArticulo {
                 id: id_entidad,
                 name: "".to_string(),
-                sku: "updated".to_string(),
-                weight: 42,
+                sku: props.sku.valor().to_string(),
+                weight: props.weight.valor(),
             })
             .await;
 
@@ -479,12 +470,8 @@ mod tests {
     #[tokio::test]
     async fn deberia_devolver_error_cuando_sku_es_una_cadena_vacia() {
         // Preparar
-        let entidad = Articulo::new(PropsArticulo {
-            name: Name::new("original".to_string()).expect("el literal de Name es válido"),
-            sku: Sku::new("original".to_string()).expect("el literal de Sku es válido"),
-            weight: Weight::new(42).expect("Weight::new rechazó el valor de ejemplo"),
-        })
-        .unwrap();
+        let props = MadreArticulo::new().construir_props();
+        let entidad = MadreArticulo::aleatorio();
         let id_entidad = entidad.id;
         let mut repositorio_doble = MockRepositorioArticulo::new();
         repositorio_doble
@@ -498,9 +485,9 @@ mod tests {
         let resultado = caso_de_uso
             .ejecutar(ParamsActualizarArticulo {
                 id: id_entidad,
-                name: "updated".to_string(),
+                name: props.name.valor().to_string(),
                 sku: "".to_string(),
-                weight: 42,
+                weight: props.weight.valor(),
             })
             .await;
 
@@ -575,22 +562,14 @@ impl BorrarArticulo for BorrarArticuloImpl {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use dominio_articulo::valores::Name;
-    use dominio_articulo::valores::Sku;
-    use dominio_articulo::valores::Weight;
     use dominio_articulo::{
-        modelo::{Articulo, IdArticulo, PropsArticulo},
+        modelo::IdArticulo, pruebas::madres::MadreArticulo,
         repositorio::dobles::MockRepositorioArticulo,
     };
 
     #[tokio::test]
     async fn deberia_hacer_borrado_logico_de_articulo_cuando_el_id_existe() {
-        let entidad = Articulo::new(PropsArticulo {
-            name: Name::new("example".to_string()).expect("el literal de Name es válido"),
-            sku: Sku::new("example".to_string()).expect("el literal de Sku es válido"),
-            weight: Weight::new(42).expect("Weight::new rechazó el valor de ejemplo"),
-        })
-        .unwrap();
+        let entidad = MadreArticulo::aleatorio();
         let id_entidad = entidad.id;
         let mut repositorio_doble = MockRepositorioArticulo::new();
         repositorio_doble
@@ -689,12 +668,14 @@ impl CrearArticulo for CrearArticuloImpl {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use dominio_articulo::pruebas::madres::MadreArticulo;
     use dominio_articulo::repositorio::dobles::MockRepositorioArticulo;
     use puerto_nucleo::ErrorRepositorio;
 
     #[tokio::test]
     async fn deberia_crear_articulo_cuando_los_campos_son_validos() {
         // Preparar
+        let props = MadreArticulo::new().construir_props();
         let mut repositorio_doble = MockRepositorioArticulo::new();
         repositorio_doble.expect_guardar().returning(|_| Ok(()));
         let caso_de_uso = CrearArticuloImpl {
@@ -704,20 +685,24 @@ mod tests {
         // Actuar
         let resultado = caso_de_uso
             .ejecutar(ParamsCrearArticulo {
-                name: "example".to_string(),
-                sku: "example".to_string(),
-                weight: 42,
+                name: props.name.valor().to_string(),
+                sku: props.sku.valor().to_string(),
+                weight: props.weight.valor(),
             })
             .await;
 
         // Comprobar
         assert!(resultado.is_ok());
-        assert_eq!(resultado.unwrap().name.valor(), "example");
+        assert_eq!(
+            resultado.unwrap().name,
+            MadreArticulo::new().construir_props().name
+        );
     }
 
     #[tokio::test]
     async fn deberia_devolver_duplicado_cuando_el_almacen_rechaza_un_duplicado() {
         // Preparar
+        let props = MadreArticulo::new().construir_props();
         let mut repositorio_doble = MockRepositorioArticulo::new();
         repositorio_doble
             .expect_guardar()
@@ -729,9 +714,9 @@ mod tests {
         // Actuar
         let resultado = caso_de_uso
             .ejecutar(ParamsCrearArticulo {
-                name: "example".to_string(),
-                sku: "example".to_string(),
-                weight: 42,
+                name: props.name.valor().to_string(),
+                sku: props.sku.valor().to_string(),
+                weight: props.weight.valor(),
             })
             .await;
 
@@ -743,6 +728,7 @@ mod tests {
     #[tokio::test]
     async fn deberia_devolver_error_cuando_name_es_una_cadena_vacia() {
         // Preparar
+        let props = MadreArticulo::new().construir_props();
         let repositorio_doble = MockRepositorioArticulo::new();
         let caso_de_uso = CrearArticuloImpl {
             repositorio: Arc::new(repositorio_doble),
@@ -752,8 +738,8 @@ mod tests {
         let resultado = caso_de_uso
             .ejecutar(ParamsCrearArticulo {
                 name: "".to_string(),
-                sku: "example".to_string(),
-                weight: 42,
+                sku: props.sku.valor().to_string(),
+                weight: props.weight.valor(),
             })
             .await;
 
@@ -765,6 +751,7 @@ mod tests {
     #[tokio::test]
     async fn deberia_devolver_error_cuando_sku_es_una_cadena_vacia() {
         // Preparar
+        let props = MadreArticulo::new().construir_props();
         let repositorio_doble = MockRepositorioArticulo::new();
         let caso_de_uso = CrearArticuloImpl {
             repositorio: Arc::new(repositorio_doble),
@@ -773,9 +760,9 @@ mod tests {
         // Actuar
         let resultado = caso_de_uso
             .ejecutar(ParamsCrearArticulo {
-                name: "example".to_string(),
+                name: props.name.valor().to_string(),
                 sku: "".to_string(),
-                weight: 42,
+                weight: props.weight.valor(),
             })
             .await;
 
@@ -855,31 +842,14 @@ impl ListarArticulos for ListarArticulosImpl {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use dominio_articulo::valores::Name;
-    use dominio_articulo::valores::Sku;
-    use dominio_articulo::valores::Weight;
     use dominio_articulo::{
-        modelo::{Articulo, PropsArticulo},
-        repositorio::dobles::MockRepositorioArticulo,
+        pruebas::madres::MadreArticulo, repositorio::dobles::MockRepositorioArticulo,
     };
     use puerto_nucleo::PeticionPagina;
 
     #[tokio::test]
     async fn deberia_devolver_la_pagina_de_articulos() {
-        let entidades = vec![
-            Articulo::new(PropsArticulo {
-                name: Name::new("first".to_string()).expect("el literal de Name es válido"),
-                sku: Sku::new("first".to_string()).expect("el literal de Sku es válido"),
-                weight: Weight::new(42).expect("Weight::new rechazó el valor de ejemplo"),
-            })
-            .unwrap(),
-            Articulo::new(PropsArticulo {
-                name: Name::new("second".to_string()).expect("el literal de Name es válido"),
-                sku: Sku::new("second".to_string()).expect("el literal de Sku es válido"),
-                weight: Weight::new(42).expect("Weight::new rechazó el valor de ejemplo"),
-            })
-            .unwrap(),
-        ];
+        let entidades = MadreArticulo::aleatorios(2);
         let mut repositorio_doble = MockRepositorioArticulo::new();
         repositorio_doble
             .expect_buscar_todos()
@@ -1000,23 +970,15 @@ impl ObtenerArticulo for ObtenerArticuloImpl {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use dominio_articulo::valores::Name;
-    use dominio_articulo::valores::Sku;
-    use dominio_articulo::valores::Weight;
     use dominio_articulo::{
-        modelo::{Articulo, IdArticulo, PropsArticulo},
+        modelo::IdArticulo, pruebas::madres::MadreArticulo,
         repositorio::dobles::MockRepositorioArticulo,
     };
     use puerto_nucleo::ErrorRepositorio;
 
     #[tokio::test]
     async fn deberia_devolver_articulo_cuando_el_id_existe() {
-        let entidad = Articulo::new(PropsArticulo {
-            name: Name::new("example".to_string()).expect("el literal de Name es válido"),
-            sku: Sku::new("example".to_string()).expect("el literal de Sku es válido"),
-            weight: Weight::new(42).expect("Weight::new rechazó el valor de ejemplo"),
-        })
-        .unwrap();
+        let entidad = MadreArticulo::aleatorio();
         let id_entidad = entidad.id;
         let mut repositorio_doble = MockRepositorioArticulo::new();
         repositorio_doble
@@ -1030,8 +992,7 @@ mod tests {
             .ejecutar(ParamsObtenerArticulo { id: id_entidad })
             .await;
 
-        assert!(resultado.is_ok());
-        assert_eq!(resultado.unwrap().name.valor(), "example");
+        assert_eq!(resultado.unwrap().id, id_entidad);
     }
 
     #[tokio::test]
@@ -1265,14 +1226,11 @@ impl Articulo {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::pruebas::madres::MadreArticulo;
 
     #[test]
     fn deberia_crear_articulo_cuando_los_campos_son_validos() {
-        let resultado = Articulo::new(PropsArticulo {
-            name: Name::new("example".to_string()).expect("Name::new rechazó el valor de ejemplo"),
-            sku: Sku::new("example".to_string()).expect("Sku::new rechazó el valor de ejemplo"),
-            weight: Weight::new(42).expect("Weight::new rechazó el valor de ejemplo"),
-        });
+        let resultado = Articulo::new(MadreArticulo::new().construir_props());
         assert!(resultado.is_ok());
     }
 
@@ -1574,17 +1532,17 @@ impl RepositorioArticulo for RepositorioArticuloEnMemoria {
 mod tests {
     use super::*;
     use dominio_articulo::modelo::PropsArticulo;
-    use dominio_articulo::valores::Name;
+    use dominio_articulo::pruebas::madres::MadreArticulo;
     use dominio_articulo::valores::Sku;
-    use dominio_articulo::valores::Weight;
     use uuid::Uuid;
 
+    /// Una entidad válida, con los valores de la madre salvo en los campos únicos (uno
+    /// nuevo cada vez) y las fechas (un segundo exacto).
     fn nuevo_articulo() -> Articulo {
         Articulo::new(PropsArticulo {
-            name: Name::new("example".to_string()).expect("Name::new rechazó el valor de ejemplo"),
             sku: Sku::new(Uuid::new_v4().to_string())
                 .expect("Sku::new rechazó el valor de ejemplo"),
-            weight: Weight::new(42).expect("Weight::new rechazó el valor de ejemplo"),
+            ..MadreArticulo::new().construir_props()
         })
         .unwrap()
     }

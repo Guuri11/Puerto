@@ -345,6 +345,9 @@ pub struct FieldCtx {
     pub from_row: String,
     /// The domain value built from a use case param (`params.{name}`).
     pub from_params: String,
+    /// The Params value read out of the mother's props (`props.{name}`) in the use case tests: the
+    /// primitive, but a reference's id type.
+    pub from_props: String,
     /// The registry default for the primitive type — what request bodies in route tests hold.
     pub default_literal: String,
     /// What Params literals in tests hold: [`Self::default_literal`], but a reference's id type.
@@ -407,6 +410,11 @@ pub fn field_ctx(field: &Field, pascal: &str, shared_vos: &[ValueObjectDefinitio
         accessor: field_value_accessor(field, "entidad"),
         needs_clone: field_needs_clone(&field.field_type),
         from_params: field_vo_conversion(field, "params.", pascal, shared_vos),
+        from_props: if is_reference(field) || !is_value_object(field) {
+            format!("props.{}", field.name)
+        } else {
+            field_value_accessor(field, "props")
+        },
         default_literal,
         first_variant: field
             .enum_variants

@@ -58,6 +58,9 @@ Postgres) están tras la feature `pruebas` de cada crate, que los demás crates 
 
 - **Dos constructores**: `new(props)` valida y devuelve `Result<Self, Error…>`.
   `from_repositorio(datos)` se salta la validación; solo lo llama la infraestructura.
+- **Las reglas de los campos viven en `validar(props)`**, en `modelo.rs`: la llaman `new` y
+  `actualizar(props)`, así que una regla nueva se escribe una sola vez y vale al crear y al
+  actualizar. `actualizar_<entidad>` no comprueba nada por su cuenta: llama a `entidad.actualizar`.
 - **Ids tipados**: el id de una entidad es su propio tipo, `IdProducto` (`modelo.rs`):
   `IdProducto::generar()` para uno nuevo, `from_uuid` / `.valor()` solo en los bordes (rutas, DTO,
   filas).
@@ -116,6 +119,10 @@ let lote = MadreProducto::aleatorios(5);
 ```
 
 Cada campo tiene `.con_<campo>(valor)`; los campos `String`, también `.con_<campo>_vacio()`.
+
+Los tests generados sacan sus valores válidos de la madre (`construir_props()`, `aleatorio()`),
+también la siembra de los repositorios. **Si una regla nueva rechaza un valor por defecto de la
+madre, cámbialo en la madre**, no en cada test.
 
 ## Añadir una entidad
 

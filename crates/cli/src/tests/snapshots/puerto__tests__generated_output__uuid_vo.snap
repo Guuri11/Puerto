@@ -164,9 +164,10 @@ comando.
    lado. `generar caso-de-uso` deja la impl en `todo!()`, unos `Params` de relleno y un test marcado
    `#[ignore = "escribe este test"]` en `contextos/<c>/aplicacion/src/<accion>.rs`: quita el
    `ignore`, escribe el test y míralo fallar.
-4. **Verde.** Primero el dominio: los invariantes en el `new` del modelo o en un objeto valor
-   (`contextos/<c>/dominio/`); después los `Params`, el trait y la impl del caso de uso, en un solo
-   fichero.
+4. **Verde.** Primero el dominio: los invariantes en el `validar` del modelo (lo llaman `new` y
+   `actualizar`) o en un objeto valor (`contextos/<c>/dominio/`); si uno rechaza un valor por
+   defecto de la madre, cámbialo en la madre: los tests generados toman de ahí sus valores. Después
+   los `Params`, el trait y la impl del caso de uso, en un solo fichero.
 5. **El endpoint, API primero.** `generar caso-de-uso` pone el caso de uso en `Api<Entidad>` pero no
    añade ninguna ruta: escribe `dto.rs`, `respuestas.rs`, el brazo de `errores.rs` de cada error
    nuevo (con su test), después el handler en `rutas.rs` y un test de ruta por cada código de estado
@@ -377,22 +378,18 @@ impl ActualizarReserva for ActualizarReservaImpl {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use dominio_reserva::valores::TenantId;
     use dominio_reserva::{
-        modelo::{IdReserva, PropsReserva, Reserva},
+        modelo::IdReserva, pruebas::madres::MadreReserva,
         repositorio::dobles::MockRepositorioReserva,
     };
-    use uuid::Uuid;
 
     #[tokio::test]
     async fn deberia_actualizar_reserva_cuando_los_parametros_son_validos() {
         // Preparar
-        let entidad = Reserva::new(PropsReserva {
-            reference: "original".to_string(),
-            tenant_id: TenantId::new(Uuid::new_v4())
-                .expect("TenantId::new rechazó el valor de ejemplo"),
-        })
-        .unwrap();
+        let props = MadreReserva::new().construir_props();
+        let mut entidad = MadreReserva::aleatorio();
+        // Lo que estaba guardado, distinto de lo que trae la actualización.
+        entidad.reference = "original".to_string();
         let id_entidad = entidad.id;
         let mut repositorio_doble = MockRepositorioReserva::new();
         repositorio_doble
@@ -407,18 +404,22 @@ mod tests {
         let resultado = caso_de_uso
             .ejecutar(ParamsActualizarReserva {
                 id: id_entidad,
-                reference: "updated".to_string(),
-                tenant_id: Uuid::new_v4(),
+                reference: props.reference,
+                tenant_id: props.tenant_id.valor(),
             })
             .await;
 
         // Comprobar
-        assert_eq!(resultado.unwrap().reference, "updated");
+        assert_eq!(
+            resultado.unwrap().reference,
+            MadreReserva::new().construir_props().reference
+        );
     }
 
     #[tokio::test]
     async fn deberia_devolver_no_encontrado_cuando_reserva_no_existe() {
         // Preparar
+        let props = MadreReserva::new().construir_props();
         let mut repositorio_doble = MockRepositorioReserva::new();
         repositorio_doble
             .expect_buscar_por_id()
@@ -431,8 +432,8 @@ mod tests {
         let resultado = caso_de_uso
             .ejecutar(ParamsActualizarReserva {
                 id: IdReserva::generar(),
-                reference: "new".to_string(),
-                tenant_id: Uuid::new_v4(),
+                reference: props.reference,
+                tenant_id: props.tenant_id.valor(),
             })
             .await;
 
@@ -444,12 +445,8 @@ mod tests {
     #[tokio::test]
     async fn deberia_devolver_error_cuando_reference_es_una_cadena_vacia() {
         // Preparar
-        let entidad = Reserva::new(PropsReserva {
-            reference: "original".to_string(),
-            tenant_id: TenantId::new(Uuid::new_v4())
-                .expect("TenantId::new rechazó el valor de ejemplo"),
-        })
-        .unwrap();
+        let props = MadreReserva::new().construir_props();
+        let entidad = MadreReserva::aleatorio();
         let id_entidad = entidad.id;
         let mut repositorio_doble = MockRepositorioReserva::new();
         repositorio_doble
@@ -464,7 +461,7 @@ mod tests {
             .ejecutar(ParamsActualizarReserva {
                 id: id_entidad,
                 reference: "".to_string(),
-                tenant_id: Uuid::new_v4(),
+                tenant_id: props.tenant_id.valor(),
             })
             .await;
 
@@ -542,21 +539,14 @@ impl BorrarReserva for BorrarReservaImpl {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use dominio_reserva::valores::TenantId;
     use dominio_reserva::{
-        modelo::{IdReserva, PropsReserva, Reserva},
+        modelo::IdReserva, pruebas::madres::MadreReserva,
         repositorio::dobles::MockRepositorioReserva,
     };
-    use uuid::Uuid;
 
     #[tokio::test]
     async fn deberia_hacer_borrado_logico_de_reserva_cuando_el_id_existe() {
-        let entidad = Reserva::new(PropsReserva {
-            reference: "example".to_string(),
-            tenant_id: TenantId::new(Uuid::new_v4())
-                .expect("TenantId::new rechazó el valor de ejemplo"),
-        })
-        .unwrap();
+        let entidad = MadreReserva::aleatorio();
         let id_entidad = entidad.id;
         let mut repositorio_doble = MockRepositorioReserva::new();
         repositorio_doble
@@ -657,13 +647,14 @@ impl CrearReserva for CrearReservaImpl {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use dominio_reserva::pruebas::madres::MadreReserva;
     use dominio_reserva::repositorio::dobles::MockRepositorioReserva;
     use puerto_nucleo::ErrorRepositorio;
-    use uuid::Uuid;
 
     #[tokio::test]
     async fn deberia_crear_reserva_cuando_los_campos_son_validos() {
         // Preparar
+        let props = MadreReserva::new().construir_props();
         let mut repositorio_doble = MockRepositorioReserva::new();
         repositorio_doble.expect_guardar().returning(|_| Ok(()));
         let caso_de_uso = CrearReservaImpl {
@@ -673,19 +664,23 @@ mod tests {
         // Actuar
         let resultado = caso_de_uso
             .ejecutar(ParamsCrearReserva {
-                reference: "example".to_string(),
-                tenant_id: Uuid::new_v4(),
+                reference: props.reference,
+                tenant_id: props.tenant_id.valor(),
             })
             .await;
 
         // Comprobar
         assert!(resultado.is_ok());
-        assert_eq!(resultado.unwrap().reference, "example");
+        assert_eq!(
+            resultado.unwrap().reference,
+            MadreReserva::new().construir_props().reference
+        );
     }
 
     #[tokio::test]
     async fn deberia_devolver_duplicado_cuando_el_almacen_rechaza_un_duplicado() {
         // Preparar
+        let props = MadreReserva::new().construir_props();
         let mut repositorio_doble = MockRepositorioReserva::new();
         repositorio_doble
             .expect_guardar()
@@ -697,8 +692,8 @@ mod tests {
         // Actuar
         let resultado = caso_de_uso
             .ejecutar(ParamsCrearReserva {
-                reference: "example".to_string(),
-                tenant_id: Uuid::new_v4(),
+                reference: props.reference,
+                tenant_id: props.tenant_id.valor(),
             })
             .await;
 
@@ -710,6 +705,7 @@ mod tests {
     #[tokio::test]
     async fn deberia_devolver_error_cuando_reference_es_una_cadena_vacia() {
         // Preparar
+        let props = MadreReserva::new().construir_props();
         let repositorio_doble = MockRepositorioReserva::new();
         let caso_de_uso = CrearReservaImpl {
             repositorio: Arc::new(repositorio_doble),
@@ -719,7 +715,7 @@ mod tests {
         let resultado = caso_de_uso
             .ejecutar(ParamsCrearReserva {
                 reference: "".to_string(),
-                tenant_id: Uuid::new_v4(),
+                tenant_id: props.tenant_id.valor(),
             })
             .await;
 
@@ -800,30 +796,14 @@ impl ListarReservas for ListarReservasImpl {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use dominio_reserva::valores::TenantId;
     use dominio_reserva::{
-        modelo::{PropsReserva, Reserva},
-        repositorio::dobles::MockRepositorioReserva,
+        pruebas::madres::MadreReserva, repositorio::dobles::MockRepositorioReserva,
     };
     use puerto_nucleo::PeticionPagina;
-    use uuid::Uuid;
 
     #[tokio::test]
     async fn deberia_devolver_la_pagina_de_reservas() {
-        let entidades = vec![
-            Reserva::new(PropsReserva {
-                reference: "first".to_string(),
-                tenant_id: TenantId::new(Uuid::new_v4())
-                    .expect("TenantId::new rechazó el valor de ejemplo"),
-            })
-            .unwrap(),
-            Reserva::new(PropsReserva {
-                reference: "second".to_string(),
-                tenant_id: TenantId::new(Uuid::new_v4())
-                    .expect("TenantId::new rechazó el valor de ejemplo"),
-            })
-            .unwrap(),
-        ];
+        let entidades = MadreReserva::aleatorios(2);
         let mut repositorio_doble = MockRepositorioReserva::new();
         repositorio_doble
             .expect_buscar_todos()
@@ -944,22 +924,15 @@ impl ObtenerReserva for ObtenerReservaImpl {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use dominio_reserva::valores::TenantId;
     use dominio_reserva::{
-        modelo::{IdReserva, PropsReserva, Reserva},
+        modelo::IdReserva, pruebas::madres::MadreReserva,
         repositorio::dobles::MockRepositorioReserva,
     };
     use puerto_nucleo::ErrorRepositorio;
-    use uuid::Uuid;
 
     #[tokio::test]
     async fn deberia_devolver_reserva_cuando_el_id_existe() {
-        let entidad = Reserva::new(PropsReserva {
-            reference: "example".to_string(),
-            tenant_id: TenantId::new(Uuid::new_v4())
-                .expect("TenantId::new rechazó el valor de ejemplo"),
-        })
-        .unwrap();
+        let entidad = MadreReserva::aleatorio();
         let id_entidad = entidad.id;
         let mut repositorio_doble = MockRepositorioReserva::new();
         repositorio_doble
@@ -973,8 +946,7 @@ mod tests {
             .ejecutar(ParamsObtenerReserva { id: id_entidad })
             .await;
 
-        assert!(resultado.is_ok());
-        assert_eq!(resultado.unwrap().reference, "example");
+        assert_eq!(resultado.unwrap().id, id_entidad);
     }
 
     #[tokio::test]
@@ -1201,24 +1173,20 @@ impl Reserva {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::pruebas::madres::MadreReserva;
 
     #[test]
     fn deberia_crear_reserva_cuando_los_campos_son_validos() {
-        let resultado = Reserva::new(PropsReserva {
-            reference: "example".to_string(),
-            tenant_id: TenantId::new(Uuid::new_v4())
-                .expect("TenantId::new rechazó el valor de ejemplo"),
-        });
-        assert_eq!(resultado.unwrap().reference, "example");
+        let resultado = Reserva::new(MadreReserva::new().construir_props());
+        assert_eq!(
+            resultado.unwrap().reference,
+            MadreReserva::new().construir_props().reference
+        );
     }
 
     #[test]
     fn deberia_rechazar_reserva_cuando_reference_es_una_cadena_vacia() {
-        let resultado = Reserva::new(PropsReserva {
-            reference: "".into(),
-            tenant_id: TenantId::new(Uuid::new_v4())
-                .expect("TenantId::new rechazó el valor de ejemplo"),
-        });
+        let resultado = Reserva::new(MadreReserva::new().con_reference_vacio().construir_props());
         assert!(resultado.is_err());
         assert_eq!(
             resultado.unwrap_err().to_string(),
@@ -1228,27 +1196,15 @@ mod tests {
 
     #[test]
     fn deberia_rechazar_reserva_cuando_reference_solo_tiene_espacios() {
-        let resultado = Reserva::new(PropsReserva {
-            reference: "   ".into(),
-            tenant_id: TenantId::new(Uuid::new_v4())
-                .expect("TenantId::new rechazó el valor de ejemplo"),
-        });
+        let resultado = Reserva::new(MadreReserva::new().con_reference("   ").construir_props());
         assert!(resultado.is_err());
     }
 
     #[test]
     fn deberia_rechazar_actualizar_reserva_cuando_reference_es_una_cadena_vacia() {
-        let mut entidad = Reserva::new(PropsReserva {
-            reference: "example".to_string(),
-            tenant_id: TenantId::new(Uuid::new_v4())
-                .expect("TenantId::new rechazó el valor de ejemplo"),
-        })
-        .unwrap();
-        let resultado = entidad.actualizar(PropsReserva {
-            reference: "".into(),
-            tenant_id: TenantId::new(Uuid::new_v4())
-                .expect("TenantId::new rechazó el valor de ejemplo"),
-        });
+        let mut entidad = MadreReserva::aleatorio();
+        let resultado =
+            entidad.actualizar(MadreReserva::new().con_reference_vacio().construir_props());
         assert_eq!(
             resultado.unwrap_err().to_string(),
             "reserva.validacion.reference_vacio"
@@ -1478,17 +1434,11 @@ impl RepositorioReserva for RepositorioReservaEnMemoria {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use dominio_reserva::modelo::PropsReserva;
-    use dominio_reserva::valores::TenantId;
-    use uuid::Uuid;
+    use dominio_reserva::pruebas::madres::MadreReserva;
 
+    /// Una entidad válida, con los valores de la madre.
     fn nuevo_reserva() -> Reserva {
-        Reserva::new(PropsReserva {
-            reference: "example".to_string(),
-            tenant_id: TenantId::new(Uuid::new_v4())
-                .expect("TenantId::new rechazó el valor de ejemplo"),
-        })
-        .unwrap()
+        MadreReserva::aleatorio()
     }
 
     #[tokio::test]

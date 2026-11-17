@@ -1,4 +1,4 @@
-{% import "application/macros.tera" as macros %}{% set required = fields | filter(attribute="required_string", value=true) %}{% set string_vos = fields | filter(attribute="string_vo", value=true) %}use std::sync::Arc;
+{% set required = fields | filter(attribute="required_string", value=true) %}{% set string_vos = fields | filter(attribute="string_vo", value=true) %}use std::sync::Arc;
 
 use async_trait::async_trait;
 
@@ -39,16 +39,15 @@ mod tests {
     use super::*;
 {% if actor %}    use puerto_nucleo::auth::dobles::MadrePrincipal;
 {% endif %}    use dominio_{{ snake }}::{
-        modelo::{{ "{" }}{{ pascal }}, Id{{ pascal }}, Props{{ pascal }}},
+        modelo::Id{{ pascal }},
+        pruebas::madres::Madre{{ pascal }},
         repositorio::dobles::MockRepositorio{{ pascal }},
     };
-{% for import in test_imports %}    use {{ import }};
-{% endfor %}
+
 
     #[tokio::test]
     async fn deberia_hacer_borrado_logico_de_{{ snake }}_cuando_el_id_existe() {
-        let entidad = {{ pascal }}::new(Props{{ pascal }} {
-{{ macros::props(fields=fields, word="example") }}        }).unwrap();
+        let entidad = Madre{{ pascal }}::aleatorio();
         let id_entidad = entidad.id;
         let mut repositorio_doble = MockRepositorio{{ pascal }}::new();
         repositorio_doble

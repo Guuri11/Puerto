@@ -86,22 +86,22 @@ impl {{ pascal }} {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::pruebas::madres::Madre{{ pascal }};
 
     #[test]
     fn deberia_crear_{{ snake }}_cuando_{% if fields | length == 1 and required | length == 1 and fields.0.name == "nombre" %}el_nombre_es_valido{% else %}los_campos_son_validos{% endif %}() {
-        let resultado = {{ pascal }}::new(Props{{ pascal }} {
-{% for f in fields %}            {{ f.name }}: {{ f.props_literal }},
-{% endfor %}        });{% if required | length > 0 %}
-        assert_eq!(resultado.unwrap().{{ required.0.name }}, "example");{% else %}
+        let resultado = {{ pascal }}::new(Madre{{ pascal }}::new().construir_props());{% if required | length > 0 %}
+        assert_eq!(
+            resultado.unwrap().{{ required.0.name }},
+            Madre{{ pascal }}::new().construir_props().{{ required.0.name }}
+        );{% else %}
         assert!(resultado.is_ok());{% endif %}
     }{% if required or string_vos or enum_vos %}
 {% endif %}{% for sf in required %}
 
     #[test]
     fn deberia_rechazar_{{ snake }}_cuando_{{ sf.name }}_es_una_cadena_vacia() {
-        let resultado = {{ pascal }}::new(Props{{ pascal }} {
-{% for f in fields %}            {{ f.name }}: {% if f.name == sf.name %}"".into(){% else %}{{ f.props_literal }}{% endif %},
-{% endfor %}        });
+        let resultado = {{ pascal }}::new(Madre{{ pascal }}::new().con_{{ sf.name }}_vacio().construir_props());
         assert!(resultado.is_err());
         assert_eq!(
             resultado.unwrap_err().to_string(),
@@ -111,21 +111,14 @@ mod tests {
 
     #[test]
     fn deberia_rechazar_{{ snake }}_cuando_{{ sf.name }}_solo_tiene_espacios() {
-        let resultado = {{ pascal }}::new(Props{{ pascal }} {
-{% for f in fields %}            {{ f.name }}: {% if f.name == sf.name %}"   ".into(){% else %}{{ f.props_literal }}{% endif %},
-{% endfor %}        });
+        let resultado = {{ pascal }}::new(Madre{{ pascal }}::new().con_{{ sf.name }}("   ").construir_props());
         assert!(resultado.is_err());
     }{% endfor %}{% if required %}
 
     #[test]
     fn deberia_rechazar_actualizar_{{ snake }}_cuando_{{ required.0.name }}_es_una_cadena_vacia() {
-        let mut entidad = {{ pascal }}::new(Props{{ pascal }} {
-{% for f in fields %}            {{ f.name }}: {{ f.props_literal }},
-{% endfor %}        })
-        .unwrap();
-        let resultado = entidad.actualizar(Props{{ pascal }} {
-{% for f in fields %}            {{ f.name }}: {% if f.name == required.0.name %}"".into(){% else %}{{ f.props_literal }}{% endif %},
-{% endfor %}        });
+        let mut entidad = Madre{{ pascal }}::aleatorio();
+        let resultado = entidad.actualizar(Madre{{ pascal }}::new().con_{{ required.0.name }}_vacio().construir_props());
         assert_eq!(
             resultado.unwrap_err().to_string(),
             "{{ snake }}.validacion.{{ required.0.name }}_vacio"

@@ -1,4 +1,4 @@
-{% import "application/macros.tera" as macros %}use std::sync::Arc;
+use std::sync::Arc;
 
 use async_trait::async_trait;
 use puerto_nucleo::ErrorRepositorio;
@@ -47,19 +47,18 @@ mod tests {
     use super::*;
 {% if actor %}    use puerto_nucleo::auth::dobles::MadrePrincipal;
 {% endif %}    use dominio_{{ snake }}::{
-        modelo::{{ "{" }}{{ pascal }}, Id{{ pascal }}, Props{{ pascal }}},
+        modelo::Id{{ pascal }},
+        pruebas::madres::Madre{{ pascal }},
         repositorio::dobles::MockRepositorio{{ pascal }},
         unit_of_work::dobles::UnitOfWorkFactoryGrabadora,
     };
     use puerto_nucleo::EventoDominio;
-{% for import in test_imports %}    use {{ import }};
-{% endfor %}
+
 
     #[tokio::test]
     async fn deberia_registrar_el_evento_{{ snake }}_borrado_cuando_el_id_existe() {
         // Preparar
-        let entidad = {{ pascal }}::new(Props{{ pascal }} {
-{{ macros::props(fields=fields, word="example") }}        }).unwrap();
+        let entidad = Madre{{ pascal }}::aleatorio();
         let id_entidad = entidad.id;
         let mut repositorio_doble = MockRepositorio{{ pascal }}::new();
         repositorio_doble

@@ -1,4 +1,4 @@
-{% import "application/macros.tera" as macros %}{% set required = fields | filter(attribute="required_string", value=true) %}{% set string_vos = fields | filter(attribute="string_vo", value=true) %}{% set refs = fields | filter(attribute="is_ref", value=true) %}use std::sync::Arc;
+{% set required = fields | filter(attribute="required_string", value=true) %}{% set string_vos = fields | filter(attribute="string_vo", value=true) %}{% set refs = fields | filter(attribute="is_ref", value=true) %}use std::sync::Arc;
 
 use async_trait::async_trait;
 use puerto_nucleo::Pagina;
@@ -37,21 +37,15 @@ mod tests {
 {% if actor %}    use puerto_nucleo::auth::dobles::MadrePrincipal;
 {% endif %}    use puerto_nucleo::PeticionPagina;
     use dominio_{{ snake }}::{
-        modelo::{{ "{" }}{{ pascal }}, Props{{ pascal }}},
+        pruebas::madres::Madre{{ pascal }},
         repositorio::dobles::MockRepositorio{{ pascal }},
     };
-{% for import in test_imports %}    use {{ import }};
-{% endfor %}{% for import in reference_imports %}{% if import not in test_imports %}    use {{ import }};
-{% endif %}{% endfor %}
+{% for import in reference_imports %}    use {{ import }};
+{% endfor %}
 
     #[tokio::test]
     async fn deberia_devolver_la_pagina_de_{{ plural }}() {
-        let entidades = vec![
-            {{ pascal }}::new(Props{{ pascal }} {
-{{ macros::props(fields=fields, word="first") }}        }).unwrap(),
-            {{ pascal }}::new(Props{{ pascal }} {
-{{ macros::props(fields=fields, word="second") }}        }).unwrap(),
-        ];
+        let entidades = Madre{{ pascal }}::aleatorios(2);
         let mut repositorio_doble = MockRepositorio{{ pascal }}::new();
         repositorio_doble
             .expect_buscar_todos()

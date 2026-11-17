@@ -164,9 +164,10 @@ comando.
    lado. `generar caso-de-uso` deja la impl en `todo!()`, unos `Params` de relleno y un test marcado
    `#[ignore = "escribe este test"]` en `contextos/<c>/aplicacion/src/<accion>.rs`: quita el
    `ignore`, escribe el test y míralo fallar.
-4. **Verde.** Primero el dominio: los invariantes en el `new` del modelo o en un objeto valor
-   (`contextos/<c>/dominio/`); después los `Params`, el trait y la impl del caso de uso, en un solo
-   fichero.
+4. **Verde.** Primero el dominio: los invariantes en el `validar` del modelo (lo llaman `new` y
+   `actualizar`) o en un objeto valor (`contextos/<c>/dominio/`); si uno rechaza un valor por
+   defecto de la madre, cámbialo en la madre: los tests generados toman de ahí sus valores. Después
+   los `Params`, el trait y la impl del caso de uso, en un solo fichero.
 5. **El endpoint, API primero.** `generar caso-de-uso` pone el caso de uso en `Api<Entidad>` pero no
    añade ninguna ruta: escribe `dto.rs`, `respuestas.rs`, el brazo de `errores.rs` de cada error
    nuevo (con su test), después el handler en `rutas.rs` y un test de ruta por cada código de estado
@@ -402,30 +403,17 @@ impl ActualizarCuenta for ActualizarCuentaImpl {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use dominio_cuenta::valores::Name;
-    use dominio_cuenta::valores::Sku;
-    use dominio_cuenta::valores::Status;
     use dominio_cuenta::{
-        modelo::{Cuenta, IdCuenta, PropsCuenta},
-        repositorio::dobles::MockRepositorioCuenta,
+        modelo::IdCuenta, pruebas::madres::MadreCuenta, repositorio::dobles::MockRepositorioCuenta,
     };
-    use nucleo::valores::Email;
 
     #[tokio::test]
     async fn deberia_actualizar_cuenta_cuando_los_parametros_son_validos() {
         // Preparar
-        let entidad = Cuenta::new(PropsCuenta {
-            title: "original".to_string(),
-            price: 42,
-            name: Name::new("original".to_string()).expect("el literal de Name es válido"),
-            sku: Sku::new("original".to_string()).expect("el literal de Sku es válido"),
-            note: None,
-            middle_name: None,
-            tags: vec![],
-            status: Status::Active,
-            email: Email::new("original".to_string()).expect("el literal de Email es válido"),
-        })
-        .unwrap();
+        let props = MadreCuenta::new().construir_props();
+        let mut entidad = MadreCuenta::aleatorio();
+        // Lo que estaba guardado, distinto de lo que trae la actualización.
+        entidad.title = "original".to_string();
         let id_entidad = entidad.id;
         let mut repositorio_doble = MockRepositorioCuenta::new();
         repositorio_doble
@@ -440,25 +428,33 @@ mod tests {
         let resultado = caso_de_uso
             .ejecutar(ParamsActualizarCuenta {
                 id: id_entidad,
-                title: "updated".to_string(),
-                price: 42,
-                name: "updated".to_string(),
-                sku: "updated".to_string(),
-                note: None,
-                middle_name: None,
-                tags: vec![],
-                status: "Active".to_string(),
-                email: "updated".to_string(),
+                title: props.title,
+                price: props.price,
+                name: props.name.valor().to_string(),
+                sku: props.sku.valor().to_string(),
+                note: props.note,
+                middle_name: props.middle_name.as_ref().map(|v| v.valor().to_string()),
+                tags: props
+                    .tags
+                    .iter()
+                    .map(|v| v.valor().to_string())
+                    .collect::<Vec<_>>(),
+                status: props.status.as_str().to_string(),
+                email: props.email.valor().to_string(),
             })
             .await;
 
         // Comprobar
-        assert_eq!(resultado.unwrap().title, "updated");
+        assert_eq!(
+            resultado.unwrap().title,
+            MadreCuenta::new().construir_props().title
+        );
     }
 
     #[tokio::test]
     async fn deberia_devolver_no_encontrado_cuando_cuenta_no_existe() {
         // Preparar
+        let props = MadreCuenta::new().construir_props();
         let mut repositorio_doble = MockRepositorioCuenta::new();
         repositorio_doble
             .expect_buscar_por_id()
@@ -471,15 +467,19 @@ mod tests {
         let resultado = caso_de_uso
             .ejecutar(ParamsActualizarCuenta {
                 id: IdCuenta::generar(),
-                title: "new".to_string(),
-                price: 42,
-                name: "new".to_string(),
-                sku: "new".to_string(),
-                note: None,
-                middle_name: None,
-                tags: vec![],
-                status: "Active".to_string(),
-                email: "new".to_string(),
+                title: props.title,
+                price: props.price,
+                name: props.name.valor().to_string(),
+                sku: props.sku.valor().to_string(),
+                note: props.note,
+                middle_name: props.middle_name.as_ref().map(|v| v.valor().to_string()),
+                tags: props
+                    .tags
+                    .iter()
+                    .map(|v| v.valor().to_string())
+                    .collect::<Vec<_>>(),
+                status: props.status.as_str().to_string(),
+                email: props.email.valor().to_string(),
             })
             .await;
 
@@ -491,18 +491,8 @@ mod tests {
     #[tokio::test]
     async fn deberia_devolver_error_cuando_title_es_una_cadena_vacia() {
         // Preparar
-        let entidad = Cuenta::new(PropsCuenta {
-            title: "original".to_string(),
-            price: 42,
-            name: Name::new("original".to_string()).expect("el literal de Name es válido"),
-            sku: Sku::new("original".to_string()).expect("el literal de Sku es válido"),
-            note: None,
-            middle_name: None,
-            tags: vec![],
-            status: Status::Active,
-            email: Email::new("original".to_string()).expect("el literal de Email es válido"),
-        })
-        .unwrap();
+        let props = MadreCuenta::new().construir_props();
+        let entidad = MadreCuenta::aleatorio();
         let id_entidad = entidad.id;
         let mut repositorio_doble = MockRepositorioCuenta::new();
         repositorio_doble
@@ -517,14 +507,18 @@ mod tests {
             .ejecutar(ParamsActualizarCuenta {
                 id: id_entidad,
                 title: "".to_string(),
-                price: 42,
-                name: "updated".to_string(),
-                sku: "updated".to_string(),
-                note: None,
-                middle_name: None,
-                tags: vec![],
-                status: "Active".to_string(),
-                email: "updated".to_string(),
+                price: props.price,
+                name: props.name.valor().to_string(),
+                sku: props.sku.valor().to_string(),
+                note: props.note,
+                middle_name: props.middle_name.as_ref().map(|v| v.valor().to_string()),
+                tags: props
+                    .tags
+                    .iter()
+                    .map(|v| v.valor().to_string())
+                    .collect::<Vec<_>>(),
+                status: props.status.as_str().to_string(),
+                email: props.email.valor().to_string(),
             })
             .await;
 
@@ -539,18 +533,8 @@ mod tests {
     #[tokio::test]
     async fn deberia_devolver_error_cuando_name_es_una_cadena_vacia() {
         // Preparar
-        let entidad = Cuenta::new(PropsCuenta {
-            title: "original".to_string(),
-            price: 42,
-            name: Name::new("original".to_string()).expect("el literal de Name es válido"),
-            sku: Sku::new("original".to_string()).expect("el literal de Sku es válido"),
-            note: None,
-            middle_name: None,
-            tags: vec![],
-            status: Status::Active,
-            email: Email::new("original".to_string()).expect("el literal de Email es válido"),
-        })
-        .unwrap();
+        let props = MadreCuenta::new().construir_props();
+        let entidad = MadreCuenta::aleatorio();
         let id_entidad = entidad.id;
         let mut repositorio_doble = MockRepositorioCuenta::new();
         repositorio_doble
@@ -564,15 +548,19 @@ mod tests {
         let resultado = caso_de_uso
             .ejecutar(ParamsActualizarCuenta {
                 id: id_entidad,
-                title: "updated".to_string(),
-                price: 42,
+                title: props.title,
+                price: props.price,
                 name: "".to_string(),
-                sku: "updated".to_string(),
-                note: None,
-                middle_name: None,
-                tags: vec![],
-                status: "Active".to_string(),
-                email: "updated".to_string(),
+                sku: props.sku.valor().to_string(),
+                note: props.note,
+                middle_name: props.middle_name.as_ref().map(|v| v.valor().to_string()),
+                tags: props
+                    .tags
+                    .iter()
+                    .map(|v| v.valor().to_string())
+                    .collect::<Vec<_>>(),
+                status: props.status.as_str().to_string(),
+                email: props.email.valor().to_string(),
             })
             .await;
 
@@ -584,18 +572,8 @@ mod tests {
     #[tokio::test]
     async fn deberia_devolver_error_cuando_sku_es_una_cadena_vacia() {
         // Preparar
-        let entidad = Cuenta::new(PropsCuenta {
-            title: "original".to_string(),
-            price: 42,
-            name: Name::new("original".to_string()).expect("el literal de Name es válido"),
-            sku: Sku::new("original".to_string()).expect("el literal de Sku es válido"),
-            note: None,
-            middle_name: None,
-            tags: vec![],
-            status: Status::Active,
-            email: Email::new("original".to_string()).expect("el literal de Email es válido"),
-        })
-        .unwrap();
+        let props = MadreCuenta::new().construir_props();
+        let entidad = MadreCuenta::aleatorio();
         let id_entidad = entidad.id;
         let mut repositorio_doble = MockRepositorioCuenta::new();
         repositorio_doble
@@ -609,15 +587,19 @@ mod tests {
         let resultado = caso_de_uso
             .ejecutar(ParamsActualizarCuenta {
                 id: id_entidad,
-                title: "updated".to_string(),
-                price: 42,
-                name: "updated".to_string(),
+                title: props.title,
+                price: props.price,
+                name: props.name.valor().to_string(),
                 sku: "".to_string(),
-                note: None,
-                middle_name: None,
-                tags: vec![],
-                status: "Active".to_string(),
-                email: "updated".to_string(),
+                note: props.note,
+                middle_name: props.middle_name.as_ref().map(|v| v.valor().to_string()),
+                tags: props
+                    .tags
+                    .iter()
+                    .map(|v| v.valor().to_string())
+                    .collect::<Vec<_>>(),
+                status: props.status.as_str().to_string(),
+                email: props.email.valor().to_string(),
             })
             .await;
 
@@ -629,18 +611,8 @@ mod tests {
     #[tokio::test]
     async fn deberia_devolver_error_cuando_email_es_una_cadena_vacia() {
         // Preparar
-        let entidad = Cuenta::new(PropsCuenta {
-            title: "original".to_string(),
-            price: 42,
-            name: Name::new("original".to_string()).expect("el literal de Name es válido"),
-            sku: Sku::new("original".to_string()).expect("el literal de Sku es válido"),
-            note: None,
-            middle_name: None,
-            tags: vec![],
-            status: Status::Active,
-            email: Email::new("original".to_string()).expect("el literal de Email es válido"),
-        })
-        .unwrap();
+        let props = MadreCuenta::new().construir_props();
+        let entidad = MadreCuenta::aleatorio();
         let id_entidad = entidad.id;
         let mut repositorio_doble = MockRepositorioCuenta::new();
         repositorio_doble
@@ -654,14 +626,18 @@ mod tests {
         let resultado = caso_de_uso
             .ejecutar(ParamsActualizarCuenta {
                 id: id_entidad,
-                title: "updated".to_string(),
-                price: 42,
-                name: "updated".to_string(),
-                sku: "updated".to_string(),
-                note: None,
-                middle_name: None,
-                tags: vec![],
-                status: "Active".to_string(),
+                title: props.title,
+                price: props.price,
+                name: props.name.valor().to_string(),
+                sku: props.sku.valor().to_string(),
+                note: props.note,
+                middle_name: props.middle_name.as_ref().map(|v| v.valor().to_string()),
+                tags: props
+                    .tags
+                    .iter()
+                    .map(|v| v.valor().to_string())
+                    .collect::<Vec<_>>(),
+                status: props.status.as_str().to_string(),
                 email: "".to_string(),
             })
             .await;
@@ -738,29 +714,13 @@ impl BorrarCuenta for BorrarCuentaImpl {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use dominio_cuenta::valores::Name;
-    use dominio_cuenta::valores::Sku;
-    use dominio_cuenta::valores::Status;
     use dominio_cuenta::{
-        modelo::{Cuenta, IdCuenta, PropsCuenta},
-        repositorio::dobles::MockRepositorioCuenta,
+        modelo::IdCuenta, pruebas::madres::MadreCuenta, repositorio::dobles::MockRepositorioCuenta,
     };
-    use nucleo::valores::Email;
 
     #[tokio::test]
     async fn deberia_hacer_borrado_logico_de_cuenta_cuando_el_id_existe() {
-        let entidad = Cuenta::new(PropsCuenta {
-            title: "example".to_string(),
-            price: 42,
-            name: Name::new("example".to_string()).expect("el literal de Name es válido"),
-            sku: Sku::new("example".to_string()).expect("el literal de Sku es válido"),
-            note: None,
-            middle_name: None,
-            tags: vec![],
-            status: Status::Active,
-            email: Email::new("example".to_string()).expect("el literal de Email es válido"),
-        })
-        .unwrap();
+        let entidad = MadreCuenta::aleatorio();
         let id_entidad = entidad.id;
         let mut repositorio_doble = MockRepositorioCuenta::new();
         repositorio_doble
@@ -884,12 +844,14 @@ impl CrearCuenta for CrearCuentaImpl {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use dominio_cuenta::pruebas::madres::MadreCuenta;
     use dominio_cuenta::repositorio::dobles::MockRepositorioCuenta;
     use puerto_nucleo::ErrorRepositorio;
 
     #[tokio::test]
     async fn deberia_crear_cuenta_cuando_los_campos_son_validos() {
         // Preparar
+        let props = MadreCuenta::new().construir_props();
         let mut repositorio_doble = MockRepositorioCuenta::new();
         repositorio_doble.expect_guardar().returning(|_| Ok(()));
         let caso_de_uso = CrearCuentaImpl {
@@ -899,26 +861,34 @@ mod tests {
         // Actuar
         let resultado = caso_de_uso
             .ejecutar(ParamsCrearCuenta {
-                title: "example".to_string(),
-                price: 42,
-                name: "example".to_string(),
-                sku: "example".to_string(),
-                note: None,
-                middle_name: None,
-                tags: vec![],
-                status: "Active".to_string(),
-                email: "example".to_string(),
+                title: props.title,
+                price: props.price,
+                name: props.name.valor().to_string(),
+                sku: props.sku.valor().to_string(),
+                note: props.note,
+                middle_name: props.middle_name.as_ref().map(|v| v.valor().to_string()),
+                tags: props
+                    .tags
+                    .iter()
+                    .map(|v| v.valor().to_string())
+                    .collect::<Vec<_>>(),
+                status: props.status.as_str().to_string(),
+                email: props.email.valor().to_string(),
             })
             .await;
 
         // Comprobar
         assert!(resultado.is_ok());
-        assert_eq!(resultado.unwrap().title, "example");
+        assert_eq!(
+            resultado.unwrap().title,
+            MadreCuenta::new().construir_props().title
+        );
     }
 
     #[tokio::test]
     async fn deberia_devolver_duplicado_cuando_el_almacen_rechaza_un_duplicado() {
         // Preparar
+        let props = MadreCuenta::new().construir_props();
         let mut repositorio_doble = MockRepositorioCuenta::new();
         repositorio_doble
             .expect_guardar()
@@ -930,15 +900,19 @@ mod tests {
         // Actuar
         let resultado = caso_de_uso
             .ejecutar(ParamsCrearCuenta {
-                title: "example".to_string(),
-                price: 42,
-                name: "example".to_string(),
-                sku: "example".to_string(),
-                note: None,
-                middle_name: None,
-                tags: vec![],
-                status: "Active".to_string(),
-                email: "example".to_string(),
+                title: props.title,
+                price: props.price,
+                name: props.name.valor().to_string(),
+                sku: props.sku.valor().to_string(),
+                note: props.note,
+                middle_name: props.middle_name.as_ref().map(|v| v.valor().to_string()),
+                tags: props
+                    .tags
+                    .iter()
+                    .map(|v| v.valor().to_string())
+                    .collect::<Vec<_>>(),
+                status: props.status.as_str().to_string(),
+                email: props.email.valor().to_string(),
             })
             .await;
 
@@ -950,6 +924,7 @@ mod tests {
     #[tokio::test]
     async fn deberia_devolver_error_cuando_title_es_una_cadena_vacia() {
         // Preparar
+        let props = MadreCuenta::new().construir_props();
         let repositorio_doble = MockRepositorioCuenta::new();
         let caso_de_uso = CrearCuentaImpl {
             repositorio: Arc::new(repositorio_doble),
@@ -959,14 +934,18 @@ mod tests {
         let resultado = caso_de_uso
             .ejecutar(ParamsCrearCuenta {
                 title: "".to_string(),
-                price: 42,
-                name: "example".to_string(),
-                sku: "example".to_string(),
-                note: None,
-                middle_name: None,
-                tags: vec![],
-                status: "Active".to_string(),
-                email: "example".to_string(),
+                price: props.price,
+                name: props.name.valor().to_string(),
+                sku: props.sku.valor().to_string(),
+                note: props.note,
+                middle_name: props.middle_name.as_ref().map(|v| v.valor().to_string()),
+                tags: props
+                    .tags
+                    .iter()
+                    .map(|v| v.valor().to_string())
+                    .collect::<Vec<_>>(),
+                status: props.status.as_str().to_string(),
+                email: props.email.valor().to_string(),
             })
             .await;
 
@@ -981,6 +960,7 @@ mod tests {
     #[tokio::test]
     async fn deberia_devolver_error_cuando_name_es_una_cadena_vacia() {
         // Preparar
+        let props = MadreCuenta::new().construir_props();
         let repositorio_doble = MockRepositorioCuenta::new();
         let caso_de_uso = CrearCuentaImpl {
             repositorio: Arc::new(repositorio_doble),
@@ -989,15 +969,19 @@ mod tests {
         // Actuar
         let resultado = caso_de_uso
             .ejecutar(ParamsCrearCuenta {
-                title: "example".to_string(),
-                price: 42,
+                title: props.title,
+                price: props.price,
                 name: "".to_string(),
-                sku: "example".to_string(),
-                note: None,
-                middle_name: None,
-                tags: vec![],
-                status: "Active".to_string(),
-                email: "example".to_string(),
+                sku: props.sku.valor().to_string(),
+                note: props.note,
+                middle_name: props.middle_name.as_ref().map(|v| v.valor().to_string()),
+                tags: props
+                    .tags
+                    .iter()
+                    .map(|v| v.valor().to_string())
+                    .collect::<Vec<_>>(),
+                status: props.status.as_str().to_string(),
+                email: props.email.valor().to_string(),
             })
             .await;
 
@@ -1009,6 +993,7 @@ mod tests {
     #[tokio::test]
     async fn deberia_devolver_error_cuando_sku_es_una_cadena_vacia() {
         // Preparar
+        let props = MadreCuenta::new().construir_props();
         let repositorio_doble = MockRepositorioCuenta::new();
         let caso_de_uso = CrearCuentaImpl {
             repositorio: Arc::new(repositorio_doble),
@@ -1017,15 +1002,19 @@ mod tests {
         // Actuar
         let resultado = caso_de_uso
             .ejecutar(ParamsCrearCuenta {
-                title: "example".to_string(),
-                price: 42,
-                name: "example".to_string(),
+                title: props.title,
+                price: props.price,
+                name: props.name.valor().to_string(),
                 sku: "".to_string(),
-                note: None,
-                middle_name: None,
-                tags: vec![],
-                status: "Active".to_string(),
-                email: "example".to_string(),
+                note: props.note,
+                middle_name: props.middle_name.as_ref().map(|v| v.valor().to_string()),
+                tags: props
+                    .tags
+                    .iter()
+                    .map(|v| v.valor().to_string())
+                    .collect::<Vec<_>>(),
+                status: props.status.as_str().to_string(),
+                email: props.email.valor().to_string(),
             })
             .await;
 
@@ -1037,6 +1026,7 @@ mod tests {
     #[tokio::test]
     async fn deberia_devolver_error_cuando_status_es_una_cadena_vacia() {
         // Preparar
+        let props = MadreCuenta::new().construir_props();
         let repositorio_doble = MockRepositorioCuenta::new();
         let caso_de_uso = CrearCuentaImpl {
             repositorio: Arc::new(repositorio_doble),
@@ -1045,15 +1035,19 @@ mod tests {
         // Actuar
         let resultado = caso_de_uso
             .ejecutar(ParamsCrearCuenta {
-                title: "example".to_string(),
-                price: 42,
-                name: "example".to_string(),
-                sku: "example".to_string(),
-                note: None,
-                middle_name: None,
-                tags: vec![],
+                title: props.title,
+                price: props.price,
+                name: props.name.valor().to_string(),
+                sku: props.sku.valor().to_string(),
+                note: props.note,
+                middle_name: props.middle_name.as_ref().map(|v| v.valor().to_string()),
+                tags: props
+                    .tags
+                    .iter()
+                    .map(|v| v.valor().to_string())
+                    .collect::<Vec<_>>(),
                 status: "".to_string(),
-                email: "example".to_string(),
+                email: props.email.valor().to_string(),
             })
             .await;
 
@@ -1065,6 +1059,7 @@ mod tests {
     #[tokio::test]
     async fn deberia_devolver_error_cuando_email_es_una_cadena_vacia() {
         // Preparar
+        let props = MadreCuenta::new().construir_props();
         let repositorio_doble = MockRepositorioCuenta::new();
         let caso_de_uso = CrearCuentaImpl {
             repositorio: Arc::new(repositorio_doble),
@@ -1073,14 +1068,18 @@ mod tests {
         // Actuar
         let resultado = caso_de_uso
             .ejecutar(ParamsCrearCuenta {
-                title: "example".to_string(),
-                price: 42,
-                name: "example".to_string(),
-                sku: "example".to_string(),
-                note: None,
-                middle_name: None,
-                tags: vec![],
-                status: "Active".to_string(),
+                title: props.title,
+                price: props.price,
+                name: props.name.valor().to_string(),
+                sku: props.sku.valor().to_string(),
+                note: props.note,
+                middle_name: props.middle_name.as_ref().map(|v| v.valor().to_string()),
+                tags: props
+                    .tags
+                    .iter()
+                    .map(|v| v.valor().to_string())
+                    .collect::<Vec<_>>(),
+                status: props.status.as_str().to_string(),
                 email: "".to_string(),
             })
             .await;
@@ -1155,44 +1154,14 @@ impl ListarCuentas for ListarCuentasImpl {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use dominio_cuenta::valores::Name;
-    use dominio_cuenta::valores::Sku;
-    use dominio_cuenta::valores::Status;
     use dominio_cuenta::{
-        modelo::{Cuenta, PropsCuenta},
-        repositorio::dobles::MockRepositorioCuenta,
+        pruebas::madres::MadreCuenta, repositorio::dobles::MockRepositorioCuenta,
     };
-    use nucleo::valores::Email;
     use puerto_nucleo::PeticionPagina;
 
     #[tokio::test]
     async fn deberia_devolver_la_pagina_de_cuentas() {
-        let entidades = vec![
-            Cuenta::new(PropsCuenta {
-                title: "first".to_string(),
-                price: 42,
-                name: Name::new("first".to_string()).expect("el literal de Name es válido"),
-                sku: Sku::new("first".to_string()).expect("el literal de Sku es válido"),
-                note: None,
-                middle_name: None,
-                tags: vec![],
-                status: Status::Active,
-                email: Email::new("first".to_string()).expect("el literal de Email es válido"),
-            })
-            .unwrap(),
-            Cuenta::new(PropsCuenta {
-                title: "second".to_string(),
-                price: 42,
-                name: Name::new("second".to_string()).expect("el literal de Name es válido"),
-                sku: Sku::new("second".to_string()).expect("el literal de Sku es válido"),
-                note: None,
-                middle_name: None,
-                tags: vec![],
-                status: Status::Active,
-                email: Email::new("second".to_string()).expect("el literal de Email es válido"),
-            })
-            .unwrap(),
-        ];
+        let entidades = MadreCuenta::aleatorios(2);
         let mut repositorio_doble = MockRepositorioCuenta::new();
         repositorio_doble
             .expect_buscar_todos()
@@ -1313,30 +1282,14 @@ impl ObtenerCuenta for ObtenerCuentaImpl {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use dominio_cuenta::valores::Name;
-    use dominio_cuenta::valores::Sku;
-    use dominio_cuenta::valores::Status;
     use dominio_cuenta::{
-        modelo::{Cuenta, IdCuenta, PropsCuenta},
-        repositorio::dobles::MockRepositorioCuenta,
+        modelo::IdCuenta, pruebas::madres::MadreCuenta, repositorio::dobles::MockRepositorioCuenta,
     };
-    use nucleo::valores::Email;
     use puerto_nucleo::ErrorRepositorio;
 
     #[tokio::test]
     async fn deberia_devolver_cuenta_cuando_el_id_existe() {
-        let entidad = Cuenta::new(PropsCuenta {
-            title: "example".to_string(),
-            price: 42,
-            name: Name::new("example".to_string()).expect("el literal de Name es válido"),
-            sku: Sku::new("example".to_string()).expect("el literal de Sku es válido"),
-            note: None,
-            middle_name: None,
-            tags: vec![],
-            status: Status::Active,
-            email: Email::new("example".to_string()).expect("el literal de Email es válido"),
-        })
-        .unwrap();
+        let entidad = MadreCuenta::aleatorio();
         let id_entidad = entidad.id;
         let mut repositorio_doble = MockRepositorioCuenta::new();
         repositorio_doble
@@ -1350,8 +1303,7 @@ mod tests {
             .ejecutar(ParamsObtenerCuenta { id: id_entidad })
             .await;
 
-        assert!(resultado.is_ok());
-        assert_eq!(resultado.unwrap().title, "example");
+        assert_eq!(resultado.unwrap().id, id_entidad);
     }
 
     #[tokio::test]
@@ -1622,38 +1574,20 @@ impl Cuenta {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::pruebas::madres::MadreCuenta;
 
     #[test]
     fn deberia_crear_cuenta_cuando_los_campos_son_validos() {
-        let resultado = Cuenta::new(PropsCuenta {
-            title: "example".to_string(),
-            price: 42,
-            name: Name::new("example".to_string()).expect("Name::new rechazó el valor de ejemplo"),
-            sku: Sku::new("example".to_string()).expect("Sku::new rechazó el valor de ejemplo"),
-            note: None,
-            middle_name: None,
-            tags: vec![],
-            status: Status::Active,
-            email: Email::new("example".to_string())
-                .expect("Email::new rechazó el valor de ejemplo"),
-        });
-        assert_eq!(resultado.unwrap().title, "example");
+        let resultado = Cuenta::new(MadreCuenta::new().construir_props());
+        assert_eq!(
+            resultado.unwrap().title,
+            MadreCuenta::new().construir_props().title
+        );
     }
 
     #[test]
     fn deberia_rechazar_cuenta_cuando_title_es_una_cadena_vacia() {
-        let resultado = Cuenta::new(PropsCuenta {
-            title: "".into(),
-            price: 42,
-            name: Name::new("example".to_string()).expect("Name::new rechazó el valor de ejemplo"),
-            sku: Sku::new("example".to_string()).expect("Sku::new rechazó el valor de ejemplo"),
-            note: None,
-            middle_name: None,
-            tags: vec![],
-            status: Status::Active,
-            email: Email::new("example".to_string())
-                .expect("Email::new rechazó el valor de ejemplo"),
-        });
+        let resultado = Cuenta::new(MadreCuenta::new().con_title_vacio().construir_props());
         assert!(resultado.is_err());
         assert_eq!(
             resultado.unwrap_err().to_string(),
@@ -1663,48 +1597,14 @@ mod tests {
 
     #[test]
     fn deberia_rechazar_cuenta_cuando_title_solo_tiene_espacios() {
-        let resultado = Cuenta::new(PropsCuenta {
-            title: "   ".into(),
-            price: 42,
-            name: Name::new("example".to_string()).expect("Name::new rechazó el valor de ejemplo"),
-            sku: Sku::new("example".to_string()).expect("Sku::new rechazó el valor de ejemplo"),
-            note: None,
-            middle_name: None,
-            tags: vec![],
-            status: Status::Active,
-            email: Email::new("example".to_string())
-                .expect("Email::new rechazó el valor de ejemplo"),
-        });
+        let resultado = Cuenta::new(MadreCuenta::new().con_title("   ").construir_props());
         assert!(resultado.is_err());
     }
 
     #[test]
     fn deberia_rechazar_actualizar_cuenta_cuando_title_es_una_cadena_vacia() {
-        let mut entidad = Cuenta::new(PropsCuenta {
-            title: "example".to_string(),
-            price: 42,
-            name: Name::new("example".to_string()).expect("Name::new rechazó el valor de ejemplo"),
-            sku: Sku::new("example".to_string()).expect("Sku::new rechazó el valor de ejemplo"),
-            note: None,
-            middle_name: None,
-            tags: vec![],
-            status: Status::Active,
-            email: Email::new("example".to_string())
-                .expect("Email::new rechazó el valor de ejemplo"),
-        })
-        .unwrap();
-        let resultado = entidad.actualizar(PropsCuenta {
-            title: "".into(),
-            price: 42,
-            name: Name::new("example".to_string()).expect("Name::new rechazó el valor de ejemplo"),
-            sku: Sku::new("example".to_string()).expect("Sku::new rechazó el valor de ejemplo"),
-            note: None,
-            middle_name: None,
-            tags: vec![],
-            status: Status::Active,
-            email: Email::new("example".to_string())
-                .expect("Email::new rechazó el valor de ejemplo"),
-        });
+        let mut entidad = MadreCuenta::aleatorio();
+        let resultado = entidad.actualizar(MadreCuenta::new().con_title_vacio().construir_props());
         assert_eq!(
             resultado.unwrap_err().to_string(),
             "cuenta.validacion.title_vacio"
@@ -2138,25 +2038,17 @@ impl RepositorioCuenta for RepositorioCuentaEnMemoria {
 mod tests {
     use super::*;
     use dominio_cuenta::modelo::PropsCuenta;
-    use dominio_cuenta::valores::Name;
+    use dominio_cuenta::pruebas::madres::MadreCuenta;
     use dominio_cuenta::valores::Sku;
-    use dominio_cuenta::valores::Status;
-    use nucleo::valores::Email;
     use uuid::Uuid;
 
+    /// Una entidad válida, con los valores de la madre salvo en los campos únicos (uno
+    /// nuevo cada vez) y las fechas (un segundo exacto).
     fn nuevo_cuenta() -> Cuenta {
         Cuenta::new(PropsCuenta {
-            title: "example".to_string(),
-            price: 42,
-            name: Name::new("example".to_string()).expect("Name::new rechazó el valor de ejemplo"),
             sku: Sku::new(Uuid::new_v4().to_string())
                 .expect("Sku::new rechazó el valor de ejemplo"),
-            note: None,
-            middle_name: None,
-            tags: vec![],
-            status: Status::Active,
-            email: Email::new("example".to_string())
-                .expect("Email::new rechazó el valor de ejemplo"),
+            ..MadreCuenta::new().construir_props()
         })
         .unwrap()
     }

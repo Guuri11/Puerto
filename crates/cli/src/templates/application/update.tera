@@ -43,17 +43,19 @@ mod tests {
     use super::*;
 {% if actor %}    use puerto_nucleo::auth::dobles::MadrePrincipal;
 {% endif %}    use dominio_{{ snake }}::{
-        modelo::{{ "{" }}{{ pascal }}, Id{{ pascal }}, Props{{ pascal }}},
+        modelo::Id{{ pascal }},
+        pruebas::madres::Madre{{ pascal }},
         repositorio::dobles::MockRepositorio{{ pascal }},
     };
-{% for import in test_imports %}    use {{ import }};
-{% endfor %}
+
 
     #[tokio::test]
     async fn deberia_actualizar_{{ snake }}_cuando_los_parametros_son_validos() {
         // Preparar
-        let entidad = {{ pascal }}::new(Props{{ pascal }} {
-{{ macros::props(fields=fields, word="original") }}        }).unwrap();
+        let props = Madre{{ pascal }}::new().construir_props();
+        let {% if required %}mut {% endif %}entidad = Madre{{ pascal }}::aleatorio();{% if required %}
+        // Lo que estaba guardado, distinto de lo que trae la actualización.
+        entidad.{{ required.0.name }} = "original".to_string();{% endif %}
         let id_entidad = entidad.id;
         let mut repositorio_doble = MockRepositorio{{ pascal }}::new();
         repositorio_doble
@@ -69,16 +71,17 @@ mod tests {
             .ejecutar(ParamsActualizar{{ pascal }} {
 {% if actor %}                actor: MadrePrincipal::aleatorio(),
 {% endif %}            id: id_entidad,
-{{ macros::params(fields=fields, word="updated") }}            })
+{{ macros::params_madre(fields=fields) }}            })
             .await;
 
         // Comprobar
-        {% if required %}assert_eq!(resultado.unwrap().{{ required.0.name }}, "updated");{% elif string_vos %}assert_eq!(resultado.unwrap().{{ string_vos.0.name }}.valor(), "updated");{% else %}assert!(resultado.is_ok());{% endif %}
+        {% if required %}assert_eq!(resultado.unwrap().{{ required.0.name }}, Madre{{ pascal }}::new().construir_props().{{ required.0.name }});{% else %}assert!(resultado.is_ok());{% endif %}
     }
 
     #[tokio::test]
     async fn deberia_devolver_no_encontrado_cuando_{{ snake }}_no_existe() {
         // Preparar
+        let props = Madre{{ pascal }}::new().construir_props();
         let mut repositorio_doble = MockRepositorio{{ pascal }}::new();
         repositorio_doble.expect_buscar_por_id().returning(|_| Ok(None));
         let caso_de_uso = Actualizar{{ pascal }}Impl {
@@ -90,7 +93,7 @@ mod tests {
             .ejecutar(ParamsActualizar{{ pascal }} {
 {% if actor %}                actor: MadrePrincipal::aleatorio(),
 {% endif %}            id: Id{{ pascal }}::generar(),
-{{ macros::params(fields=fields, word="new") }}            })
+{{ macros::params_madre(fields=fields) }}            })
             .await;
 
         // Comprobar
@@ -101,8 +104,8 @@ mod tests {
     #[tokio::test]
     async fn deberia_devolver_error_cuando_{{ f.name }}_es_una_cadena_vacia() {
         // Preparar
-        let entidad = {{ pascal }}::new(Props{{ pascal }} {
-{{ macros::props(fields=fields, word="original") }}        }).unwrap();
+{% if fields | length > 1 %}        let props = Madre{{ pascal }}::new().construir_props();
+{% endif %}        let entidad = Madre{{ pascal }}::aleatorio();
         let id_entidad = entidad.id;
         let mut repositorio_doble = MockRepositorio{{ pascal }}::new();
         repositorio_doble
@@ -117,7 +120,7 @@ mod tests {
             .ejecutar(ParamsActualizar{{ pascal }} {
 {% if actor %}                actor: MadrePrincipal::aleatorio(),
 {% endif %}            id: id_entidad,
-{{ macros::params(fields=fields, word="updated", empty=f.name) }}            })
+{{ macros::params_madre(fields=fields, empty=f.name) }}            })
             .await;
 
         // Comprobar
