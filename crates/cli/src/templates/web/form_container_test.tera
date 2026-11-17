@@ -163,7 +163,13 @@ describe("{{ pascal }}FormContainer", () => {
     // Act
     renderScreen(<{{ pascal }}FormContainer />, {
       {{ camel }}Repository: fake{{ pascal }}Repository(),
+{%- for o in targets %}
+{%- if o.pascal == t.pascal %}
       {{ t.camel }}Repository: fake{{ t.pascal }}Repository([{{ t.ident }}]),
+{%- else %}
+      {{ o.camel }}Repository: fake{{ o.pascal }}Repository(),
+{%- endif %}
+{%- endfor %}
     });
 
     // Assert

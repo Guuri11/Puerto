@@ -1032,6 +1032,57 @@ fn should_label_a_target_without_a_string_field_by_its_id() {
     cleanup(&dir);
 }
 
+/// A form with selects of two different targets loads both: every form test gives it both
+/// repositories, or the select of the one it was not given crashes on `undefined`.
+#[test]
+fn should_give_the_form_every_target_repository_when_it_offers_one_target() {
+    let dir = temp_dir("references_web_two_targets");
+    cleanup(&dir);
+    fs::create_dir_all(&dir).unwrap();
+    let output = new_project_non_interactive(Some("shop".into()), false, &dir).unwrap();
+    scaffold::run_scaffold("Cliente", &output, &[], OverwritePolicy::Ask).unwrap();
+    scaffold::run_scaffold("Pallet", &output, &[], OverwritePolicy::Ask).unwrap();
+    let parcel = vec![
+        puerto_toml::parse_field_arg("cliente_id:ref:Cliente").unwrap(),
+        puerto_toml::parse_field_arg("pallet_id:ref:Pallet").unwrap(),
+    ];
+    scaffold::run_scaffold("Parcel", &output, &parcel, OverwritePolicy::Ask).unwrap();
+
+    let test = read(
+        &output,
+        "web/src/presentation/features/parcel/containers/parcel-form-container.test.tsx",
+    );
+    let offer = |target: &str| {
+        let start = test
+            .find(&format!(
+                "test(\"should offer every {target} in the selects"
+            ))
+            .unwrap_or_else(|| panic!("no offer test for {target}\n{test}"));
+        let body = &test[start..];
+        body[..body.find("});").unwrap()].to_string()
+    };
+    let cliente = offer("cliente");
+    assert!(
+        cliente.contains("clienteRepository: fakeClienteRepository([cliente]),"),
+        "{cliente}"
+    );
+    assert!(
+        cliente.contains("palletRepository: fakePalletRepository(),"),
+        "{cliente}"
+    );
+    let pallet = offer("pallet");
+    assert!(
+        pallet.contains("palletRepository: fakePalletRepository([pallet]),"),
+        "{pallet}"
+    );
+    assert!(
+        pallet.contains("clienteRepository: fakeClienteRepository(),"),
+        "{pallet}"
+    );
+
+    cleanup(&dir);
+}
+
 #[test]
 fn should_link_a_reference_to_its_target_and_say_when_it_is_missing() {
     let (dir, output) = pedido_project("references_web_detail", false, false);

@@ -3412,6 +3412,7 @@ edition = "2024"
 dominio_entrega = { workspace = true }
 puerto-nucleo = { workspace = true }
 dominio_compra = { workspace = true }
+dominio_proveedor = { workspace = true }
 async-trait = { workspace = true }
 tracing = { workspace = true }
 uuid = { workspace = true }
@@ -3436,6 +3437,7 @@ use dominio_entrega::eventos::{EventoEntrega, SnapshotEntrega};
 use dominio_entrega::modelo::{Entrega, IdEntrega};
 use dominio_entrega::repositorio::RepositorioEntrega;
 use dominio_entrega::unit_of_work::UnitOfWorkFactoryEntrega;
+use dominio_proveedor::modelo::IdProveedor;
 use puerto_nucleo::ErrorRepositorio;
 use std::sync::Arc;
 
@@ -3443,6 +3445,7 @@ use std::sync::Arc;
 pub struct ParamsActualizarEntrega {
     pub id: IdEntrega,
     pub compra_id: IdCompra,
+    pub destinatario_id: Option<IdProveedor>,
     pub carrier: String,
 }
 
@@ -3493,6 +3496,7 @@ impl ActualizarEntrega for ActualizarEntregaImpl {
             return Err(err);
         }
         entidad.compra_id = params.compra_id;
+        entidad.destinatario_id = params.destinatario_id;
         entidad.carrier = params.carrier;
         entidad.actualizado_en = chrono::Utc::now();
         let mut uow = self.uow_factory.begin().await.inspect_err(fallido)?;
@@ -3531,6 +3535,7 @@ mod tests {
         // Preparar
         let entidad = Entrega::new(PropsEntrega {
             compra_id: IdCompra::generar(),
+            destinatario_id: None,
             carrier: "original".to_string(),
         })
         .unwrap();
@@ -3546,6 +3551,7 @@ mod tests {
             .ejecutar(ParamsActualizarEntrega {
                 id: id_entidad,
                 compra_id: IdCompra::generar(),
+                destinatario_id: None,
                 carrier: "updated".to_string(),
             })
             .await;
@@ -3577,6 +3583,7 @@ mod tests {
             .ejecutar(ParamsActualizarEntrega {
                 id: IdEntrega::generar(),
                 compra_id: IdCompra::generar(),
+                destinatario_id: None,
                 carrier: "new".to_string(),
             })
             .await;
@@ -3594,6 +3601,7 @@ mod tests {
         // Preparar
         let entidad = Entrega::new(PropsEntrega {
             compra_id: IdCompra::generar(),
+            destinatario_id: None,
             carrier: "original".to_string(),
         })
         .unwrap();
@@ -3609,6 +3617,7 @@ mod tests {
             .ejecutar(ParamsActualizarEntrega {
                 id: id_entidad,
                 compra_id: IdCompra::generar(),
+                destinatario_id: None,
                 carrier: "".to_string(),
             })
             .await;
@@ -3711,6 +3720,7 @@ mod tests {
         // Preparar
         let entidad = Entrega::new(PropsEntrega {
             compra_id: IdCompra::generar(),
+            destinatario_id: None,
             carrier: "example".to_string(),
         })
         .unwrap();
@@ -3774,12 +3784,14 @@ use dominio_entrega::errores::ErrorEntrega;
 use dominio_entrega::eventos::{EventoEntrega, SnapshotEntrega};
 use dominio_entrega::modelo::{Entrega, PropsEntrega};
 use dominio_entrega::unit_of_work::UnitOfWorkFactoryEntrega;
+use dominio_proveedor::modelo::IdProveedor;
 use puerto_nucleo::ErrorRepositorio;
 use std::sync::Arc;
 
 #[derive(Debug, Clone)]
 pub struct ParamsCrearEntrega {
     pub compra_id: IdCompra,
+    pub destinatario_id: Option<IdProveedor>,
     pub carrier: String,
 }
 
@@ -3815,6 +3827,7 @@ impl CrearEntrega for CrearEntregaImpl {
         let fallido = |e: &ErrorRepositorio| tracing::error!(error = %e, "crear_entrega: fallo del repositorio");
         let entidad = Entrega::new(PropsEntrega {
             compra_id: params.compra_id,
+            destinatario_id: params.destinatario_id,
             carrier: params.carrier,
         })
         .inspect_err(|e| tracing::warn!(error = %e, "crear_entrega: rechazado"))?;
@@ -3850,6 +3863,7 @@ mod tests {
         let resultado = caso_de_uso
             .ejecutar(ParamsCrearEntrega {
                 compra_id: IdCompra::generar(),
+                destinatario_id: None,
                 carrier: "example".to_string(),
             })
             .await;
@@ -3881,6 +3895,7 @@ mod tests {
         let resultado = caso_de_uso
             .ejecutar(ParamsCrearEntrega {
                 compra_id: IdCompra::generar(),
+                destinatario_id: None,
                 carrier: "example".to_string(),
             })
             .await;
@@ -3908,6 +3923,7 @@ mod tests {
         let resultado = caso_de_uso
             .ejecutar(ParamsCrearEntrega {
                 compra_id: IdCompra::generar(),
+                destinatario_id: None,
                 carrier: "example".to_string(),
             })
             .await;
@@ -3917,6 +3933,35 @@ mod tests {
         assert_eq!(
             resultado.unwrap_err().to_string(),
             "entrega.validacion.compra_id_no_encontrado"
+        );
+        assert!(!uow_factory.grabado().confirmado);
+    }
+
+    #[tokio::test]
+    async fn deberia_devolver_un_error_de_validacion_cuando_destinatario_id_no_existe() {
+        // Preparar: en el almacén no hay Proveedor con ese id.
+        let uow_factory = UnitOfWorkFactoryGrabadora::fallando_en(
+            FallarEn::Guardar,
+            ErrorRepositorio::ReferenciaInexistente("destinatario_id"),
+        );
+        let caso_de_uso = CrearEntregaImpl {
+            uow_factory: Arc::new(uow_factory.clone()),
+        };
+
+        // Actuar
+        let resultado = caso_de_uso
+            .ejecutar(ParamsCrearEntrega {
+                compra_id: IdCompra::generar(),
+                destinatario_id: None,
+                carrier: "example".to_string(),
+            })
+            .await;
+
+        // Comprobar
+        assert!(resultado.is_err());
+        assert_eq!(
+            resultado.unwrap_err().to_string(),
+            "entrega.validacion.destinatario_id_no_encontrado"
         );
         assert!(!uow_factory.grabado().confirmado);
     }
@@ -3936,6 +3981,7 @@ mod tests {
         let resultado = caso_de_uso
             .ejecutar(ParamsCrearEntrega {
                 compra_id: IdCompra::generar(),
+                destinatario_id: None,
                 carrier: "example".to_string(),
             })
             .await;
@@ -3958,6 +4004,7 @@ mod tests {
         let resultado = caso_de_uso
             .ejecutar(ParamsCrearEntrega {
                 compra_id: IdCompra::generar(),
+                destinatario_id: None,
                 carrier: "".to_string(),
             })
             .await;
@@ -3985,6 +4032,7 @@ use dominio_compra::modelo::IdCompra;
 use dominio_entrega::errores::ErrorEntrega;
 use dominio_entrega::modelo::Entrega;
 use dominio_entrega::repositorio::{FiltroEntrega, RepositorioEntrega};
+use dominio_proveedor::modelo::IdProveedor;
 use puerto_nucleo::{Pagina, PeticionPagina};
 use std::sync::Arc;
 
@@ -3993,6 +4041,8 @@ pub struct ParamsListarEntregas {
     pub pagina: PeticionPagina,
     /// Si se indica, solo entregas con este `compra_id`.
     pub compra_id: Option<IdCompra>,
+    /// Si se indica, solo entregas con este `destinatario_id`.
+    pub destinatario_id: Option<IdProveedor>,
 }
 
 #[async_trait]
@@ -4037,6 +4087,7 @@ impl ListarEntregas for ListarEntregasImpl {
                 params.pagina,
                 FiltroEntrega {
                     compra_id: params.compra_id,
+                    destinatario_id: params.destinatario_id,
                 },
             )
             .await
@@ -4053,6 +4104,7 @@ mod tests {
         modelo::{Entrega, PropsEntrega},
         repositorio::dobles::MockRepositorioEntrega,
     };
+    use dominio_proveedor::modelo::IdProveedor;
     use puerto_nucleo::PeticionPagina;
 
     #[tokio::test]
@@ -4060,11 +4112,13 @@ mod tests {
         let entidades = vec![
             Entrega::new(PropsEntrega {
                 compra_id: IdCompra::generar(),
+                destinatario_id: None,
                 carrier: "first".to_string(),
             })
             .unwrap(),
             Entrega::new(PropsEntrega {
                 compra_id: IdCompra::generar(),
+                destinatario_id: None,
                 carrier: "second".to_string(),
             })
             .unwrap(),
@@ -4081,6 +4135,7 @@ mod tests {
             .ejecutar(ParamsListarEntregas {
                 pagina: PeticionPagina::default(),
                 compra_id: None,
+                destinatario_id: None,
             })
             .await;
 
@@ -4103,6 +4158,7 @@ mod tests {
             .ejecutar(ParamsListarEntregas {
                 pagina: PeticionPagina::default(),
                 compra_id: None,
+                destinatario_id: None,
             })
             .await;
 
@@ -4126,6 +4182,7 @@ mod tests {
             .ejecutar(ParamsListarEntregas {
                 pagina: PeticionPagina::new(Some(5), Some(10)),
                 compra_id: None,
+                destinatario_id: None,
             })
             .await;
 
@@ -4136,6 +4193,7 @@ mod tests {
     async fn deberia_pasar_el_filtro_al_repositorio() {
         let filtro = FiltroEntrega {
             compra_id: Some(IdCompra::generar()),
+            destinatario_id: Some(IdProveedor::generar()),
         };
         let mut repositorio_doble = MockRepositorioEntrega::new();
         repositorio_doble
@@ -4150,6 +4208,7 @@ mod tests {
             .ejecutar(ParamsListarEntregas {
                 pagina: PeticionPagina::default(),
                 compra_id: filtro.compra_id,
+                destinatario_id: filtro.destinatario_id,
             })
             .await;
 
@@ -4227,6 +4286,7 @@ mod tests {
     async fn deberia_devolver_entrega_cuando_el_id_existe() {
         let entidad = Entrega::new(PropsEntrega {
             compra_id: IdCompra::generar(),
+            destinatario_id: None,
             carrier: "example".to_string(),
         })
         .unwrap();
@@ -4297,6 +4357,7 @@ edition = "2024"
 [dependencies]
 puerto-nucleo = { workspace = true }
 dominio_compra = { workspace = true }
+dominio_proveedor = { workspace = true }
 async-trait = { workspace = true }
 thiserror = { workspace = true }
 uuid = { workspace = true }
@@ -4402,6 +4463,7 @@ pub const ENTREGA_BORRADO: &str = "entrega_borrado";
 pub struct SnapshotEntrega {
     pub id: Uuid,
     pub compra_id: Uuid,
+    pub destinatario_id: Option<Uuid>,
     pub carrier: String,
 }
 
@@ -4410,6 +4472,7 @@ impl SnapshotEntrega {
         Self {
             id: entidad.id.valor(),
             compra_id: entidad.compra_id.valor(),
+            destinatario_id: entidad.destinatario_id.map(|v| v.valor()),
             carrier: entidad.carrier.clone(),
         }
     }
@@ -4504,7 +4567,7 @@ mod tests {
             .map(|object| object.keys().map(String::as_str).collect())
             .unwrap_or_default();
         claves.sort_unstable();
-        assert_eq!(claves, ["carrier", "compraId", "id"]);
+        assert_eq!(claves, ["carrier", "compraId", "destinatarioId", "id"]);
         assert_eq!(
             serde_json::from_value::<SnapshotEntrega>(payload).ok(),
             Some(snapshot)
@@ -4527,6 +4590,7 @@ pub mod pruebas {
 === contextos/entrega/dominio/src/modelo.rs ===
 use chrono::{DateTime, Utc};
 use dominio_compra::modelo::IdCompra;
+use dominio_proveedor::modelo::IdProveedor;
 use uuid::Uuid;
 
 use crate::errores::ErrorEntrega;
@@ -4562,6 +4626,7 @@ impl std::fmt::Display for IdEntrega {
 #[derive(Debug, Clone)]
 pub struct PropsEntrega {
     pub compra_id: IdCompra,
+    pub destinatario_id: Option<IdProveedor>,
     pub carrier: String,
 }
 
@@ -4573,6 +4638,7 @@ pub struct Entrega {
     pub borrado: bool,
     pub borrado_en: Option<DateTime<Utc>>,
     pub compra_id: IdCompra,
+    pub destinatario_id: Option<IdProveedor>,
     pub carrier: String,
 }
 
@@ -4589,6 +4655,7 @@ impl Entrega {
             borrado: false,
             borrado_en: None,
             compra_id: props.compra_id,
+            destinatario_id: props.destinatario_id,
             carrier: props.carrier,
         })
     }
@@ -4606,6 +4673,7 @@ mod tests {
     fn deberia_crear_entrega_cuando_los_campos_son_validos() {
         let resultado = Entrega::new(PropsEntrega {
             compra_id: IdCompra::generar(),
+            destinatario_id: None,
             carrier: "example".to_string(),
         });
         assert_eq!(resultado.unwrap().carrier, "example");
@@ -4615,6 +4683,7 @@ mod tests {
     fn deberia_rechazar_entrega_cuando_carrier_es_una_cadena_vacia() {
         let resultado = Entrega::new(PropsEntrega {
             compra_id: IdCompra::generar(),
+            destinatario_id: None,
             carrier: "".into(),
         });
         assert!(resultado.is_err());
@@ -4628,6 +4697,7 @@ mod tests {
     fn deberia_rechazar_entrega_cuando_carrier_solo_tiene_espacios() {
         let resultado = Entrega::new(PropsEntrega {
             compra_id: IdCompra::generar(),
+            destinatario_id: None,
             carrier: "   ".into(),
         });
         assert!(resultado.is_err());
@@ -4638,9 +4708,11 @@ mod tests {
 use crate::modelo::Entrega;
 use crate::modelo::PropsEntrega;
 use dominio_compra::modelo::IdCompra;
+use dominio_proveedor::modelo::IdProveedor;
 
 pub struct MadreEntrega {
     compra_id: Option<IdCompra>,
+    destinatario_id: Option<IdProveedor>,
     carrier: Option<String>,
 }
 
@@ -4648,12 +4720,18 @@ impl MadreEntrega {
     pub fn new() -> Self {
         Self {
             compra_id: None,
+            destinatario_id: None,
             carrier: None,
         }
     }
 
     pub fn con_compra_id(mut self, compra_id: IdCompra) -> Self {
         self.compra_id = Some(compra_id);
+        self
+    }
+
+    pub fn con_destinatario_id(mut self, destinatario_id: IdProveedor) -> Self {
+        self.destinatario_id = Some(destinatario_id);
         self
     }
 
@@ -4670,6 +4748,7 @@ impl MadreEntrega {
     pub fn construir(self) -> Entrega {
         Entrega::new(PropsEntrega {
             compra_id: self.compra_id.unwrap_or_else(IdCompra::generar),
+            destinatario_id: self.destinatario_id,
             carrier: self.carrier.unwrap_or_else(|| "example".to_string()),
         })
         .expect("MadreEntrega: Entrega::new rechazó los props")
@@ -4678,6 +4757,7 @@ impl MadreEntrega {
     pub fn construir_props(self) -> PropsEntrega {
         PropsEntrega {
             compra_id: self.compra_id.unwrap_or_else(IdCompra::generar),
+            destinatario_id: self.destinatario_id,
             carrier: self.carrier.unwrap_or_else(|| "example".to_string()),
         }
     }
@@ -4703,11 +4783,13 @@ use puerto_nucleo::{ErrorRepositorio, Pagina, PeticionPagina};
 
 use crate::modelo::{Entrega, IdEntrega};
 use dominio_compra::modelo::IdCompra;
+use dominio_proveedor::modelo::IdProveedor;
 
 /// A qué reduce `buscar_todos` la página: un id por referencia; `None` no filtra.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct FiltroEntrega {
     pub compra_id: Option<IdCompra>,
+    pub destinatario_id: Option<IdProveedor>,
 }
 
 #[async_trait]
@@ -4868,7 +4950,9 @@ edition = "2024"
 dominio_entrega = { workspace = true }
 puerto-nucleo = { workspace = true }
 dominio_compra = { workspace = true }
+dominio_proveedor = { workspace = true }
 infra_compra = { workspace = true, optional = true }
+infra_proveedor = { workspace = true, optional = true }
 puerto-sqlx = { workspace = true }
 serde = { workspace = true }
 sqlx = { workspace = true }
@@ -4881,17 +4965,19 @@ serde_json = { workspace = true }
 [features]
 # Las funciones de siembra de los tests de Postgres (`pruebas::siembra`), para los tests de los
 # contextos que referencian a este (ADR-0023 § 5 de Puerto).
-pruebas = ["dominio_entrega/pruebas", "dep:infra_compra", "infra_compra/pruebas"]
+pruebas = ["dominio_entrega/pruebas", "dep:infra_compra", "infra_compra/pruebas", "dep:infra_proveedor", "infra_proveedor/pruebas"]
 
 [dev-dependencies]
 dominio_entrega = { workspace = true, features = ["pruebas"] }
 infra_compra = { workspace = true, features = ["pruebas"] }
+infra_proveedor = { workspace = true, features = ["pruebas"] }
 migrador = { workspace = true }
 tokio = { workspace = true }
 
 === contextos/entrega/infraestructura/src/fila.rs ===
 use chrono::{DateTime, Utc};
 use dominio_compra::modelo::IdCompra;
+use dominio_proveedor::modelo::IdProveedor;
 use serde::{Deserialize, Serialize};
 use sqlx::FromRow;
 use uuid::Uuid;
@@ -4909,6 +4995,7 @@ pub struct FilaEntrega {
     pub borrado: bool,
     pub borrado_en: Option<DateTime<Utc>>,
     pub compra_id: Uuid,
+    pub destinatario_id: Option<Uuid>,
     pub carrier: String,
 }
 
@@ -4923,6 +5010,7 @@ impl TryFrom<FilaEntrega> for Entrega {
             borrado: fila.borrado,
             borrado_en: fila.borrado_en,
             compra_id: IdCompra::from_uuid(fila.compra_id),
+            destinatario_id: fila.destinatario_id.map(IdProveedor::from_uuid),
             carrier: fila.carrier,
         }))
     }
@@ -4937,6 +5025,7 @@ impl From<&Entrega> for FilaEntrega {
             borrado: entidad.borrado,
             borrado_en: entidad.borrado_en,
             compra_id: entidad.compra_id.valor(),
+            destinatario_id: entidad.destinatario_id.map(|v| v.valor()),
             carrier: entidad.carrier.clone(),
         }
     }
@@ -4966,6 +5055,7 @@ use crate::unit_of_work::UnitOfWorkFactoryEntregaPostgres;
 pub async fn construir(pool: &PgPool) -> Entrega {
     Entrega::new(PropsEntrega {
         compra_id: infra_compra::pruebas::siembra::sembrar(pool).await.id,
+        destinatario_id: None,
         carrier: "example".to_string(),
     })
     .unwrap()
@@ -5036,14 +5126,16 @@ impl RepositorioEntrega for RepositorioEntregaPostgres {
         // Una sola consulta estática sea cual sea el filtro: un id sin valor es NULL y casa con
         // todas las filas.
         let compra_id = filtro.compra_id.map(|id| id.valor());
+        let destinatario_id = filtro.destinatario_id.map(|id| id.valor());
         let filas = sqlx::query_as!(
             FilaEntrega,
-            "SELECT id, creado_en, actualizado_en, borrado, borrado_en, compra_id, carrier
-             FROM entregas WHERE borrado = false AND ($3::uuid IS NULL OR compra_id = $3)
+            "SELECT id, creado_en, actualizado_en, borrado, borrado_en, compra_id, destinatario_id, carrier
+             FROM entregas WHERE borrado = false AND ($3::uuid IS NULL OR compra_id = $3) AND ($4::uuid IS NULL OR destinatario_id = $4)
              ORDER BY creado_en DESC, id LIMIT $1 OFFSET $2",
             i64::from(pagina.limite()),
             i64::from(pagina.desplazamiento()),
-            compra_id
+            compra_id,
+            destinatario_id
         )
         .fetch_all(&self.pool)
         .await
@@ -5052,8 +5144,9 @@ impl RepositorioEntrega for RepositorioEntregaPostgres {
             mapear_error_sqlx(&e)
         })?;
         let total = sqlx::query_scalar!(
-            r#"SELECT COUNT(*) AS "total!" FROM entregas WHERE borrado = false AND ($1::uuid IS NULL OR compra_id = $1)"#,
-            compra_id
+            r#"SELECT COUNT(*) AS "total!" FROM entregas WHERE borrado = false AND ($1::uuid IS NULL OR compra_id = $1) AND ($2::uuid IS NULL OR destinatario_id = $2)"#,
+            compra_id,
+            destinatario_id
         )
         .fetch_one(&self.pool)
         .await
@@ -5075,7 +5168,7 @@ impl RepositorioEntrega for RepositorioEntregaPostgres {
         tracing::debug!(%id, "buscar_por_id");
         let fila = sqlx::query_as!(
             FilaEntrega,
-            "SELECT id, creado_en, actualizado_en, borrado, borrado_en, compra_id, carrier
+            "SELECT id, creado_en, actualizado_en, borrado, borrado_en, compra_id, destinatario_id, carrier
              FROM entregas WHERE id = $1 AND borrado = false",
             id.valor()
         )
@@ -5114,6 +5207,7 @@ mod pruebas_integracion {
         // Comprobar
         assert_eq!(encontrado.id, entidad.id);
         assert_eq!(encontrado.compra_id, entidad.compra_id);
+        assert_eq!(encontrado.destinatario_id, entidad.destinatario_id);
         assert_eq!(encontrado.carrier, entidad.carrier);
         assert!(!encontrado.borrado);
     }
@@ -5187,6 +5281,40 @@ mod pruebas_integracion {
                 PeticionPagina::default(),
                 FiltroEntrega {
                     compra_id: Some(destino.id),
+                    destinatario_id: None,
+                },
+            )
+            .await
+            .unwrap();
+
+        // Comprobar
+        assert_eq!(
+            pagina
+                .elementos
+                .iter()
+                .map(|fila| fila.id)
+                .collect::<Vec<_>>(),
+            vec![esperado.id]
+        );
+        assert_eq!(pagina.total, 1);
+    }
+
+    #[sqlx::test(migrator = "migrador::MIGRADOR")]
+    async fn deberia_listar_solo_entregas_con_ese_valor_de_destinatario_id(pool: PgPool) {
+        // Preparar: una entidad entrega con este valor de destinatario_id y otra sin él.
+        let destino = infra_proveedor::pruebas::siembra::sembrar(&pool).await;
+        let mut esperado = construir(&pool).await;
+        esperado.destinatario_id = Some(destino.id);
+        guardar(&pool, &esperado).await;
+        sembrar(&pool).await;
+
+        // Actuar
+        let pagina = repositorio_de_prueba(pool)
+            .buscar_todos(
+                PeticionPagina::default(),
+                FiltroEntrega {
+                    compra_id: None,
+                    destinatario_id: Some(destino.id),
                 },
             )
             .await
@@ -5235,10 +5363,16 @@ impl UnitOfWorkFactoryEntregaPostgres {
 /// Las claves foráneas por las que pasa una escritura (ADR-0022 de Puerto): la base de datos
 /// rechaza una referencia a una fila que no existe, y quien llama recibe como error el campo que la
 /// nombra.
-const REFERENCES: &[ClaveForanea] = &[ClaveForanea {
-    restriccion: "entregas_compra_id_fkey",
-    campo: "compra_id",
-}];
+const REFERENCES: &[ClaveForanea] = &[
+    ClaveForanea {
+        restriccion: "entregas_compra_id_fkey",
+        campo: "compra_id",
+    },
+    ClaveForanea {
+        restriccion: "entregas_destinatario_id_fkey",
+        campo: "destinatario_id",
+    },
+];
 
 #[async_trait]
 impl UnitOfWorkFactoryEntrega for UnitOfWorkFactoryEntregaPostgres {
@@ -5258,16 +5392,17 @@ impl UnitOfWorkEntrega for UnitOfWorkEntregaPostgres {
         tracing::debug!(id = %entidad.id, "guardar");
         let db = FilaEntrega::from(entidad);
         sqlx::query!(
-            "INSERT INTO entregas (id, creado_en, actualizado_en, borrado, borrado_en, compra_id, carrier)
-             VALUES ($1, $2, $3, $4, $5, $6, $7)
+            "INSERT INTO entregas (id, creado_en, actualizado_en, borrado, borrado_en, compra_id, destinatario_id, carrier)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
              ON CONFLICT (id) DO UPDATE
-             SET actualizado_en = $3, borrado = $4, borrado_en = $5, compra_id = $6, carrier = $7",
+             SET actualizado_en = $3, borrado = $4, borrado_en = $5, compra_id = $6, destinatario_id = $7, carrier = $8",
             db.id,
             db.creado_en,
             db.actualizado_en,
             db.borrado,
             db.borrado_en,
             db.compra_id,
+            db.destinatario_id,
             db.carrier,
         )
         .execute(self.tx.tx())
@@ -5296,6 +5431,7 @@ mod pruebas_integracion {
     use crate::pruebas::siembra::construir;
     use crate::repositorio::RepositorioEntregaPostgres;
     use dominio_compra::modelo::IdCompra;
+    use dominio_proveedor::modelo::IdProveedor;
 
     /// Lo que hace un caso de uso de creación: guardar, registrar, commit.
     async fn crear(pool: &PgPool, entidad: &Entrega) -> Result<(), ErrorRepositorio> {
@@ -5419,6 +5555,23 @@ mod pruebas_integracion {
         );
         assert_eq!(contar(&pool, "SELECT COUNT(*) FROM outbox").await, 0);
     }
+
+    #[sqlx::test(migrator = "migrador::MIGRADOR")]
+    async fn deberia_rechazar_destinatario_id_inexistente(pool: PgPool) {
+        // Preparar: un valor de destinatario_id que no tiene ninguna fila.
+        let mut entidad = construir(&pool).await;
+        entidad.destinatario_id = Some(IdProveedor::generar());
+
+        // Actuar
+        let resultado = crear(&pool, &entidad).await;
+
+        // Comprobar
+        assert_eq!(
+            resultado.unwrap_err(),
+            ErrorRepositorio::ReferenciaInexistente("destinatario_id")
+        );
+        assert_eq!(contar(&pool, "SELECT COUNT(*) FROM outbox").await, 0);
+    }
 }
 
 === contextos/entrega/rest/Cargo.toml ===
@@ -5431,6 +5584,7 @@ edition = "2024"
 aplicacion_entrega = { workspace = true }
 dominio_entrega = { workspace = true }
 dominio_compra = { workspace = true }
+dominio_proveedor = { workspace = true }
 puerto-nucleo = { workspace = true }
 puerto-web = { workspace = true }
 poem = { workspace = true }
@@ -5443,6 +5597,7 @@ chrono = { workspace = true }
 aplicacion_entrega = { workspace = true, features = ["pruebas"] }
 dominio_entrega = { workspace = true, features = ["pruebas"] }
 dominio_compra = { workspace = true, features = ["pruebas"] }
+dominio_proveedor = { workspace = true, features = ["pruebas"] }
 poem = { workspace = true, features = ["test"] }
 tokio = { workspace = true }
 
@@ -5457,6 +5612,7 @@ use uuid::Uuid;
 pub struct DtoEntrega {
     pub id: Uuid,
     pub compra_id: Uuid,
+    pub destinatario_id: Option<Uuid>,
     pub carrier: String,
 }
 
@@ -5465,6 +5621,7 @@ impl DtoEntrega {
         Self {
             id: entidad.id.valor(),
             compra_id: entidad.compra_id.valor(),
+            destinatario_id: entidad.destinatario_id.map(|v| v.valor()),
             carrier: entidad.carrier.clone(),
         }
     }
@@ -5474,6 +5631,7 @@ impl DtoEntrega {
 #[oai(rename_all = "camelCase")]
 pub struct PeticionCrearEntrega {
     pub compra_id: Uuid,
+    pub destinatario_id: Option<Uuid>,
     pub carrier: String,
 }
 
@@ -5507,6 +5665,7 @@ impl DtoPaginaEntrega {
 #[oai(rename_all = "camelCase")]
 pub struct PeticionActualizarEntrega {
     pub compra_id: Uuid,
+    pub destinatario_id: Option<Uuid>,
     pub carrier: String,
 }
 
@@ -5748,6 +5907,7 @@ use aplicacion_entrega::{
 };
 use dominio_compra::modelo::IdCompra;
 use dominio_entrega::modelo::IdEntrega;
+use dominio_proveedor::modelo::IdProveedor;
 use poem_openapi::{
     OpenApi, Tags,
     param::{Path, Query},
@@ -5786,6 +5946,7 @@ impl ApiEntrega {
             .crear_entrega
             .ejecutar(ParamsCrearEntrega {
                 compra_id: IdCompra::from_uuid(cuerpo.compra_id),
+                destinatario_id: cuerpo.destinatario_id.map(IdProveedor::from_uuid),
                 carrier: cuerpo.carrier.clone(),
             })
             .await
@@ -5825,12 +5986,14 @@ impl ApiEntrega {
         limite: Query<Option<u32>>,
         desplazamiento: Query<Option<u32>>,
         #[oai(name = "compraId")] compra_id: Query<Option<Uuid>>,
+        #[oai(name = "destinatarioId")] destinatario_id: Query<Option<Uuid>>,
     ) -> RespuestaListarEntregas {
         match self
             .listar_entregas
             .ejecutar(ParamsListarEntregas {
                 pagina: PeticionPagina::new(limite.0, desplazamiento.0),
                 compra_id: compra_id.0.map(IdCompra::from_uuid),
+                destinatario_id: destinatario_id.0.map(IdProveedor::from_uuid),
             })
             .await
         {
@@ -5857,6 +6020,7 @@ impl ApiEntrega {
             .ejecutar(ParamsActualizarEntrega {
                 id: IdEntrega::from_uuid(id.0),
                 compra_id: IdCompra::from_uuid(cuerpo.compra_id),
+                destinatario_id: cuerpo.destinatario_id.map(IdProveedor::from_uuid),
                 carrier: cuerpo.carrier.clone(),
             })
             .await
@@ -5932,6 +6096,7 @@ mod tests {
     fn peticion_crear() -> PeticionCrearEntrega {
         PeticionCrearEntrega {
             compra_id: Uuid::new_v4(),
+            destinatario_id: None,
             carrier: "example".to_string(),
         }
     }
@@ -5939,6 +6104,7 @@ mod tests {
     fn peticion_actualizar() -> PeticionActualizarEntrega {
         PeticionActualizarEntrega {
             compra_id: Uuid::new_v4(),
+            destinatario_id: None,
             carrier: "example".to_string(),
         }
     }
@@ -6016,6 +6182,35 @@ mod tests {
             .object()
             .get("codigo")
             .assert_string("entrega.validacion.compra_id_no_encontrado");
+    }
+
+    #[tokio::test]
+    async fn deberia_responder_422_cuando_no_existe_la_referencia_de_destinatario_id() {
+        // Preparar: en la base de datos no hay Proveedor con ese id (ADR-0022 de Puerto).
+        let mut dobles = Dobles::default();
+        dobles.crear.expect_ejecutar().returning(|_| {
+            Err(ErrorEntrega::Validacion(
+                "destinatario_id_no_encontrado".to_string(),
+            ))
+        });
+
+        // Actuar
+        let respuesta = dobles
+            .cliente()
+            .post("/entregas")
+            .body_json(&peticion_crear().to_json())
+            .send()
+            .await;
+
+        // Comprobar
+        respuesta.assert_status(StatusCode::UNPROCESSABLE_ENTITY);
+        respuesta
+            .json()
+            .await
+            .value()
+            .object()
+            .get("codigo")
+            .assert_string("entrega.validacion.destinatario_id_no_encontrado");
     }
 
     #[tokio::test]
@@ -6106,6 +6301,30 @@ mod tests {
         let respuesta = dobles
             .cliente()
             .get(format!("/entregas?compraId={compra_id}"))
+            .send()
+            .await;
+
+        // Comprobar
+        respuesta.assert_status(StatusCode::OK);
+    }
+
+    #[tokio::test]
+    async fn deberia_pasar_el_filtro_por_destinatario_id_al_caso_de_uso() {
+        // Preparar
+        let destinatario_id = Uuid::new_v4();
+        let mut dobles = Dobles::default();
+        dobles
+            .listar
+            .expect_ejecutar()
+            .withf(move |params| {
+                params.destinatario_id == Some(IdProveedor::from_uuid(destinatario_id))
+            })
+            .returning(|params| Ok(Pagina::new(vec![], 0, params.pagina)));
+
+        // Actuar
+        let respuesta = dobles
+            .cliente()
+            .get(format!("/entregas?destinatarioId={destinatario_id}"))
             .send()
             .await;
 
@@ -9223,6 +9442,7 @@ CREATE INDEX compras_approver_id_idx ON compras (approver_id);
 CREATE TABLE entregas (
     id UUID PRIMARY KEY,
     compra_id UUID NOT NULL CONSTRAINT entregas_compra_id_fkey REFERENCES compras (id),
+    destinatario_id UUID CONSTRAINT entregas_destinatario_id_fkey REFERENCES proveedores (id),
     carrier TEXT NOT NULL,
     creado_en TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     actualizado_en TIMESTAMPTZ NOT NULL DEFAULT NOW(),
@@ -9231,6 +9451,8 @@ CREATE TABLE entregas (
 );
 
 CREATE UNIQUE INDEX entregas_compra_id_key ON entregas (compra_id) WHERE borrado = false;
+
+CREATE INDEX entregas_destinatario_id_idx ON entregas (destinatario_id);
 
 === migraciones/<version>_crear_tabla_proveedor.sql ===
 -- Migración de Puerto: crear_tabla_proveedor
@@ -9891,6 +10113,11 @@ unico = true
 referencia = "Compra"
 
 [[entidad.campos]]
+nombre = "destinatario_id"
+tipo = "Option<Uuid>"
+referencia = "Proveedor"
+
+[[entidad.campos]]
 nombre = "carrier"
 tipo = "String"
 
@@ -9995,6 +10222,7 @@ export interface EntregaProblem {
  */
 const TEXTS: Record<string, string> = {
   "entrega.validacion.compra_id_no_encontrado": "Compra does not exist",
+  "entrega.validacion.destinatario_id_no_encontrado": "Destinatario does not exist",
   "entrega.validacion.carrier_vacio": "Carrier is required",
   "entrega.duplicado": "An entrega with these values already exists",
   "entrega.no_encontrado": "This entrega no longer exists",
@@ -10005,6 +10233,7 @@ const TEXTS: Record<string, string> = {
 /** The input each field's code is about. */
 const FIELDS: Record<string, keyof EntregaDraft> = {
   "entrega.validacion.compra_id_no_encontrado": "compraId",
+  "entrega.validacion.destinatario_id_no_encontrado": "destinatarioId",
   "entrega.validacion.carrier_vacio": "carrier",
 };
 
@@ -10016,6 +10245,7 @@ export function toProblem(code: string): EntregaProblem {
 export interface Entrega {
   id: string;
   compraId: string;
+  destinatarioId: string | null;
   carrier: string;
 }
 
@@ -10352,6 +10582,7 @@ function toEntrega(dto: EntregaDto): Entrega {
   return {
     id: dto.id,
     compraId: dto.compraId,
+    destinatarioId: dto.destinatarioId ?? null,
     carrier: dto.carrier,
   };
 }
@@ -10359,6 +10590,7 @@ function toEntrega(dto: EntregaDto): Entrega {
 function toRequest(draft: EntregaDraft): EntregaRequest {
   return {
     compraId: draft.compraId,
+    destinatarioId: draft.destinatarioId ?? undefined,
     carrier: draft.carrier,
   };
 }
@@ -11392,6 +11624,19 @@ describe("EntregaDetailContainer", () => {
     expect(link.getAttribute("href")).toBe(`/compras/${seeded.compraId}`);
   });
 
+  test("should link the destinatario to its page", async () => {
+    // Arrange
+    const seeded = EntregaMother.random();
+    const entregaRepository = fakeEntregaRepository([seeded]);
+
+    // Act
+    renderScreen(<EntregaDetailContainer id={seeded.id} />, { entregaRepository });
+
+    // Assert
+    const link = await screen.findByRole("link", { name: seeded.destinatarioId ?? "" });
+    expect(link.getAttribute("href")).toBe(`/proveedores/${seeded.destinatarioId}`);
+  });
+
   test("should show the not-found code when the entrega does not exist", async () => {
     // Arrange
     const entregaRepository = fakeEntregaRepository();
@@ -11492,7 +11737,9 @@ import { EntregaError } from "../../../../domain/entrega/errors";
 import type { EntregaDraft } from "../../../../domain/entrega/model";
 import { CompraMother, fakeCompraRepository } from "../../../../test-support/compra";
 import { EntregaMother, fakeEntregaRepository } from "../../../../test-support/entrega";
+import { fakeProveedorRepository, ProveedorMother } from "../../../../test-support/proveedor";
 import { renderScreen } from "../../../../test-support/render";
+import { textOf } from "../../../shared/forms";
 import { EntregaFormContainer } from "./entrega-form-container";
 
 function type(label: string, value: string) {
@@ -11510,6 +11757,9 @@ async function choose(label: string, id: string) {
 function referencedBy(draft: EntregaDraft) {
   return {
     compraRepository: fakeCompraRepository([CompraMother.random({ id: draft.compraId })]),
+    proveedorRepository: fakeProveedorRepository([
+      ProveedorMother.random({ id: draft.destinatarioId ?? crypto.randomUUID() }),
+    ]),
   };
 }
 
@@ -11517,6 +11767,7 @@ function referencedBy(draft: EntregaDraft) {
 async function fillIn(draft: EntregaDraft) {
   await screen.findByText("Save");
   await choose("Compra", draft.compraId);
+  await choose("Destinatario", textOf(draft.destinatarioId));
   type("Carrier", draft.carrier);
 }
 
@@ -11611,10 +11862,27 @@ describe("EntregaFormContainer", () => {
     renderScreen(<EntregaFormContainer />, {
       entregaRepository: fakeEntregaRepository(),
       compraRepository: fakeCompraRepository([compra]),
+      proveedorRepository: fakeProveedorRepository(),
     });
 
     // Assert
     const options = await screen.findAllByRole("option", { name: compra.id });
+    expect(options).toHaveLength(1);
+  });
+
+  test("should offer every proveedor in the selects that reference one", async () => {
+    // Arrange
+    const proveedor = ProveedorMother.random();
+
+    // Act
+    renderScreen(<EntregaFormContainer />, {
+      entregaRepository: fakeEntregaRepository(),
+      compraRepository: fakeCompraRepository(),
+      proveedorRepository: fakeProveedorRepository([proveedor]),
+    });
+
+    // Assert
+    const options = await screen.findAllByRole("option", { name: proveedor.name });
     expect(options).toHaveLength(1);
   });
 
@@ -11677,10 +11945,14 @@ export function EntregaFormContainer({ id }: { id?: string }) {
 }
 
 function EntregaForm({ existing }: { existing: Entrega | null }) {
-  const { entregaRepository, compraRepository } = useDependencies();
+  const { entregaRepository, compraRepository, proveedorRepository } = useDependencies();
   const compras = useAsync(
     () => compraRepository.list({ limit: MAX_PAGE_LIMIT, offset: 0 }),
     [compraRepository],
+  );
+  const proveedores = useAsync(
+    () => proveedorRepository.list({ limit: MAX_PAGE_LIMIT, offset: 0 }),
+    [proveedorRepository],
   );
   const [, navigate] = useLocation();
   const [values, setValues] = useState(toEntregaForm(existing));
@@ -11709,10 +11981,12 @@ function EntregaForm({ existing }: { existing: Entrega | null }) {
       <div className="card-body">
         {problem?.field === null && <ErrorAlert error={failure} message={problem.text} />}
         {compras.status === "error" && <ErrorAlert error={compras.error} />}
+        {proveedores.status === "error" && <ErrorAlert error={proveedores.error} />}
         <EntregaFormView
           values={values}
           options={{
             compraId: referenceOptions(compras, (compra) => compra.id),
+            destinatarioId: referenceOptions(proveedores, (proveedor) => proveedor.name),
           }}
           saving={saving}
           problem={problem}
@@ -11854,6 +12128,10 @@ export function EntregaDetailView({ entrega }: { entrega: Entrega }) {
       <dd>
         <ReferenceLink path="/compras" id={entrega.compraId} />
       </dd>
+      <dt className="font-semibold">Destinatario</dt>
+      <dd>
+        <ReferenceLink path="/proveedores" id={entrega.destinatarioId} />
+      </dd>
       <dt className="font-semibold">Carrier</dt>
       <dd>{entrega.carrier}</dd>
     </dl>
@@ -11863,12 +12141,13 @@ export function EntregaDetailView({ entrega }: { entrega: Entrega }) {
 === web/src/presentation/features/entrega/views/entrega-form-view.tsx ===
 import type { EntregaProblem } from "../../../../domain/entrega/messages";
 import type { Entrega, EntregaDraft } from "../../../../domain/entrega/model";
-import type { ReferenceOption } from "../../../shared/forms";
+import { type ReferenceOption, textOf, textOrNull } from "../../../shared/forms";
 import { FieldError } from "../../../shared/ui/field-error";
 
 /** What the inputs hold: the text of every input, `checked` for a checkbox. */
 export interface EntregaFormValues {
   compraId: string;
+  destinatarioId: string;
   carrier: string;
 }
 
@@ -11877,11 +12156,13 @@ export function toEntregaForm(entrega: Entrega | null): EntregaFormValues {
   if (entrega === null) {
     return {
       compraId: "",
+      destinatarioId: "",
       carrier: "",
     };
   }
   return {
     compraId: entrega.compraId,
+    destinatarioId: textOf(entrega.destinatarioId),
     carrier: entrega.carrier,
   };
 }
@@ -11889,11 +12170,13 @@ export function toEntregaForm(entrega: Entrega | null): EntregaFormValues {
 /** What each reference's select offers. */
 export interface EntregaFormOptions {
   compraId: ReferenceOption[];
+  destinatarioId: ReferenceOption[];
 }
 
 export function toEntregaDraft(values: EntregaFormValues): EntregaDraft {
   return {
     compraId: values.compraId,
+    destinatarioId: textOrNull(values.destinatarioId),
     carrier: values.carrier,
   };
 }
@@ -11941,6 +12224,23 @@ export function EntregaFormView({
       </label>
       <FieldError problem={problem} field="compraId" />
       <label className="fieldset">
+        <span className="fieldset-legend">Destinatario</span>
+        <select
+          className="select w-full"
+          aria-invalid={problem?.field === "destinatarioId"}
+          value={values.destinatarioId}
+          onChange={(event) => onChange({ ...values, destinatarioId: event.target.value })}
+        >
+          <option value="">None</option>
+          {options.destinatarioId.map((option) => (
+            <option key={option.id} value={option.id}>
+              {option.label}
+            </option>
+          ))}
+        </select>
+      </label>
+      <FieldError problem={problem} field="destinatarioId" />
+      <label className="fieldset">
         <span className="fieldset-legend">Carrier</span>
         <input
           className="input w-full"
@@ -11970,6 +12270,7 @@ export function EntregaListView({ entregas }: { entregas: Entrega[] }) {
         <thead>
           <tr>
             <th>Compra</th>
+            <th>Destinatario</th>
             <th>Carrier</th>
             <th />
           </tr>
@@ -11978,6 +12279,7 @@ export function EntregaListView({ entregas }: { entregas: Entrega[] }) {
           {entregas.map((entrega) => (
             <tr key={entrega.id}>
               <td>{entrega.compraId}</td>
+              <td>{entrega.destinatarioId ?? "—"}</td>
               <td>{entrega.carrier}</td>
               <td className="text-right">
                 <Link href={`/entregas/${entrega.id}`} className="link">
@@ -12601,6 +12903,7 @@ export const EntregaMother = {
   draft(overrides: Partial<EntregaDraft> = {}): EntregaDraft {
     return {
       compraId: crypto.randomUUID(),
+      destinatarioId: crypto.randomUUID(),
       carrier: "example",
       ...overrides,
     };

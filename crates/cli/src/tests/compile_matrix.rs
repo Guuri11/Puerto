@@ -374,7 +374,8 @@ pub(super) const WEB_EVERY_TYPE: Scenario = Scenario {
 };
 
 /// Phase 18 (ADR-0022): references — required, optional, two to one target, a chain
-/// (`Envio` → `Pedido` → `Cliente`) and a unique one (one-to-one).
+/// (`Envio` → `Pedido` → `Cliente`), a unique one (one-to-one) and two targets on one form
+/// (`Envio` → `Pedido`, `Cliente`).
 const REFERENCE_ENTITIES: &[(&str, &[&str])] = &[
     ("Cliente", &["name:Name:String", "email:String!"]),
     (
@@ -385,7 +386,14 @@ const REFERENCE_ENTITIES: &[(&str, &[&str])] = &[
             "total:i64",
         ],
     ),
-    ("Envio", &["pedido_id:ref:Pedido!", "carrier:String"]),
+    (
+        "Envio",
+        &[
+            "pedido_id:ref:Pedido!",
+            "destinatario_id:ref:opt:Cliente",
+            "carrier:String",
+        ],
+    ),
 ];
 
 pub(super) const REFERENCES: Scenario = Scenario {
@@ -426,7 +434,14 @@ pub(super) const REFERENCES_EVENTS: Scenario = Scenario {
                 "total:i64",
             ],
         ),
-        ("Entrega", &["compra_id:ref:Compra!", "carrier:String"]),
+        (
+            "Entrega",
+            &[
+                "compra_id:ref:Compra!",
+                "destinatario_id:ref:opt:Proveedor",
+                "carrier:String",
+            ],
+        ),
     ],
     ..REFERENCES
 };

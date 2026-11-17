@@ -2354,6 +2354,7 @@ edition = "2024"
 [dependencies]
 dominio_envio = { workspace = true }
 puerto-nucleo = { workspace = true }
+dominio_cliente = { workspace = true }
 dominio_pedido = { workspace = true }
 async-trait = { workspace = true }
 tracing = { workspace = true }
@@ -2373,6 +2374,7 @@ tokio = { workspace = true }
 
 === contextos/envio/aplicacion/src/actualizar_envio.rs ===
 use async_trait::async_trait;
+use dominio_cliente::modelo::IdCliente;
 use dominio_envio::errores::ErrorEnvio;
 use dominio_envio::modelo::{Envio, IdEnvio};
 use dominio_envio::repositorio::RepositorioEnvio;
@@ -2383,6 +2385,7 @@ use std::sync::Arc;
 pub struct ParamsActualizarEnvio {
     pub id: IdEnvio,
     pub pedido_id: IdPedido,
+    pub destinatario_id: Option<IdCliente>,
     pub carrier: String,
 }
 
@@ -2433,6 +2436,7 @@ impl ActualizarEnvio for ActualizarEnvioImpl {
             return Err(err);
         }
         entidad.pedido_id = params.pedido_id;
+        entidad.destinatario_id = params.destinatario_id;
         entidad.carrier = params.carrier;
         entidad.actualizado_en = chrono::Utc::now();
         self.repositorio.guardar(&entidad).await.inspect_err(
@@ -2456,6 +2460,7 @@ mod tests {
         // Preparar
         let entidad = Envio::new(PropsEnvio {
             pedido_id: IdPedido::generar(),
+            destinatario_id: None,
             carrier: "original".to_string(),
         })
         .unwrap();
@@ -2474,6 +2479,7 @@ mod tests {
             .ejecutar(ParamsActualizarEnvio {
                 id: id_entidad,
                 pedido_id: IdPedido::generar(),
+                destinatario_id: None,
                 carrier: "updated".to_string(),
             })
             .await;
@@ -2498,6 +2504,7 @@ mod tests {
             .ejecutar(ParamsActualizarEnvio {
                 id: IdEnvio::generar(),
                 pedido_id: IdPedido::generar(),
+                destinatario_id: None,
                 carrier: "new".to_string(),
             })
             .await;
@@ -2512,6 +2519,7 @@ mod tests {
         // Preparar
         let entidad = Envio::new(PropsEnvio {
             pedido_id: IdPedido::generar(),
+            destinatario_id: None,
             carrier: "original".to_string(),
         })
         .unwrap();
@@ -2529,6 +2537,7 @@ mod tests {
             .ejecutar(ParamsActualizarEnvio {
                 id: id_entidad,
                 pedido_id: IdPedido::generar(),
+                destinatario_id: None,
                 carrier: "".to_string(),
             })
             .await;
@@ -2618,6 +2627,7 @@ mod tests {
     async fn deberia_hacer_borrado_logico_de_envio_cuando_el_id_existe() {
         let entidad = Envio::new(PropsEnvio {
             pedido_id: IdPedido::generar(),
+            destinatario_id: None,
             carrier: "example".to_string(),
         })
         .unwrap();
@@ -2661,6 +2671,7 @@ mod tests {
 
 === contextos/envio/aplicacion/src/crear_envio.rs ===
 use async_trait::async_trait;
+use dominio_cliente::modelo::IdCliente;
 use dominio_envio::errores::ErrorEnvio;
 use dominio_envio::modelo::{Envio, PropsEnvio};
 use dominio_envio::repositorio::RepositorioEnvio;
@@ -2670,6 +2681,7 @@ use std::sync::Arc;
 #[derive(Debug, Clone)]
 pub struct ParamsCrearEnvio {
     pub pedido_id: IdPedido,
+    pub destinatario_id: Option<IdCliente>,
     pub carrier: String,
 }
 
@@ -2704,6 +2716,7 @@ impl CrearEnvio for CrearEnvioImpl {
         tracing::info!("crear_envio: inicio");
         let entidad = Envio::new(PropsEnvio {
             pedido_id: params.pedido_id,
+            destinatario_id: params.destinatario_id,
             carrier: params.carrier,
         })
         .inspect_err(|e| tracing::warn!(error = %e, "crear_envio: rechazado"))?;
@@ -2736,6 +2749,7 @@ mod tests {
         let resultado = caso_de_uso
             .ejecutar(ParamsCrearEnvio {
                 pedido_id: IdPedido::generar(),
+                destinatario_id: None,
                 carrier: "example".to_string(),
             })
             .await;
@@ -2760,6 +2774,7 @@ mod tests {
         let resultado = caso_de_uso
             .ejecutar(ParamsCrearEnvio {
                 pedido_id: IdPedido::generar(),
+                destinatario_id: None,
                 carrier: "example".to_string(),
             })
             .await;
@@ -2784,6 +2799,7 @@ mod tests {
         let resultado = caso_de_uso
             .ejecutar(ParamsCrearEnvio {
                 pedido_id: IdPedido::generar(),
+                destinatario_id: None,
                 carrier: "example".to_string(),
             })
             .await;
@@ -2793,6 +2809,34 @@ mod tests {
         assert_eq!(
             resultado.unwrap_err().to_string(),
             "envio.validacion.pedido_id_no_encontrado"
+        );
+    }
+
+    #[tokio::test]
+    async fn deberia_devolver_un_error_de_validacion_cuando_destinatario_id_no_existe() {
+        // Preparar: en el almacén no hay Cliente con ese id.
+        let mut repositorio_doble = MockRepositorioEnvio::new();
+        repositorio_doble
+            .expect_guardar()
+            .returning(|_| Err(ErrorRepositorio::ReferenciaInexistente("destinatario_id")));
+        let caso_de_uso = CrearEnvioImpl {
+            repositorio: Arc::new(repositorio_doble),
+        };
+
+        // Actuar
+        let resultado = caso_de_uso
+            .ejecutar(ParamsCrearEnvio {
+                pedido_id: IdPedido::generar(),
+                destinatario_id: None,
+                carrier: "example".to_string(),
+            })
+            .await;
+
+        // Comprobar
+        assert!(resultado.is_err());
+        assert_eq!(
+            resultado.unwrap_err().to_string(),
+            "envio.validacion.destinatario_id_no_encontrado"
         );
     }
 
@@ -2808,6 +2852,7 @@ mod tests {
         let resultado = caso_de_uso
             .ejecutar(ParamsCrearEnvio {
                 pedido_id: IdPedido::generar(),
+                destinatario_id: None,
                 carrier: "".to_string(),
             })
             .await;
@@ -2830,6 +2875,7 @@ pub mod obtener_envio;
 
 === contextos/envio/aplicacion/src/listar_envios.rs ===
 use async_trait::async_trait;
+use dominio_cliente::modelo::IdCliente;
 use dominio_envio::errores::ErrorEnvio;
 use dominio_envio::modelo::Envio;
 use dominio_envio::repositorio::{FiltroEnvio, RepositorioEnvio};
@@ -2842,6 +2888,8 @@ pub struct ParamsListarEnvios {
     pub pagina: PeticionPagina,
     /// Si se indica, solo envios con este `pedido_id`.
     pub pedido_id: Option<IdPedido>,
+    /// Si se indica, solo envios con este `destinatario_id`.
+    pub destinatario_id: Option<IdCliente>,
 }
 
 #[async_trait]
@@ -2882,6 +2930,7 @@ impl ListarEnvios for ListarEnviosImpl {
                 params.pagina,
                 FiltroEnvio {
                     pedido_id: params.pedido_id,
+                    destinatario_id: params.destinatario_id,
                 },
             )
             .await
@@ -2893,6 +2942,7 @@ impl ListarEnvios for ListarEnviosImpl {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use dominio_cliente::modelo::IdCliente;
     use dominio_envio::{
         modelo::{Envio, PropsEnvio},
         repositorio::dobles::MockRepositorioEnvio,
@@ -2905,11 +2955,13 @@ mod tests {
         let entidades = vec![
             Envio::new(PropsEnvio {
                 pedido_id: IdPedido::generar(),
+                destinatario_id: None,
                 carrier: "first".to_string(),
             })
             .unwrap(),
             Envio::new(PropsEnvio {
                 pedido_id: IdPedido::generar(),
+                destinatario_id: None,
                 carrier: "second".to_string(),
             })
             .unwrap(),
@@ -2926,6 +2978,7 @@ mod tests {
             .ejecutar(ParamsListarEnvios {
                 pagina: PeticionPagina::default(),
                 pedido_id: None,
+                destinatario_id: None,
             })
             .await;
 
@@ -2948,6 +3001,7 @@ mod tests {
             .ejecutar(ParamsListarEnvios {
                 pagina: PeticionPagina::default(),
                 pedido_id: None,
+                destinatario_id: None,
             })
             .await;
 
@@ -2971,6 +3025,7 @@ mod tests {
             .ejecutar(ParamsListarEnvios {
                 pagina: PeticionPagina::new(Some(5), Some(10)),
                 pedido_id: None,
+                destinatario_id: None,
             })
             .await;
 
@@ -2981,6 +3036,7 @@ mod tests {
     async fn deberia_pasar_el_filtro_al_repositorio() {
         let filtro = FiltroEnvio {
             pedido_id: Some(IdPedido::generar()),
+            destinatario_id: Some(IdCliente::generar()),
         };
         let mut repositorio_doble = MockRepositorioEnvio::new();
         repositorio_doble
@@ -2995,6 +3051,7 @@ mod tests {
             .ejecutar(ParamsListarEnvios {
                 pagina: PeticionPagina::default(),
                 pedido_id: filtro.pedido_id,
+                destinatario_id: filtro.destinatario_id,
             })
             .await;
 
@@ -3070,6 +3127,7 @@ mod tests {
     async fn deberia_devolver_envio_cuando_el_id_existe() {
         let entidad = Envio::new(PropsEnvio {
             pedido_id: IdPedido::generar(),
+            destinatario_id: None,
             carrier: "example".to_string(),
         })
         .unwrap();
@@ -3139,6 +3197,7 @@ edition = "2024"
 
 [dependencies]
 puerto-nucleo = { workspace = true }
+dominio_cliente = { workspace = true }
 dominio_pedido = { workspace = true }
 async-trait = { workspace = true }
 thiserror = { workspace = true }
@@ -3231,6 +3290,7 @@ pub mod pruebas {
 
 === contextos/envio/dominio/src/modelo.rs ===
 use chrono::{DateTime, Utc};
+use dominio_cliente::modelo::IdCliente;
 use dominio_pedido::modelo::IdPedido;
 use uuid::Uuid;
 
@@ -3267,6 +3327,7 @@ impl std::fmt::Display for IdEnvio {
 #[derive(Debug, Clone)]
 pub struct PropsEnvio {
     pub pedido_id: IdPedido,
+    pub destinatario_id: Option<IdCliente>,
     pub carrier: String,
 }
 
@@ -3278,6 +3339,7 @@ pub struct Envio {
     pub borrado: bool,
     pub borrado_en: Option<DateTime<Utc>>,
     pub pedido_id: IdPedido,
+    pub destinatario_id: Option<IdCliente>,
     pub carrier: String,
 }
 
@@ -3294,6 +3356,7 @@ impl Envio {
             borrado: false,
             borrado_en: None,
             pedido_id: props.pedido_id,
+            destinatario_id: props.destinatario_id,
             carrier: props.carrier,
         })
     }
@@ -3311,6 +3374,7 @@ mod tests {
     fn deberia_crear_envio_cuando_los_campos_son_validos() {
         let resultado = Envio::new(PropsEnvio {
             pedido_id: IdPedido::generar(),
+            destinatario_id: None,
             carrier: "example".to_string(),
         });
         assert_eq!(resultado.unwrap().carrier, "example");
@@ -3320,6 +3384,7 @@ mod tests {
     fn deberia_rechazar_envio_cuando_carrier_es_una_cadena_vacia() {
         let resultado = Envio::new(PropsEnvio {
             pedido_id: IdPedido::generar(),
+            destinatario_id: None,
             carrier: "".into(),
         });
         assert!(resultado.is_err());
@@ -3333,6 +3398,7 @@ mod tests {
     fn deberia_rechazar_envio_cuando_carrier_solo_tiene_espacios() {
         let resultado = Envio::new(PropsEnvio {
             pedido_id: IdPedido::generar(),
+            destinatario_id: None,
             carrier: "   ".into(),
         });
         assert!(resultado.is_err());
@@ -3342,10 +3408,12 @@ mod tests {
 === contextos/envio/dominio/src/pruebas/madres.rs ===
 use crate::modelo::Envio;
 use crate::modelo::PropsEnvio;
+use dominio_cliente::modelo::IdCliente;
 use dominio_pedido::modelo::IdPedido;
 
 pub struct MadreEnvio {
     pedido_id: Option<IdPedido>,
+    destinatario_id: Option<IdCliente>,
     carrier: Option<String>,
 }
 
@@ -3353,12 +3421,18 @@ impl MadreEnvio {
     pub fn new() -> Self {
         Self {
             pedido_id: None,
+            destinatario_id: None,
             carrier: None,
         }
     }
 
     pub fn con_pedido_id(mut self, pedido_id: IdPedido) -> Self {
         self.pedido_id = Some(pedido_id);
+        self
+    }
+
+    pub fn con_destinatario_id(mut self, destinatario_id: IdCliente) -> Self {
+        self.destinatario_id = Some(destinatario_id);
         self
     }
 
@@ -3375,6 +3449,7 @@ impl MadreEnvio {
     pub fn construir(self) -> Envio {
         Envio::new(PropsEnvio {
             pedido_id: self.pedido_id.unwrap_or_else(IdPedido::generar),
+            destinatario_id: self.destinatario_id,
             carrier: self.carrier.unwrap_or_else(|| "example".to_string()),
         })
         .expect("MadreEnvio: Envio::new rechazó los props")
@@ -3383,6 +3458,7 @@ impl MadreEnvio {
     pub fn construir_props(self) -> PropsEnvio {
         PropsEnvio {
             pedido_id: self.pedido_id.unwrap_or_else(IdPedido::generar),
+            destinatario_id: self.destinatario_id,
             carrier: self.carrier.unwrap_or_else(|| "example".to_string()),
         }
     }
@@ -3407,12 +3483,14 @@ use async_trait::async_trait;
 use puerto_nucleo::{ErrorRepositorio, Pagina, PeticionPagina};
 
 use crate::modelo::{Envio, IdEnvio};
+use dominio_cliente::modelo::IdCliente;
 use dominio_pedido::modelo::IdPedido;
 
 /// A qué reduce `buscar_todos` la página: un id por referencia; `None` no filtra.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct FiltroEnvio {
     pub pedido_id: Option<IdPedido>,
+    pub destinatario_id: Option<IdCliente>,
 }
 
 #[async_trait]
@@ -3453,6 +3531,7 @@ edition = "2024"
 [dependencies]
 dominio_envio = { workspace = true }
 puerto-nucleo = { workspace = true }
+dominio_cliente = { workspace = true }
 dominio_pedido = { workspace = true }
 async-trait = { workspace = true }
 tracing = { workspace = true }
@@ -3522,6 +3601,11 @@ impl RepositorioEnvio for RepositorioEnvioEnMemoria {
             .values()
             .filter(|fila| !fila.borrado)
             .filter(|fila| filtro.pedido_id.is_none_or(|id| fila.pedido_id == id))
+            .filter(|fila| {
+                filtro
+                    .destinatario_id
+                    .is_none_or(|id| fila.destinatario_id == Some(id))
+            })
             .collect();
         vivos.sort_by(|a, b| {
             b.creado_en
@@ -3563,12 +3647,14 @@ impl RepositorioEnvio for RepositorioEnvioEnMemoria {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use dominio_cliente::modelo::IdCliente;
     use dominio_envio::modelo::PropsEnvio;
     use dominio_pedido::modelo::IdPedido;
 
     fn nuevo_envio() -> Envio {
         Envio::new(PropsEnvio {
             pedido_id: IdPedido::generar(),
+            destinatario_id: None,
             carrier: "example".to_string(),
         })
         .unwrap()
@@ -3684,6 +3770,41 @@ mod tests {
                 PeticionPagina::default(),
                 FiltroEnvio {
                     pedido_id: Some(pedido_id),
+                    destinatario_id: None,
+                },
+            )
+            .await
+            .unwrap();
+
+        // Comprobar
+        assert_eq!(
+            pagina
+                .elementos
+                .iter()
+                .map(|fila| fila.id)
+                .collect::<Vec<_>>(),
+            vec![esperado.id]
+        );
+        assert_eq!(pagina.total, 1);
+    }
+
+    #[tokio::test]
+    async fn deberia_listar_solo_envios_con_ese_valor_de_destinatario_id() {
+        // Preparar: una entidad envio con este valor de destinatario_id y otra sin él.
+        let repositorio = RepositorioEnvioEnMemoria::new();
+        let destinatario_id = IdCliente::generar();
+        let mut esperado = nuevo_envio();
+        esperado.destinatario_id = Some(destinatario_id);
+        repositorio.guardar(&esperado).await.unwrap();
+        repositorio.guardar(&nuevo_envio()).await.unwrap();
+
+        // Actuar
+        let pagina = repositorio
+            .buscar_todos(
+                PeticionPagina::default(),
+                FiltroEnvio {
+                    pedido_id: None,
+                    destinatario_id: Some(destinatario_id),
                 },
             )
             .await
@@ -3711,6 +3832,7 @@ edition = "2024"
 [dependencies]
 aplicacion_envio = { workspace = true }
 dominio_envio = { workspace = true }
+dominio_cliente = { workspace = true }
 dominio_pedido = { workspace = true }
 puerto-nucleo = { workspace = true }
 puerto-web = { workspace = true }
@@ -3723,6 +3845,7 @@ chrono = { workspace = true }
 [dev-dependencies]
 aplicacion_envio = { workspace = true, features = ["pruebas"] }
 dominio_envio = { workspace = true, features = ["pruebas"] }
+dominio_cliente = { workspace = true, features = ["pruebas"] }
 dominio_pedido = { workspace = true, features = ["pruebas"] }
 poem = { workspace = true, features = ["test"] }
 tokio = { workspace = true }
@@ -3738,6 +3861,7 @@ use uuid::Uuid;
 pub struct DtoEnvio {
     pub id: Uuid,
     pub pedido_id: Uuid,
+    pub destinatario_id: Option<Uuid>,
     pub carrier: String,
 }
 
@@ -3746,6 +3870,7 @@ impl DtoEnvio {
         Self {
             id: entidad.id.valor(),
             pedido_id: entidad.pedido_id.valor(),
+            destinatario_id: entidad.destinatario_id.map(|v| v.valor()),
             carrier: entidad.carrier.clone(),
         }
     }
@@ -3755,6 +3880,7 @@ impl DtoEnvio {
 #[oai(rename_all = "camelCase")]
 pub struct PeticionCrearEnvio {
     pub pedido_id: Uuid,
+    pub destinatario_id: Option<Uuid>,
     pub carrier: String,
 }
 
@@ -3788,6 +3914,7 @@ impl DtoPaginaEnvio {
 #[oai(rename_all = "camelCase")]
 pub struct PeticionActualizarEnvio {
     pub pedido_id: Uuid,
+    pub destinatario_id: Option<Uuid>,
     pub carrier: String,
 }
 
@@ -4027,6 +4154,7 @@ use aplicacion_envio::{
     listar_envios::{ListarEnvios, ParamsListarEnvios},
     obtener_envio::{ObtenerEnvio, ParamsObtenerEnvio},
 };
+use dominio_cliente::modelo::IdCliente;
 use dominio_envio::modelo::IdEnvio;
 use dominio_pedido::modelo::IdPedido;
 use poem_openapi::{
@@ -4067,6 +4195,7 @@ impl ApiEnvio {
             .crear_envio
             .ejecutar(ParamsCrearEnvio {
                 pedido_id: IdPedido::from_uuid(cuerpo.pedido_id),
+                destinatario_id: cuerpo.destinatario_id.map(IdCliente::from_uuid),
                 carrier: cuerpo.carrier.clone(),
             })
             .await
@@ -4106,12 +4235,14 @@ impl ApiEnvio {
         limite: Query<Option<u32>>,
         desplazamiento: Query<Option<u32>>,
         #[oai(name = "pedidoId")] pedido_id: Query<Option<Uuid>>,
+        #[oai(name = "destinatarioId")] destinatario_id: Query<Option<Uuid>>,
     ) -> RespuestaListarEnvios {
         match self
             .listar_envios
             .ejecutar(ParamsListarEnvios {
                 pagina: PeticionPagina::new(limite.0, desplazamiento.0),
                 pedido_id: pedido_id.0.map(IdPedido::from_uuid),
+                destinatario_id: destinatario_id.0.map(IdCliente::from_uuid),
             })
             .await
         {
@@ -4136,6 +4267,7 @@ impl ApiEnvio {
             .ejecutar(ParamsActualizarEnvio {
                 id: IdEnvio::from_uuid(id.0),
                 pedido_id: IdPedido::from_uuid(cuerpo.pedido_id),
+                destinatario_id: cuerpo.destinatario_id.map(IdCliente::from_uuid),
                 carrier: cuerpo.carrier.clone(),
             })
             .await
@@ -4211,6 +4343,7 @@ mod tests {
     fn peticion_crear() -> PeticionCrearEnvio {
         PeticionCrearEnvio {
             pedido_id: Uuid::new_v4(),
+            destinatario_id: None,
             carrier: "example".to_string(),
         }
     }
@@ -4218,6 +4351,7 @@ mod tests {
     fn peticion_actualizar() -> PeticionActualizarEnvio {
         PeticionActualizarEnvio {
             pedido_id: Uuid::new_v4(),
+            destinatario_id: None,
             carrier: "example".to_string(),
         }
     }
@@ -4295,6 +4429,35 @@ mod tests {
             .object()
             .get("codigo")
             .assert_string("envio.validacion.pedido_id_no_encontrado");
+    }
+
+    #[tokio::test]
+    async fn deberia_responder_422_cuando_no_existe_la_referencia_de_destinatario_id() {
+        // Preparar: en la base de datos no hay Cliente con ese id (ADR-0022 de Puerto).
+        let mut dobles = Dobles::default();
+        dobles.crear.expect_ejecutar().returning(|_| {
+            Err(ErrorEnvio::Validacion(
+                "destinatario_id_no_encontrado".to_string(),
+            ))
+        });
+
+        // Actuar
+        let respuesta = dobles
+            .cliente()
+            .post("/envios")
+            .body_json(&peticion_crear().to_json())
+            .send()
+            .await;
+
+        // Comprobar
+        respuesta.assert_status(StatusCode::UNPROCESSABLE_ENTITY);
+        respuesta
+            .json()
+            .await
+            .value()
+            .object()
+            .get("codigo")
+            .assert_string("envio.validacion.destinatario_id_no_encontrado");
     }
 
     #[tokio::test]
@@ -4385,6 +4548,30 @@ mod tests {
         let respuesta = dobles
             .cliente()
             .get(format!("/envios?pedidoId={pedido_id}"))
+            .send()
+            .await;
+
+        // Comprobar
+        respuesta.assert_status(StatusCode::OK);
+    }
+
+    #[tokio::test]
+    async fn deberia_pasar_el_filtro_por_destinatario_id_al_caso_de_uso() {
+        // Preparar
+        let destinatario_id = Uuid::new_v4();
+        let mut dobles = Dobles::default();
+        dobles
+            .listar
+            .expect_ejecutar()
+            .withf(move |params| {
+                params.destinatario_id == Some(IdCliente::from_uuid(destinatario_id))
+            })
+            .returning(|params| Ok(Pagina::new(vec![], 0, params.pagina)));
+
+        // Actuar
+        let respuesta = dobles
+            .cliente()
+            .get(format!("/envios?destinatarioId={destinatario_id}"))
             .send()
             .await;
 
@@ -7312,6 +7499,11 @@ unico = true
 referencia = "Pedido"
 
 [[entidad.campos]]
+nombre = "destinatario_id"
+tipo = "Option<Uuid>"
+referencia = "Cliente"
+
+[[entidad.campos]]
 nombre = "carrier"
 tipo = "String"
 
@@ -7415,6 +7607,7 @@ export interface EnvioProblem {
  */
 const TEXTS: Record<string, string> = {
   "envio.validacion.pedido_id_no_encontrado": "Pedido does not exist",
+  "envio.validacion.destinatario_id_no_encontrado": "Destinatario does not exist",
   "envio.validacion.carrier_vacio": "Carrier is required",
   "envio.duplicado": "An envio with these values already exists",
   "envio.no_encontrado": "This envio no longer exists",
@@ -7425,6 +7618,7 @@ const TEXTS: Record<string, string> = {
 /** The input each field's code is about. */
 const FIELDS: Record<string, keyof EnvioDraft> = {
   "envio.validacion.pedido_id_no_encontrado": "pedidoId",
+  "envio.validacion.destinatario_id_no_encontrado": "destinatarioId",
   "envio.validacion.carrier_vacio": "carrier",
 };
 
@@ -7436,6 +7630,7 @@ export function toProblem(code: string): EnvioProblem {
 export interface Envio {
   id: string;
   pedidoId: string;
+  destinatarioId: string | null;
   carrier: string;
 }
 
@@ -7771,6 +7966,7 @@ function toEnvio(dto: EnvioDto): Envio {
   return {
     id: dto.id,
     pedidoId: dto.pedidoId,
+    destinatarioId: dto.destinatarioId ?? null,
     carrier: dto.carrier,
   };
 }
@@ -7778,6 +7974,7 @@ function toEnvio(dto: EnvioDto): Envio {
 function toRequest(draft: EnvioDraft): EnvioRequest {
   return {
     pedidoId: draft.pedidoId,
+    destinatarioId: draft.destinatarioId ?? undefined,
     carrier: draft.carrier,
   };
 }
@@ -8676,6 +8873,19 @@ describe("EnvioDetailContainer", () => {
     expect(link.getAttribute("href")).toBe(`/pedidos/${seeded.pedidoId}`);
   });
 
+  test("should link the destinatario to its page", async () => {
+    // Arrange
+    const seeded = EnvioMother.random();
+    const envioRepository = fakeEnvioRepository([seeded]);
+
+    // Act
+    renderScreen(<EnvioDetailContainer id={seeded.id} />, { envioRepository });
+
+    // Assert
+    const link = await screen.findByRole("link", { name: seeded.destinatarioId ?? "" });
+    expect(link.getAttribute("href")).toBe(`/clientes/${seeded.destinatarioId}`);
+  });
+
   test("should show the not-found code when the envio does not exist", async () => {
     // Arrange
     const envioRepository = fakeEnvioRepository();
@@ -8774,9 +8984,11 @@ import { describe, expect, test } from "bun:test";
 import { fireEvent, screen, waitFor } from "@testing-library/react";
 import { EnvioError } from "../../../../domain/envio/errors";
 import type { EnvioDraft } from "../../../../domain/envio/model";
+import { ClienteMother, fakeClienteRepository } from "../../../../test-support/cliente";
 import { EnvioMother, fakeEnvioRepository } from "../../../../test-support/envio";
 import { fakePedidoRepository, PedidoMother } from "../../../../test-support/pedido";
 import { renderScreen } from "../../../../test-support/render";
+import { textOf } from "../../../shared/forms";
 import { EnvioFormContainer } from "./envio-form-container";
 
 function type(label: string, value: string) {
@@ -8794,6 +9006,9 @@ async function choose(label: string, id: string) {
 function referencedBy(draft: EnvioDraft) {
   return {
     pedidoRepository: fakePedidoRepository([PedidoMother.random({ id: draft.pedidoId })]),
+    clienteRepository: fakeClienteRepository([
+      ClienteMother.random({ id: draft.destinatarioId ?? crypto.randomUUID() }),
+    ]),
   };
 }
 
@@ -8801,6 +9016,7 @@ function referencedBy(draft: EnvioDraft) {
 async function fillIn(draft: EnvioDraft) {
   await screen.findByText("Save");
   await choose("Pedido", draft.pedidoId);
+  await choose("Destinatario", textOf(draft.destinatarioId));
   type("Carrier", draft.carrier);
 }
 
@@ -8895,10 +9111,27 @@ describe("EnvioFormContainer", () => {
     renderScreen(<EnvioFormContainer />, {
       envioRepository: fakeEnvioRepository(),
       pedidoRepository: fakePedidoRepository([pedido]),
+      clienteRepository: fakeClienteRepository(),
     });
 
     // Assert
     const options = await screen.findAllByRole("option", { name: pedido.id });
+    expect(options).toHaveLength(1);
+  });
+
+  test("should offer every cliente in the selects that reference one", async () => {
+    // Arrange
+    const cliente = ClienteMother.random();
+
+    // Act
+    renderScreen(<EnvioFormContainer />, {
+      envioRepository: fakeEnvioRepository(),
+      pedidoRepository: fakePedidoRepository(),
+      clienteRepository: fakeClienteRepository([cliente]),
+    });
+
+    // Assert
+    const options = await screen.findAllByRole("option", { name: cliente.name });
     expect(options).toHaveLength(1);
   });
 
@@ -8961,10 +9194,14 @@ export function EnvioFormContainer({ id }: { id?: string }) {
 }
 
 function EnvioForm({ existing }: { existing: Envio | null }) {
-  const { envioRepository, pedidoRepository } = useDependencies();
+  const { envioRepository, pedidoRepository, clienteRepository } = useDependencies();
   const pedidos = useAsync(
     () => pedidoRepository.list({ limit: MAX_PAGE_LIMIT, offset: 0 }),
     [pedidoRepository],
+  );
+  const clientes = useAsync(
+    () => clienteRepository.list({ limit: MAX_PAGE_LIMIT, offset: 0 }),
+    [clienteRepository],
   );
   const [, navigate] = useLocation();
   const [values, setValues] = useState(toEnvioForm(existing));
@@ -8993,10 +9230,12 @@ function EnvioForm({ existing }: { existing: Envio | null }) {
       <div className="card-body">
         {problem?.field === null && <ErrorAlert error={failure} message={problem.text} />}
         {pedidos.status === "error" && <ErrorAlert error={pedidos.error} />}
+        {clientes.status === "error" && <ErrorAlert error={clientes.error} />}
         <EnvioFormView
           values={values}
           options={{
             pedidoId: referenceOptions(pedidos, (pedido) => pedido.id),
+            destinatarioId: referenceOptions(clientes, (cliente) => cliente.name),
           }}
           saving={saving}
           problem={problem}
@@ -9138,6 +9377,10 @@ export function EnvioDetailView({ envio }: { envio: Envio }) {
       <dd>
         <ReferenceLink path="/pedidos" id={envio.pedidoId} />
       </dd>
+      <dt className="font-semibold">Destinatario</dt>
+      <dd>
+        <ReferenceLink path="/clientes" id={envio.destinatarioId} />
+      </dd>
       <dt className="font-semibold">Carrier</dt>
       <dd>{envio.carrier}</dd>
     </dl>
@@ -9147,12 +9390,13 @@ export function EnvioDetailView({ envio }: { envio: Envio }) {
 === web/src/presentation/features/envio/views/envio-form-view.tsx ===
 import type { EnvioProblem } from "../../../../domain/envio/messages";
 import type { Envio, EnvioDraft } from "../../../../domain/envio/model";
-import type { ReferenceOption } from "../../../shared/forms";
+import { type ReferenceOption, textOf, textOrNull } from "../../../shared/forms";
 import { FieldError } from "../../../shared/ui/field-error";
 
 /** What the inputs hold: the text of every input, `checked` for a checkbox. */
 export interface EnvioFormValues {
   pedidoId: string;
+  destinatarioId: string;
   carrier: string;
 }
 
@@ -9161,11 +9405,13 @@ export function toEnvioForm(envio: Envio | null): EnvioFormValues {
   if (envio === null) {
     return {
       pedidoId: "",
+      destinatarioId: "",
       carrier: "",
     };
   }
   return {
     pedidoId: envio.pedidoId,
+    destinatarioId: textOf(envio.destinatarioId),
     carrier: envio.carrier,
   };
 }
@@ -9173,11 +9419,13 @@ export function toEnvioForm(envio: Envio | null): EnvioFormValues {
 /** What each reference's select offers. */
 export interface EnvioFormOptions {
   pedidoId: ReferenceOption[];
+  destinatarioId: ReferenceOption[];
 }
 
 export function toEnvioDraft(values: EnvioFormValues): EnvioDraft {
   return {
     pedidoId: values.pedidoId,
+    destinatarioId: textOrNull(values.destinatarioId),
     carrier: values.carrier,
   };
 }
@@ -9225,6 +9473,23 @@ export function EnvioFormView({
       </label>
       <FieldError problem={problem} field="pedidoId" />
       <label className="fieldset">
+        <span className="fieldset-legend">Destinatario</span>
+        <select
+          className="select w-full"
+          aria-invalid={problem?.field === "destinatarioId"}
+          value={values.destinatarioId}
+          onChange={(event) => onChange({ ...values, destinatarioId: event.target.value })}
+        >
+          <option value="">None</option>
+          {options.destinatarioId.map((option) => (
+            <option key={option.id} value={option.id}>
+              {option.label}
+            </option>
+          ))}
+        </select>
+      </label>
+      <FieldError problem={problem} field="destinatarioId" />
+      <label className="fieldset">
         <span className="fieldset-legend">Carrier</span>
         <input
           className="input w-full"
@@ -9254,6 +9519,7 @@ export function EnvioListView({ envios }: { envios: Envio[] }) {
         <thead>
           <tr>
             <th>Pedido</th>
+            <th>Destinatario</th>
             <th>Carrier</th>
             <th />
           </tr>
@@ -9262,6 +9528,7 @@ export function EnvioListView({ envios }: { envios: Envio[] }) {
           {envios.map((envio) => (
             <tr key={envio.id}>
               <td>{envio.pedidoId}</td>
+              <td>{envio.destinatarioId ?? "—"}</td>
               <td>{envio.carrier}</td>
               <td className="text-right">
                 <Link href={`/envios/${envio.id}`} className="link">
@@ -10017,6 +10284,7 @@ export const EnvioMother = {
   draft(overrides: Partial<EnvioDraft> = {}): EnvioDraft {
     return {
       pedidoId: crypto.randomUUID(),
+      destinatarioId: crypto.randomUUID(),
       carrier: "example",
       ...overrides,
     };
