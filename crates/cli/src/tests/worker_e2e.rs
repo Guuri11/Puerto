@@ -21,8 +21,15 @@ const WAIT: Duration = Duration::from_secs(60);
 /// A consumer that never succeeds: every entrega of it is a `Retry`.
 const ALWAYS_RETRY: &str = r#"use async_trait::async_trait;
 use puerto_nucleo::eventos::{SobreEvento, ManejadorEvento, ResultadoManejo};
+use sqlx::PgPool;
 
 pub struct AlwaysRetry;
+
+impl AlwaysRetry {
+    pub fn construir(_pool: &PgPool) -> Self {
+        Self
+    }
+}
 
 #[async_trait]
 impl ManejadorEvento for AlwaysRetry {

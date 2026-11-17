@@ -21,7 +21,7 @@ pub struct {{ pascal }};
 impl {{ pascal }} {
     /// Lo llama `generado/registro.rs` al arrancar el worker, con su pool. Lo que necesite el
     /// consumidor se construye aquí y se guarda en sus campos: `cableado::<contexto>::construir(pool)`
-    /// da los casos de uso de un contexto.
+    /// da los casos de uso de un contexto (con `cableado` en el `Cargo.toml` del worker).
     pub fn construir(_pool: &PgPool) -> Self {
         Self
     }

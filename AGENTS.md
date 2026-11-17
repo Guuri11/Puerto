@@ -379,7 +379,7 @@ make format/fix    # cargo fmt --all
   `ConfigWorker::from_env()` + `Worker::new(config).intentar_ejecutar(construir_worker)`
   (`puerto-eventos`), `generado/registro.rs` (GENERADO desde `[[consumidor]]`: construye cada uno con
   `<Consumidor>::construir(&pool)`), `consumidores/<nombre>.rs` (del usuario; su `construir(pool)`
-  saca de `cableado` los casos de uso que necesita),
+  saca de `cableado` los casos de uso que necesita, tras añadirlo al `Cargo.toml` del worker),
   `make worker`, `make eventos/descartados`, `WORKER_PORT`. Con `db`, el registro pasa
   `OutboxPostgres` → `EntregasPostgres`, con una `SuscripcionPostgres` por consumidor. Con `kafka`,
   pasa a `PublicadorKafka` (los topics se crean al arrancar), con una `SuscripcionKafka` por

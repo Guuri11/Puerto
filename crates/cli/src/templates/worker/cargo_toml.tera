@@ -11,8 +11,8 @@ puerto-eventos = { workspace = true }
 # El pool, las migraciones en el arranque y las tablas de outbox, entregas y descartados.
 puerto-sqlx = { workspace = true }
 migrador = { workspace = true }
-# Lo que un consumidor construye en su `construir(pool)`: los casos de uso de cada contexto.
-cableado = { workspace = true }
+# El `PgPool` que recibe el `construir(pool)` de cada consumidor. Un consumidor que necesita casos
+# de uso añade aquí `cableado = { workspace = true }` y los saca de `cableado::<contexto>::construir`.
 sqlx = { workspace = true }
 {%- if kafka %}
 # El transporte Kafka: el publicador y las suscripciones que cablea `generado/registro.rs`.

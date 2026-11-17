@@ -69,11 +69,9 @@ fn new_with_db_events_writes_the_worker_and_adds_it_to_the_workspace() {
     }
     let manifest = read(&output, "presentacion/worker/Cargo.toml");
     assert!(manifest.contains("puerto-eventos = { workspace = true }"));
-    // A consumer builds its use cases from the pool it is given (Phase 20.3).
-    assert!(
-        manifest.contains("cableado = { workspace = true }"),
-        "{manifest}"
-    );
+    // A consumer is given the pool (Phase 20.3); `cableado` only once one uses it — an unused
+    // dependency is a Cargo warning.
+    assert!(!manifest.contains("\ncableado = "), "{manifest}");
     assert!(
         manifest.contains("sqlx = { workspace = true }"),
         "{manifest}"

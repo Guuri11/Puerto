@@ -3211,11 +3211,12 @@ un agente probaba `GET /productos`. Test: el `AGENTS.md` de un proyecto nuevo no
 `registro.rs` construía cada consumidor como un struct unidad, sin nada: canasta abría su propio
 pool en un `OnceCell`. El fichero del consumidor (del usuario) trae
 `impl <Consumidor> { pub fn construir(pool: &PgPool) -> Self }` y `registro.rs` (db y kafka) lo
-llama con su pool; `worker` depende de `cableado`, así que `cableado::<c>::construir(pool)` da los
+llama con su pool; `cableado::<c>::construir(pool)` (con `cableado` añadido al worker) da los
 casos de uso de un contexto. El consumidor sigue siendo un struct unidad hasta que el usuario le
 añade campos. Los consumidores de correo no cambian. Tests: el fichero del consumidor trae
 `construir`; `registro.rs` llama `<Consumidor>::construir(&pool)` en los dos transportes; el
-`Cargo.toml` del worker depende de `cableado`.
+`Cargo.toml` del worker depende de `sqlx` y no de `cableado` (una dependencia sin usar es un aviso
+de Cargo: la añade quien la usa).
 
 ### 20.4 — `actualizar` pasa por las reglas de `new`
 
