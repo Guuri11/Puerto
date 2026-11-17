@@ -1,0 +1,29 @@
+/** Lo que muestra el formulario de login o de registro de un error de la API: bajo su input, o en la alerta. */
+export interface ProblemaCuenta {
+  campo: "email" | "contrasena" | "nombre" | null;
+  texto: string;
+}
+
+/**
+ * Los mensajes de los códigos de `/auth/*` (el `ErrorUsuario` del backend). Un código que no está
+ * aquí se muestra tal cual.
+ */
+const TEXTOS: Record<string, string> = {
+  "usuario.validacion.email_invalido": "No es una dirección de email",
+  "usuario.validacion.contrasena_demasiado_corta": "Usa al menos 12 caracteres",
+  "usuario.duplicado": "Ya hay una cuenta con este email",
+  "auth.credenciales_invalidas": "Email o contraseña incorrectos",
+  "usuario.repositorio": "No se ha podido guardar la cuenta; inténtalo más tarde",
+  "usuario.desconocido": "Algo ha ido mal",
+};
+
+/** El input del que trata el código de cada campo. */
+const CAMPOS: Record<string, ProblemaCuenta["campo"]> = {
+  "usuario.validacion.email_invalido": "email",
+  "usuario.validacion.contrasena_demasiado_corta": "contrasena",
+  "usuario.duplicado": "email",
+};
+
+export function aProblemaCuenta(codigo: string): ProblemaCuenta {
+  return { campo: CAMPOS[codigo] ?? null, texto: TEXTOS[codigo] ?? codigo };
+}

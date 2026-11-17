@@ -686,8 +686,8 @@ fn new_project_includes_the_web_frontend_by_default() {
         "web/.dependency-cruiser.cjs",
         "web/src/main.tsx",
         "web/src/api/http.ts",
-        "web/src/generated/dependencies.ts",
-        "web/src/generated/routes.tsx",
+        "web/src/generado/dependencias.ts",
+        "web/src/generado/rutas.tsx",
         "web/AGENTS.md",
     ] {
         assert!(output.join(file).exists(), "missing {file}");

@@ -160,9 +160,9 @@ apuntándole. La lista filtra por cada referencia: `GET /pedidos?clienteId=…` 
 | **Parcheados**: se añade una línea y se conserva el resto | el `Cargo.toml` raíz (miembros, `[workspace.dependencies]`), `presentacion/api/Cargo.toml` y `presentacion/worker/Cargo.toml` (el crate de un contexto), el `lib.rs` del crate de aplicación, `rutas.rs` (los campos de `Api<Entidad>`), `presentacion/worker/src/consumidores.rs`, `puerto.toml` | editándolos libremente; conserva las líneas que añadió Puerto |
 | **Se escriben una vez**: tuyos desde el principio | `presentacion/api/src/app.rs` (tus middleware y rutas), la impl de un `generar caso-de-uso`, los consumidores, los correos y sus plantillas, las migraciones, los ficheros de auth | editándolos |
 
-Con `web/`: `web/src/generated/*`, `web/src/api/schema.d.ts` y `docs/api/openapi.json` también se
+Con `web/`: `web/src/generado/*`, `web/src/api/esquema.d.ts` y `docs/api/openapi.json` también se
 reescriben (`generar bootstrap`, `make web/sync`); las pantallas de una entidad son ficheros suyos
-como los demás; `web/src/routes.tsx` (tus propias pantallas) es tuyo. El detalle, en
+como los demás; `web/src/rutas.tsx` (tus propias pantallas) es tuyo. El detalle, en
 `web/AGENTS.md`.
 
 ### Cambiar los campos de una entidad
@@ -472,7 +472,7 @@ web/lint: web/require-install ## Comprueba tipos, lint y la regla de dependencia
 web/sync: web/require-install ## Tras un scaffold o un cambio de DTO: exporta la spec OpenAPI y regenera los tipos del frontend
 	@echo "${CYAN}Exportando docs/api/openapi.json...${NC}"
 	UPDATE_OPENAPI=1 $(CARGO) test -p api openapi
-	@echo "${CYAN}Generando web/src/api/schema.d.ts...${NC}"
+	@echo "${CYAN}Generando web/src/api/esquema.d.ts...${NC}"
 	cd web && $(BUN) run openapi:types
 	@echo "${CYAN}Formateando web/ (Biome, sin arreglos de lint)...${NC}"
 	cd web && $(BUN) run format
@@ -10135,509 +10135,523 @@ referencia = "Proveedor"
 nombre = "carrier"
 tipo = "String"
 
-=== web/src/api/client.ts ===
+=== web/src/api/cliente.ts ===
 import createClient, { type Client, type ClientOptions } from "openapi-fetch";
-import type { components, paths } from "./schema";
+import type { components, paths } from "./esquema";
 
-/** The typed API client. `paths` is generated from the backend's spec (`make web/sync`). */
-export type ApiClient = Client<paths>;
+/** El cliente tipado de la API. `paths` sale de la especificación del backend (`make web/sync`). */
+export type ClienteApi = Client<paths>;
 
-/** The API's DTOs by name: `Schemas["DtoProducto"]`, `Schemas["PeticionCrearProducto"]`. */
-export type Schemas = components["schemas"];
+/** Los DTO de la API por nombre: `Esquemas["DtoProducto"]`, `Esquemas["PeticionCrearProducto"]`. */
+export type Esquemas = components["schemas"];
 
-/** `/api` is the backend: proxied to `:8080` by Vite in development. */
-export function createApiClient(options: ClientOptions = {}): ApiClient {
-  return createClient<paths>({ baseUrl: "/api", ...options });
+/** `/api` es el backend: en desarrollo, Vite lo pasa a `:8080`. */
+export function crearClienteApi(opciones: ClientOptions = {}): ClienteApi {
+  return createClient<paths>({ baseUrl: "/api", ...opciones });
 }
 
-=== web/src/features/compra/containers/compra-detail-container.test.tsx ===
+=== web/src/contextos/compra/contenedores/detalle-compra.test.tsx ===
 import { describe, expect, test } from "bun:test";
 import { fireEvent, screen, waitFor } from "@testing-library/react";
-import { CompraMother, compraCollection } from "../../../test-support/compra";
-import { fakeApi } from "../../../test-support/fake-api";
-import { ProveedorMother, proveedorCollection } from "../../../test-support/proveedor";
-import { renderScreen } from "../../../test-support/render";
-import { CompraDetailContainer } from "./compra-detail-container";
+import { apiFalsa } from "../../../pruebas/api-falsa";
+import { coleccionCompra, MadreCompra } from "../../../pruebas/compra";
+import { coleccionProveedor, MadreProveedor } from "../../../pruebas/proveedor";
+import { renderizarPantalla } from "../../../pruebas/renderizar";
+import { ContenedorDetalleCompra } from "./detalle-compra";
 
-describe("CompraDetailContainer", () => {
-  test("should show the compra when it exists", async () => {
-    // Arrange
-    const seeded = CompraMother.random();
-    const api = fakeApi([compraCollection([seeded])]);
+describe("ContenedorDetalleCompra", () => {
+  test("debería mostrar el detalle cuando existe", async () => {
+    // Preparar
+    const sembrado = MadreCompra.aleatorio();
+    const api = apiFalsa([coleccionCompra([sembrado])]);
 
-    // Act
-    renderScreen(<CompraDetailContainer id={seeded.id} />, { api });
+    const pantalla = <ContenedorDetalleCompra id={sembrado.id} />;
 
-    // Assert
-    expect(await screen.findByText("Edit")).toBeTruthy();
+    // Actuar
+    renderizarPantalla(pantalla, { api });
+
+    // Comprobar
+    expect(await screen.findByText("Editar")).toBeTruthy();
   });
 
-  test("should link the proveedor to its page, named by its label", async () => {
-    // Arrange
-    const seeded = CompraMother.random();
-    const target = ProveedorMother.random({ id: seeded.proveedorId });
-    const api = fakeApi([compraCollection([seeded]), proveedorCollection([target])]);
+  test("debería enlazar Proveedor con su página y su etiqueta", async () => {
+    // Preparar
+    const sembrado = MadreCompra.aleatorio();
+    const objetivo = MadreProveedor.aleatorio({ id: sembrado.proveedorId });
+    const api = apiFalsa([coleccionCompra([sembrado]), coleccionProveedor([objetivo])]);
+    const pantalla = <ContenedorDetalleCompra id={sembrado.id} />;
 
-    // Act
-    renderScreen(<CompraDetailContainer id={seeded.id} />, { api });
+    // Actuar
+    renderizarPantalla(pantalla, { api });
 
-    // Assert: by its href — two references to one target may share a label.
-    const selector = `a[href="/proveedores/${seeded.proveedorId}"]`;
-    expect(await screen.findByText(target.name, { selector })).toBeTruthy();
+    // Comprobar: por su href; dos referencias al mismo objetivo pueden tener la misma etiqueta.
+    const selector = `a[href="/proveedores/${sembrado.proveedorId}"]`;
+    expect(await screen.findByText(objetivo.name, { selector })).toBeTruthy();
   });
 
-  test("should link the approver to its page, named by its label", async () => {
-    // Arrange
-    const seeded = CompraMother.random();
-    const target = ProveedorMother.random({ id: seeded.approverId ?? crypto.randomUUID() });
-    const api = fakeApi([compraCollection([seeded]), proveedorCollection([target])]);
+  test("debería enlazar Approver con su página y su etiqueta", async () => {
+    // Preparar
+    const sembrado = MadreCompra.aleatorio();
+    const objetivo = MadreProveedor.aleatorio({ id: sembrado.approverId ?? crypto.randomUUID() });
+    const api = apiFalsa([coleccionCompra([sembrado]), coleccionProveedor([objetivo])]);
+    const pantalla = <ContenedorDetalleCompra id={sembrado.id} />;
 
-    // Act
-    renderScreen(<CompraDetailContainer id={seeded.id} />, { api });
+    // Actuar
+    renderizarPantalla(pantalla, { api });
 
-    // Assert: by its href — two references to one target may share a label.
-    const selector = `a[href="/proveedores/${seeded.approverId}"]`;
-    expect(await screen.findByText(target.name, { selector })).toBeTruthy();
+    // Comprobar: por su href; dos referencias al mismo objetivo pueden tener la misma etiqueta.
+    const selector = `a[href="/proveedores/${sembrado.approverId}"]`;
+    expect(await screen.findByText(objetivo.name, { selector })).toBeTruthy();
   });
 
-  test("should show the not-found code when the compra does not exist", async () => {
-    // Arrange
-    const api = fakeApi([compraCollection()]);
+  test("debería mostrar el código de no encontrado cuando no existe", async () => {
+    // Preparar
+    const api = apiFalsa([coleccionCompra()]);
+    const pantalla = <ContenedorDetalleCompra id={crypto.randomUUID()} />;
 
-    // Act
-    renderScreen(<CompraDetailContainer id={crypto.randomUUID()} />, { api });
+    // Actuar
+    renderizarPantalla(pantalla, { api });
 
-    // Assert
+    // Comprobar
     expect((await screen.findByRole("alert")).textContent).toBe("compra.no_encontrado");
   });
 
-  test("should delete the compra only once the deletion is confirmed", async () => {
-    // Arrange
-    const seeded = CompraMother.random();
-    const stored = compraCollection([seeded]);
-    const api = fakeApi([stored]);
-    const { history } = renderScreen(<CompraDetailContainer id={seeded.id} />, { api });
-    fireEvent.click(await screen.findByText("Delete", { selector: ".card-actions button" }));
-    expect(stored.items.has(seeded.id)).toBe(true);
+  test("debería borrar solo tras confirmar el borrado", async () => {
+    // Preparar
+    const sembrado = MadreCompra.aleatorio();
+    const guardados = coleccionCompra([sembrado]);
+    const api = apiFalsa([guardados]);
+    const pantalla = <ContenedorDetalleCompra id={sembrado.id} />;
+    const { historial } = renderizarPantalla(pantalla, { api });
+    fireEvent.click(await screen.findByText("Borrar", { selector: ".card-actions button" }));
+    expect(guardados.elementos.has(sembrado.id)).toBe(true);
 
-    // Act
-    fireEvent.click(screen.getByText("Delete", { selector: ".modal-action button" }));
+    // Actuar
+    fireEvent.click(screen.getByText("Borrar", { selector: ".modal-action button" }));
 
-    // Assert
-    await waitFor(() => expect(history.at(-1)).toBe("/compras"));
-    expect(stored.items.has(seeded.id)).toBe(false);
+    // Comprobar
+    await waitFor(() => expect(historial.at(-1)).toBe("/compras"));
+    expect(guardados.elementos.has(sembrado.id)).toBe(false);
   });
 });
 
-=== web/src/features/compra/containers/compra-detail-container.tsx ===
+=== web/src/contextos/compra/contenedores/detalle-compra.tsx ===
 import { useState } from "react";
 import { Link, useLocation } from "wouter";
-import { unwrap } from "../../../api/http";
-import { useDependencies } from "../../../dependencies";
-import { ConfirmDialog } from "../../../shared/ui/confirm-dialog";
-import { ErrorAlert } from "../../../shared/ui/error-alert";
-import { useAsync } from "../../../shared/use-async";
-import { CompraDetailView } from "../views/compra-detail-view";
+import { desenvolver } from "../../../api/http";
+import { AlertaError } from "../../../compartido/ui/alerta-error";
+import { DialogoConfirmar } from "../../../compartido/ui/dialogo-confirmar";
+import { useCarga } from "../../../compartido/use-carga";
+import { useDependencias } from "../../../dependencias";
+import { VistaDetalleCompra } from "../vistas/detalle-compra";
 
-export function CompraDetailContainer({ id }: { id: string }) {
-  const { api } = useDependencies();
-  const compra = useAsync(
-    () => unwrap(api.GET("/compras/{id}", { params: { path: { id } } })),
+export function ContenedorDetalleCompra({ id }: { id: string }) {
+  const { api } = useDependencias();
+  const compra = useCarga(
+    () => desenvolver(api.GET("/compras/{id}", { params: { path: { id } } })),
     [api, id],
   );
-  const [, navigate] = useLocation();
-  const [confirming, setConfirming] = useState(false);
-  const [failure, setFailure] = useState<unknown>(null);
+  const [, navegar] = useLocation();
+  const [confirmando, setConfirmando] = useState(false);
+  const [fallo, setFallo] = useState<unknown>(null);
 
-  const remove = async () => {
-    setConfirming(false);
+  const borrar = async () => {
+    setConfirmando(false);
     try {
-      await unwrap(api.DELETE("/compras/{id}", { params: { path: { id } } }));
-      navigate("/compras");
+      await desenvolver(api.DELETE("/compras/{id}", { params: { path: { id } } }));
+      navegar("/compras");
     } catch (error) {
-      setFailure(error);
+      setFallo(error);
     }
   };
-  const proveedorLabel = async (target: string) => {
-    const params = { path: { id: target } };
-    const found = await unwrap(api.GET("/proveedores/{id}", { params }));
-    return found.name;
+  const etiquetaProveedor = async (objetivo: string) => {
+    const params = { path: { id: objetivo } };
+    const encontrado = await desenvolver(api.GET("/proveedores/{id}", { params }));
+    return encontrado.name;
   };
 
   return (
     <section className="space-y-4">
       <h1 className="text-2xl font-bold">Compra</h1>
-      {failure !== null && <ErrorAlert error={failure} />}
-      {compra.status === "loading" && <span className="loading loading-spinner" />}
-      {compra.status === "error" && <ErrorAlert error={compra.error} />}
-      {compra.status === "ok" && (
+      {fallo !== null && <AlertaError error={fallo} />}
+      {compra.estado === "cargando" && <span className="loading loading-spinner" />}
+      {compra.estado === "error" && <AlertaError error={compra.error} />}
+      {compra.estado === "listo" && (
         <div className="card bg-base-100">
           <div className="card-body">
-            <CompraDetailView compra={compra.data} proveedorLabel={proveedorLabel} />
+            <VistaDetalleCompra compra={compra.datos} etiquetaProveedor={etiquetaProveedor} />
             <div className="card-actions justify-end">
-              <Link href={`/compras/${id}/edit`} className="btn">
-                Edit
+              <Link href={`/compras/${id}/editar`} className="btn">
+                Editar
               </Link>
-              <button type="button" className="btn btn-error" onClick={() => setConfirming(true)}>
-                Delete
+              <button type="button" className="btn btn-error" onClick={() => setConfirmando(true)}>
+                Borrar
               </button>
             </div>
           </div>
         </div>
       )}
       <Link href="/compras" className="link">
-        Back to compras
+        Volver a compras
       </Link>
-      <ConfirmDialog
-        open={confirming}
-        message="Delete this compra?"
-        onConfirm={remove}
-        onCancel={() => setConfirming(false)}
+      <DialogoConfirmar
+        abierto={confirmando}
+        mensaje="¿Borrar compra?"
+        alConfirmar={borrar}
+        alCancelar={() => setConfirmando(false)}
       />
     </section>
   );
 }
 
-=== web/src/features/compra/containers/compra-form-container.test.tsx ===
+=== web/src/contextos/compra/contenedores/formulario-compra.test.tsx ===
 import { describe, expect, test } from "bun:test";
 import { fireEvent, screen, waitFor } from "@testing-library/react";
-import type { Schemas } from "../../../api/client";
-import { textOf } from "../../../shared/forms";
-import { CompraMother, compraCollection } from "../../../test-support/compra";
-import { fakeApi } from "../../../test-support/fake-api";
-import { ProveedorMother, proveedorCollection } from "../../../test-support/proveedor";
-import { renderScreen } from "../../../test-support/render";
-import { CompraFormContainer } from "./compra-form-container";
+import type { Esquemas } from "../../../api/cliente";
+import { textoDe } from "../../../compartido/formularios";
+import { apiFalsa } from "../../../pruebas/api-falsa";
+import { coleccionCompra, MadreCompra } from "../../../pruebas/compra";
+import { coleccionProveedor, MadreProveedor } from "../../../pruebas/proveedor";
+import { renderizarPantalla } from "../../../pruebas/renderizar";
+import { ContenedorFormularioCompra } from "./formulario-compra";
 
-function type(label: string, value: string) {
-  fireEvent.change(screen.getByLabelText(label), { target: { value } });
+function escribir(etiqueta: string, valor: string) {
+  fireEvent.change(screen.getByLabelText(etiqueta), { target: { value: valor } });
 }
 
-/** Picks `id` in a reference's select, once its targets have loaded. */
-async function choose(label: string, id: string) {
-  const select = screen.getByLabelText(label);
+/** Elige `id` en el select de una referencia, en cuanto se cargan sus objetivos. */
+async function elegir(etiqueta: string, id: string) {
+  const select = screen.getByLabelText(etiqueta);
   await waitFor(() => expect(select.querySelector(`option[value="${id}"]`)).not.toBeNull());
   fireEvent.change(select, { target: { value: id } });
 }
 
-/** The collections the selects read, holding what `owner` references. */
-function referencedBy(owner: Partial<Schemas["DtoCompra"]>) {
+/** Las colecciones que leen los selects, con lo que referencia `dueno`. */
+function referenciadosPor(dueno: Partial<Esquemas["DtoCompra"]>) {
   return [
-    proveedorCollection([
-      ProveedorMother.random({ id: owner.proveedorId ?? crypto.randomUUID() }),
-      ProveedorMother.random({ id: owner.approverId ?? crypto.randomUUID() }),
+    coleccionProveedor([
+      MadreProveedor.aleatorio({ id: dueno.proveedorId ?? crypto.randomUUID() }),
+      MadreProveedor.aleatorio({ id: dueno.approverId ?? crypto.randomUUID() }),
     ]),
   ];
 }
 
-/** Fills the empty form with `request`, the way a user would. */
-async function fillIn(request: Schemas["PeticionCrearCompra"]) {
-  await screen.findByText("Save");
-  await choose("Proveedor", request.proveedorId);
-  await choose("Approver", textOf(request.approverId));
-  type("Total", String(request.total));
+/** Rellena el formulario vacío con `peticion`, como lo haría quien lo usa. */
+async function rellenar(peticion: Esquemas["PeticionCrearCompra"]) {
+  await screen.findByText("Guardar");
+  await elegir("Proveedor", peticion.proveedorId);
+  await elegir("Approver", textoDe(peticion.approverId));
+  escribir("Total", String(peticion.total));
 }
 
-describe("CompraFormContainer", () => {
-  test("should create the compra from what was typed and show it", async () => {
-    // Arrange
-    const request = CompraMother.request();
-    const stored = compraCollection();
-    const api = fakeApi([stored, ...referencedBy(request)]);
-    const { history } = renderScreen(<CompraFormContainer />, { api });
-    await fillIn(request);
+describe("ContenedorFormularioCompra", () => {
+  test("debería crear con lo escrito e ir a su detalle", async () => {
+    // Preparar
+    const peticion = MadreCompra.peticion();
+    const guardados = coleccionCompra();
+    const api = apiFalsa([guardados, ...referenciadosPor(peticion)]);
+    const pantalla = <ContenedorFormularioCompra />;
+    const { historial } = renderizarPantalla(pantalla, { api });
+    await rellenar(peticion);
 
-    // Act
-    fireEvent.click(screen.getByText("Save"));
+    // Actuar
+    fireEvent.click(screen.getByText("Guardar"));
 
-    // Assert
-    await waitFor(() => expect(history.at(-1)).toStartWith("/compras/"));
-    const [created] = stored.items.values();
-    expect(created).toMatchObject(request);
-    expect(history.at(-1)).toBe(`/compras/${created?.id}`);
+    // Comprobar
+    await waitFor(() => expect(historial.at(-1)).toStartWith("/compras/"));
+    const [creado] = guardados.elementos.values();
+    expect(creado).toMatchObject(peticion);
+    expect(historial.at(-1)).toBe(`/compras/${creado?.id}`);
   });
 
-  test("should save the edited compra when an existing one is submitted", async () => {
-    // Arrange
-    const seeded = CompraMother.random();
-    const stored = compraCollection([seeded]);
-    const api = fakeApi([stored, ...referencedBy(seeded)]);
-    const { history } = renderScreen(<CompraFormContainer id={seeded.id} />, { api });
+  test("debería guardar la edición cuando se envía el formulario", async () => {
+    // Preparar
+    const sembrado = MadreCompra.aleatorio();
+    const guardados = coleccionCompra([sembrado]);
+    const api = apiFalsa([guardados, ...referenciadosPor(sembrado)]);
+    const pantalla = <ContenedorFormularioCompra id={sembrado.id} />;
+    const { historial } = renderizarPantalla(pantalla, { api });
 
-    // Act
-    fireEvent.click(await screen.findByText("Save"));
+    // Actuar
+    fireEvent.click(await screen.findByText("Guardar"));
 
-    // Assert
-    await waitFor(() => expect(history.at(-1)).toBe(`/compras/${seeded.id}`));
-    expect(stored.items.get(seeded.id)).toEqual(seeded);
-  });
-  test("should show the code itself when the API answers one the form does not know", async () => {
-    // Arrange
-    const request = CompraMother.request();
-    const code = "compra.validacion.invalid";
-    const failures = { "POST /compras": code };
-    const api = fakeApi([compraCollection(), ...referencedBy(request)], failures);
-    renderScreen(<CompraFormContainer />, { api });
-    await fillIn(request);
-
-    // Act
-    fireEvent.click(screen.getByText("Save"));
-
-    // Assert
-    expect((await screen.findByRole("alert")).textContent).toBe(code);
+    // Comprobar
+    await waitFor(() => expect(historial.at(-1)).toBe(`/compras/${sembrado.id}`));
+    expect(guardados.elementos.get(sembrado.id)).toEqual(sembrado);
   });
 
-  test("should say a compra with these values exists when the API answers a duplicate", async () => {
-    // Arrange
-    const request = CompraMother.request();
-    const failures = { "POST /compras": "compra.duplicado" };
-    const api = fakeApi([compraCollection(), ...referencedBy(request)], failures);
-    renderScreen(<CompraFormContainer />, { api });
-    await fillIn(request);
+  test("debería mostrar el propio código cuando la API responde uno que el formulario no conoce", async () => {
+    // Preparar
+    const peticion = MadreCompra.peticion();
+    const codigo = "compra.validacion.invalido";
+    const fallos = { "POST /compras": codigo };
+    const api = apiFalsa([coleccionCompra(), ...referenciadosPor(peticion)], fallos);
+    renderizarPantalla(<ContenedorFormularioCompra />, { api });
+    await rellenar(peticion);
 
-    // Act
-    fireEvent.click(screen.getByText("Save"));
+    // Actuar
+    fireEvent.click(screen.getByText("Guardar"));
 
-    // Assert
-    expect((await screen.findByRole("alert")).textContent).toBe(
-      "A compra with these values already exists",
-    );
+    // Comprobar
+    expect((await screen.findByRole("alert")).textContent).toBe(codigo);
   });
 
-  test("should offer every proveedor in the selects that reference one", async () => {
-    // Arrange
-    const proveedor = ProveedorMother.random();
-    const api = fakeApi([proveedorCollection([proveedor])]);
+  test("debería decir que los valores ya están en uso cuando la API responde un duplicado", async () => {
+    // Preparar
+    const peticion = MadreCompra.peticion();
+    const fallos = { "POST /compras": "compra.duplicado" };
+    const api = apiFalsa([coleccionCompra(), ...referenciadosPor(peticion)], fallos);
+    renderizarPantalla(<ContenedorFormularioCompra />, { api });
+    await rellenar(peticion);
 
-    // Act
-    renderScreen(<CompraFormContainer />, { api });
+    // Actuar
+    fireEvent.click(screen.getByText("Guardar"));
 
-    // Assert
-    const options = await screen.findAllByRole("option", { name: proveedor.name });
-    expect(options).toHaveLength(2);
+    // Comprobar
+    expect((await screen.findByRole("alert")).textContent).toBe("Estos valores ya están en uso");
   });
 
-  test("should show the message under its input when the API rejects one field", async () => {
-    // Arrange
-    const request = CompraMother.request();
-    const failures = { "POST /compras": "compra.validacion.proveedor_id_no_encontrado" };
-    const api = fakeApi([compraCollection(), ...referencedBy(request)], failures);
-    renderScreen(<CompraFormContainer />, { api });
-    await fillIn(request);
+  test("debería ofrecer cada proveedor en sus selects", async () => {
+    // Preparar
+    const proveedor = MadreProveedor.aleatorio();
+    const api = apiFalsa([coleccionProveedor([proveedor])]);
 
-    // Act
-    fireEvent.click(screen.getByText("Save"));
+    // Actuar
+    renderizarPantalla(<ContenedorFormularioCompra />, { api });
 
-    // Assert
-    expect(await screen.findByText("Proveedor does not exist")).toBeTruthy();
-    const input = screen.getByLabelText("Proveedor");
-    expect(input.getAttribute("aria-invalid")).toBe("true");
+    // Comprobar
+    const opciones = await screen.findAllByRole("option", { name: proveedor.name });
+    expect(opciones).toHaveLength(2);
+  });
+
+  test("debería mostrar el mensaje bajo su input cuando la API rechaza un campo", async () => {
+    // Preparar
+    const peticion = MadreCompra.peticion();
+    const fallos = { "POST /compras": "compra.validacion.proveedor_id_no_encontrado" };
+    const api = apiFalsa([coleccionCompra(), ...referenciadosPor(peticion)], fallos);
+    renderizarPantalla(<ContenedorFormularioCompra />, { api });
+    await rellenar(peticion);
+
+    // Actuar
+    fireEvent.click(screen.getByText("Guardar"));
+
+    // Comprobar
+    expect(await screen.findByText("Proveedor: no existe")).toBeTruthy();
+    const campo = screen.getByLabelText("Proveedor");
+    expect(campo.getAttribute("aria-invalid")).toBe("true");
     expect(screen.queryByRole("alert")).toBeNull();
   });
 });
 
-=== web/src/features/compra/containers/compra-form-container.tsx ===
+=== web/src/contextos/compra/contenedores/formulario-compra.tsx ===
 import { useState } from "react";
 import { Link, useLocation } from "wouter";
-import type { Schemas } from "../../../api/client";
-import { MAX_PAGE_LIMIT, unwrap } from "../../../api/http";
-import { useDependencies } from "../../../dependencies";
-import { referenceOptions } from "../../../shared/forms";
-import { ErrorAlert, errorCode } from "../../../shared/ui/error-alert";
-import { useAsync } from "../../../shared/use-async";
-import { toProblem } from "../messages";
-import { CompraFormView, toCompraForm, toCompraRequest } from "../views/compra-form-view";
+import type { Esquemas } from "../../../api/cliente";
+import { desenvolver, LIMITE_PAGINA_MAXIMO } from "../../../api/http";
+import { opcionesReferencia } from "../../../compartido/formularios";
+import { AlertaError, codigoError } from "../../../compartido/ui/alerta-error";
+import { useCarga } from "../../../compartido/use-carga";
+import { useDependencias } from "../../../dependencias";
+import { aProblema } from "../mensajes";
+import {
+  aFormularioCompra,
+  aPeticionCompra,
+  VistaFormularioCompra,
+} from "../vistas/formulario-compra";
 
-type Compra = Schemas["DtoCompra"];
+type Compra = Esquemas["DtoCompra"];
 
-/** The first page of each referenced entity: what its selects offer. */
-const OPTIONS = { params: { query: { limite: MAX_PAGE_LIMIT } } };
+/** La primera página de cada entidad referenciada: lo que ofrecen sus selects. */
+const PRIMERA_PAGINA = { params: { query: { limite: LIMITE_PAGINA_MAXIMO } } };
 
-/** Creates a compra, or edits the one with `id`. */
-export function CompraFormContainer({ id }: { id?: string }) {
-  const { api } = useDependencies();
-  const existing = useAsync(
+/** Crear, o editar con `id`: el formulario de compras. */
+export function ContenedorFormularioCompra({ id }: { id?: string }) {
+  const { api } = useDependencias();
+  const existente = useCarga(
     () =>
       id === undefined
         ? Promise.resolve(null)
-        : unwrap(api.GET("/compras/{id}", { params: { path: { id } } })),
+        : desenvolver(api.GET("/compras/{id}", { params: { path: { id } } })),
     [api, id],
   );
-  const title = id === undefined ? "New compra" : "Edit compra";
+  const titulo = id === undefined ? "Crear compra" : "Editar compra";
 
   return (
     <section className="space-y-4">
-      <h1 className="text-2xl font-bold">{title}</h1>
-      {existing.status === "loading" && <span className="loading loading-spinner" />}
-      {existing.status === "error" && <ErrorAlert error={existing.error} />}
-      {existing.status === "ok" && <CompraForm existing={existing.data} />}
+      <h1 className="text-2xl font-bold">{titulo}</h1>
+      {existente.estado === "cargando" && <span className="loading loading-spinner" />}
+      {existente.estado === "error" && <AlertaError error={existente.error} />}
+      {existente.estado === "listo" && <FormularioCompra existente={existente.datos} />}
       <Link href={id === undefined ? "/compras" : `/compras/${id}`} className="link">
-        Cancel
+        Cancelar
       </Link>
     </section>
   );
 }
 
-function CompraForm({ existing }: { existing: Compra | null }) {
-  const { api } = useDependencies();
-  const proveedores = useAsync(() => unwrap(api.GET("/proveedores", OPTIONS)), [api]);
-  const [, navigate] = useLocation();
-  const [values, setValues] = useState(toCompraForm(existing));
-  const [saving, setSaving] = useState(false);
-  const [failure, setFailure] = useState<unknown>(null);
-  const problem = failure === null ? null : toProblem(errorCode(failure));
+function FormularioCompra({ existente }: { existente: Compra | null }) {
+  const { api } = useDependencias();
+  const proveedores = useCarga(() => desenvolver(api.GET("/proveedores", PRIMERA_PAGINA)), [api]);
+  const [, navegar] = useLocation();
+  const [valores, setValores] = useState(aFormularioCompra(existente));
+  const [guardando, setGuardando] = useState(false);
+  const [fallo, setFallo] = useState<unknown>(null);
+  const problema = fallo === null ? null : aProblema(codigoError(fallo));
 
-  const save = async () => {
-    setSaving(true);
-    setFailure(null);
+  const guardar = async () => {
+    setGuardando(true);
+    setFallo(null);
     try {
-      const body = toCompraRequest(values);
-      const saved = await unwrap(
-        existing === null
-          ? api.POST("/compras", { body })
-          : api.PUT("/compras/{id}", { params: { path: { id: existing.id } }, body }),
+      const cuerpo = aPeticionCompra(valores);
+      const guardado = await desenvolver(
+        existente === null
+          ? api.POST("/compras", { body: cuerpo })
+          : api.PUT("/compras/{id}", { params: { path: { id: existente.id } }, body: cuerpo }),
       );
-      navigate(`/compras/${saved.id}`);
+      navegar(`/compras/${guardado.id}`);
     } catch (error) {
-      setFailure(error);
-      setSaving(false);
+      setFallo(error);
+      setGuardando(false);
     }
   };
 
   return (
     <div className="card bg-base-100">
       <div className="card-body">
-        {problem?.field === null && <ErrorAlert error={failure} message={problem.text} />}
-        {proveedores.status === "error" && <ErrorAlert error={proveedores.error} />}
-        <CompraFormView
-          values={values}
-          options={{
-            proveedorId: referenceOptions(proveedores, (proveedor) => proveedor.name),
-            approverId: referenceOptions(proveedores, (proveedor) => proveedor.name),
+        {problema?.campo === null && <AlertaError error={fallo} mensaje={problema.texto} />}
+        {proveedores.estado === "error" && <AlertaError error={proveedores.error} />}
+        <VistaFormularioCompra
+          valores={valores}
+          opciones={{
+            proveedorId: opcionesReferencia(proveedores, (proveedor) => proveedor.name),
+            approverId: opcionesReferencia(proveedores, (proveedor) => proveedor.name),
           }}
-          saving={saving}
-          problem={problem}
-          onChange={setValues}
-          onSubmit={save}
+          guardando={guardando}
+          problema={problema}
+          alCambiar={setValores}
+          alEnviar={guardar}
         />
       </div>
     </div>
   );
 }
 
-=== web/src/features/compra/containers/compra-list-container.test.tsx ===
+=== web/src/contextos/compra/contenedores/lista-compra.test.tsx ===
 import { describe, expect, test } from "bun:test";
 import { fireEvent, screen } from "@testing-library/react";
-import { CompraMother, compraCollection } from "../../../test-support/compra";
-import { fakeApi } from "../../../test-support/fake-api";
-import { renderScreen } from "../../../test-support/render";
-import { CompraListContainer } from "./compra-list-container";
+import { apiFalsa } from "../../../pruebas/api-falsa";
+import { coleccionCompra, MadreCompra } from "../../../pruebas/compra";
+import { renderizarPantalla } from "../../../pruebas/renderizar";
+import { ContenedorListaCompra } from "./lista-compra";
 
-describe("CompraListContainer", () => {
-  test("should show a row per compra when there are some", async () => {
-    // Arrange
-    const seed = [CompraMother.random(), CompraMother.random()];
-    const api = fakeApi([compraCollection(seed)]);
+describe("ContenedorListaCompra", () => {
+  test("debería mostrar una fila por cada compra", async () => {
+    // Preparar
+    const semilla = [MadreCompra.aleatorio(), MadreCompra.aleatorio()];
+    const api = apiFalsa([coleccionCompra(semilla)]);
 
-    // Act
-    renderScreen(<CompraListContainer />, { api });
+    // Actuar
+    renderizarPantalla(<ContenedorListaCompra />, { api });
 
-    // Assert
-    expect(await screen.findAllByText("View")).toHaveLength(2);
+    // Comprobar
+    expect(await screen.findAllByText("Ver")).toHaveLength(2);
   });
 
-  test("should show the next page when Next is pressed", async () => {
-    // Arrange
-    const seed = Array.from({ length: 25 }, () => CompraMother.random());
-    const api = fakeApi([compraCollection(seed)]);
-    renderScreen(<CompraListContainer />, { api });
-    expect(await screen.findAllByText("View")).toHaveLength(20);
+  test("debería mostrar la página siguiente cuando se pulsa Siguiente", async () => {
+    // Preparar
+    const semilla = Array.from({ length: 25 }, () => MadreCompra.aleatorio());
+    const api = apiFalsa([coleccionCompra(semilla)]);
+    renderizarPantalla(<ContenedorListaCompra />, { api });
+    expect(await screen.findAllByText("Ver")).toHaveLength(20);
 
-    // Act
-    fireEvent.click(screen.getByRole("button", { name: "Next" }));
+    // Actuar
+    fireEvent.click(screen.getByRole("button", { name: "Siguiente" }));
 
-    // Assert
-    expect(await screen.findByText("21–25 of 25")).toBeTruthy();
-    expect(screen.getAllByText("View")).toHaveLength(5);
+    // Comprobar
+    expect(await screen.findByText("21–25 de 25")).toBeTruthy();
+    expect(screen.getAllByText("Ver")).toHaveLength(5);
   });
 
-  test("should open the page the URL names", async () => {
-    // Arrange
-    const seed = Array.from({ length: 25 }, () => CompraMother.random());
-    const api = fakeApi([compraCollection(seed)]);
-    const path = "/compras?page=2";
+  test("debería abrir la página que nombra la URL", async () => {
+    // Preparar
+    const semilla = Array.from({ length: 25 }, () => MadreCompra.aleatorio());
+    const api = apiFalsa([coleccionCompra(semilla)]);
+    const ruta = "/compras?pagina=2";
 
-    // Act
-    renderScreen(<CompraListContainer />, { api }, path);
+    // Actuar
+    renderizarPantalla(<ContenedorListaCompra />, { api }, ruta);
 
-    // Assert
-    expect(await screen.findByText("21–25 of 25")).toBeTruthy();
+    // Comprobar
+    expect(await screen.findByText("21–25 de 25")).toBeTruthy();
   });
 
-  test("should say so when there is no compra", async () => {
-    // Arrange
-    const api = fakeApi([compraCollection()]);
+  test("debería decirlo cuando no hay compras", async () => {
+    // Preparar
+    const api = apiFalsa([coleccionCompra()]);
 
-    // Act
-    renderScreen(<CompraListContainer />, { api });
+    // Actuar
+    renderizarPantalla(<ContenedorListaCompra />, { api });
 
-    // Assert
-    expect(await screen.findByText("No compras yet.")).toBeTruthy();
+    // Comprobar
+    expect(await screen.findByText("Todavía no hay compras.")).toBeTruthy();
   });
 
-  test("should show the error code when the compras cannot be listed", async () => {
-    // Arrange
-    const failures = { "GET /compras": "compra.repositorio" };
-    const api = fakeApi([compraCollection()], failures);
+  test("debería mostrar el código del error cuando la API no da la lista", async () => {
+    // Preparar
+    const fallos = { "GET /compras": "compra.repositorio" };
+    const api = apiFalsa([coleccionCompra()], fallos);
 
-    // Act
-    renderScreen(<CompraListContainer />, { api });
+    // Actuar
+    renderizarPantalla(<ContenedorListaCompra />, { api });
 
-    // Assert
+    // Comprobar
     expect((await screen.findByRole("alert")).textContent).toBe("compra.repositorio");
   });
 });
 
-=== web/src/features/compra/containers/compra-list-container.tsx ===
+=== web/src/contextos/compra/contenedores/lista-compra.tsx ===
 import { Link, useLocation, useSearch } from "wouter";
-import { PAGE_SIZE, unwrap } from "../../../api/http";
-import { useDependencies } from "../../../dependencies";
-import { EmptyState } from "../../../shared/ui/empty-state";
-import { ErrorAlert } from "../../../shared/ui/error-alert";
-import { offsetFromSearch, Pagination, pageSearch } from "../../../shared/ui/pagination";
-import { useAsync } from "../../../shared/use-async";
-import { CompraListView } from "../views/compra-list-view";
+import { desenvolver, TAMANO_PAGINA } from "../../../api/http";
+import { AlertaError } from "../../../compartido/ui/alerta-error";
+import { busquedaPagina, desplazamientoDeUrl, Paginacion } from "../../../compartido/ui/paginacion";
+import { SinElementos } from "../../../compartido/ui/sin-elementos";
+import { useCarga } from "../../../compartido/use-carga";
+import { useDependencias } from "../../../dependencias";
+import { VistaListaCompra } from "../vistas/lista-compra";
 
-/** The list, one page at a time; the page is in the URL (`?page=2`), so reload and back keep it. */
-export function CompraListContainer() {
-  const { api } = useDependencies();
-  const [location, navigate] = useLocation();
-  const offset = offsetFromSearch(useSearch(), PAGE_SIZE);
-  const goTo = (next: number) => navigate(location + pageSearch(next, PAGE_SIZE));
-  const query = { limite: PAGE_SIZE, desplazamiento: offset };
-  const compras = useAsync(() => unwrap(api.GET("/compras", { params: { query } })), [api, offset]);
+/** La lista, página a página; la página va en la URL (`?pagina=2`): recargar y volver la mantienen. */
+export function ContenedorListaCompra() {
+  const { api } = useDependencias();
+  const [ubicacion, navegar] = useLocation();
+  const desplazamiento = desplazamientoDeUrl(useSearch(), TAMANO_PAGINA);
+  const irA = (siguiente: number) => navegar(ubicacion + busquedaPagina(siguiente, TAMANO_PAGINA));
+  const consulta = { limite: TAMANO_PAGINA, desplazamiento };
+  const compras = useCarga(
+    () => desenvolver(api.GET("/compras", { params: { query: consulta } })),
+    [api, desplazamiento],
+  );
 
   return (
     <section className="space-y-4">
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-bold">Compras</h1>
-        <Link href="/compras/new" className="btn btn-primary">
-          New compra
+        <Link href="/compras/nuevo" className="btn btn-primary">
+          Crear compra
         </Link>
       </div>
-      {compras.status === "loading" && <span className="loading loading-spinner" />}
-      {compras.status === "error" && <ErrorAlert error={compras.error} />}
-      {compras.status === "ok" &&
-        (compras.data.total === 0 ? (
-          <EmptyState message="No compras yet." />
+      {compras.estado === "cargando" && <span className="loading loading-spinner" />}
+      {compras.estado === "error" && <AlertaError error={compras.error} />}
+      {compras.estado === "listo" &&
+        (compras.datos.total === 0 ? (
+          <SinElementos mensaje="Todavía no hay compras." />
         ) : (
           <>
-            <CompraListView compras={compras.data.elementos} />
-            <Pagination
-              total={compras.data.total}
-              limit={compras.data.limite}
-              offset={compras.data.desplazamiento}
-              onOffsetChange={goTo}
+            <VistaListaCompra compras={compras.datos.elementos} />
+            <Paginacion
+              total={compras.datos.total}
+              limite={compras.datos.limite}
+              desplazamiento={compras.datos.desplazamiento}
+              alCambiarDesplazamiento={irA}
             />
           </>
         ))}
@@ -10645,59 +10659,59 @@ export function CompraListContainer() {
   );
 }
 
-=== web/src/features/compra/messages.ts ===
-/** What a screen shows for an API error: under the input it is about, or in the alert. */
-export interface CompraProblem {
-  field: string | null;
-  text: string;
+=== web/src/contextos/compra/mensajes.ts ===
+/** Lo que una pantalla muestra de un error de la API: bajo el input del que trata, o en la alerta. */
+export interface ProblemaCompra {
+  campo: string | null;
+  texto: string;
 }
 
 /**
- * The messages for the codes of the backend's `errores.rs`, generated from the same list. English:
- * this file is the place to translate them. A code missing here shows as it is.
+ * Los mensajes de los códigos de `errores.rs` del backend, generados de la misma lista. Un código que
+ * no está aquí se muestra tal cual.
  */
-const TEXTS: Record<string, string> = {
-  "compra.validacion.proveedor_id_no_encontrado": "Proveedor does not exist",
-  "compra.validacion.approver_id_no_encontrado": "Approver does not exist",
-  "compra.duplicado": "A compra with these values already exists",
-  "compra.no_encontrado": "This compra no longer exists",
-  "compra.repositorio": "The compra could not be saved, try again later",
-  "compra.desconocido": "Something went wrong",
+const TEXTOS: Record<string, string> = {
+  "compra.validacion.proveedor_id_no_encontrado": "Proveedor: no existe",
+  "compra.validacion.approver_id_no_encontrado": "Approver: no existe",
+  "compra.duplicado": "Estos valores ya están en uso",
+  "compra.no_encontrado": "Ya no existe",
+  "compra.repositorio": "No se ha podido guardar; inténtalo más tarde",
+  "compra.desconocido": "Algo ha ido mal",
 };
 
-/** The input each field's code is about. */
-const FIELDS: Record<string, string> = {
+/** El input del que trata el código de cada campo. */
+const CAMPOS: Record<string, string> = {
   "compra.validacion.proveedor_id_no_encontrado": "proveedorId",
   "compra.validacion.approver_id_no_encontrado": "approverId",
 };
 
-export function toProblem(code: string): CompraProblem {
-  return { field: FIELDS[code] ?? null, text: TEXTS[code] ?? code };
+export function aProblema(codigo: string): ProblemaCompra {
+  return { campo: CAMPOS[codigo] ?? null, texto: TEXTOS[codigo] ?? codigo };
 }
 
-=== web/src/features/compra/views/compra-detail-view.tsx ===
-import type { Schemas } from "../../../api/client";
-import { ReferenceLink } from "../../../shared/ui/reference-link";
+=== web/src/contextos/compra/vistas/detalle-compra.tsx ===
+import type { Esquemas } from "../../../api/cliente";
+import { EnlaceReferencia } from "../../../compartido/ui/enlace-referencia";
 
-type Compra = Schemas["DtoCompra"];
+type Compra = Esquemas["DtoCompra"];
 
-/** `compra`, and the label of each proveedor it references, for its links. */
-export function CompraDetailView({
+/** `compra`, y cómo se cargan las etiquetas de lo que referencia, para sus enlaces. */
+export function VistaDetalleCompra({
   compra,
-  proveedorLabel,
+  etiquetaProveedor,
 }: {
   compra: Compra;
-  proveedorLabel: (id: string) => Promise<string>;
+  etiquetaProveedor: (id: string) => Promise<string>;
 }) {
   return (
     <dl className="grid grid-cols-[max-content_1fr] gap-x-6 gap-y-2">
       <dt className="font-semibold">Proveedor</dt>
       <dd>
-        <ReferenceLink path="/proveedores" id={compra.proveedorId} load={proveedorLabel} />
+        <EnlaceReferencia ruta="/proveedores" id={compra.proveedorId} cargar={etiquetaProveedor} />
       </dd>
       <dt className="font-semibold">Approver</dt>
       <dd>
-        <ReferenceLink path="/proveedores" id={compra.approverId} load={proveedorLabel} />
+        <EnlaceReferencia ruta="/proveedores" id={compra.approverId} cargar={etiquetaProveedor} />
       </dd>
       <dt className="font-semibold">Total</dt>
       <dd>{compra.total}</dd>
@@ -10705,24 +10719,24 @@ export function CompraDetailView({
   );
 }
 
-=== web/src/features/compra/views/compra-form-view.tsx ===
-import type { Schemas } from "../../../api/client";
-import { optionalText, type ReferenceOption, textOf } from "../../../shared/forms";
-import { FieldError } from "../../../shared/ui/field-error";
-import type { CompraProblem } from "../messages";
+=== web/src/contextos/compra/vistas/formulario-compra.tsx ===
+import type { Esquemas } from "../../../api/cliente";
+import { type OpcionReferencia, textoDe, textoOpcional } from "../../../compartido/formularios";
+import { ErrorCampo } from "../../../compartido/ui/error-campo";
+import type { ProblemaCompra } from "../mensajes";
 
-type Compra = Schemas["DtoCompra"];
-type CompraRequest = Schemas["PeticionCrearCompra"];
+type Compra = Esquemas["DtoCompra"];
+type PeticionCompra = Esquemas["PeticionCrearCompra"];
 
-/** What the inputs hold: the text of every input, `checked` for a checkbox. */
-export interface CompraFormValues {
+/** Lo que guardan los inputs: el texto de cada input, `checked` en una casilla. */
+export interface ValoresFormularioCompra {
   proveedorId: string;
   approverId: string;
   total: string;
 }
 
-/** The inputs for `compra`, empty when there is none yet. */
-export function toCompraForm(compra: Compra | null): CompraFormValues {
+/** Los inputs de `compra`, vacíos cuando todavía no hay ninguno. */
+export function aFormularioCompra(compra: Compra | null): ValoresFormularioCompra {
   if (compra === null) {
     return {
       proveedorId: "",
@@ -10732,111 +10746,111 @@ export function toCompraForm(compra: Compra | null): CompraFormValues {
   }
   return {
     proveedorId: compra.proveedorId,
-    approverId: textOf(compra.approverId),
+    approverId: textoDe(compra.approverId),
     total: String(compra.total),
   };
 }
 
-/** What each reference's select offers. */
-export interface CompraFormOptions {
-  proveedorId: ReferenceOption[];
-  approverId: ReferenceOption[];
+/** Lo que ofrece el select de cada referencia. */
+export interface OpcionesFormularioCompra {
+  proveedorId: OpcionReferencia[];
+  approverId: OpcionReferencia[];
 }
 
-/** What a create or an update sends: the same fields for both. */
-export function toCompraRequest(values: CompraFormValues): CompraRequest {
+/** Lo que mandan crear y actualizar: los mismos campos en los dos. */
+export function aPeticionCompra(valores: ValoresFormularioCompra): PeticionCompra {
   return {
-    proveedorId: values.proveedorId,
-    approverId: optionalText(values.approverId),
-    total: Number(values.total),
+    proveedorId: valores.proveedorId,
+    approverId: textoOpcional(valores.approverId),
+    total: Number(valores.total),
   };
 }
 
-export function CompraFormView({
-  values,
-  options,
-  saving,
-  problem,
-  onChange,
-  onSubmit,
+export function VistaFormularioCompra({
+  valores,
+  opciones,
+  guardando,
+  problema,
+  alCambiar,
+  alEnviar,
 }: {
-  values: CompraFormValues;
-  options: CompraFormOptions;
-  saving: boolean;
-  /** What the API said about the last submit: shown under its input. */
-  problem: CompraProblem | null;
-  onChange: (values: CompraFormValues) => void;
-  onSubmit: () => void;
+  valores: ValoresFormularioCompra;
+  opciones: OpcionesFormularioCompra;
+  guardando: boolean;
+  /** Lo que dijo la API del último envío: se muestra bajo su input. */
+  problema: ProblemaCompra | null;
+  alCambiar: (valores: ValoresFormularioCompra) => void;
+  alEnviar: () => void;
 }) {
   return (
     <form
       className="space-y-2"
       onSubmit={(event) => {
         event.preventDefault();
-        onSubmit();
+        alEnviar();
       }}
     >
       <label className="fieldset">
         <span className="fieldset-legend">Proveedor</span>
         <select
           className="select w-full"
-          aria-invalid={problem?.field === "proveedorId"}
+          aria-invalid={problema?.campo === "proveedorId"}
           required
-          value={values.proveedorId}
-          onChange={(event) => onChange({ ...values, proveedorId: event.target.value })}
+          value={valores.proveedorId}
+          onChange={(event) => alCambiar({ ...valores, proveedorId: event.target.value })}
         >
-          <option value="">Choose a proveedor</option>
-          {options.proveedorId.map((option) => (
-            <option key={option.id} value={option.id}>
-              {option.label}
+          <option value="">Elige una opción</option>
+          {opciones.proveedorId.map((opcion) => (
+            <option key={opcion.id} value={opcion.id}>
+              {opcion.etiqueta}
             </option>
           ))}
         </select>
       </label>
-      <FieldError problem={problem} field="proveedorId" />
+      <ErrorCampo problema={problema} campo="proveedorId" />
       <label className="fieldset">
         <span className="fieldset-legend">Approver</span>
         <select
           className="select w-full"
-          aria-invalid={problem?.field === "approverId"}
-          value={values.approverId}
-          onChange={(event) => onChange({ ...values, approverId: event.target.value })}
+          aria-invalid={problema?.campo === "approverId"}
+          value={valores.approverId}
+          onChange={(event) => alCambiar({ ...valores, approverId: event.target.value })}
         >
-          <option value="">None</option>
-          {options.approverId.map((option) => (
-            <option key={option.id} value={option.id}>
-              {option.label}
+          <option value="">—</option>
+          {opciones.approverId.map((opcion) => (
+            <option key={opcion.id} value={opcion.id}>
+              {opcion.etiqueta}
             </option>
           ))}
         </select>
       </label>
-      <FieldError problem={problem} field="approverId" />
+      <ErrorCampo problema={problema} campo="approverId" />
       <label className="fieldset">
         <span className="fieldset-legend">Total</span>
         <input
           className="input w-full"
           type="number"
-          aria-invalid={problem?.field === "total"}
+          aria-invalid={problema?.campo === "total"}
           required
-          value={values.total}
-          onChange={(event) => onChange({ ...values, total: event.target.value })}
+          value={valores.total}
+          onChange={(event) => alCambiar({ ...valores, total: event.target.value })}
         />
       </label>
-      <FieldError problem={problem} field="total" />
-      <button type="submit" className="btn btn-primary" disabled={saving}>
-        Save
+      <ErrorCampo problema={problema} campo="total" />
+      <button type="submit" className="btn btn-primary" disabled={guardando}>
+        Guardar
       </button>
     </form>
   );
 }
 
-=== web/src/features/compra/views/compra-list-view.tsx ===
+=== web/src/contextos/compra/vistas/lista-compra.tsx ===
 import { Link } from "wouter";
-import type { Schemas } from "../../../api/client";
+import type { Esquemas } from "../../../api/cliente";
 
-type Compra = Schemas["DtoCompra"];
+type Compra = Esquemas["DtoCompra"];
 
-export function CompraListView({ compras }: { compras: Compra[] }) {
+export function VistaListaCompra({ compras }: { compras: Compra[] }) {
   return (
     <div className="overflow-x-auto rounded-box bg-base-100">
       <table className="table">
@@ -10856,7 +10870,7 @@ export function CompraListView({ compras }: { compras: Compra[] }) {
               <td>{compra.total}</td>
               <td className="text-right">
                 <Link href={`/compras/${compra.id}`} className="link">
-                  View
+                  Ver
                 </Link>
               </td>
             </tr>
@@ -10867,523 +10881,536 @@ export function CompraListView({ compras }: { compras: Compra[] }) {
   );
 }
 
-=== web/src/features/entrega/containers/entrega-detail-container.test.tsx ===
+=== web/src/contextos/entrega/contenedores/detalle-entrega.test.tsx ===
 import { describe, expect, test } from "bun:test";
 import { fireEvent, screen, waitFor } from "@testing-library/react";
-import { CompraMother, compraCollection } from "../../../test-support/compra";
-import { EntregaMother, entregaCollection } from "../../../test-support/entrega";
-import { fakeApi } from "../../../test-support/fake-api";
-import { ProveedorMother, proveedorCollection } from "../../../test-support/proveedor";
-import { renderScreen } from "../../../test-support/render";
-import { EntregaDetailContainer } from "./entrega-detail-container";
+import { apiFalsa } from "../../../pruebas/api-falsa";
+import { coleccionCompra, MadreCompra } from "../../../pruebas/compra";
+import { coleccionEntrega, MadreEntrega } from "../../../pruebas/entrega";
+import { coleccionProveedor, MadreProveedor } from "../../../pruebas/proveedor";
+import { renderizarPantalla } from "../../../pruebas/renderizar";
+import { ContenedorDetalleEntrega } from "./detalle-entrega";
 
-describe("EntregaDetailContainer", () => {
-  test("should show the entrega when it exists", async () => {
-    // Arrange
-    const seeded = EntregaMother.random();
-    const api = fakeApi([entregaCollection([seeded])]);
+describe("ContenedorDetalleEntrega", () => {
+  test("debería mostrar el detalle cuando existe", async () => {
+    // Preparar
+    const sembrado = MadreEntrega.aleatorio();
+    const api = apiFalsa([coleccionEntrega([sembrado])]);
 
-    // Act
-    renderScreen(<EntregaDetailContainer id={seeded.id} />, { api });
+    const pantalla = <ContenedorDetalleEntrega id={sembrado.id} />;
 
-    // Assert
-    expect(await screen.findByText("Edit")).toBeTruthy();
+    // Actuar
+    renderizarPantalla(pantalla, { api });
+
+    // Comprobar
+    expect(await screen.findByText("Editar")).toBeTruthy();
   });
 
-  test("should link the compra to its page, named by its label", async () => {
-    // Arrange
-    const seeded = EntregaMother.random();
-    const target = CompraMother.random({ id: seeded.compraId });
-    const api = fakeApi([entregaCollection([seeded]), compraCollection([target])]);
+  test("debería enlazar Compra con su página y su etiqueta", async () => {
+    // Preparar
+    const sembrado = MadreEntrega.aleatorio();
+    const objetivo = MadreCompra.aleatorio({ id: sembrado.compraId });
+    const api = apiFalsa([coleccionEntrega([sembrado]), coleccionCompra([objetivo])]);
+    const pantalla = <ContenedorDetalleEntrega id={sembrado.id} />;
 
-    // Act
-    renderScreen(<EntregaDetailContainer id={seeded.id} />, { api });
+    // Actuar
+    renderizarPantalla(pantalla, { api });
 
-    // Assert: by its href — two references to one target may share a label.
-    const selector = `a[href="/compras/${seeded.compraId}"]`;
-    expect(await screen.findByText(target.id, { selector })).toBeTruthy();
+    // Comprobar: por su href; dos referencias al mismo objetivo pueden tener la misma etiqueta.
+    const selector = `a[href="/compras/${sembrado.compraId}"]`;
+    expect(await screen.findByText(objetivo.id, { selector })).toBeTruthy();
   });
 
-  test("should link the destinatario to its page, named by its label", async () => {
-    // Arrange
-    const seeded = EntregaMother.random();
-    const target = ProveedorMother.random({ id: seeded.destinatarioId ?? crypto.randomUUID() });
-    const api = fakeApi([entregaCollection([seeded]), proveedorCollection([target])]);
+  test("debería enlazar Destinatario con su página y su etiqueta", async () => {
+    // Preparar
+    const sembrado = MadreEntrega.aleatorio();
+    const objetivo = MadreProveedor.aleatorio({
+      id: sembrado.destinatarioId ?? crypto.randomUUID(),
+    });
+    const api = apiFalsa([coleccionEntrega([sembrado]), coleccionProveedor([objetivo])]);
+    const pantalla = <ContenedorDetalleEntrega id={sembrado.id} />;
 
-    // Act
-    renderScreen(<EntregaDetailContainer id={seeded.id} />, { api });
+    // Actuar
+    renderizarPantalla(pantalla, { api });
 
-    // Assert: by its href — two references to one target may share a label.
-    const selector = `a[href="/proveedores/${seeded.destinatarioId}"]`;
-    expect(await screen.findByText(target.name, { selector })).toBeTruthy();
+    // Comprobar: por su href; dos referencias al mismo objetivo pueden tener la misma etiqueta.
+    const selector = `a[href="/proveedores/${sembrado.destinatarioId}"]`;
+    expect(await screen.findByText(objetivo.name, { selector })).toBeTruthy();
   });
 
-  test("should show the not-found code when the entrega does not exist", async () => {
-    // Arrange
-    const api = fakeApi([entregaCollection()]);
+  test("debería mostrar el código de no encontrado cuando no existe", async () => {
+    // Preparar
+    const api = apiFalsa([coleccionEntrega()]);
+    const pantalla = <ContenedorDetalleEntrega id={crypto.randomUUID()} />;
 
-    // Act
-    renderScreen(<EntregaDetailContainer id={crypto.randomUUID()} />, { api });
+    // Actuar
+    renderizarPantalla(pantalla, { api });
 
-    // Assert
+    // Comprobar
     expect((await screen.findByRole("alert")).textContent).toBe("entrega.no_encontrado");
   });
 
-  test("should delete the entrega only once the deletion is confirmed", async () => {
-    // Arrange
-    const seeded = EntregaMother.random();
-    const stored = entregaCollection([seeded]);
-    const api = fakeApi([stored]);
-    const { history } = renderScreen(<EntregaDetailContainer id={seeded.id} />, { api });
-    fireEvent.click(await screen.findByText("Delete", { selector: ".card-actions button" }));
-    expect(stored.items.has(seeded.id)).toBe(true);
+  test("debería borrar solo tras confirmar el borrado", async () => {
+    // Preparar
+    const sembrado = MadreEntrega.aleatorio();
+    const guardados = coleccionEntrega([sembrado]);
+    const api = apiFalsa([guardados]);
+    const pantalla = <ContenedorDetalleEntrega id={sembrado.id} />;
+    const { historial } = renderizarPantalla(pantalla, { api });
+    fireEvent.click(await screen.findByText("Borrar", { selector: ".card-actions button" }));
+    expect(guardados.elementos.has(sembrado.id)).toBe(true);
 
-    // Act
-    fireEvent.click(screen.getByText("Delete", { selector: ".modal-action button" }));
+    // Actuar
+    fireEvent.click(screen.getByText("Borrar", { selector: ".modal-action button" }));
 
-    // Assert
-    await waitFor(() => expect(history.at(-1)).toBe("/entregas"));
-    expect(stored.items.has(seeded.id)).toBe(false);
+    // Comprobar
+    await waitFor(() => expect(historial.at(-1)).toBe("/entregas"));
+    expect(guardados.elementos.has(sembrado.id)).toBe(false);
   });
 });
 
-=== web/src/features/entrega/containers/entrega-detail-container.tsx ===
+=== web/src/contextos/entrega/contenedores/detalle-entrega.tsx ===
 import { useState } from "react";
 import { Link, useLocation } from "wouter";
-import { unwrap } from "../../../api/http";
-import { useDependencies } from "../../../dependencies";
-import { ConfirmDialog } from "../../../shared/ui/confirm-dialog";
-import { ErrorAlert } from "../../../shared/ui/error-alert";
-import { useAsync } from "../../../shared/use-async";
-import { EntregaDetailView } from "../views/entrega-detail-view";
+import { desenvolver } from "../../../api/http";
+import { AlertaError } from "../../../compartido/ui/alerta-error";
+import { DialogoConfirmar } from "../../../compartido/ui/dialogo-confirmar";
+import { useCarga } from "../../../compartido/use-carga";
+import { useDependencias } from "../../../dependencias";
+import { VistaDetalleEntrega } from "../vistas/detalle-entrega";
 
-export function EntregaDetailContainer({ id }: { id: string }) {
-  const { api } = useDependencies();
-  const entrega = useAsync(
-    () => unwrap(api.GET("/entregas/{id}", { params: { path: { id } } })),
+export function ContenedorDetalleEntrega({ id }: { id: string }) {
+  const { api } = useDependencias();
+  const entrega = useCarga(
+    () => desenvolver(api.GET("/entregas/{id}", { params: { path: { id } } })),
     [api, id],
   );
-  const [, navigate] = useLocation();
-  const [confirming, setConfirming] = useState(false);
-  const [failure, setFailure] = useState<unknown>(null);
+  const [, navegar] = useLocation();
+  const [confirmando, setConfirmando] = useState(false);
+  const [fallo, setFallo] = useState<unknown>(null);
 
-  const remove = async () => {
-    setConfirming(false);
+  const borrar = async () => {
+    setConfirmando(false);
     try {
-      await unwrap(api.DELETE("/entregas/{id}", { params: { path: { id } } }));
-      navigate("/entregas");
+      await desenvolver(api.DELETE("/entregas/{id}", { params: { path: { id } } }));
+      navegar("/entregas");
     } catch (error) {
-      setFailure(error);
+      setFallo(error);
     }
   };
-  const compraLabel = async (target: string) => {
-    const params = { path: { id: target } };
-    const found = await unwrap(api.GET("/compras/{id}", { params }));
-    return found.id;
+  const etiquetaCompra = async (objetivo: string) => {
+    const params = { path: { id: objetivo } };
+    const encontrado = await desenvolver(api.GET("/compras/{id}", { params }));
+    return encontrado.id;
   };
-  const proveedorLabel = async (target: string) => {
-    const params = { path: { id: target } };
-    const found = await unwrap(api.GET("/proveedores/{id}", { params }));
-    return found.name;
+  const etiquetaProveedor = async (objetivo: string) => {
+    const params = { path: { id: objetivo } };
+    const encontrado = await desenvolver(api.GET("/proveedores/{id}", { params }));
+    return encontrado.name;
   };
 
   return (
     <section className="space-y-4">
       <h1 className="text-2xl font-bold">Entrega</h1>
-      {failure !== null && <ErrorAlert error={failure} />}
-      {entrega.status === "loading" && <span className="loading loading-spinner" />}
-      {entrega.status === "error" && <ErrorAlert error={entrega.error} />}
-      {entrega.status === "ok" && (
+      {fallo !== null && <AlertaError error={fallo} />}
+      {entrega.estado === "cargando" && <span className="loading loading-spinner" />}
+      {entrega.estado === "error" && <AlertaError error={entrega.error} />}
+      {entrega.estado === "listo" && (
         <div className="card bg-base-100">
           <div className="card-body">
-            <EntregaDetailView
-              entrega={entrega.data}
-              compraLabel={compraLabel}
-              proveedorLabel={proveedorLabel}
+            <VistaDetalleEntrega
+              entrega={entrega.datos}
+              etiquetaCompra={etiquetaCompra}
+              etiquetaProveedor={etiquetaProveedor}
             />
             <div className="card-actions justify-end">
-              <Link href={`/entregas/${id}/edit`} className="btn">
-                Edit
+              <Link href={`/entregas/${id}/editar`} className="btn">
+                Editar
               </Link>
-              <button type="button" className="btn btn-error" onClick={() => setConfirming(true)}>
-                Delete
+              <button type="button" className="btn btn-error" onClick={() => setConfirmando(true)}>
+                Borrar
               </button>
             </div>
           </div>
         </div>
       )}
       <Link href="/entregas" className="link">
-        Back to entregas
+        Volver a entregas
       </Link>
-      <ConfirmDialog
-        open={confirming}
-        message="Delete this entrega?"
-        onConfirm={remove}
-        onCancel={() => setConfirming(false)}
+      <DialogoConfirmar
+        abierto={confirmando}
+        mensaje="¿Borrar entrega?"
+        alConfirmar={borrar}
+        alCancelar={() => setConfirmando(false)}
       />
     </section>
   );
 }
 
-=== web/src/features/entrega/containers/entrega-form-container.test.tsx ===
+=== web/src/contextos/entrega/contenedores/formulario-entrega.test.tsx ===
 import { describe, expect, test } from "bun:test";
 import { fireEvent, screen, waitFor } from "@testing-library/react";
-import type { Schemas } from "../../../api/client";
-import { textOf } from "../../../shared/forms";
-import { CompraMother, compraCollection } from "../../../test-support/compra";
-import { EntregaMother, entregaCollection } from "../../../test-support/entrega";
-import { fakeApi } from "../../../test-support/fake-api";
-import { ProveedorMother, proveedorCollection } from "../../../test-support/proveedor";
-import { renderScreen } from "../../../test-support/render";
-import { EntregaFormContainer } from "./entrega-form-container";
+import type { Esquemas } from "../../../api/cliente";
+import { textoDe } from "../../../compartido/formularios";
+import { apiFalsa } from "../../../pruebas/api-falsa";
+import { coleccionCompra, MadreCompra } from "../../../pruebas/compra";
+import { coleccionEntrega, MadreEntrega } from "../../../pruebas/entrega";
+import { coleccionProveedor, MadreProveedor } from "../../../pruebas/proveedor";
+import { renderizarPantalla } from "../../../pruebas/renderizar";
+import { ContenedorFormularioEntrega } from "./formulario-entrega";
 
-function type(label: string, value: string) {
-  fireEvent.change(screen.getByLabelText(label), { target: { value } });
+function escribir(etiqueta: string, valor: string) {
+  fireEvent.change(screen.getByLabelText(etiqueta), { target: { value: valor } });
 }
 
-/** Picks `id` in a reference's select, once its targets have loaded. */
-async function choose(label: string, id: string) {
-  const select = screen.getByLabelText(label);
+/** Elige `id` en el select de una referencia, en cuanto se cargan sus objetivos. */
+async function elegir(etiqueta: string, id: string) {
+  const select = screen.getByLabelText(etiqueta);
   await waitFor(() => expect(select.querySelector(`option[value="${id}"]`)).not.toBeNull());
   fireEvent.change(select, { target: { value: id } });
 }
 
-/** The collections the selects read, holding what `owner` references. */
-function referencedBy(owner: Partial<Schemas["DtoEntrega"]>) {
+/** Las colecciones que leen los selects, con lo que referencia `dueno`. */
+function referenciadosPor(dueno: Partial<Esquemas["DtoEntrega"]>) {
   return [
-    compraCollection([CompraMother.random({ id: owner.compraId ?? crypto.randomUUID() })]),
-    proveedorCollection([
-      ProveedorMother.random({ id: owner.destinatarioId ?? crypto.randomUUID() }),
+    coleccionCompra([MadreCompra.aleatorio({ id: dueno.compraId ?? crypto.randomUUID() })]),
+    coleccionProveedor([
+      MadreProveedor.aleatorio({ id: dueno.destinatarioId ?? crypto.randomUUID() }),
     ]),
   ];
 }
 
-/** Fills the empty form with `request`, the way a user would. */
-async function fillIn(request: Schemas["PeticionCrearEntrega"]) {
-  await screen.findByText("Save");
-  await choose("Compra", request.compraId);
-  await choose("Destinatario", textOf(request.destinatarioId));
-  type("Carrier", request.carrier);
+/** Rellena el formulario vacío con `peticion`, como lo haría quien lo usa. */
+async function rellenar(peticion: Esquemas["PeticionCrearEntrega"]) {
+  await screen.findByText("Guardar");
+  await elegir("Compra", peticion.compraId);
+  await elegir("Destinatario", textoDe(peticion.destinatarioId));
+  escribir("Carrier", peticion.carrier);
 }
 
-describe("EntregaFormContainer", () => {
-  test("should create the entrega from what was typed and show it", async () => {
-    // Arrange
-    const request = EntregaMother.request();
-    const stored = entregaCollection();
-    const api = fakeApi([stored, ...referencedBy(request)]);
-    const { history } = renderScreen(<EntregaFormContainer />, { api });
-    await fillIn(request);
+describe("ContenedorFormularioEntrega", () => {
+  test("debería crear con lo escrito e ir a su detalle", async () => {
+    // Preparar
+    const peticion = MadreEntrega.peticion();
+    const guardados = coleccionEntrega();
+    const api = apiFalsa([guardados, ...referenciadosPor(peticion)]);
+    const pantalla = <ContenedorFormularioEntrega />;
+    const { historial } = renderizarPantalla(pantalla, { api });
+    await rellenar(peticion);
 
-    // Act
-    fireEvent.click(screen.getByText("Save"));
+    // Actuar
+    fireEvent.click(screen.getByText("Guardar"));
 
-    // Assert
-    await waitFor(() => expect(history.at(-1)).toStartWith("/entregas/"));
-    const [created] = stored.items.values();
-    expect(created).toMatchObject(request);
-    expect(history.at(-1)).toBe(`/entregas/${created?.id}`);
+    // Comprobar
+    await waitFor(() => expect(historial.at(-1)).toStartWith("/entregas/"));
+    const [creado] = guardados.elementos.values();
+    expect(creado).toMatchObject(peticion);
+    expect(historial.at(-1)).toBe(`/entregas/${creado?.id}`);
   });
 
-  test("should save the edited entrega when an existing one is submitted", async () => {
-    // Arrange
-    const seeded = EntregaMother.random();
-    const stored = entregaCollection([seeded]);
-    const api = fakeApi([stored, ...referencedBy(seeded)]);
-    const { history } = renderScreen(<EntregaFormContainer id={seeded.id} />, { api });
+  test("debería guardar la edición cuando se envía el formulario", async () => {
+    // Preparar
+    const sembrado = MadreEntrega.aleatorio();
+    const guardados = coleccionEntrega([sembrado]);
+    const api = apiFalsa([guardados, ...referenciadosPor(sembrado)]);
+    const pantalla = <ContenedorFormularioEntrega id={sembrado.id} />;
+    const { historial } = renderizarPantalla(pantalla, { api });
 
-    // Act
-    fireEvent.click(await screen.findByText("Save"));
+    // Actuar
+    fireEvent.click(await screen.findByText("Guardar"));
 
-    // Assert
-    await waitFor(() => expect(history.at(-1)).toBe(`/entregas/${seeded.id}`));
-    expect(stored.items.get(seeded.id)).toEqual(seeded);
-  });
-  test("should show the code itself when the API answers one the form does not know", async () => {
-    // Arrange
-    const request = EntregaMother.request();
-    const code = "entrega.validacion.invalid";
-    const failures = { "POST /entregas": code };
-    const api = fakeApi([entregaCollection(), ...referencedBy(request)], failures);
-    renderScreen(<EntregaFormContainer />, { api });
-    await fillIn(request);
-
-    // Act
-    fireEvent.click(screen.getByText("Save"));
-
-    // Assert
-    expect((await screen.findByRole("alert")).textContent).toBe(code);
+    // Comprobar
+    await waitFor(() => expect(historial.at(-1)).toBe(`/entregas/${sembrado.id}`));
+    expect(guardados.elementos.get(sembrado.id)).toEqual(sembrado);
   });
 
-  test("should say a entrega with these values exists when the API answers a duplicate", async () => {
-    // Arrange
-    const request = EntregaMother.request();
-    const failures = { "POST /entregas": "entrega.duplicado" };
-    const api = fakeApi([entregaCollection(), ...referencedBy(request)], failures);
-    renderScreen(<EntregaFormContainer />, { api });
-    await fillIn(request);
+  test("debería mostrar el propio código cuando la API responde uno que el formulario no conoce", async () => {
+    // Preparar
+    const peticion = MadreEntrega.peticion();
+    const codigo = "entrega.validacion.invalido";
+    const fallos = { "POST /entregas": codigo };
+    const api = apiFalsa([coleccionEntrega(), ...referenciadosPor(peticion)], fallos);
+    renderizarPantalla(<ContenedorFormularioEntrega />, { api });
+    await rellenar(peticion);
 
-    // Act
-    fireEvent.click(screen.getByText("Save"));
+    // Actuar
+    fireEvent.click(screen.getByText("Guardar"));
 
-    // Assert
-    expect((await screen.findByRole("alert")).textContent).toBe(
-      "An entrega with these values already exists",
-    );
+    // Comprobar
+    expect((await screen.findByRole("alert")).textContent).toBe(codigo);
   });
 
-  test("should offer every compra in the selects that reference one", async () => {
-    // Arrange
-    const compra = CompraMother.random();
-    const api = fakeApi([compraCollection([compra])]);
+  test("debería decir que los valores ya están en uso cuando la API responde un duplicado", async () => {
+    // Preparar
+    const peticion = MadreEntrega.peticion();
+    const fallos = { "POST /entregas": "entrega.duplicado" };
+    const api = apiFalsa([coleccionEntrega(), ...referenciadosPor(peticion)], fallos);
+    renderizarPantalla(<ContenedorFormularioEntrega />, { api });
+    await rellenar(peticion);
 
-    // Act
-    renderScreen(<EntregaFormContainer />, { api });
+    // Actuar
+    fireEvent.click(screen.getByText("Guardar"));
 
-    // Assert
-    const options = await screen.findAllByRole("option", { name: compra.id });
-    expect(options).toHaveLength(1);
+    // Comprobar
+    expect((await screen.findByRole("alert")).textContent).toBe("Estos valores ya están en uso");
   });
 
-  test("should offer every proveedor in the selects that reference one", async () => {
-    // Arrange
-    const proveedor = ProveedorMother.random();
-    const api = fakeApi([proveedorCollection([proveedor])]);
+  test("debería ofrecer cada compra en sus selects", async () => {
+    // Preparar
+    const compra = MadreCompra.aleatorio();
+    const api = apiFalsa([coleccionCompra([compra])]);
 
-    // Act
-    renderScreen(<EntregaFormContainer />, { api });
+    // Actuar
+    renderizarPantalla(<ContenedorFormularioEntrega />, { api });
 
-    // Assert
-    const options = await screen.findAllByRole("option", { name: proveedor.name });
-    expect(options).toHaveLength(1);
+    // Comprobar
+    const opciones = await screen.findAllByRole("option", { name: compra.id });
+    expect(opciones).toHaveLength(1);
   });
 
-  test("should show the message under its input when the API rejects one field", async () => {
-    // Arrange
-    const request = EntregaMother.request();
-    const failures = { "POST /entregas": "entrega.validacion.compra_id_no_encontrado" };
-    const api = fakeApi([entregaCollection(), ...referencedBy(request)], failures);
-    renderScreen(<EntregaFormContainer />, { api });
-    await fillIn(request);
+  test("debería ofrecer cada proveedor en sus selects", async () => {
+    // Preparar
+    const proveedor = MadreProveedor.aleatorio();
+    const api = apiFalsa([coleccionProveedor([proveedor])]);
 
-    // Act
-    fireEvent.click(screen.getByText("Save"));
+    // Actuar
+    renderizarPantalla(<ContenedorFormularioEntrega />, { api });
 
-    // Assert
-    expect(await screen.findByText("Compra does not exist")).toBeTruthy();
-    const input = screen.getByLabelText("Compra");
-    expect(input.getAttribute("aria-invalid")).toBe("true");
+    // Comprobar
+    const opciones = await screen.findAllByRole("option", { name: proveedor.name });
+    expect(opciones).toHaveLength(1);
+  });
+
+  test("debería mostrar el mensaje bajo su input cuando la API rechaza un campo", async () => {
+    // Preparar
+    const peticion = MadreEntrega.peticion();
+    const fallos = { "POST /entregas": "entrega.validacion.compra_id_no_encontrado" };
+    const api = apiFalsa([coleccionEntrega(), ...referenciadosPor(peticion)], fallos);
+    renderizarPantalla(<ContenedorFormularioEntrega />, { api });
+    await rellenar(peticion);
+
+    // Actuar
+    fireEvent.click(screen.getByText("Guardar"));
+
+    // Comprobar
+    expect(await screen.findByText("Compra: no existe")).toBeTruthy();
+    const campo = screen.getByLabelText("Compra");
+    expect(campo.getAttribute("aria-invalid")).toBe("true");
     expect(screen.queryByRole("alert")).toBeNull();
   });
 });
 
-=== web/src/features/entrega/containers/entrega-form-container.tsx ===
+=== web/src/contextos/entrega/contenedores/formulario-entrega.tsx ===
 import { useState } from "react";
 import { Link, useLocation } from "wouter";
-import type { Schemas } from "../../../api/client";
-import { MAX_PAGE_LIMIT, unwrap } from "../../../api/http";
-import { useDependencies } from "../../../dependencies";
-import { referenceOptions } from "../../../shared/forms";
-import { ErrorAlert, errorCode } from "../../../shared/ui/error-alert";
-import { useAsync } from "../../../shared/use-async";
-import { toProblem } from "../messages";
-import { EntregaFormView, toEntregaForm, toEntregaRequest } from "../views/entrega-form-view";
+import type { Esquemas } from "../../../api/cliente";
+import { desenvolver, LIMITE_PAGINA_MAXIMO } from "../../../api/http";
+import { opcionesReferencia } from "../../../compartido/formularios";
+import { AlertaError, codigoError } from "../../../compartido/ui/alerta-error";
+import { useCarga } from "../../../compartido/use-carga";
+import { useDependencias } from "../../../dependencias";
+import { aProblema } from "../mensajes";
+import {
+  aFormularioEntrega,
+  aPeticionEntrega,
+  VistaFormularioEntrega,
+} from "../vistas/formulario-entrega";
 
-type Entrega = Schemas["DtoEntrega"];
+type Entrega = Esquemas["DtoEntrega"];
 
-/** The first page of each referenced entity: what its selects offer. */
-const OPTIONS = { params: { query: { limite: MAX_PAGE_LIMIT } } };
+/** La primera página de cada entidad referenciada: lo que ofrecen sus selects. */
+const PRIMERA_PAGINA = { params: { query: { limite: LIMITE_PAGINA_MAXIMO } } };
 
-/** Creates an entrega, or edits the one with `id`. */
-export function EntregaFormContainer({ id }: { id?: string }) {
-  const { api } = useDependencies();
-  const existing = useAsync(
+/** Crear, o editar con `id`: el formulario de entregas. */
+export function ContenedorFormularioEntrega({ id }: { id?: string }) {
+  const { api } = useDependencias();
+  const existente = useCarga(
     () =>
       id === undefined
         ? Promise.resolve(null)
-        : unwrap(api.GET("/entregas/{id}", { params: { path: { id } } })),
+        : desenvolver(api.GET("/entregas/{id}", { params: { path: { id } } })),
     [api, id],
   );
-  const title = id === undefined ? "New entrega" : "Edit entrega";
+  const titulo = id === undefined ? "Crear entrega" : "Editar entrega";
 
   return (
     <section className="space-y-4">
-      <h1 className="text-2xl font-bold">{title}</h1>
-      {existing.status === "loading" && <span className="loading loading-spinner" />}
-      {existing.status === "error" && <ErrorAlert error={existing.error} />}
-      {existing.status === "ok" && <EntregaForm existing={existing.data} />}
+      <h1 className="text-2xl font-bold">{titulo}</h1>
+      {existente.estado === "cargando" && <span className="loading loading-spinner" />}
+      {existente.estado === "error" && <AlertaError error={existente.error} />}
+      {existente.estado === "listo" && <FormularioEntrega existente={existente.datos} />}
       <Link href={id === undefined ? "/entregas" : `/entregas/${id}`} className="link">
-        Cancel
+        Cancelar
       </Link>
     </section>
   );
 }
 
-function EntregaForm({ existing }: { existing: Entrega | null }) {
-  const { api } = useDependencies();
-  const compras = useAsync(() => unwrap(api.GET("/compras", OPTIONS)), [api]);
-  const proveedores = useAsync(() => unwrap(api.GET("/proveedores", OPTIONS)), [api]);
-  const [, navigate] = useLocation();
-  const [values, setValues] = useState(toEntregaForm(existing));
-  const [saving, setSaving] = useState(false);
-  const [failure, setFailure] = useState<unknown>(null);
-  const problem = failure === null ? null : toProblem(errorCode(failure));
+function FormularioEntrega({ existente }: { existente: Entrega | null }) {
+  const { api } = useDependencias();
+  const compras = useCarga(() => desenvolver(api.GET("/compras", PRIMERA_PAGINA)), [api]);
+  const proveedores = useCarga(() => desenvolver(api.GET("/proveedores", PRIMERA_PAGINA)), [api]);
+  const [, navegar] = useLocation();
+  const [valores, setValores] = useState(aFormularioEntrega(existente));
+  const [guardando, setGuardando] = useState(false);
+  const [fallo, setFallo] = useState<unknown>(null);
+  const problema = fallo === null ? null : aProblema(codigoError(fallo));
 
-  const save = async () => {
-    setSaving(true);
-    setFailure(null);
+  const guardar = async () => {
+    setGuardando(true);
+    setFallo(null);
     try {
-      const body = toEntregaRequest(values);
-      const saved = await unwrap(
-        existing === null
-          ? api.POST("/entregas", { body })
-          : api.PUT("/entregas/{id}", { params: { path: { id: existing.id } }, body }),
+      const cuerpo = aPeticionEntrega(valores);
+      const guardado = await desenvolver(
+        existente === null
+          ? api.POST("/entregas", { body: cuerpo })
+          : api.PUT("/entregas/{id}", { params: { path: { id: existente.id } }, body: cuerpo }),
       );
-      navigate(`/entregas/${saved.id}`);
+      navegar(`/entregas/${guardado.id}`);
     } catch (error) {
-      setFailure(error);
-      setSaving(false);
+      setFallo(error);
+      setGuardando(false);
     }
   };
 
   return (
     <div className="card bg-base-100">
       <div className="card-body">
-        {problem?.field === null && <ErrorAlert error={failure} message={problem.text} />}
-        {compras.status === "error" && <ErrorAlert error={compras.error} />}
-        {proveedores.status === "error" && <ErrorAlert error={proveedores.error} />}
-        <EntregaFormView
-          values={values}
-          options={{
-            compraId: referenceOptions(compras, (compra) => compra.id),
-            destinatarioId: referenceOptions(proveedores, (proveedor) => proveedor.name),
+        {problema?.campo === null && <AlertaError error={fallo} mensaje={problema.texto} />}
+        {compras.estado === "error" && <AlertaError error={compras.error} />}
+        {proveedores.estado === "error" && <AlertaError error={proveedores.error} />}
+        <VistaFormularioEntrega
+          valores={valores}
+          opciones={{
+            compraId: opcionesReferencia(compras, (compra) => compra.id),
+            destinatarioId: opcionesReferencia(proveedores, (proveedor) => proveedor.name),
           }}
-          saving={saving}
-          problem={problem}
-          onChange={setValues}
-          onSubmit={save}
+          guardando={guardando}
+          problema={problema}
+          alCambiar={setValores}
+          alEnviar={guardar}
         />
       </div>
     </div>
   );
 }
 
-=== web/src/features/entrega/containers/entrega-list-container.test.tsx ===
+=== web/src/contextos/entrega/contenedores/lista-entrega.test.tsx ===
 import { describe, expect, test } from "bun:test";
 import { fireEvent, screen } from "@testing-library/react";
-import { EntregaMother, entregaCollection } from "../../../test-support/entrega";
-import { fakeApi } from "../../../test-support/fake-api";
-import { renderScreen } from "../../../test-support/render";
-import { EntregaListContainer } from "./entrega-list-container";
+import { apiFalsa } from "../../../pruebas/api-falsa";
+import { coleccionEntrega, MadreEntrega } from "../../../pruebas/entrega";
+import { renderizarPantalla } from "../../../pruebas/renderizar";
+import { ContenedorListaEntrega } from "./lista-entrega";
 
-describe("EntregaListContainer", () => {
-  test("should show a row per entrega when there are some", async () => {
-    // Arrange
-    const seed = [EntregaMother.random(), EntregaMother.random()];
-    const api = fakeApi([entregaCollection(seed)]);
+describe("ContenedorListaEntrega", () => {
+  test("debería mostrar una fila por cada entrega", async () => {
+    // Preparar
+    const semilla = [MadreEntrega.aleatorio(), MadreEntrega.aleatorio()];
+    const api = apiFalsa([coleccionEntrega(semilla)]);
 
-    // Act
-    renderScreen(<EntregaListContainer />, { api });
+    // Actuar
+    renderizarPantalla(<ContenedorListaEntrega />, { api });
 
-    // Assert
-    expect(await screen.findAllByText("View")).toHaveLength(2);
+    // Comprobar
+    expect(await screen.findAllByText("Ver")).toHaveLength(2);
   });
 
-  test("should show the next page when Next is pressed", async () => {
-    // Arrange
-    const seed = Array.from({ length: 25 }, () => EntregaMother.random());
-    const api = fakeApi([entregaCollection(seed)]);
-    renderScreen(<EntregaListContainer />, { api });
-    expect(await screen.findAllByText("View")).toHaveLength(20);
+  test("debería mostrar la página siguiente cuando se pulsa Siguiente", async () => {
+    // Preparar
+    const semilla = Array.from({ length: 25 }, () => MadreEntrega.aleatorio());
+    const api = apiFalsa([coleccionEntrega(semilla)]);
+    renderizarPantalla(<ContenedorListaEntrega />, { api });
+    expect(await screen.findAllByText("Ver")).toHaveLength(20);
 
-    // Act
-    fireEvent.click(screen.getByRole("button", { name: "Next" }));
+    // Actuar
+    fireEvent.click(screen.getByRole("button", { name: "Siguiente" }));
 
-    // Assert
-    expect(await screen.findByText("21–25 of 25")).toBeTruthy();
-    expect(screen.getAllByText("View")).toHaveLength(5);
+    // Comprobar
+    expect(await screen.findByText("21–25 de 25")).toBeTruthy();
+    expect(screen.getAllByText("Ver")).toHaveLength(5);
   });
 
-  test("should open the page the URL names", async () => {
-    // Arrange
-    const seed = Array.from({ length: 25 }, () => EntregaMother.random());
-    const api = fakeApi([entregaCollection(seed)]);
-    const path = "/entregas?page=2";
+  test("debería abrir la página que nombra la URL", async () => {
+    // Preparar
+    const semilla = Array.from({ length: 25 }, () => MadreEntrega.aleatorio());
+    const api = apiFalsa([coleccionEntrega(semilla)]);
+    const ruta = "/entregas?pagina=2";
 
-    // Act
-    renderScreen(<EntregaListContainer />, { api }, path);
+    // Actuar
+    renderizarPantalla(<ContenedorListaEntrega />, { api }, ruta);
 
-    // Assert
-    expect(await screen.findByText("21–25 of 25")).toBeTruthy();
+    // Comprobar
+    expect(await screen.findByText("21–25 de 25")).toBeTruthy();
   });
 
-  test("should say so when there is no entrega", async () => {
-    // Arrange
-    const api = fakeApi([entregaCollection()]);
+  test("debería decirlo cuando no hay entregas", async () => {
+    // Preparar
+    const api = apiFalsa([coleccionEntrega()]);
 
-    // Act
-    renderScreen(<EntregaListContainer />, { api });
+    // Actuar
+    renderizarPantalla(<ContenedorListaEntrega />, { api });
 
-    // Assert
-    expect(await screen.findByText("No entregas yet.")).toBeTruthy();
+    // Comprobar
+    expect(await screen.findByText("Todavía no hay entregas.")).toBeTruthy();
   });
 
-  test("should show the error code when the entregas cannot be listed", async () => {
-    // Arrange
-    const failures = { "GET /entregas": "entrega.repositorio" };
-    const api = fakeApi([entregaCollection()], failures);
+  test("debería mostrar el código del error cuando la API no da la lista", async () => {
+    // Preparar
+    const fallos = { "GET /entregas": "entrega.repositorio" };
+    const api = apiFalsa([coleccionEntrega()], fallos);
 
-    // Act
-    renderScreen(<EntregaListContainer />, { api });
+    // Actuar
+    renderizarPantalla(<ContenedorListaEntrega />, { api });
 
-    // Assert
+    // Comprobar
     expect((await screen.findByRole("alert")).textContent).toBe("entrega.repositorio");
   });
 });
 
-=== web/src/features/entrega/containers/entrega-list-container.tsx ===
+=== web/src/contextos/entrega/contenedores/lista-entrega.tsx ===
 import { Link, useLocation, useSearch } from "wouter";
-import { PAGE_SIZE, unwrap } from "../../../api/http";
-import { useDependencies } from "../../../dependencies";
-import { EmptyState } from "../../../shared/ui/empty-state";
-import { ErrorAlert } from "../../../shared/ui/error-alert";
-import { offsetFromSearch, Pagination, pageSearch } from "../../../shared/ui/pagination";
-import { useAsync } from "../../../shared/use-async";
-import { EntregaListView } from "../views/entrega-list-view";
+import { desenvolver, TAMANO_PAGINA } from "../../../api/http";
+import { AlertaError } from "../../../compartido/ui/alerta-error";
+import { busquedaPagina, desplazamientoDeUrl, Paginacion } from "../../../compartido/ui/paginacion";
+import { SinElementos } from "../../../compartido/ui/sin-elementos";
+import { useCarga } from "../../../compartido/use-carga";
+import { useDependencias } from "../../../dependencias";
+import { VistaListaEntrega } from "../vistas/lista-entrega";
 
-/** The list, one page at a time; the page is in the URL (`?page=2`), so reload and back keep it. */
-export function EntregaListContainer() {
-  const { api } = useDependencies();
-  const [location, navigate] = useLocation();
-  const offset = offsetFromSearch(useSearch(), PAGE_SIZE);
-  const goTo = (next: number) => navigate(location + pageSearch(next, PAGE_SIZE));
-  const query = { limite: PAGE_SIZE, desplazamiento: offset };
-  const entregas = useAsync(
-    () => unwrap(api.GET("/entregas", { params: { query } })),
-    [api, offset],
+/** La lista, página a página; la página va en la URL (`?pagina=2`): recargar y volver la mantienen. */
+export function ContenedorListaEntrega() {
+  const { api } = useDependencias();
+  const [ubicacion, navegar] = useLocation();
+  const desplazamiento = desplazamientoDeUrl(useSearch(), TAMANO_PAGINA);
+  const irA = (siguiente: number) => navegar(ubicacion + busquedaPagina(siguiente, TAMANO_PAGINA));
+  const consulta = { limite: TAMANO_PAGINA, desplazamiento };
+  const entregas = useCarga(
+    () => desenvolver(api.GET("/entregas", { params: { query: consulta } })),
+    [api, desplazamiento],
   );
 
   return (
     <section className="space-y-4">
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-bold">Entregas</h1>
-        <Link href="/entregas/new" className="btn btn-primary">
-          New entrega
+        <Link href="/entregas/nuevo" className="btn btn-primary">
+          Crear entrega
         </Link>
       </div>
-      {entregas.status === "loading" && <span className="loading loading-spinner" />}
-      {entregas.status === "error" && <ErrorAlert error={entregas.error} />}
-      {entregas.status === "ok" &&
-        (entregas.data.total === 0 ? (
-          <EmptyState message="No entregas yet." />
+      {entregas.estado === "cargando" && <span className="loading loading-spinner" />}
+      {entregas.estado === "error" && <AlertaError error={entregas.error} />}
+      {entregas.estado === "listo" &&
+        (entregas.datos.total === 0 ? (
+          <SinElementos mensaje="Todavía no hay entregas." />
         ) : (
           <>
-            <EntregaListView entregas={entregas.data.elementos} />
-            <Pagination
-              total={entregas.data.total}
-              limit={entregas.data.limite}
-              offset={entregas.data.desplazamiento}
-              onOffsetChange={goTo}
+            <VistaListaEntrega entregas={entregas.datos.elementos} />
+            <Paginacion
+              total={entregas.datos.total}
+              limite={entregas.datos.limite}
+              desplazamiento={entregas.datos.desplazamiento}
+              alCambiarDesplazamiento={irA}
             />
           </>
         ))}
@@ -11391,63 +11418,67 @@ export function EntregaListContainer() {
   );
 }
 
-=== web/src/features/entrega/messages.ts ===
-/** What a screen shows for an API error: under the input it is about, or in the alert. */
-export interface EntregaProblem {
-  field: string | null;
-  text: string;
+=== web/src/contextos/entrega/mensajes.ts ===
+/** Lo que una pantalla muestra de un error de la API: bajo el input del que trata, o en la alerta. */
+export interface ProblemaEntrega {
+  campo: string | null;
+  texto: string;
 }
 
 /**
- * The messages for the codes of the backend's `errores.rs`, generated from the same list. English:
- * this file is the place to translate them. A code missing here shows as it is.
+ * Los mensajes de los códigos de `errores.rs` del backend, generados de la misma lista. Un código que
+ * no está aquí se muestra tal cual.
  */
-const TEXTS: Record<string, string> = {
-  "entrega.validacion.compra_id_no_encontrado": "Compra does not exist",
-  "entrega.validacion.destinatario_id_no_encontrado": "Destinatario does not exist",
-  "entrega.validacion.carrier_vacio": "Carrier is required",
-  "entrega.duplicado": "An entrega with these values already exists",
-  "entrega.no_encontrado": "This entrega no longer exists",
-  "entrega.repositorio": "The entrega could not be saved, try again later",
-  "entrega.desconocido": "Something went wrong",
+const TEXTOS: Record<string, string> = {
+  "entrega.validacion.compra_id_no_encontrado": "Compra: no existe",
+  "entrega.validacion.destinatario_id_no_encontrado": "Destinatario: no existe",
+  "entrega.validacion.carrier_vacio": "Carrier: obligatorio",
+  "entrega.duplicado": "Estos valores ya están en uso",
+  "entrega.no_encontrado": "Ya no existe",
+  "entrega.repositorio": "No se ha podido guardar; inténtalo más tarde",
+  "entrega.desconocido": "Algo ha ido mal",
 };
 
-/** The input each field's code is about. */
-const FIELDS: Record<string, string> = {
+/** El input del que trata el código de cada campo. */
+const CAMPOS: Record<string, string> = {
   "entrega.validacion.compra_id_no_encontrado": "compraId",
   "entrega.validacion.destinatario_id_no_encontrado": "destinatarioId",
   "entrega.validacion.carrier_vacio": "carrier",
 };
 
-export function toProblem(code: string): EntregaProblem {
-  return { field: FIELDS[code] ?? null, text: TEXTS[code] ?? code };
+export function aProblema(codigo: string): ProblemaEntrega {
+  return { campo: CAMPOS[codigo] ?? null, texto: TEXTOS[codigo] ?? codigo };
 }
 
-=== web/src/features/entrega/views/entrega-detail-view.tsx ===
-import type { Schemas } from "../../../api/client";
-import { ReferenceLink } from "../../../shared/ui/reference-link";
+=== web/src/contextos/entrega/vistas/detalle-entrega.tsx ===
+import type { Esquemas } from "../../../api/cliente";
+import { EnlaceReferencia } from "../../../compartido/ui/enlace-referencia";
 
-type Entrega = Schemas["DtoEntrega"];
+type Entrega = Esquemas["DtoEntrega"];
 
-/** `entrega`, and the label of each compra and proveedor it references, for its links. */
-export function EntregaDetailView({
+/** `entrega`, y cómo se cargan las etiquetas de lo que referencia, para sus enlaces. */
+export function VistaDetalleEntrega({
   entrega,
-  compraLabel,
-  proveedorLabel,
+  etiquetaCompra,
+  etiquetaProveedor,
 }: {
   entrega: Entrega;
-  compraLabel: (id: string) => Promise<string>;
-  proveedorLabel: (id: string) => Promise<string>;
+  etiquetaCompra: (id: string) => Promise<string>;
+  etiquetaProveedor: (id: string) => Promise<string>;
 }) {
   return (
     <dl className="grid grid-cols-[max-content_1fr] gap-x-6 gap-y-2">
       <dt className="font-semibold">Compra</dt>
       <dd>
-        <ReferenceLink path="/compras" id={entrega.compraId} load={compraLabel} />
+        <EnlaceReferencia ruta="/compras" id={entrega.compraId} cargar={etiquetaCompra} />
       </dd>
       <dt className="font-semibold">Destinatario</dt>
       <dd>
-        <ReferenceLink path="/proveedores" id={entrega.destinatarioId} load={proveedorLabel} />
+        <EnlaceReferencia
+          ruta="/proveedores"
+          id={entrega.destinatarioId}
+          cargar={etiquetaProveedor}
+        />
       </dd>
       <dt className="font-semibold">Carrier</dt>
       <dd>{entrega.carrier}</dd>
@@ -11455,24 +11486,24 @@ export function EntregaDetailView({
   );
 }
 
-=== web/src/features/entrega/views/entrega-form-view.tsx ===
-import type { Schemas } from "../../../api/client";
-import { optionalText, type ReferenceOption, textOf } from "../../../shared/forms";
-import { FieldError } from "../../../shared/ui/field-error";
-import type { EntregaProblem } from "../messages";
+=== web/src/contextos/entrega/vistas/formulario-entrega.tsx ===
+import type { Esquemas } from "../../../api/cliente";
+import { type OpcionReferencia, textoDe, textoOpcional } from "../../../compartido/formularios";
+import { ErrorCampo } from "../../../compartido/ui/error-campo";
+import type { ProblemaEntrega } from "../mensajes";
 
-type Entrega = Schemas["DtoEntrega"];
-type EntregaRequest = Schemas["PeticionCrearEntrega"];
+type Entrega = Esquemas["DtoEntrega"];
+type PeticionEntrega = Esquemas["PeticionCrearEntrega"];
 
-/** What the inputs hold: the text of every input, `checked` for a checkbox. */
-export interface EntregaFormValues {
+/** Lo que guardan los inputs: el texto de cada input, `checked` en una casilla. */
+export interface ValoresFormularioEntrega {
   compraId: string;
   destinatarioId: string;
   carrier: string;
 }
 
-/** The inputs for `entrega`, empty when there is none yet. */
-export function toEntregaForm(entrega: Entrega | null): EntregaFormValues {
+/** Los inputs de `entrega`, vacíos cuando todavía no hay ninguno. */
+export function aFormularioEntrega(entrega: Entrega | null): ValoresFormularioEntrega {
   if (entrega === null) {
     return {
       compraId: "",
@@ -11482,111 +11513,111 @@ export function toEntregaForm(entrega: Entrega | null): EntregaFormValues {
   }
   return {
     compraId: entrega.compraId,
-    destinatarioId: textOf(entrega.destinatarioId),
+    destinatarioId: textoDe(entrega.destinatarioId),
     carrier: entrega.carrier,
   };
 }
 
-/** What each reference's select offers. */
-export interface EntregaFormOptions {
-  compraId: ReferenceOption[];
-  destinatarioId: ReferenceOption[];
+/** Lo que ofrece el select de cada referencia. */
+export interface OpcionesFormularioEntrega {
+  compraId: OpcionReferencia[];
+  destinatarioId: OpcionReferencia[];
 }
 
-/** What a create or an update sends: the same fields for both. */
-export function toEntregaRequest(values: EntregaFormValues): EntregaRequest {
+/** Lo que mandan crear y actualizar: los mismos campos en los dos. */
+export function aPeticionEntrega(valores: ValoresFormularioEntrega): PeticionEntrega {
   return {
-    compraId: values.compraId,
-    destinatarioId: optionalText(values.destinatarioId),
-    carrier: values.carrier,
+    compraId: valores.compraId,
+    destinatarioId: textoOpcional(valores.destinatarioId),
+    carrier: valores.carrier,
   };
 }
 
-export function EntregaFormView({
-  values,
-  options,
-  saving,
-  problem,
-  onChange,
-  onSubmit,
+export function VistaFormularioEntrega({
+  valores,
+  opciones,
+  guardando,
+  problema,
+  alCambiar,
+  alEnviar,
 }: {
-  values: EntregaFormValues;
-  options: EntregaFormOptions;
-  saving: boolean;
-  /** What the API said about the last submit: shown under its input. */
-  problem: EntregaProblem | null;
-  onChange: (values: EntregaFormValues) => void;
-  onSubmit: () => void;
+  valores: ValoresFormularioEntrega;
+  opciones: OpcionesFormularioEntrega;
+  guardando: boolean;
+  /** Lo que dijo la API del último envío: se muestra bajo su input. */
+  problema: ProblemaEntrega | null;
+  alCambiar: (valores: ValoresFormularioEntrega) => void;
+  alEnviar: () => void;
 }) {
   return (
     <form
       className="space-y-2"
       onSubmit={(event) => {
         event.preventDefault();
-        onSubmit();
+        alEnviar();
       }}
     >
       <label className="fieldset">
         <span className="fieldset-legend">Compra</span>
         <select
           className="select w-full"
-          aria-invalid={problem?.field === "compraId"}
+          aria-invalid={problema?.campo === "compraId"}
           required
-          value={values.compraId}
-          onChange={(event) => onChange({ ...values, compraId: event.target.value })}
+          value={valores.compraId}
+          onChange={(event) => alCambiar({ ...valores, compraId: event.target.value })}
         >
-          <option value="">Choose a compra</option>
-          {options.compraId.map((option) => (
-            <option key={option.id} value={option.id}>
-              {option.label}
+          <option value="">Elige una opción</option>
+          {opciones.compraId.map((opcion) => (
+            <option key={opcion.id} value={opcion.id}>
+              {opcion.etiqueta}
             </option>
           ))}
         </select>
       </label>
-      <FieldError problem={problem} field="compraId" />
+      <ErrorCampo problema={problema} campo="compraId" />
       <label className="fieldset">
         <span className="fieldset-legend">Destinatario</span>
         <select
           className="select w-full"
-          aria-invalid={problem?.field === "destinatarioId"}
-          value={values.destinatarioId}
-          onChange={(event) => onChange({ ...values, destinatarioId: event.target.value })}
+          aria-invalid={problema?.campo === "destinatarioId"}
+          value={valores.destinatarioId}
+          onChange={(event) => alCambiar({ ...valores, destinatarioId: event.target.value })}
         >
-          <option value="">None</option>
-          {options.destinatarioId.map((option) => (
-            <option key={option.id} value={option.id}>
-              {option.label}
+          <option value="">—</option>
+          {opciones.destinatarioId.map((opcion) => (
+            <option key={opcion.id} value={opcion.id}>
+              {opcion.etiqueta}
             </option>
           ))}
         </select>
       </label>
-      <FieldError problem={problem} field="destinatarioId" />
+      <ErrorCampo problema={problema} campo="destinatarioId" />
       <label className="fieldset">
         <span className="fieldset-legend">Carrier</span>
         <input
           className="input w-full"
           type="text"
-          aria-invalid={problem?.field === "carrier"}
+          aria-invalid={problema?.campo === "carrier"}
           required
-          value={values.carrier}
-          onChange={(event) => onChange({ ...values, carrier: event.target.value })}
+          value={valores.carrier}
+          onChange={(event) => alCambiar({ ...valores, carrier: event.target.value })}
         />
       </label>
-      <FieldError problem={problem} field="carrier" />
-      <button type="submit" className="btn btn-primary" disabled={saving}>
-        Save
+      <ErrorCampo problema={problema} campo="carrier" />
+      <button type="submit" className="btn btn-primary" disabled={guardando}>
+        Guardar
       </button>
     </form>
   );
 }
 
-=== web/src/features/entrega/views/entrega-list-view.tsx ===
+=== web/src/contextos/entrega/vistas/lista-entrega.tsx ===
 import { Link } from "wouter";
-import type { Schemas } from "../../../api/client";
+import type { Esquemas } from "../../../api/cliente";
 
-type Entrega = Schemas["DtoEntrega"];
+type Entrega = Esquemas["DtoEntrega"];
 
-export function EntregaListView({ entregas }: { entregas: Entrega[] }) {
+export function VistaListaEntrega({ entregas }: { entregas: Entrega[] }) {
   return (
     <div className="overflow-x-auto rounded-box bg-base-100">
       <table className="table">
@@ -11606,7 +11637,7 @@ export function EntregaListView({ entregas }: { entregas: Entrega[] }) {
               <td>{entrega.carrier}</td>
               <td className="text-right">
                 <Link href={`/entregas/${entrega.id}`} className="link">
-                  View
+                  Ver
                 </Link>
               </td>
             </tr>
@@ -11617,424 +11648,429 @@ export function EntregaListView({ entregas }: { entregas: Entrega[] }) {
   );
 }
 
-=== web/src/features/proveedor/containers/proveedor-detail-container.test.tsx ===
+=== web/src/contextos/proveedor/contenedores/detalle-proveedor.test.tsx ===
 import { describe, expect, test } from "bun:test";
 import { fireEvent, screen, waitFor } from "@testing-library/react";
-import { fakeApi } from "../../../test-support/fake-api";
-import { ProveedorMother, proveedorCollection } from "../../../test-support/proveedor";
-import { renderScreen } from "../../../test-support/render";
-import { ProveedorDetailContainer } from "./proveedor-detail-container";
+import { apiFalsa } from "../../../pruebas/api-falsa";
+import { coleccionProveedor, MadreProveedor } from "../../../pruebas/proveedor";
+import { renderizarPantalla } from "../../../pruebas/renderizar";
+import { ContenedorDetalleProveedor } from "./detalle-proveedor";
 
-describe("ProveedorDetailContainer", () => {
-  test("should show the proveedor when it exists", async () => {
-    // Arrange
-    const seeded = ProveedorMother.random();
-    const api = fakeApi([proveedorCollection([seeded])]);
+describe("ContenedorDetalleProveedor", () => {
+  test("debería mostrar el detalle cuando existe", async () => {
+    // Preparar
+    const sembrado = MadreProveedor.aleatorio();
+    const api = apiFalsa([coleccionProveedor([sembrado])]);
 
-    // Act
-    renderScreen(<ProveedorDetailContainer id={seeded.id} />, { api });
+    const pantalla = <ContenedorDetalleProveedor id={sembrado.id} />;
 
-    // Assert
-    expect(await screen.findByText("Edit")).toBeTruthy();
+    // Actuar
+    renderizarPantalla(pantalla, { api });
+
+    // Comprobar
+    expect(await screen.findByText("Editar")).toBeTruthy();
   });
 
-  test("should show the not-found code when the proveedor does not exist", async () => {
-    // Arrange
-    const api = fakeApi([proveedorCollection()]);
+  test("debería mostrar el código de no encontrado cuando no existe", async () => {
+    // Preparar
+    const api = apiFalsa([coleccionProveedor()]);
+    const pantalla = <ContenedorDetalleProveedor id={crypto.randomUUID()} />;
 
-    // Act
-    renderScreen(<ProveedorDetailContainer id={crypto.randomUUID()} />, { api });
+    // Actuar
+    renderizarPantalla(pantalla, { api });
 
-    // Assert
+    // Comprobar
     expect((await screen.findByRole("alert")).textContent).toBe("proveedor.no_encontrado");
   });
 
-  test("should delete the proveedor only once the deletion is confirmed", async () => {
-    // Arrange
-    const seeded = ProveedorMother.random();
-    const stored = proveedorCollection([seeded]);
-    const api = fakeApi([stored]);
-    const { history } = renderScreen(<ProveedorDetailContainer id={seeded.id} />, { api });
-    fireEvent.click(await screen.findByText("Delete", { selector: ".card-actions button" }));
-    expect(stored.items.has(seeded.id)).toBe(true);
+  test("debería borrar solo tras confirmar el borrado", async () => {
+    // Preparar
+    const sembrado = MadreProveedor.aleatorio();
+    const guardados = coleccionProveedor([sembrado]);
+    const api = apiFalsa([guardados]);
+    const pantalla = <ContenedorDetalleProveedor id={sembrado.id} />;
+    const { historial } = renderizarPantalla(pantalla, { api });
+    fireEvent.click(await screen.findByText("Borrar", { selector: ".card-actions button" }));
+    expect(guardados.elementos.has(sembrado.id)).toBe(true);
 
-    // Act
-    fireEvent.click(screen.getByText("Delete", { selector: ".modal-action button" }));
+    // Actuar
+    fireEvent.click(screen.getByText("Borrar", { selector: ".modal-action button" }));
 
-    // Assert
-    await waitFor(() => expect(history.at(-1)).toBe("/proveedores"));
-    expect(stored.items.has(seeded.id)).toBe(false);
+    // Comprobar
+    await waitFor(() => expect(historial.at(-1)).toBe("/proveedores"));
+    expect(guardados.elementos.has(sembrado.id)).toBe(false);
   });
 });
 
-=== web/src/features/proveedor/containers/proveedor-detail-container.tsx ===
+=== web/src/contextos/proveedor/contenedores/detalle-proveedor.tsx ===
 import { useState } from "react";
 import { Link, useLocation } from "wouter";
-import { unwrap } from "../../../api/http";
-import { useDependencies } from "../../../dependencies";
-import { ConfirmDialog } from "../../../shared/ui/confirm-dialog";
-import { ErrorAlert } from "../../../shared/ui/error-alert";
-import { useAsync } from "../../../shared/use-async";
-import { ProveedorDetailView } from "../views/proveedor-detail-view";
+import { desenvolver } from "../../../api/http";
+import { AlertaError } from "../../../compartido/ui/alerta-error";
+import { DialogoConfirmar } from "../../../compartido/ui/dialogo-confirmar";
+import { useCarga } from "../../../compartido/use-carga";
+import { useDependencias } from "../../../dependencias";
+import { VistaDetalleProveedor } from "../vistas/detalle-proveedor";
 
-export function ProveedorDetailContainer({ id }: { id: string }) {
-  const { api } = useDependencies();
-  const proveedor = useAsync(
-    () => unwrap(api.GET("/proveedores/{id}", { params: { path: { id } } })),
+export function ContenedorDetalleProveedor({ id }: { id: string }) {
+  const { api } = useDependencias();
+  const proveedor = useCarga(
+    () => desenvolver(api.GET("/proveedores/{id}", { params: { path: { id } } })),
     [api, id],
   );
-  const [, navigate] = useLocation();
-  const [confirming, setConfirming] = useState(false);
-  const [failure, setFailure] = useState<unknown>(null);
+  const [, navegar] = useLocation();
+  const [confirmando, setConfirmando] = useState(false);
+  const [fallo, setFallo] = useState<unknown>(null);
 
-  const remove = async () => {
-    setConfirming(false);
+  const borrar = async () => {
+    setConfirmando(false);
     try {
-      await unwrap(api.DELETE("/proveedores/{id}", { params: { path: { id } } }));
-      navigate("/proveedores");
+      await desenvolver(api.DELETE("/proveedores/{id}", { params: { path: { id } } }));
+      navegar("/proveedores");
     } catch (error) {
-      setFailure(error);
+      setFallo(error);
     }
   };
 
   return (
     <section className="space-y-4">
       <h1 className="text-2xl font-bold">Proveedor</h1>
-      {failure !== null && <ErrorAlert error={failure} />}
-      {proveedor.status === "loading" && <span className="loading loading-spinner" />}
-      {proveedor.status === "error" && <ErrorAlert error={proveedor.error} />}
-      {proveedor.status === "ok" && (
+      {fallo !== null && <AlertaError error={fallo} />}
+      {proveedor.estado === "cargando" && <span className="loading loading-spinner" />}
+      {proveedor.estado === "error" && <AlertaError error={proveedor.error} />}
+      {proveedor.estado === "listo" && (
         <div className="card bg-base-100">
           <div className="card-body">
-            <ProveedorDetailView proveedor={proveedor.data} />
+            <VistaDetalleProveedor proveedor={proveedor.datos} />
             <div className="card-actions justify-end">
-              <Link href={`/proveedores/${id}/edit`} className="btn">
-                Edit
+              <Link href={`/proveedores/${id}/editar`} className="btn">
+                Editar
               </Link>
-              <button type="button" className="btn btn-error" onClick={() => setConfirming(true)}>
-                Delete
+              <button type="button" className="btn btn-error" onClick={() => setConfirmando(true)}>
+                Borrar
               </button>
             </div>
           </div>
         </div>
       )}
       <Link href="/proveedores" className="link">
-        Back to proveedores
+        Volver a proveedores
       </Link>
-      <ConfirmDialog
-        open={confirming}
-        message="Delete this proveedor?"
-        onConfirm={remove}
-        onCancel={() => setConfirming(false)}
+      <DialogoConfirmar
+        abierto={confirmando}
+        mensaje="¿Borrar proveedor?"
+        alConfirmar={borrar}
+        alCancelar={() => setConfirmando(false)}
       />
     </section>
   );
 }
 
-=== web/src/features/proveedor/containers/proveedor-form-container.test.tsx ===
+=== web/src/contextos/proveedor/contenedores/formulario-proveedor.test.tsx ===
 import { describe, expect, test } from "bun:test";
 import { fireEvent, screen, waitFor } from "@testing-library/react";
-import type { Schemas } from "../../../api/client";
-import { fakeApi } from "../../../test-support/fake-api";
-import { ProveedorMother, proveedorCollection } from "../../../test-support/proveedor";
-import { renderScreen } from "../../../test-support/render";
-import { ProveedorFormContainer } from "./proveedor-form-container";
+import type { Esquemas } from "../../../api/cliente";
+import { apiFalsa } from "../../../pruebas/api-falsa";
+import { coleccionProveedor, MadreProveedor } from "../../../pruebas/proveedor";
+import { renderizarPantalla } from "../../../pruebas/renderizar";
+import { ContenedorFormularioProveedor } from "./formulario-proveedor";
 
-function type(label: string, value: string) {
-  fireEvent.change(screen.getByLabelText(label), { target: { value } });
+function escribir(etiqueta: string, valor: string) {
+  fireEvent.change(screen.getByLabelText(etiqueta), { target: { value: valor } });
 }
 
-/** Fills the empty form with `request`, the way a user would. */
-async function fillIn(request: Schemas["PeticionCrearProveedor"]) {
-  await screen.findByText("Save");
-  type("Name", request.name);
-  type("Email", request.email);
+/** Rellena el formulario vacío con `peticion`, como lo haría quien lo usa. */
+async function rellenar(peticion: Esquemas["PeticionCrearProveedor"]) {
+  await screen.findByText("Guardar");
+  escribir("Name", peticion.name);
+  escribir("Email", peticion.email);
 }
 
-describe("ProveedorFormContainer", () => {
-  test("should create the proveedor from what was typed and show it", async () => {
-    // Arrange
-    const request = ProveedorMother.request();
-    const stored = proveedorCollection();
-    const api = fakeApi([stored]);
-    const { history } = renderScreen(<ProveedorFormContainer />, { api });
-    await fillIn(request);
+describe("ContenedorFormularioProveedor", () => {
+  test("debería crear con lo escrito e ir a su detalle", async () => {
+    // Preparar
+    const peticion = MadreProveedor.peticion();
+    const guardados = coleccionProveedor();
+    const api = apiFalsa([guardados]);
+    const pantalla = <ContenedorFormularioProveedor />;
+    const { historial } = renderizarPantalla(pantalla, { api });
+    await rellenar(peticion);
 
-    // Act
-    fireEvent.click(screen.getByText("Save"));
+    // Actuar
+    fireEvent.click(screen.getByText("Guardar"));
 
-    // Assert
-    await waitFor(() => expect(history.at(-1)).toStartWith("/proveedores/"));
-    const [created] = stored.items.values();
-    expect(created).toMatchObject(request);
-    expect(history.at(-1)).toBe(`/proveedores/${created?.id}`);
+    // Comprobar
+    await waitFor(() => expect(historial.at(-1)).toStartWith("/proveedores/"));
+    const [creado] = guardados.elementos.values();
+    expect(creado).toMatchObject(peticion);
+    expect(historial.at(-1)).toBe(`/proveedores/${creado?.id}`);
   });
 
-  test("should save the edited proveedor when an existing one is submitted", async () => {
-    // Arrange
-    const seeded = ProveedorMother.random();
-    const stored = proveedorCollection([seeded]);
-    const api = fakeApi([stored]);
-    const { history } = renderScreen(<ProveedorFormContainer id={seeded.id} />, { api });
+  test("debería guardar la edición cuando se envía el formulario", async () => {
+    // Preparar
+    const sembrado = MadreProveedor.aleatorio();
+    const guardados = coleccionProveedor([sembrado]);
+    const api = apiFalsa([guardados]);
+    const pantalla = <ContenedorFormularioProveedor id={sembrado.id} />;
+    const { historial } = renderizarPantalla(pantalla, { api });
 
-    // Act
-    fireEvent.click(await screen.findByText("Save"));
+    // Actuar
+    fireEvent.click(await screen.findByText("Guardar"));
 
-    // Assert
-    await waitFor(() => expect(history.at(-1)).toBe(`/proveedores/${seeded.id}`));
-    expect(stored.items.get(seeded.id)).toEqual(seeded);
-  });
-  test("should show the code itself when the API answers one the form does not know", async () => {
-    // Arrange
-    const request = ProveedorMother.request();
-    const code = "proveedor.validacion.invalid";
-    const failures = { "POST /proveedores": code };
-    const api = fakeApi([proveedorCollection()], failures);
-    renderScreen(<ProveedorFormContainer />, { api });
-    await fillIn(request);
-
-    // Act
-    fireEvent.click(screen.getByText("Save"));
-
-    // Assert
-    expect((await screen.findByRole("alert")).textContent).toBe(code);
+    // Comprobar
+    await waitFor(() => expect(historial.at(-1)).toBe(`/proveedores/${sembrado.id}`));
+    expect(guardados.elementos.get(sembrado.id)).toEqual(sembrado);
   });
 
-  test("should say a proveedor with these values exists when the API answers a duplicate", async () => {
-    // Arrange
-    const request = ProveedorMother.request();
-    const failures = { "POST /proveedores": "proveedor.duplicado" };
-    const api = fakeApi([proveedorCollection()], failures);
-    renderScreen(<ProveedorFormContainer />, { api });
-    await fillIn(request);
+  test("debería mostrar el propio código cuando la API responde uno que el formulario no conoce", async () => {
+    // Preparar
+    const peticion = MadreProveedor.peticion();
+    const codigo = "proveedor.validacion.invalido";
+    const fallos = { "POST /proveedores": codigo };
+    const api = apiFalsa([coleccionProveedor()], fallos);
+    renderizarPantalla(<ContenedorFormularioProveedor />, { api });
+    await rellenar(peticion);
 
-    // Act
-    fireEvent.click(screen.getByText("Save"));
+    // Actuar
+    fireEvent.click(screen.getByText("Guardar"));
 
-    // Assert
-    expect((await screen.findByRole("alert")).textContent).toBe(
-      "A proveedor with these values already exists",
-    );
+    // Comprobar
+    expect((await screen.findByRole("alert")).textContent).toBe(codigo);
   });
 
-  test("should show the message under its input when the API rejects one field", async () => {
-    // Arrange
-    const request = ProveedorMother.request();
-    const failures = { "POST /proveedores": "proveedor.name_invalido" };
-    const api = fakeApi([proveedorCollection()], failures);
-    renderScreen(<ProveedorFormContainer />, { api });
-    await fillIn(request);
+  test("debería decir que los valores ya están en uso cuando la API responde un duplicado", async () => {
+    // Preparar
+    const peticion = MadreProveedor.peticion();
+    const fallos = { "POST /proveedores": "proveedor.duplicado" };
+    const api = apiFalsa([coleccionProveedor()], fallos);
+    renderizarPantalla(<ContenedorFormularioProveedor />, { api });
+    await rellenar(peticion);
 
-    // Act
-    fireEvent.click(screen.getByText("Save"));
+    // Actuar
+    fireEvent.click(screen.getByText("Guardar"));
 
-    // Assert
-    expect(await screen.findByText("Name is not valid")).toBeTruthy();
-    const input = screen.getByLabelText("Name");
-    expect(input.getAttribute("aria-invalid")).toBe("true");
+    // Comprobar
+    expect((await screen.findByRole("alert")).textContent).toBe("Estos valores ya están en uso");
+  });
+
+  test("debería mostrar el mensaje bajo su input cuando la API rechaza un campo", async () => {
+    // Preparar
+    const peticion = MadreProveedor.peticion();
+    const fallos = { "POST /proveedores": "proveedor.name_invalido" };
+    const api = apiFalsa([coleccionProveedor()], fallos);
+    renderizarPantalla(<ContenedorFormularioProveedor />, { api });
+    await rellenar(peticion);
+
+    // Actuar
+    fireEvent.click(screen.getByText("Guardar"));
+
+    // Comprobar
+    expect(await screen.findByText("Name: no válido")).toBeTruthy();
+    const campo = screen.getByLabelText("Name");
+    expect(campo.getAttribute("aria-invalid")).toBe("true");
     expect(screen.queryByRole("alert")).toBeNull();
   });
 });
 
-=== web/src/features/proveedor/containers/proveedor-form-container.tsx ===
+=== web/src/contextos/proveedor/contenedores/formulario-proveedor.tsx ===
 import { useState } from "react";
 import { Link, useLocation } from "wouter";
-import type { Schemas } from "../../../api/client";
-import { unwrap } from "../../../api/http";
-import { useDependencies } from "../../../dependencies";
-import { ErrorAlert, errorCode } from "../../../shared/ui/error-alert";
-import { useAsync } from "../../../shared/use-async";
-import { toProblem } from "../messages";
+import type { Esquemas } from "../../../api/cliente";
+import { desenvolver } from "../../../api/http";
+import { AlertaError, codigoError } from "../../../compartido/ui/alerta-error";
+import { useCarga } from "../../../compartido/use-carga";
+import { useDependencias } from "../../../dependencias";
+import { aProblema } from "../mensajes";
 import {
-  ProveedorFormView,
-  toProveedorForm,
-  toProveedorRequest,
-} from "../views/proveedor-form-view";
+  aFormularioProveedor,
+  aPeticionProveedor,
+  VistaFormularioProveedor,
+} from "../vistas/formulario-proveedor";
 
-type Proveedor = Schemas["DtoProveedor"];
+type Proveedor = Esquemas["DtoProveedor"];
 
-/** Creates a proveedor, or edits the one with `id`. */
-export function ProveedorFormContainer({ id }: { id?: string }) {
-  const { api } = useDependencies();
-  const existing = useAsync(
+/** Crear, o editar con `id`: el formulario de proveedores. */
+export function ContenedorFormularioProveedor({ id }: { id?: string }) {
+  const { api } = useDependencias();
+  const existente = useCarga(
     () =>
       id === undefined
         ? Promise.resolve(null)
-        : unwrap(api.GET("/proveedores/{id}", { params: { path: { id } } })),
+        : desenvolver(api.GET("/proveedores/{id}", { params: { path: { id } } })),
     [api, id],
   );
-  const title = id === undefined ? "New proveedor" : "Edit proveedor";
+  const titulo = id === undefined ? "Crear proveedor" : "Editar proveedor";
 
   return (
     <section className="space-y-4">
-      <h1 className="text-2xl font-bold">{title}</h1>
-      {existing.status === "loading" && <span className="loading loading-spinner" />}
-      {existing.status === "error" && <ErrorAlert error={existing.error} />}
-      {existing.status === "ok" && <ProveedorForm existing={existing.data} />}
+      <h1 className="text-2xl font-bold">{titulo}</h1>
+      {existente.estado === "cargando" && <span className="loading loading-spinner" />}
+      {existente.estado === "error" && <AlertaError error={existente.error} />}
+      {existente.estado === "listo" && <FormularioProveedor existente={existente.datos} />}
       <Link href={id === undefined ? "/proveedores" : `/proveedores/${id}`} className="link">
-        Cancel
+        Cancelar
       </Link>
     </section>
   );
 }
 
-function ProveedorForm({ existing }: { existing: Proveedor | null }) {
-  const { api } = useDependencies();
-  const [, navigate] = useLocation();
-  const [values, setValues] = useState(toProveedorForm(existing));
-  const [saving, setSaving] = useState(false);
-  const [failure, setFailure] = useState<unknown>(null);
-  const problem = failure === null ? null : toProblem(errorCode(failure));
+function FormularioProveedor({ existente }: { existente: Proveedor | null }) {
+  const { api } = useDependencias();
+  const [, navegar] = useLocation();
+  const [valores, setValores] = useState(aFormularioProveedor(existente));
+  const [guardando, setGuardando] = useState(false);
+  const [fallo, setFallo] = useState<unknown>(null);
+  const problema = fallo === null ? null : aProblema(codigoError(fallo));
 
-  const save = async () => {
-    setSaving(true);
-    setFailure(null);
+  const guardar = async () => {
+    setGuardando(true);
+    setFallo(null);
     try {
-      const body = toProveedorRequest(values);
-      const saved = await unwrap(
-        existing === null
-          ? api.POST("/proveedores", { body })
-          : api.PUT("/proveedores/{id}", { params: { path: { id: existing.id } }, body }),
+      const cuerpo = aPeticionProveedor(valores);
+      const guardado = await desenvolver(
+        existente === null
+          ? api.POST("/proveedores", { body: cuerpo })
+          : api.PUT("/proveedores/{id}", { params: { path: { id: existente.id } }, body: cuerpo }),
       );
-      navigate(`/proveedores/${saved.id}`);
+      navegar(`/proveedores/${guardado.id}`);
     } catch (error) {
-      setFailure(error);
-      setSaving(false);
+      setFallo(error);
+      setGuardando(false);
     }
   };
 
   return (
     <div className="card bg-base-100">
       <div className="card-body">
-        {problem?.field === null && <ErrorAlert error={failure} message={problem.text} />}
-        <ProveedorFormView
-          values={values}
-          saving={saving}
-          problem={problem}
-          onChange={setValues}
-          onSubmit={save}
+        {problema?.campo === null && <AlertaError error={fallo} mensaje={problema.texto} />}
+        <VistaFormularioProveedor
+          valores={valores}
+          guardando={guardando}
+          problema={problema}
+          alCambiar={setValores}
+          alEnviar={guardar}
         />
       </div>
     </div>
   );
 }
 
-=== web/src/features/proveedor/containers/proveedor-list-container.test.tsx ===
+=== web/src/contextos/proveedor/contenedores/lista-proveedor.test.tsx ===
 import { describe, expect, test } from "bun:test";
 import { fireEvent, screen } from "@testing-library/react";
-import { fakeApi } from "../../../test-support/fake-api";
-import { ProveedorMother, proveedorCollection } from "../../../test-support/proveedor";
-import { renderScreen } from "../../../test-support/render";
-import { ProveedorListContainer } from "./proveedor-list-container";
+import { apiFalsa } from "../../../pruebas/api-falsa";
+import { coleccionProveedor, MadreProveedor } from "../../../pruebas/proveedor";
+import { renderizarPantalla } from "../../../pruebas/renderizar";
+import { ContenedorListaProveedor } from "./lista-proveedor";
 
-describe("ProveedorListContainer", () => {
-  test("should show a row per proveedor when there are some", async () => {
-    // Arrange
-    const seed = [ProveedorMother.random(), ProveedorMother.random()];
-    const api = fakeApi([proveedorCollection(seed)]);
+describe("ContenedorListaProveedor", () => {
+  test("debería mostrar una fila por cada proveedor", async () => {
+    // Preparar
+    const semilla = [MadreProveedor.aleatorio(), MadreProveedor.aleatorio()];
+    const api = apiFalsa([coleccionProveedor(semilla)]);
 
-    // Act
-    renderScreen(<ProveedorListContainer />, { api });
+    // Actuar
+    renderizarPantalla(<ContenedorListaProveedor />, { api });
 
-    // Assert
-    expect(await screen.findAllByText("View")).toHaveLength(2);
+    // Comprobar
+    expect(await screen.findAllByText("Ver")).toHaveLength(2);
   });
 
-  test("should show the next page when Next is pressed", async () => {
-    // Arrange
-    const seed = Array.from({ length: 25 }, () => ProveedorMother.random());
-    const api = fakeApi([proveedorCollection(seed)]);
-    renderScreen(<ProveedorListContainer />, { api });
-    expect(await screen.findAllByText("View")).toHaveLength(20);
+  test("debería mostrar la página siguiente cuando se pulsa Siguiente", async () => {
+    // Preparar
+    const semilla = Array.from({ length: 25 }, () => MadreProveedor.aleatorio());
+    const api = apiFalsa([coleccionProveedor(semilla)]);
+    renderizarPantalla(<ContenedorListaProveedor />, { api });
+    expect(await screen.findAllByText("Ver")).toHaveLength(20);
 
-    // Act
-    fireEvent.click(screen.getByRole("button", { name: "Next" }));
+    // Actuar
+    fireEvent.click(screen.getByRole("button", { name: "Siguiente" }));
 
-    // Assert
-    expect(await screen.findByText("21–25 of 25")).toBeTruthy();
-    expect(screen.getAllByText("View")).toHaveLength(5);
+    // Comprobar
+    expect(await screen.findByText("21–25 de 25")).toBeTruthy();
+    expect(screen.getAllByText("Ver")).toHaveLength(5);
   });
 
-  test("should open the page the URL names", async () => {
-    // Arrange
-    const seed = Array.from({ length: 25 }, () => ProveedorMother.random());
-    const api = fakeApi([proveedorCollection(seed)]);
-    const path = "/proveedores?page=2";
+  test("debería abrir la página que nombra la URL", async () => {
+    // Preparar
+    const semilla = Array.from({ length: 25 }, () => MadreProveedor.aleatorio());
+    const api = apiFalsa([coleccionProveedor(semilla)]);
+    const ruta = "/proveedores?pagina=2";
 
-    // Act
-    renderScreen(<ProveedorListContainer />, { api }, path);
+    // Actuar
+    renderizarPantalla(<ContenedorListaProveedor />, { api }, ruta);
 
-    // Assert
-    expect(await screen.findByText("21–25 of 25")).toBeTruthy();
+    // Comprobar
+    expect(await screen.findByText("21–25 de 25")).toBeTruthy();
   });
 
-  test("should say so when there is no proveedor", async () => {
-    // Arrange
-    const api = fakeApi([proveedorCollection()]);
+  test("debería decirlo cuando no hay proveedores", async () => {
+    // Preparar
+    const api = apiFalsa([coleccionProveedor()]);
 
-    // Act
-    renderScreen(<ProveedorListContainer />, { api });
+    // Actuar
+    renderizarPantalla(<ContenedorListaProveedor />, { api });
 
-    // Assert
-    expect(await screen.findByText("No proveedores yet.")).toBeTruthy();
+    // Comprobar
+    expect(await screen.findByText("Todavía no hay proveedores.")).toBeTruthy();
   });
 
-  test("should show the error code when the proveedores cannot be listed", async () => {
-    // Arrange
-    const failures = { "GET /proveedores": "proveedor.repositorio" };
-    const api = fakeApi([proveedorCollection()], failures);
+  test("debería mostrar el código del error cuando la API no da la lista", async () => {
+    // Preparar
+    const fallos = { "GET /proveedores": "proveedor.repositorio" };
+    const api = apiFalsa([coleccionProveedor()], fallos);
 
-    // Act
-    renderScreen(<ProveedorListContainer />, { api });
+    // Actuar
+    renderizarPantalla(<ContenedorListaProveedor />, { api });
 
-    // Assert
+    // Comprobar
     expect((await screen.findByRole("alert")).textContent).toBe("proveedor.repositorio");
   });
 });
 
-=== web/src/features/proveedor/containers/proveedor-list-container.tsx ===
+=== web/src/contextos/proveedor/contenedores/lista-proveedor.tsx ===
 import { Link, useLocation, useSearch } from "wouter";
-import { PAGE_SIZE, unwrap } from "../../../api/http";
-import { useDependencies } from "../../../dependencies";
-import { EmptyState } from "../../../shared/ui/empty-state";
-import { ErrorAlert } from "../../../shared/ui/error-alert";
-import { offsetFromSearch, Pagination, pageSearch } from "../../../shared/ui/pagination";
-import { useAsync } from "../../../shared/use-async";
-import { ProveedorListView } from "../views/proveedor-list-view";
+import { desenvolver, TAMANO_PAGINA } from "../../../api/http";
+import { AlertaError } from "../../../compartido/ui/alerta-error";
+import { busquedaPagina, desplazamientoDeUrl, Paginacion } from "../../../compartido/ui/paginacion";
+import { SinElementos } from "../../../compartido/ui/sin-elementos";
+import { useCarga } from "../../../compartido/use-carga";
+import { useDependencias } from "../../../dependencias";
+import { VistaListaProveedor } from "../vistas/lista-proveedor";
 
-/** The list, one page at a time; the page is in the URL (`?page=2`), so reload and back keep it. */
-export function ProveedorListContainer() {
-  const { api } = useDependencies();
-  const [location, navigate] = useLocation();
-  const offset = offsetFromSearch(useSearch(), PAGE_SIZE);
-  const goTo = (next: number) => navigate(location + pageSearch(next, PAGE_SIZE));
-  const query = { limite: PAGE_SIZE, desplazamiento: offset };
-  const proveedores = useAsync(
-    () => unwrap(api.GET("/proveedores", { params: { query } })),
-    [api, offset],
+/** La lista, página a página; la página va en la URL (`?pagina=2`): recargar y volver la mantienen. */
+export function ContenedorListaProveedor() {
+  const { api } = useDependencias();
+  const [ubicacion, navegar] = useLocation();
+  const desplazamiento = desplazamientoDeUrl(useSearch(), TAMANO_PAGINA);
+  const irA = (siguiente: number) => navegar(ubicacion + busquedaPagina(siguiente, TAMANO_PAGINA));
+  const consulta = { limite: TAMANO_PAGINA, desplazamiento };
+  const proveedores = useCarga(
+    () => desenvolver(api.GET("/proveedores", { params: { query: consulta } })),
+    [api, desplazamiento],
   );
 
   return (
     <section className="space-y-4">
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-bold">Proveedores</h1>
-        <Link href="/proveedores/new" className="btn btn-primary">
-          New proveedor
+        <Link href="/proveedores/nuevo" className="btn btn-primary">
+          Crear proveedor
         </Link>
       </div>
-      {proveedores.status === "loading" && <span className="loading loading-spinner" />}
-      {proveedores.status === "error" && <ErrorAlert error={proveedores.error} />}
-      {proveedores.status === "ok" &&
-        (proveedores.data.total === 0 ? (
-          <EmptyState message="No proveedores yet." />
+      {proveedores.estado === "cargando" && <span className="loading loading-spinner" />}
+      {proveedores.estado === "error" && <AlertaError error={proveedores.error} />}
+      {proveedores.estado === "listo" &&
+        (proveedores.datos.total === 0 ? (
+          <SinElementos mensaje="Todavía no hay proveedores." />
         ) : (
           <>
-            <ProveedorListView proveedores={proveedores.data.elementos} />
-            <Pagination
-              total={proveedores.data.total}
-              limit={proveedores.data.limite}
-              offset={proveedores.data.desplazamiento}
-              onOffsetChange={goTo}
+            <VistaListaProveedor proveedores={proveedores.datos.elementos} />
+            <Paginacion
+              total={proveedores.datos.total}
+              limite={proveedores.datos.limite}
+              desplazamiento={proveedores.datos.desplazamiento}
+              alCambiarDesplazamiento={irA}
             />
           </>
         ))}
@@ -12042,42 +12078,42 @@ export function ProveedorListContainer() {
   );
 }
 
-=== web/src/features/proveedor/messages.ts ===
-/** What a screen shows for an API error: under the input it is about, or in the alert. */
-export interface ProveedorProblem {
-  field: string | null;
-  text: string;
+=== web/src/contextos/proveedor/mensajes.ts ===
+/** Lo que una pantalla muestra de un error de la API: bajo el input del que trata, o en la alerta. */
+export interface ProblemaProveedor {
+  campo: string | null;
+  texto: string;
 }
 
 /**
- * The messages for the codes of the backend's `errores.rs`, generated from the same list. English:
- * this file is the place to translate them. A code missing here shows as it is.
+ * Los mensajes de los códigos de `errores.rs` del backend, generados de la misma lista. Un código que
+ * no está aquí se muestra tal cual.
  */
-const TEXTS: Record<string, string> = {
-  "proveedor.name_invalido": "Name is not valid",
-  "proveedor.validacion.email_vacio": "Email is required",
-  "proveedor.duplicado": "A proveedor with these values already exists",
-  "proveedor.no_encontrado": "This proveedor no longer exists",
-  "proveedor.repositorio": "The proveedor could not be saved, try again later",
-  "proveedor.desconocido": "Something went wrong",
+const TEXTOS: Record<string, string> = {
+  "proveedor.name_invalido": "Name: no válido",
+  "proveedor.validacion.email_vacio": "Email: obligatorio",
+  "proveedor.duplicado": "Estos valores ya están en uso",
+  "proveedor.no_encontrado": "Ya no existe",
+  "proveedor.repositorio": "No se ha podido guardar; inténtalo más tarde",
+  "proveedor.desconocido": "Algo ha ido mal",
 };
 
-/** The input each field's code is about. */
-const FIELDS: Record<string, string> = {
+/** El input del que trata el código de cada campo. */
+const CAMPOS: Record<string, string> = {
   "proveedor.name_invalido": "name",
   "proveedor.validacion.email_vacio": "email",
 };
 
-export function toProblem(code: string): ProveedorProblem {
-  return { field: FIELDS[code] ?? null, text: TEXTS[code] ?? code };
+export function aProblema(codigo: string): ProblemaProveedor {
+  return { campo: CAMPOS[codigo] ?? null, texto: TEXTOS[codigo] ?? codigo };
 }
 
-=== web/src/features/proveedor/views/proveedor-detail-view.tsx ===
-import type { Schemas } from "../../../api/client";
+=== web/src/contextos/proveedor/vistas/detalle-proveedor.tsx ===
+import type { Esquemas } from "../../../api/cliente";
 
-type Proveedor = Schemas["DtoProveedor"];
+type Proveedor = Esquemas["DtoProveedor"];
 
-export function ProveedorDetailView({ proveedor }: { proveedor: Proveedor }) {
+export function VistaDetalleProveedor({ proveedor }: { proveedor: Proveedor }) {
   return (
     <dl className="grid grid-cols-[max-content_1fr] gap-x-6 gap-y-2">
       <dt className="font-semibold">Name</dt>
@@ -12088,22 +12124,22 @@ export function ProveedorDetailView({ proveedor }: { proveedor: Proveedor }) {
   );
 }
 
-=== web/src/features/proveedor/views/proveedor-form-view.tsx ===
-import type { Schemas } from "../../../api/client";
-import { FieldError } from "../../../shared/ui/field-error";
-import type { ProveedorProblem } from "../messages";
+=== web/src/contextos/proveedor/vistas/formulario-proveedor.tsx ===
+import type { Esquemas } from "../../../api/cliente";
+import { ErrorCampo } from "../../../compartido/ui/error-campo";
+import type { ProblemaProveedor } from "../mensajes";
 
-type Proveedor = Schemas["DtoProveedor"];
-type ProveedorRequest = Schemas["PeticionCrearProveedor"];
+type Proveedor = Esquemas["DtoProveedor"];
+type PeticionProveedor = Esquemas["PeticionCrearProveedor"];
 
-/** What the inputs hold: the text of every input, `checked` for a checkbox. */
-export interface ProveedorFormValues {
+/** Lo que guardan los inputs: el texto de cada input, `checked` en una casilla. */
+export interface ValoresFormularioProveedor {
   name: string;
   email: string;
 }
 
-/** The inputs for `proveedor`, empty when there is none yet. */
-export function toProveedorForm(proveedor: Proveedor | null): ProveedorFormValues {
+/** Los inputs de `proveedor`, vacíos cuando todavía no hay ninguno. */
+export function aFormularioProveedor(proveedor: Proveedor | null): ValoresFormularioProveedor {
   if (proveedor === null) {
     return {
       name: "",
@@ -12116,34 +12152,34 @@ export function toProveedorForm(proveedor: Proveedor | null): ProveedorFormValue
   };
 }
 
-/** What a create or an update sends: the same fields for both. */
-export function toProveedorRequest(values: ProveedorFormValues): ProveedorRequest {
+/** Lo que mandan crear y actualizar: los mismos campos en los dos. */
+export function aPeticionProveedor(valores: ValoresFormularioProveedor): PeticionProveedor {
   return {
-    name: values.name,
-    email: values.email,
+    name: valores.name,
+    email: valores.email,
   };
 }
 
-export function ProveedorFormView({
-  values,
-  saving,
-  problem,
-  onChange,
-  onSubmit,
+export function VistaFormularioProveedor({
+  valores,
+  guardando,
+  problema,
+  alCambiar,
+  alEnviar,
 }: {
-  values: ProveedorFormValues;
-  saving: boolean;
-  /** What the API said about the last submit: shown under its input. */
-  problem: ProveedorProblem | null;
-  onChange: (values: ProveedorFormValues) => void;
-  onSubmit: () => void;
+  valores: ValoresFormularioProveedor;
+  guardando: boolean;
+  /** Lo que dijo la API del último envío: se muestra bajo su input. */
+  problema: ProblemaProveedor | null;
+  alCambiar: (valores: ValoresFormularioProveedor) => void;
+  alEnviar: () => void;
 }) {
   return (
     <form
       className="space-y-2"
       onSubmit={(event) => {
         event.preventDefault();
-        onSubmit();
+        alEnviar();
       }}
     >
       <label className="fieldset">
@@ -12151,39 +12187,39 @@ export function ProveedorFormView({
         <input
           className="input w-full"
           type="text"
-          aria-invalid={problem?.field === "name"}
+          aria-invalid={problema?.campo === "name"}
           required
-          value={values.name}
-          onChange={(event) => onChange({ ...values, name: event.target.value })}
+          value={valores.name}
+          onChange={(event) => alCambiar({ ...valores, name: event.target.value })}
         />
       </label>
-      <FieldError problem={problem} field="name" />
+      <ErrorCampo problema={problema} campo="name" />
       <label className="fieldset">
         <span className="fieldset-legend">Email</span>
         <input
           className="input w-full"
           type="text"
-          aria-invalid={problem?.field === "email"}
+          aria-invalid={problema?.campo === "email"}
           required
-          value={values.email}
-          onChange={(event) => onChange({ ...values, email: event.target.value })}
+          value={valores.email}
+          onChange={(event) => alCambiar({ ...valores, email: event.target.value })}
         />
       </label>
-      <FieldError problem={problem} field="email" />
-      <button type="submit" className="btn btn-primary" disabled={saving}>
-        Save
+      <ErrorCampo problema={problema} campo="email" />
+      <button type="submit" className="btn btn-primary" disabled={guardando}>
+        Guardar
       </button>
     </form>
   );
 }
 
-=== web/src/features/proveedor/views/proveedor-list-view.tsx ===
+=== web/src/contextos/proveedor/vistas/lista-proveedor.tsx ===
 import { Link } from "wouter";
-import type { Schemas } from "../../../api/client";
+import type { Esquemas } from "../../../api/cliente";
 
-type Proveedor = Schemas["DtoProveedor"];
+type Proveedor = Esquemas["DtoProveedor"];
 
-export function ProveedorListView({ proveedores }: { proveedores: Proveedor[] }) {
+export function VistaListaProveedor({ proveedores }: { proveedores: Proveedor[] }) {
   return (
     <div className="overflow-x-auto rounded-box bg-base-100">
       <table className="table">
@@ -12201,7 +12237,7 @@ export function ProveedorListView({ proveedores }: { proveedores: Proveedor[] })
               <td>{proveedor.email}</td>
               <td className="text-right">
                 <Link href={`/proveedores/${proveedor.id}`} className="link">
-                  View
+                  Ver
                 </Link>
               </td>
             </tr>
@@ -12212,247 +12248,253 @@ export function ProveedorListView({ proveedores }: { proveedores: Proveedor[] })
   );
 }
 
-=== web/src/generated/dependencies.ts ===
-// AUTO-GENERATED by puerto. Edit puerto.toml, then run `puerto generar bootstrap`.
+=== web/src/generado/dependencias.ts ===
+// GENERADO por puerto. Edita puerto.toml y después ejecuta `puerto generar bootstrap`.
 //
-// The composition root: the only module that builds the API client. Screens reach it through
-// `useDependencies()`, so a test hands them a fake instead.
+// La raíz de composición: el único módulo que construye el cliente de la API. Las pantallas llegan
+// a él con `useDependencias()`, así un test les da un falso.
 
-import { type ApiClient, createApiClient } from "../api/client";
+import { type ClienteApi, crearClienteApi } from "../api/cliente";
 
-export interface Dependencies {
-  api: ApiClient;
+export interface Dependencias {
+  api: ClienteApi;
 }
 
-export function createDependencies(): Dependencies {
-  const api = createApiClient();
+export function crearDependencias(): Dependencias {
+  const api = crearClienteApi();
   return { api };
 }
 
-=== web/src/generated/routes.tsx ===
-// AUTO-GENERATED by puerto. Edit puerto.toml, then run `puerto generar bootstrap`.
+=== web/src/generado/rutas.tsx ===
+// GENERADO por puerto. Edita puerto.toml y después ejecuta `puerto generar bootstrap`.
 
 import { Route, Switch } from "wouter";
-import { CompraDetailContainer } from "../features/compra/containers/compra-detail-container";
-import { CompraFormContainer } from "../features/compra/containers/compra-form-container";
-import { CompraListContainer } from "../features/compra/containers/compra-list-container";
-import { EntregaDetailContainer } from "../features/entrega/containers/entrega-detail-container";
-import { EntregaFormContainer } from "../features/entrega/containers/entrega-form-container";
-import { EntregaListContainer } from "../features/entrega/containers/entrega-list-container";
-import { ProveedorDetailContainer } from "../features/proveedor/containers/proveedor-detail-container";
-import { ProveedorFormContainer } from "../features/proveedor/containers/proveedor-form-container";
-import { ProveedorListContainer } from "../features/proveedor/containers/proveedor-list-container";
-import { HomePage } from "../pages/home";
-import { NotFoundPage } from "../pages/not-found";
-import { customRoutes } from "../routes";
-import type { NavEntry } from "../shared/ui/layout";
+import type { EntradaMenu } from "../compartido/ui/marco";
+import { ContenedorDetalleCompra } from "../contextos/compra/contenedores/detalle-compra";
+import { ContenedorFormularioCompra } from "../contextos/compra/contenedores/formulario-compra";
+import { ContenedorListaCompra } from "../contextos/compra/contenedores/lista-compra";
+import { ContenedorDetalleEntrega } from "../contextos/entrega/contenedores/detalle-entrega";
+import { ContenedorFormularioEntrega } from "../contextos/entrega/contenedores/formulario-entrega";
+import { ContenedorListaEntrega } from "../contextos/entrega/contenedores/lista-entrega";
+import { ContenedorDetalleProveedor } from "../contextos/proveedor/contenedores/detalle-proveedor";
+import { ContenedorFormularioProveedor } from "../contextos/proveedor/contenedores/formulario-proveedor";
+import { ContenedorListaProveedor } from "../contextos/proveedor/contenedores/lista-proveedor";
+import { PaginaInicio } from "../paginas/inicio";
+import { PaginaNoEncontrada } from "../paginas/no-encontrada";
+import { rutasPropias } from "../rutas";
 
-export const navEntries: NavEntry[] = [
-  { label: "Compras", href: "/compras" },
-  { label: "Entregas", href: "/entregas" },
-  { label: "Proveedores", href: "/proveedores" },
+export const entradasMenu: EntradaMenu[] = [
+  { etiqueta: "Compras", href: "/compras" },
+  { etiqueta: "Entregas", href: "/entregas" },
+  { etiqueta: "Proveedores", href: "/proveedores" },
 ];
 
-export function AppRoutes() {
+export function RutasApp() {
   return (
     <Switch>
       <Route path="/">
-        <HomePage entries={navEntries} />
+        <PaginaInicio entradas={entradasMenu} />
       </Route>
-      {customRoutes}
+      {rutasPropias}
       <Route path="/compras">
-        <CompraListContainer />
+        <ContenedorListaCompra />
       </Route>
-      <Route path="/compras/new">
-        <CompraFormContainer />
+      <Route path="/compras/nuevo">
+        <ContenedorFormularioCompra />
       </Route>
-      <Route path="/compras/:id/edit">{(params) => <CompraFormContainer id={params.id} />}</Route>
-      <Route path="/compras/:id">{(params) => <CompraDetailContainer id={params.id} />}</Route>
+      <Route path="/compras/:id/editar">
+        {(params) => <ContenedorFormularioCompra id={params.id} />}
+      </Route>
+      <Route path="/compras/:id">{(params) => <ContenedorDetalleCompra id={params.id} />}</Route>
       <Route path="/entregas">
-        <EntregaListContainer />
+        <ContenedorListaEntrega />
       </Route>
-      <Route path="/entregas/new">
-        <EntregaFormContainer />
+      <Route path="/entregas/nuevo">
+        <ContenedorFormularioEntrega />
       </Route>
-      <Route path="/entregas/:id/edit">{(params) => <EntregaFormContainer id={params.id} />}</Route>
-      <Route path="/entregas/:id">{(params) => <EntregaDetailContainer id={params.id} />}</Route>
+      <Route path="/entregas/:id/editar">
+        {(params) => <ContenedorFormularioEntrega id={params.id} />}
+      </Route>
+      <Route path="/entregas/:id">{(params) => <ContenedorDetalleEntrega id={params.id} />}</Route>
       <Route path="/proveedores">
-        <ProveedorListContainer />
+        <ContenedorListaProveedor />
       </Route>
-      <Route path="/proveedores/new">
-        <ProveedorFormContainer />
+      <Route path="/proveedores/nuevo">
+        <ContenedorFormularioProveedor />
       </Route>
-      <Route path="/proveedores/:id/edit">
-        {(params) => <ProveedorFormContainer id={params.id} />}
+      <Route path="/proveedores/:id/editar">
+        {(params) => <ContenedorFormularioProveedor id={params.id} />}
       </Route>
       <Route path="/proveedores/:id">
-        {(params) => <ProveedorDetailContainer id={params.id} />}
+        {(params) => <ContenedorDetalleProveedor id={params.id} />}
       </Route>
       <Route>
-        <NotFoundPage />
+        <PaginaNoEncontrada />
       </Route>
     </Switch>
   );
 }
 
-=== web/src/test-support/compra.ts ===
-import type { Schemas } from "../api/client";
-import { collection } from "./fake-api";
+=== web/src/pruebas/api-falsa.ts ===
+import { type ClienteApi, crearClienteApi } from "../api/cliente";
 
-type Compra = Schemas["DtoCompra"];
-type CompraRequest = Schemas["PeticionCrearCompra"];
-
-/** Valid compras for tests; pass `overrides` for the fields a test is about. */
-export const CompraMother = {
-  request(overrides: Partial<CompraRequest> = {}): CompraRequest {
-    return {
-      proveedorId: crypto.randomUUID(),
-      approverId: crypto.randomUUID(),
-      total: 42,
-      ...overrides,
-    };
-  },
-
-  random(overrides: Partial<Compra> = {}): Compra {
-    return { id: crypto.randomUUID(), ...CompraMother.request(), ...overrides };
-  },
-};
-
-/** The fake API's `/compras`, holding `seed`. */
-export function compraCollection(seed: Compra[] = []) {
-  return collection("/compras", "compra", seed);
+/** Lo que guarda la API falsa bajo `ruta`: los DTO de la API, por id. */
+export interface Coleccion<T extends { id: string }> {
+  ruta: string;
+  /** El código que responde un elemento que no está: `producto.no_encontrado`. */
+  noEncontrado: string;
+  elementos: Map<string, T>;
 }
 
-=== web/src/test-support/entrega.ts ===
-import type { Schemas } from "../api/client";
-import { collection } from "./fake-api";
-
-type Entrega = Schemas["DtoEntrega"];
-type EntregaRequest = Schemas["PeticionCrearEntrega"];
-
-/** Valid entregas for tests; pass `overrides` for the fields a test is about. */
-export const EntregaMother = {
-  request(overrides: Partial<EntregaRequest> = {}): EntregaRequest {
-    return {
-      compraId: crypto.randomUUID(),
-      destinatarioId: crypto.randomUUID(),
-      carrier: "example",
-      ...overrides,
-    };
-  },
-
-  random(overrides: Partial<Entrega> = {}): Entrega {
-    return { id: crypto.randomUUID(), ...EntregaMother.request(), ...overrides };
-  },
-};
-
-/** The fake API's `/entregas`, holding `seed`. */
-export function entregaCollection(seed: Entrega[] = []) {
-  return collection("/entregas", "entrega", seed);
-}
-
-=== web/src/test-support/fake-api.ts ===
-import { type ApiClient, createApiClient } from "../api/client";
-
-/** What the fake API holds under `path`: the API's DTOs, by id. */
-export interface Collection<T extends { id: string }> {
-  path: string;
-  /** The code a missing item answers: `producto.no_encontrado`. */
-  notFound: string;
-  items: Map<string, T>;
-}
-
-/** The items under `path` (`/productos`) of `entity` (`producto`), starting with `seed`. */
-export function collection<T extends { id: string }>(
-  path: string,
-  entity: string,
-  seed: T[] = [],
-): Collection<T> {
-  const items = new Map(seed.map((item) => [item.id, item]));
-  return { path, notFound: `${entity}.no_encontrado`, items };
+/** Los elementos bajo `ruta` (`/productos`) de `entidad` (`producto`), empezando por `semilla`. */
+export function coleccion<T extends { id: string }>(
+  ruta: string,
+  entidad: string,
+  semilla: T[] = [],
+): Coleccion<T> {
+  const elementos = new Map(semilla.map((elemento) => [elemento.id, elemento]));
+  return { ruta, noEncontrado: `${entidad}.no_encontrado`, elementos };
 }
 
 /**
- * An `ApiClient` that answers the way the generated API does, over in-memory collections: a page
- * per `limite` / `desplazamiento`, a `404` with `<entity>.no_encontrado`, `201`, `200` and `204`.
- * Each of `failures` (`{ "POST /productos": "producto.duplicado" }`) answers its code instead.
+ * Un `ClienteApi` que responde como la API generada, sobre colecciones en memoria: una página por
+ * `limite` / `desplazamiento`, un `404` con `<entidad>.no_encontrado`, `201`, `200` y `204`. Cada
+ * uno de `fallos` (`{ "POST /productos": "producto.duplicado" }`) responde su código en su lugar.
  */
-export function fakeApi(
-  collections: Collection<{ id: string }>[],
-  failures: Record<string, string> = {},
-): ApiClient {
-  return createApiClient({
+export function apiFalsa(
+  colecciones: Coleccion<{ id: string }>[],
+  fallos: Record<string, string> = {},
+): ClienteApi {
+  return crearClienteApi({
     baseUrl: "http://localhost/api",
-    fetch: async (request) => {
-      const url = new URL(request.url);
-      const path = url.pathname.replace(/^\/api/, "");
-      const target = collections.find((c) => path === c.path || path.startsWith(`${c.path}/`));
-      if (target === undefined) return answer(404, "http.404");
-      const failure = failures[`${request.method} ${target.path}`];
-      if (failure !== undefined) return answer(400, failure);
-      const id = path.slice(target.path.length + 1);
-      return id === "" ? serveList(target, request, url) : serveItem(target, request, id);
+    fetch: async (peticion) => {
+      const url = new URL(peticion.url);
+      const ruta = url.pathname.replace(/^\/api/, "");
+      const objetivo = colecciones.find((c) => ruta === c.ruta || ruta.startsWith(`${c.ruta}/`));
+      if (objetivo === undefined) return responderError(404, "http.404");
+      const fallo = fallos[`${peticion.method} ${objetivo.ruta}`];
+      if (fallo !== undefined) return responderError(400, fallo);
+      const id = ruta.slice(objetivo.ruta.length + 1);
+      return id === ""
+        ? servirLista(objetivo, peticion, url)
+        : servirElemento(objetivo, peticion, id);
     },
   });
 }
 
-async function serveList(target: Collection<{ id: string }>, request: Request, url: URL) {
-  if (request.method === "POST") {
-    const created = { ...(await request.json()), id: crypto.randomUUID() };
-    target.items.set(created.id, created);
-    return Response.json(created, { status: 201 });
+async function servirLista(objetivo: Coleccion<{ id: string }>, peticion: Request, url: URL) {
+  if (peticion.method === "POST") {
+    const creado = { ...(await peticion.json()), id: crypto.randomUUID() };
+    objetivo.elementos.set(creado.id, creado);
+    return Response.json(creado, { status: 201 });
   }
   const limite = Number(url.searchParams.get("limite") ?? 20);
   const desplazamiento = Number(url.searchParams.get("desplazamiento") ?? 0);
-  const all = [...target.items.values()];
-  const elementos = all.slice(desplazamiento, desplazamiento + limite);
-  return Response.json({ elementos, total: all.length, limite, desplazamiento });
+  const todos = [...objetivo.elementos.values()];
+  const elementos = todos.slice(desplazamiento, desplazamiento + limite);
+  return Response.json({ elementos, total: todos.length, limite, desplazamiento });
 }
 
-async function serveItem(target: Collection<{ id: string }>, request: Request, id: string) {
-  const found = target.items.get(id);
-  if (found === undefined) return answer(404, target.notFound);
-  if (request.method === "DELETE") {
-    target.items.delete(id);
+async function servirElemento(objetivo: Coleccion<{ id: string }>, peticion: Request, id: string) {
+  const encontrado = objetivo.elementos.get(id);
+  if (encontrado === undefined) return responderError(404, objetivo.noEncontrado);
+  if (peticion.method === "DELETE") {
+    objetivo.elementos.delete(id);
     return new Response(null, { status: 204 });
   }
-  if (request.method === "PUT") {
-    // Like the API, an update replaces every field: one left out is cleared.
-    const updated = { ...(await request.json()), id };
-    target.items.set(id, updated);
-    return Response.json(updated);
+  if (peticion.method === "PUT") {
+    // Como la API, actualizar reemplaza todos los campos: el que no se manda queda vacío.
+    const actualizado = { ...(await peticion.json()), id };
+    objetivo.elementos.set(id, actualizado);
+    return Response.json(actualizado);
   }
-  return Response.json(found);
+  return Response.json(encontrado);
 }
 
-/** A `RespuestaError` the way the API answers one. */
-function answer(status: number, codigo: string) {
-  return Response.json({ codigo, mensaje: codigo }, { status });
+/** Un `RespuestaError` como lo responde la API. */
+function responderError(estado: number, codigo: string) {
+  return Response.json({ codigo, mensaje: codigo }, { status: estado });
 }
 
-=== web/src/test-support/proveedor.ts ===
-import type { Schemas } from "../api/client";
-import { collection } from "./fake-api";
+=== web/src/pruebas/compra.ts ===
+import type { Esquemas } from "../api/cliente";
+import { coleccion } from "./api-falsa";
 
-type Proveedor = Schemas["DtoProveedor"];
-type ProveedorRequest = Schemas["PeticionCrearProveedor"];
+type Compra = Esquemas["DtoCompra"];
+type PeticionCompra = Esquemas["PeticionCrearCompra"];
 
-/** Valid proveedores for tests; pass `overrides` for the fields a test is about. */
-export const ProveedorMother = {
-  request(overrides: Partial<ProveedorRequest> = {}): ProveedorRequest {
+/** Datos válidos de compras; en `cambios`, los campos de los que trata el test. */
+export const MadreCompra = {
+  peticion(cambios: Partial<PeticionCompra> = {}): PeticionCompra {
     return {
-      name: "example",
-      email: "example",
-      ...overrides,
+      proveedorId: crypto.randomUUID(),
+      approverId: crypto.randomUUID(),
+      total: 42,
+      ...cambios,
     };
   },
 
-  random(overrides: Partial<Proveedor> = {}): Proveedor {
-    return { id: crypto.randomUUID(), ...ProveedorMother.request(), ...overrides };
+  aleatorio(cambios: Partial<Compra> = {}): Compra {
+    return { id: crypto.randomUUID(), ...MadreCompra.peticion(), ...cambios };
   },
 };
 
-/** The fake API's `/proveedores`, holding `seed`. */
-export function proveedorCollection(seed: Proveedor[] = []) {
-  return collection("/proveedores", "proveedor", seed);
+/** El `/compras` de la API falsa, con `semilla`. */
+export function coleccionCompra(semilla: Compra[] = []) {
+  return coleccion("/compras", "compra", semilla);
+}
+
+=== web/src/pruebas/entrega.ts ===
+import type { Esquemas } from "../api/cliente";
+import { coleccion } from "./api-falsa";
+
+type Entrega = Esquemas["DtoEntrega"];
+type PeticionEntrega = Esquemas["PeticionCrearEntrega"];
+
+/** Datos válidos de entregas; en `cambios`, los campos de los que trata el test. */
+export const MadreEntrega = {
+  peticion(cambios: Partial<PeticionEntrega> = {}): PeticionEntrega {
+    return {
+      compraId: crypto.randomUUID(),
+      destinatarioId: crypto.randomUUID(),
+      carrier: "example",
+      ...cambios,
+    };
+  },
+
+  aleatorio(cambios: Partial<Entrega> = {}): Entrega {
+    return { id: crypto.randomUUID(), ...MadreEntrega.peticion(), ...cambios };
+  },
+};
+
+/** El `/entregas` de la API falsa, con `semilla`. */
+export function coleccionEntrega(semilla: Entrega[] = []) {
+  return coleccion("/entregas", "entrega", semilla);
+}
+
+=== web/src/pruebas/proveedor.ts ===
+import type { Esquemas } from "../api/cliente";
+import { coleccion } from "./api-falsa";
+
+type Proveedor = Esquemas["DtoProveedor"];
+type PeticionProveedor = Esquemas["PeticionCrearProveedor"];
+
+/** Datos válidos de proveedores; en `cambios`, los campos de los que trata el test. */
+export const MadreProveedor = {
+  peticion(cambios: Partial<PeticionProveedor> = {}): PeticionProveedor {
+    return {
+      name: "example",
+      email: "example",
+      ...cambios,
+    };
+  },
+
+  aleatorio(cambios: Partial<Proveedor> = {}): Proveedor {
+    return { id: crypto.randomUUID(), ...MadreProveedor.peticion(), ...cambios };
+  },
+};
+
+/** El `/proveedores` de la API falsa, con `semilla`. */
+export function coleccionProveedor(semilla: Proveedor[] = []) {
+  return coleccion("/proveedores", "proveedor", semilla);
 }

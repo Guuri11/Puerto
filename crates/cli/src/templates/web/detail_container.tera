@@ -1,89 +1,93 @@
 import { useState } from "react";
 import { Link, useLocation } from "wouter";
-import { unwrap } from "../../../api/http";
+import { desenvolver } from "../../../api/http";
 {% if access.update_roles or access.delete_roles -%}
 import { useAuth } from "../../../auth/auth";
 {% endif -%}
-import { useDependencies } from "../../../dependencies";
-import { ConfirmDialog } from "../../../shared/ui/confirm-dialog";
-import { ErrorAlert } from "../../../shared/ui/error-alert";
-import { useAsync } from "../../../shared/use-async";
-import { {{ pascal }}DetailView } from "../views/{{ kebab }}-detail-view";
+import { AlertaError } from "../../../compartido/ui/alerta-error";
+import { DialogoConfirmar } from "../../../compartido/ui/dialogo-confirmar";
+import { useCarga } from "../../../compartido/use-carga";
+import { useDependencias } from "../../../dependencias";
+import { VistaDetalle{{ pascal }} } from "../vistas/detalle-{{ kebab }}";
 
-export function {{ pascal }}DetailContainer({ id }: { id: string }) {
-  const { api } = useDependencies();
+export function ContenedorDetalle{{ pascal }}({ id }: { id: string }) {
+  const { api } = useDependencias();
 {%- if access.update_roles or access.delete_roles %}
-  const { can } = useAuth();
+  const { puede } = useAuth();
 {%- endif %}
 {%- if detail_load_inline %}
-  const {{ ident }} = useAsync(() => unwrap(api.GET("/{{ plural }}/{id}", { params: { path: { id } } })), [api, id]);
+  const {{ ident }} = useCarga(() => desenvolver(api.GET("/{{ plural }}/{id}", { params: { path: { id } } })), [api, id]);
 {%- else %}
-  const {{ ident }} = useAsync(
-    () => unwrap(api.GET("/{{ plural }}/{id}", { params: { path: { id } } })),
+  const {{ ident }} = useCarga(
+    () => desenvolver(api.GET("/{{ plural }}/{id}", { params: { path: { id } } })),
     [api, id],
   );
 {%- endif %}
-  const [, navigate] = useLocation();
-  const [confirming, setConfirming] = useState(false);
-  const [failure, setFailure] = useState<unknown>(null);
+  const [, navegar] = useLocation();
+  const [confirmando, setConfirmando] = useState(false);
+  const [fallo, setFallo] = useState<unknown>(null);
 
-  const remove = async () => {
-    setConfirming(false);
+  const borrar = async () => {
+    setConfirmando(false);
     try {
-      await unwrap(api.DELETE("/{{ plural }}/{id}", { params: { path: { id } } }));
-      navigate("/{{ plural }}");
+      await desenvolver(api.DELETE("/{{ plural }}/{id}", { params: { path: { id } } }));
+      navegar("/{{ plural }}");
     } catch (error) {
-      setFailure(error);
+      setFallo(error);
     }
   };
 {%- for t in targets %}
-  const {{ t.camel }}Label = async (target: string) => {
-    const params = { path: { id: target } };
-    const found = await unwrap(api.GET("/{{ t.plural }}/{id}", { params }));
-    return found.{{ t.label }};
+  const etiqueta{{ t.pascal }} = async (objetivo: string) => {
+    const params = { path: { id: objetivo } };
+    const encontrado = await desenvolver(api.GET("/{{ t.plural }}/{id}", { params }));
+    return encontrado.{{ t.label }};
   };
 {%- endfor %}
 
   return (
     <section className="space-y-4">
       <h1 className="text-2xl font-bold">{{ label }}</h1>
-      {failure !== null && <ErrorAlert error={failure} />}
-      {{ "{" }}{{ ident }}.status === "loading" && <span className="loading loading-spinner" />}
-      {{ "{" }}{{ ident }}.status === "error" && <ErrorAlert error={{ "{" }}{{ ident }}.error} />}
-      {{ "{" }}{{ ident }}.status === "ok" && (
+      {fallo !== null && <AlertaError error={fallo} />}
+      {{ "{" }}{{ ident }}.estado === "cargando" && <span className="loading loading-spinner" />}
+      {{ "{" }}{{ ident }}.estado === "error" && <AlertaError error={{ "{" }}{{ ident }}.error} />}
+      {{ "{" }}{{ ident }}.estado === "listo" && (
         <div className="card bg-base-100">
           <div className="card-body">
 {%- if detail_view_inline %}
-            <{{ pascal }}DetailView {{ ident }}={{ "{" }}{{ ident }}.data}{% for t in targets %} {{ t.camel }}Label={{ "{" }}{{ t.camel }}Label}{% endfor %} />
+            <VistaDetalle{{ pascal }} {{ ident }}={{ "{" }}{{ ident }}.datos}{% for t in targets %} etiqueta{{ t.pascal }}={etiqueta{{ t.pascal }}}{% endfor %} />
 {%- else %}
-            <{{ pascal }}DetailView
-              {{ ident }}={{ "{" }}{{ ident }}.data}
+            <VistaDetalle{{ pascal }}
+              {{ ident }}={{ "{" }}{{ ident }}.datos}
 {%- for t in targets %}
-              {{ t.camel }}Label={{ "{" }}{{ t.camel }}Label}
+              etiqueta{{ t.pascal }}={etiqueta{{ t.pascal }}}
 {%- endfor %}
             />
 {%- endif %}
             <div className="card-actions justify-end">
 {%- if access.update_roles %}
-              {{ "{" }}{% for r in access.update_roles %}can("{{ r }}") && {% endfor %}(
-                <Link href={`/{{ plural }}/${id}/edit`} className="btn">
-                  Edit
+              {{ "{" }}{% for r in access.update_roles %}puede("{{ r }}") && {% endfor %}(
+                <Link href={`/{{ plural }}/${id}/editar`} className="btn">
+                  Editar
                 </Link>
               )}
 {%- else %}
-              <Link href={`/{{ plural }}/${id}/edit`} className="btn">
-                Edit
+              <Link href={`/{{ plural }}/${id}/editar`} className="btn">
+                Editar
               </Link>
 {%- endif %}
 {%- if access.delete_roles %}
-              {{ "{" }}{% for r in access.delete_roles %}can("{{ r }}") && {% endfor %}(
-                <button type="button" className="btn btn-error" onClick={() => setConfirming(true)}>
-                  Delete
+              {{ "{" }}{% for r in access.delete_roles %}puede("{{ r }}") && {% endfor %}(
+                <button
+                  type="button"
+                  className="btn btn-error"
+                  onClick={() => setConfirmando(true)}
+                >
+                  Borrar
                 </button>
               )}
 {%- else %}
-              <button type="button" className="btn btn-error" onClick={() => setConfirming(true)}>
-                Delete
+              <button type="button" className="btn btn-error" onClick={() => setConfirmando(true)}>
+                Borrar
               </button>
 {%- endif %}
             </div>
@@ -91,13 +95,13 @@ export function {{ pascal }}DetailContainer({ id }: { id: string }) {
         </div>
       )}
       <Link href="/{{ plural }}" className="link">
-        Back to {{ words_plural }}
+        Volver a {{ words_plural }}
       </Link>
-      <ConfirmDialog
-        open={confirming}
-        message="Delete this {{ words }}?"
-        onConfirm={remove}
-        onCancel={() => setConfirming(false)}
+      <DialogoConfirmar
+        abierto={confirmando}
+        mensaje="¿Borrar {{ words }}?"
+        alConfirmar={borrar}
+        alCancelar={() => setConfirmando(false)}
       />
     </section>
   );

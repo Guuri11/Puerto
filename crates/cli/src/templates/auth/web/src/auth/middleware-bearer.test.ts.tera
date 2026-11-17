@@ -1,0 +1,60 @@
+import { describe, expect, test } from "bun:test";
+import createClient from "openapi-fetch";
+import { MadreUsuarioActual, pasarelaAuthFalsa } from "../pruebas/auth";
+import { middlewareBearer } from "./middleware-bearer";
+
+/** Basta con una ruta: el middleware no mira la ruta. */
+interface paths {
+  "/me": { get: { responses: { 200: { content: { "application/json": unknown } } } } };
+}
+
+/** Un cliente que responde `estado` a todas sus peticiones, firmado por `auth`. */
+function respondiendo(estado: number, auth: ReturnType<typeof pasarelaAuthFalsa>) {
+  const peticiones: Request[] = [];
+  const api = createClient<paths>({
+    baseUrl: "http://localhost/api",
+    fetch: async (peticion) => {
+      peticiones.push(peticion);
+      return Response.json({}, { status: estado });
+    },
+  });
+  api.use(middlewareBearer(auth));
+  return { api, peticiones };
+}
+
+describe("middlewareBearer", () => {
+  test("debería mandar el token de quien tiene la sesión iniciada", async () => {
+    // Preparar
+    const usuario = MadreUsuarioActual.aleatorio();
+    const { api, peticiones } = respondiendo(200, pasarelaAuthFalsa({ usuario }));
+
+    // Actuar
+    await api.GET("/me");
+
+    // Comprobar
+    expect(peticiones[0]?.headers.get("Authorization")).toBe(`Bearer token-de-${usuario.id}`);
+  });
+
+  test("no debería mandar ningún token cuando no hay sesión", async () => {
+    // Preparar
+    const { api, peticiones } = respondiendo(200, pasarelaAuthFalsa());
+
+    // Actuar
+    await api.GET("/me");
+
+    // Comprobar
+    expect(peticiones[0]?.headers.has("Authorization")).toBe(false);
+  });
+
+  test("debería volver a iniciar sesión cuando la API responde 401", async () => {
+    // Preparar
+    const auth = pasarelaAuthFalsa({ usuario: MadreUsuarioActual.aleatorio() });
+    const { api } = respondiendo(401, auth);
+
+    // Actuar
+    await api.GET("/me");
+
+    // Comprobar
+    expect(auth.logins).toHaveLength(1);
+  });
+});

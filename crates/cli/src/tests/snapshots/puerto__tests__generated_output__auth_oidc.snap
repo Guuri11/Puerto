@@ -158,9 +158,9 @@ apuntándole. La lista filtra por cada referencia: `GET /pedidos?clienteId=…` 
 | **Parcheados**: se añade una línea y se conserva el resto | el `Cargo.toml` raíz (miembros, `[workspace.dependencies]`), `presentacion/api/Cargo.toml` y `presentacion/worker/Cargo.toml` (el crate de un contexto), el `lib.rs` del crate de aplicación, `rutas.rs` (los campos de `Api<Entidad>`), `presentacion/worker/src/consumidores.rs`, `puerto.toml` | editándolos libremente; conserva las líneas que añadió Puerto |
 | **Se escriben una vez**: tuyos desde el principio | `presentacion/api/src/app.rs` (tus middleware y rutas), la impl de un `generar caso-de-uso`, los consumidores, los correos y sus plantillas, las migraciones, los ficheros de auth | editándolos |
 
-Con `web/`: `web/src/generated/*`, `web/src/api/schema.d.ts` y `docs/api/openapi.json` también se
+Con `web/`: `web/src/generado/*`, `web/src/api/esquema.d.ts` y `docs/api/openapi.json` también se
 reescriben (`generar bootstrap`, `make web/sync`); las pantallas de una entidad son ficheros suyos
-como los demás; `web/src/routes.tsx` (tus propias pantallas) es tuyo. El detalle, en
+como los demás; `web/src/rutas.tsx` (tus propias pantallas) es tuyo. El detalle, en
 `web/AGENTS.md`.
 
 ### Cambiar los campos de una entidad
@@ -249,17 +249,17 @@ producción.
 
 ### Auth en `web/`
 
-- `useAuth()` (`auth/auth.tsx`) da `{ user, can(role), login, logout }`; `user` es `GET /me`,
-  nunca el token. Las pantallas generadas esconden lo que `can` niega, pero decide la API: su
-  `403` llega a la alerta como `auth.prohibido`.
-- `generated/routes.tsx` envuelve cada pantalla no pública en `<RequireAuth>`, que inicia sesión y
-  vuelve. Envuelve igual tus propias rutas en `routes.tsx`.
-- El token se queda en memoria y `oidc-client-ts` se queda en `auth/oidc-auth-gateway.ts`
+- `useAuth()` (`auth/auth.tsx`) da `{ usuario, puede(rol), login, logout }`; `usuario` es
+  `GET /me`, nunca el token. Las pantallas generadas esconden lo que `puede` niega, pero decide la
+  API: su `403` llega a la alerta como `auth.prohibido`.
+- `generado/rutas.tsx` envuelve cada pantalla no pública en `<RequiereAuth>`, que inicia sesión y
+  vuelve. Envuelve igual tus propias rutas en `rutas.tsx`.
+- El token se queda en memoria y `oidc-client-ts` se queda en `auth/pasarela-oidc.ts`
   (`make web/lint` lo comprueba): al recargar se vuelve a iniciar sesión con la sesión del
   proveedor. `web/.env` guarda `VITE_AUTH_*`.
-- Los tests de pantalla inician sesión con alguien que tiene todos los roles (`renderScreen`); pasa
-  `{ user }` para otro (`CurrentUserMother`), o `{ auth: fakeAuthGateway(…) }` para ver los inicios
-  de sesión que lanza.
+- Los tests de pantalla inician sesión con alguien que tiene todos los roles
+  (`renderizarPantalla`); pasa `{ usuario }` para otro (`MadreUsuarioActual`), o
+  `{ auth: pasarelaAuthFalsa(…) }` para ver los inicios de sesión que lanza.
 
 ## Convenciones
 
@@ -490,7 +490,7 @@ web/lint: web/require-install ## Comprueba tipos, lint y la regla de dependencia
 web/sync: web/require-install ## Tras un scaffold o un cambio de DTO: exporta la spec OpenAPI y regenera los tipos del frontend
 	@echo "${CYAN}Exportando docs/api/openapi.json...${NC}"
 	UPDATE_OPENAPI=1 $(CARGO) test -p api openapi
-	@echo "${CYAN}Generando web/src/api/schema.d.ts...${NC}"
+	@echo "${CYAN}Generando web/src/api/esquema.d.ts...${NC}"
 	cd web && $(BUN) run openapi:types
 	@echo "${CYAN}Formateando web/ (Biome, sin arreglos de lint)...${NC}"
 	cd web && $(BUN) run format
@@ -6517,49 +6517,49 @@ nombre = "total"
 tipo = "i64"
 
 === web/.dependency-cruiser.cjs ===
-// The frontend is the presentation layer (ADR-0025 of Puerto): containers call the API, views
-// take props. `bun run lint:arch` fails on any import that breaks it.
+// El frontend es la capa de presentación (ADR-0025 de Puerto): los contenedores llaman a la API y
+// las vistas reciben props. `bun run lint:arch` falla con cualquier import que lo rompa.
 module.exports = {
   forbidden: [
     {
-      name: "only-the-auth-adapter-imports-oidc-client-ts",
+      name: "solo-la-pasarela-importa-oidc-client-ts",
       comment:
-        "The provider's client stays behind AuthGateway: screens see a CurrentUser, never a token.",
+        "El cliente del proveedor se queda detrás de PasarelaAuth: las pantallas ven un UsuarioActual, nunca un token.",
       severity: "error",
-      from: { pathNot: "^src/auth/oidc-auth-gateway" },
+      from: { pathNot: "^src/auth/pasarela-oidc" },
       to: { path: "oidc-client-ts" },
     },
     {
-      name: "views-take-props",
+      name: "vistas-solo-props",
       comment:
-        "A view renders what its container hands it: no API client, no dependencies, no data hooks (types are fine).",
+        "Una vista pinta lo que le da su contenedor: ni el cliente de la API, ni las dependencias, ni hooks de datos (los tipos sí).",
       severity: "error",
-      from: { path: "^src/features/[^/]+/views/" },
+      from: { path: "^src/contextos/[^/]+/vistas/" },
       to: {
-        path: "^src/(api/|dependencies\\.tsx$|generated/|shared/use-async\\.ts$)",
+        path: "^src/(api/|dependencias\\.tsx$|generado/|compartido/use-carga\\.ts$)",
         dependencyTypesNot: ["type-only"],
       },
     },
     {
-      name: "only-the-composition-root-builds-the-client",
+      name: "solo-generado-construye-el-cliente",
       comment:
-        "Screens reach the API through useDependencies(), so a test hands them a fake: only generated/dependencies.ts and test-support/ build it.",
+        "Las pantallas llegan a la API con useDependencias(), así un test les da un falso: solo generado/dependencias.ts y pruebas/ la construyen.",
       severity: "error",
       from: {
         path: "^src/",
-        pathNot: ["^src/generated/dependencies\\.ts$", "^src/test-support/"],
+        pathNot: ["^src/generado/dependencias\\.ts$", "^src/pruebas/"],
       },
-      to: { path: "^src/api/client\\.ts$", dependencyTypesNot: ["type-only"] },
+      to: { path: "^src/api/cliente\\.ts$", dependencyTypesNot: ["type-only"] },
     },
     {
-      name: "only-tests-import-test-support",
-      comment: "Fakes and mothers are for tests; the app never ships them.",
+      name: "solo-los-tests-importan-pruebas",
+      comment: "Los falsos y las madres son de los tests; la app nunca los lleva.",
       severity: "error",
-      from: { path: "^src/", pathNot: ["^src/test-support/", "\\.test\\.tsx?$"] },
-      to: { path: "^src/test-support/" },
+      from: { path: "^src/", pathNot: ["^src/pruebas/", "\\.test\\.tsx?$"] },
+      to: { path: "^src/pruebas/" },
     },
     {
-      name: "no-circular",
+      name: "sin-ciclos",
       severity: "error",
       from: {},
       to: { circular: true },
@@ -6606,7 +6606,7 @@ VITE_AUTH_AUDIENCE=
     "format": "biome check --write --linter-enabled=false .",
     "lint:arch": "bun --bun depcruise src",
     "test": "bun test",
-    "openapi:types": "bun --bun openapi-typescript ../docs/api/openapi.json -o src/api/schema.d.ts"
+    "openapi:types": "bun --bun openapi-typescript ../docs/api/openapi.json -o src/api/esquema.d.ts"
   },
   "dependencies": {
     "oidc-client-ts": "3.5.0",
@@ -6634,95 +6634,95 @@ VITE_AUTH_AUDIENCE=
   }
 }
 
-=== web/src/api/client.ts ===
+=== web/src/api/cliente.ts ===
 import createClient, { type Client, type ClientOptions } from "openapi-fetch";
-import type { components, paths } from "./schema";
+import type { components, paths } from "./esquema";
 
-/** The typed API client. `paths` is generated from the backend's spec (`make web/sync`). */
-export type ApiClient = Client<paths>;
+/** El cliente tipado de la API. `paths` sale de la especificación del backend (`make web/sync`). */
+export type ClienteApi = Client<paths>;
 
-/** The API's DTOs by name: `Schemas["DtoProducto"]`, `Schemas["PeticionCrearProducto"]`. */
-export type Schemas = components["schemas"];
+/** Los DTO de la API por nombre: `Esquemas["DtoProducto"]`, `Esquemas["PeticionCrearProducto"]`. */
+export type Esquemas = components["schemas"];
 
-/** `/api` is the backend: proxied to `:8080` by Vite in development. */
-export function createApiClient(options: ClientOptions = {}): ApiClient {
-  return createClient<paths>({ baseUrl: "/api", ...options });
+/** `/api` es el backend: en desarrollo, Vite lo pasa a `:8080`. */
+export function crearClienteApi(opciones: ClientOptions = {}): ClienteApi {
+  return createClient<paths>({ baseUrl: "/api", ...opciones });
 }
 
 === web/src/auth/auth.test.tsx ===
 import { describe, expect, test } from "bun:test";
 import { screen, waitFor } from "@testing-library/react";
-import { CurrentUserMother, fakeAuthGateway } from "../test-support/auth";
-import { renderScreen } from "../test-support/render";
-import { RequireAuth, useAuth } from "./auth";
+import { MadreUsuarioActual, pasarelaAuthFalsa } from "../pruebas/auth";
+import { renderizarPantalla } from "../pruebas/renderizar";
+import { RequiereAuth, useAuth } from "./auth";
 
-function Secret() {
-  const { can } = useAuth();
-  return <p>{can("admin") ? "admin area" : "member area"}</p>;
+function Secreto() {
+  const { puede } = useAuth();
+  return <p>{puede("admin") ? "zona de admin" : "zona de socios"}</p>;
 }
 
-describe("RequireAuth", () => {
-  test("should start a sign-in that comes back here when nobody is signed in", async () => {
-    // Arrange
-    const auth = fakeAuthGateway({ user: null });
+describe("RequiereAuth", () => {
+  test("debería iniciar una sesión que vuelve aquí cuando no hay sesión", async () => {
+    // Preparar
+    const auth = pasarelaAuthFalsa({ usuario: null });
 
-    // Act
-    renderScreen(
-      <RequireAuth>
-        <Secret />
-      </RequireAuth>,
+    // Actuar
+    renderizarPantalla(
+      <RequiereAuth>
+        <Secreto />
+      </RequiereAuth>,
       { auth },
-      "/orders?page=2",
+      "/pedidos?pagina=2",
     );
 
-    // Assert
-    await waitFor(() => expect(auth.logins).toEqual(["/orders?page=2"]));
-    expect(screen.queryByText("member area")).toBeNull();
+    // Comprobar
+    await waitFor(() => expect(auth.logins).toEqual(["/pedidos?pagina=2"]));
+    expect(screen.queryByText("zona de socios")).toBeNull();
   });
 
-  test("should show the page to a signed-in user without signing in again", async () => {
-    // Arrange
-    const auth = fakeAuthGateway({ user: CurrentUserMother.random() });
+  test("debería mostrar la página a quien tiene la sesión sin volver a iniciarla", async () => {
+    // Preparar
+    const auth = pasarelaAuthFalsa({ usuario: MadreUsuarioActual.aleatorio() });
 
-    // Act
-    renderScreen(
-      <RequireAuth>
-        <Secret />
-      </RequireAuth>,
+    // Actuar
+    renderizarPantalla(
+      <RequiereAuth>
+        <Secreto />
+      </RequiereAuth>,
       { auth },
     );
 
-    // Assert
-    expect(await screen.findByText("member area")).toBeTruthy();
+    // Comprobar
+    expect(await screen.findByText("zona de socios")).toBeTruthy();
     expect(auth.logins).toEqual([]);
   });
 });
 
 describe("useAuth", () => {
-  test("should allow a role only when the user holds it", async () => {
-    // Arrange
-    const user = CurrentUserMother.random({ roles: ["admin"] });
+  test("debería permitir un rol solo cuando quien tiene la sesión lo tiene", async () => {
+    // Preparar
+    const usuario = MadreUsuarioActual.aleatorio({ roles: ["admin"] });
 
-    // Act
-    renderScreen(<Secret />, {}, "/", { user });
+    // Actuar
+    renderizarPantalla(<Secreto />, {}, "/", { usuario });
 
-    // Assert
-    expect(await screen.findByText("admin area")).toBeTruthy();
+    // Comprobar
+    expect(await screen.findByText("zona de admin")).toBeTruthy();
   });
 });
 
-describe("AuthProvider", () => {
-  test("should show the error code when the API does not accept the session", async () => {
-    // Arrange
+describe("ProveedorAuth", () => {
+  test("debería mostrar el código del error cuando la API no acepta la sesión", async () => {
+    // Preparar
     const auth = {
-      ...fakeAuthGateway(),
-      currentUser: () => Promise.reject(new Error("auth.no_autenticado")),
+      ...pasarelaAuthFalsa(),
+      usuarioActual: () => Promise.reject(new Error("auth.no_autenticado")),
     };
 
-    // Act
-    renderScreen(<Secret />, { auth });
+    // Actuar
+    renderizarPantalla(<Secreto />, { auth });
 
-    // Assert
+    // Comprobar
     expect((await screen.findByRole("alert")).textContent).toBe("auth.no_autenticado");
   });
 });
@@ -6739,174 +6739,174 @@ import {
   useState,
 } from "react";
 import { useLocation, useSearch } from "wouter";
-import { useDependencies } from "../dependencies";
-import { ErrorAlert } from "../shared/ui/error-alert";
-import type { CurrentUser } from "./session";
+import { AlertaError } from "../compartido/ui/alerta-error";
+import { useDependencias } from "../dependencias";
+import type { UsuarioActual } from "./sesion";
 
 export interface Auth {
-  /** The signed-in user, `null` when nobody is. */
-  user: CurrentUser | null;
-  /** Whether the user holds `role`. Screens hide what the API would refuse; the API still decides. */
-  can(role: string): boolean;
-  /** Signs in, then comes back to the current page. */
+  /** Quien tiene la sesión iniciada; `null` si no la tiene nadie. */
+  usuario: UsuarioActual | null;
+  /** Si tiene `rol`. Las pantallas esconden lo que la API rechazaría; decide la API. */
+  puede(rol: string): boolean;
+  /** Inicia sesión y después vuelve a la página actual. */
   login(): Promise<void>;
   logout(): Promise<void>;
-  /** Asks the gateway again who is signed in: after a sign-in that did not leave the app. */
-  refresh(): Promise<void>;
-  /** Finishes a sign-in (`/auth/callback`): answers the page to go back to. */
-  completeLogin(): Promise<string>;
+  /** Vuelve a preguntar a la pasarela quién tiene la sesión: tras un inicio que no salió de la app. */
+  refrescar(): Promise<void>;
+  /** Termina un inicio de sesión (`/auth/callback`): responde la página a la que volver. */
+  completarLogin(): Promise<string>;
 }
 
-type State =
-  | { status: "loading" }
-  | { status: "ready"; user: CurrentUser | null }
-  | { status: "error"; error: unknown };
+type Estado =
+  | { estado: "cargando" }
+  | { estado: "listo"; usuario: UsuarioActual | null }
+  | { estado: "error"; error: unknown };
 
-const AuthContext = createContext<Auth | null>(null);
+const ContextoAuth = createContext<Auth | null>(null);
 
-/** Asks the gateway who is signed in once, before rendering the app: no screen flickers. */
-export function AuthProvider({ children }: { children: ReactNode }) {
-  const { auth } = useDependencies();
-  const [location] = useLocation();
-  const search = useSearch();
-  const [state, setState] = useState<State>({ status: "loading" });
+/** Pregunta a la pasarela quién tiene la sesión una vez, antes de pintar la app: nada parpadea. */
+export function ProveedorAuth({ children }: { children: ReactNode }) {
+  const { auth } = useDependencias();
+  const [ubicacion] = useLocation();
+  const busqueda = useSearch();
+  const [estado, setEstado] = useState<Estado>({ estado: "cargando" });
 
   useEffect(() => {
-    auth.currentUser().then(
-      (user) => setState({ status: "ready", user }),
-      (error: unknown) => setState({ status: "error", error }),
+    auth.usuarioActual().then(
+      (usuario) => setEstado({ estado: "listo", usuario }),
+      (error: unknown) => setEstado({ estado: "error", error }),
     );
   }, [auth]);
 
-  const here = search === "" ? location : `${location}?${search}`;
-  const login = useCallback(() => auth.login(here), [auth, here]);
-  const refresh = useCallback(async () => {
-    setState({ status: "ready", user: await auth.currentUser() });
+  const aqui = busqueda === "" ? ubicacion : `${ubicacion}?${busqueda}`;
+  const login = useCallback(() => auth.login(aqui), [auth, aqui]);
+  const refrescar = useCallback(async () => {
+    setEstado({ estado: "listo", usuario: await auth.usuarioActual() });
   }, [auth]);
-  const completeLogin = useCallback(async () => {
-    const back = await auth.completeLogin();
-    await refresh();
-    return back;
-  }, [auth, refresh]);
+  const completarLogin = useCallback(async () => {
+    const vuelta = await auth.completarLogin();
+    await refrescar();
+    return vuelta;
+  }, [auth, refrescar]);
   const logout = useCallback(async () => {
     await auth.logout();
-    setState({ status: "ready", user: null });
+    setEstado({ estado: "listo", usuario: null });
   }, [auth]);
-  const user = state.status === "ready" ? state.user : null;
-  const value = useMemo<Auth>(
+  const usuario = estado.estado === "listo" ? estado.usuario : null;
+  const valor = useMemo<Auth>(
     () => ({
-      user,
-      can: (role) => user?.roles.includes(role) ?? false,
+      usuario,
+      puede: (rol) => usuario?.roles.includes(rol) ?? false,
       login,
       logout,
-      refresh,
-      completeLogin,
+      refrescar,
+      completarLogin,
     }),
-    [user, login, logout, refresh, completeLogin],
+    [usuario, login, logout, refrescar, completarLogin],
   );
 
-  if (state.status === "loading") return <span className="loading loading-spinner" />;
-  if (state.status === "error") return <ErrorAlert error={state.error} />;
-  return <AuthContext value={value}>{children}</AuthContext>;
+  if (estado.estado === "cargando") return <span className="loading loading-spinner" />;
+  if (estado.estado === "error") return <AlertaError error={estado.error} />;
+  return <ContextoAuth value={valor}>{children}</ContextoAuth>;
 }
 
 export function useAuth(): Auth {
-  const auth = useContext(AuthContext);
+  const auth = useContext(ContextoAuth);
   if (auth === null) {
-    throw new Error("useAuth() called outside <AuthProvider>");
+    throw new Error("useAuth() llamado fuera de <ProveedorAuth>");
   }
   return auth;
 }
 
-/** Renders `children` for a signed-in user; anyone else is sent to sign in, and back here. */
-export function RequireAuth({ children }: { children: ReactNode }) {
-  const { user, login } = useAuth();
-  const started = useRef(false);
+/** Pinta `children` a quien tiene la sesión iniciada; a cualquier otro lo manda a iniciarla, y vuelve. */
+export function RequiereAuth({ children }: { children: ReactNode }) {
+  const { usuario, login } = useAuth();
+  const empezado = useRef(false);
 
   useEffect(() => {
-    // Once: StrictMode runs effects twice.
-    if (user !== null || started.current) return;
-    started.current = true;
+    // Una vez: StrictMode ejecuta los efectos dos veces.
+    if (usuario !== null || empezado.current) return;
+    empezado.current = true;
     void login();
-  }, [user, login]);
+  }, [usuario, login]);
 
-  return user === null ? <span className="loading loading-spinner" /> : children;
+  return usuario === null ? <span className="loading loading-spinner" /> : children;
 }
 
-=== web/src/auth/bearer-middleware.test.ts ===
+=== web/src/auth/middleware-bearer.test.ts ===
 import { describe, expect, test } from "bun:test";
 import createClient from "openapi-fetch";
-import { CurrentUserMother, fakeAuthGateway } from "../test-support/auth";
-import { bearerMiddleware } from "./bearer-middleware";
+import { MadreUsuarioActual, pasarelaAuthFalsa } from "../pruebas/auth";
+import { middlewareBearer } from "./middleware-bearer";
 
-/** One endpoint is enough: the middleware does not look at the path. */
+/** Basta con una ruta: el middleware no mira la ruta. */
 interface paths {
   "/me": { get: { responses: { 200: { content: { "application/json": unknown } } } } };
 }
 
-/** A client whose every request is answered with `status`, signed by `auth`. */
-function answering(status: number, auth: ReturnType<typeof fakeAuthGateway>) {
-  const requests: Request[] = [];
+/** Un cliente que responde `estado` a todas sus peticiones, firmado por `auth`. */
+function respondiendo(estado: number, auth: ReturnType<typeof pasarelaAuthFalsa>) {
+  const peticiones: Request[] = [];
   const api = createClient<paths>({
     baseUrl: "http://localhost/api",
-    fetch: async (request) => {
-      requests.push(request);
-      return Response.json({}, { status });
+    fetch: async (peticion) => {
+      peticiones.push(peticion);
+      return Response.json({}, { status: estado });
     },
   });
-  api.use(bearerMiddleware(auth));
-  return { api, requests };
+  api.use(middlewareBearer(auth));
+  return { api, peticiones };
 }
 
-describe("bearerMiddleware", () => {
-  test("should send the user's token when someone is signed in", async () => {
-    // Arrange
-    const user = CurrentUserMother.random();
-    const { api, requests } = answering(200, fakeAuthGateway({ user }));
+describe("middlewareBearer", () => {
+  test("debería mandar el token de quien tiene la sesión iniciada", async () => {
+    // Preparar
+    const usuario = MadreUsuarioActual.aleatorio();
+    const { api, peticiones } = respondiendo(200, pasarelaAuthFalsa({ usuario }));
 
-    // Act
+    // Actuar
     await api.GET("/me");
 
-    // Assert
-    expect(requests[0]?.headers.get("Authorization")).toBe(`Bearer token-of-${user.id}`);
+    // Comprobar
+    expect(peticiones[0]?.headers.get("Authorization")).toBe(`Bearer token-de-${usuario.id}`);
   });
 
-  test("should send no token when nobody is signed in", async () => {
-    // Arrange
-    const { api, requests } = answering(200, fakeAuthGateway());
+  test("no debería mandar ningún token cuando no hay sesión", async () => {
+    // Preparar
+    const { api, peticiones } = respondiendo(200, pasarelaAuthFalsa());
 
-    // Act
+    // Actuar
     await api.GET("/me");
 
-    // Assert
-    expect(requests[0]?.headers.has("Authorization")).toBe(false);
+    // Comprobar
+    expect(peticiones[0]?.headers.has("Authorization")).toBe(false);
   });
 
-  test("should sign in again when the API answers 401", async () => {
-    // Arrange
-    const auth = fakeAuthGateway({ user: CurrentUserMother.random() });
-    const { api } = answering(401, auth);
+  test("debería volver a iniciar sesión cuando la API responde 401", async () => {
+    // Preparar
+    const auth = pasarelaAuthFalsa({ usuario: MadreUsuarioActual.aleatorio() });
+    const { api } = respondiendo(401, auth);
 
-    // Act
+    // Actuar
     await api.GET("/me");
 
-    // Assert
+    // Comprobar
     expect(auth.logins).toHaveLength(1);
   });
 });
 
-=== web/src/auth/bearer-middleware.ts ===
+=== web/src/auth/middleware-bearer.ts ===
 import type { Middleware } from "openapi-fetch";
-import type { AuthGateway } from "./session";
+import type { PasarelaAuth } from "./sesion";
 
 /**
- * Signs every API call with the user's token; a `401` means the session is gone, so it signs in
- * again and comes back to the page it was on.
+ * Firma cada llamada a la API con el token de quien tiene la sesión; un `401` quiere decir que la
+ * sesión ya no vale, así que vuelve a iniciarla y regresa a la página en la que estaba.
  */
-export function bearerMiddleware(auth: AuthGateway): Middleware {
+export function middlewareBearer(auth: PasarelaAuth): Middleware {
   return {
     async onRequest({ request }) {
-      const token = await auth.accessToken();
+      const token = await auth.tokenAcceso();
       if (token !== null) request.headers.set("Authorization", `Bearer ${token}`);
       return request;
     },
@@ -6919,659 +6919,774 @@ export function bearerMiddleware(auth: AuthGateway): Middleware {
   };
 }
 
-=== web/src/auth/oidc-auth-gateway.test.ts ===
+=== web/src/auth/pasarela-oidc.test.ts ===
 import { describe, expect, test } from "bun:test";
 import type { User } from "oidc-client-ts";
-import { type OidcClient, oidcAuthGatewayOver, oidcSettingsFromEnv } from "./oidc-auth-gateway";
-import { AuthError } from "./session";
+import { ajustesOidcDeEntorno, type ClienteOidc, pasarelaOidcSobre } from "./pasarela-oidc";
+import { ErrorAuth } from "./sesion";
 
-/** A client signed in with `user` (`null`: nobody); `redirects` records each redirect. */
-function client(user: Partial<User> | null) {
-  const redirects: unknown[] = [];
-  const fake: OidcClient = {
-    getUser: async () => user as User | null,
+/** Un cliente con `usuario` en sesión (`null`: nadie); `redirecciones` guarda cada redirección. */
+function cliente(usuario: Partial<User> | null) {
+  const redirecciones: unknown[] = [];
+  const falso: ClienteOidc = {
+    getUser: async () => usuario as User | null,
     signinRedirect: async (args) => {
-      redirects.push(args);
+      redirecciones.push(args);
     },
-    signinRedirectCallback: async () => ({ state: "/orders" }) as User,
+    signinRedirectCallback: async () => ({ state: "/pedidos" }) as User,
     signoutRedirect: async () => {},
   };
-  return { fake, redirects };
+  return { falso, redirecciones };
 }
 
-/** A `/me` answering `status` and `body`; `requests` records what it was asked. */
-function me(status: number, body: unknown) {
-  const requests: { url: string; init: RequestInit }[] = [];
-  const fetchMe = async (url: string, init: RequestInit) => {
-    requests.push({ url, init });
-    return Response.json(body, { status });
+/** Un `/me` que responde `estado` y `cuerpo`; `peticiones` guarda lo que se le pidió. */
+function me(estado: number, cuerpo: unknown) {
+  const peticiones: { url: string; init: RequestInit }[] = [];
+  const pedirMe = async (url: string, init: RequestInit) => {
+    peticiones.push({ url, init });
+    return Response.json(cuerpo, { status: estado });
   };
-  return { fetchMe, requests };
+  return { pedirMe, peticiones };
 }
 
-describe("oidcAuthGateway", () => {
-  test("should ask the API who the token belongs to when someone is signed in", async () => {
-    // Arrange
-    const { fake } = client({ access_token: "abc", expired: false });
+describe("pasarelaOidc", () => {
+  test("debería preguntar a la API de quién es el token cuando hay sesión", async () => {
+    // Preparar
+    const { falso } = cliente({ access_token: "abc", expired: false });
     const id = crypto.randomUUID();
-    const { fetchMe, requests } = me(200, { id, email: "ada@example.com", roles: ["admin"] });
+    const { pedirMe, peticiones } = me(200, { id, email: "ana@example.com", roles: ["admin"] });
 
-    // Act
-    const user = await oidcAuthGatewayOver(fake, fetchMe).currentUser();
+    // Actuar
+    const usuario = await pasarelaOidcSobre(falso, pedirMe).usuarioActual();
 
-    // Assert
-    expect(requests[0]?.url).toBe("/api/me");
-    expect(requests[0]?.init.headers).toEqual({ Authorization: "Bearer abc" });
-    expect(user).toEqual({ id, email: "ada@example.com", name: null, roles: ["admin"] });
+    // Comprobar
+    expect(peticiones[0]?.url).toBe("/api/me");
+    expect(peticiones[0]?.init.headers).toEqual({ Authorization: "Bearer abc" });
+    expect(usuario).toEqual({ id, email: "ana@example.com", nombre: null, roles: ["admin"] });
   });
 
-  test("should have no user and no token when the session expired", async () => {
-    // Arrange
-    const { fake } = client({ access_token: "abc", expired: true });
-    const { fetchMe, requests } = me(200, {});
-    const gateway = oidcAuthGatewayOver(fake, fetchMe);
+  test("no debería haber usuario ni token cuando la sesión caducó", async () => {
+    // Preparar
+    const { falso } = cliente({ access_token: "abc", expired: true });
+    const { pedirMe, peticiones } = me(200, {});
+    const pasarela = pasarelaOidcSobre(falso, pedirMe);
 
-    // Act
-    const user = await gateway.currentUser();
+    // Actuar
+    const usuario = await pasarela.usuarioActual();
 
-    // Assert
-    expect(user).toBeNull();
-    expect(await gateway.accessToken()).toBeNull();
-    expect(requests).toHaveLength(0);
+    // Comprobar
+    expect(usuario).toBeNull();
+    expect(await pasarela.tokenAcceso()).toBeNull();
+    expect(peticiones).toHaveLength(0);
   });
 
-  test("should fail with the API's code when it refuses the token", async () => {
-    // Arrange
-    const { fake } = client({ access_token: "abc", expired: false });
-    const code = "auth.no_autenticado";
-    const { fetchMe } = me(401, { codigo: code, mensaje: code });
+  test("debería fallar con el código de la API cuando rechaza el token", async () => {
+    // Preparar
+    const { falso } = cliente({ access_token: "abc", expired: false });
+    const codigo = "auth.no_autenticado";
+    const { pedirMe } = me(401, { codigo, mensaje: codigo });
 
-    // Act
-    const result = oidcAuthGatewayOver(fake, fetchMe).currentUser();
+    // Actuar
+    const resultado = pasarelaOidcSobre(falso, pedirMe).usuarioActual();
 
-    // Assert
-    await expect(result).rejects.toBeInstanceOf(AuthError);
-    await expect(result).rejects.toMatchObject({ code });
+    // Comprobar
+    await expect(resultado).rejects.toBeInstanceOf(ErrorAuth);
+    await expect(resultado).rejects.toMatchObject({ codigo });
   });
 
-  test("should come back to the page the sign-in started on", async () => {
-    // Arrange
-    const { fake, redirects } = client(null);
-    const gateway = oidcAuthGatewayOver(fake, me(200, {}).fetchMe);
+  test("debería volver a la página en la que empezó el inicio de sesión", async () => {
+    // Preparar
+    const { falso, redirecciones } = cliente(null);
+    const pasarela = pasarelaOidcSobre(falso, me(200, {}).pedirMe);
 
-    // Act
-    await gateway.login("/orders");
-    const back = await gateway.completeLogin();
+    // Actuar
+    await pasarela.login("/pedidos");
+    const vuelta = await pasarela.completarLogin();
 
-    // Assert
-    expect(redirects).toEqual([{ state: "/orders" }]);
-    expect(back).toBe("/orders");
+    // Comprobar
+    expect(redirecciones).toEqual([{ state: "/pedidos" }]);
+    expect(vuelta).toBe("/pedidos");
   });
 });
 
-describe("oidcSettingsFromEnv", () => {
-  test("should name the missing variable when web/.env has no issuer", () => {
-    // Act
-    const read = () => oidcSettingsFromEnv({ VITE_AUTH_CLIENT_ID: "web" });
+describe("ajustesOidcDeEntorno", () => {
+  test("debería nombrar la variable que falta cuando web/.env no tiene emisor", () => {
+    // Actuar
+    const leer = () => ajustesOidcDeEntorno({ VITE_AUTH_CLIENT_ID: "web" });
 
-    // Assert
-    expect(read).toThrow("VITE_AUTH_ISSUER is not set");
+    // Comprobar
+    expect(leer).toThrow("VITE_AUTH_ISSUER no está definida");
   });
 
-  test("should leave the audience empty when it is not set", () => {
-    // Act
-    const settings = oidcSettingsFromEnv({
-      VITE_AUTH_ISSUER: "http://localhost:8180/realms/shop",
+  test("debería dejar vacía la audiencia cuando no está definida", () => {
+    // Actuar
+    const ajustes = ajustesOidcDeEntorno({
+      VITE_AUTH_ISSUER: "http://localhost:8180/realms/tienda",
       VITE_AUTH_CLIENT_ID: "web",
     });
 
-    // Assert
-    expect(settings.audience).toBe("");
+    // Comprobar
+    expect(ajustes.audiencia).toBe("");
   });
 });
 
-=== web/src/auth/oidc-auth-gateway.ts ===
+=== web/src/auth/pasarela-oidc.ts ===
 import { InMemoryWebStorage, UserManager, WebStorageStateStore } from "oidc-client-ts";
-import { AuthError, type AuthGateway, type CurrentUser } from "./session";
+import { ErrorAuth, type PasarelaAuth, type UsuarioActual } from "./sesion";
 
-/** Where the provider is and who this app is to it — `web/.env`. */
-export interface OidcSettings {
-  /** `VITE_AUTH_ISSUER`: Keycloak's realm URL, `https://<tenant>.auth0.com/`. */
-  issuer: string;
-  /** `VITE_AUTH_CLIENT_ID`: a public client, Authorization Code + PKCE. */
-  clientId: string;
-  /** `VITE_AUTH_AUDIENCE`: Auth0's API identifier. Empty for Keycloak, whose mapper adds it. */
-  audience: string;
+/** Dónde está el proveedor y quién es esta app para él: `web/.env`. */
+export interface AjustesOidc {
+  /** `VITE_AUTH_ISSUER`: la URL del realm de Keycloak, `https://<tenant>.auth0.com/`. */
+  emisor: string;
+  /** `VITE_AUTH_CLIENT_ID`: un cliente público, Authorization Code + PKCE. */
+  idCliente: string;
+  /** `VITE_AUTH_AUDIENCE`: el identificador de la API en Auth0. Vacío en Keycloak, que lo añade un mapper. */
+  audiencia: string;
 }
 
-/** The settings from `web/.env`; a missing one is a startup error, not a redirect to nowhere. */
-export function oidcSettingsFromEnv(env: Record<string, unknown> = import.meta.env): OidcSettings {
-  const read = (name: string, required: boolean) => {
-    const value = env[name];
-    if (typeof value === "string" && value !== "") return value;
-    if (required) throw new Error(`${name} is not set: copy web/.env.example to web/.env`);
+/** Los ajustes de `web/.env`; si falta uno, es un error al arrancar, no una redirección a ninguna parte. */
+export function ajustesOidcDeEntorno(
+  entorno: Record<string, unknown> = import.meta.env,
+): AjustesOidc {
+  const leer = (nombre: string, obligatorio: boolean) => {
+    const valor = entorno[nombre];
+    if (typeof valor === "string" && valor !== "") return valor;
+    if (obligatorio)
+      throw new Error(`${nombre} no está definida: copia web/.env.example a web/.env`);
     return "";
   };
   return {
-    issuer: read("VITE_AUTH_ISSUER", true),
-    clientId: read("VITE_AUTH_CLIENT_ID", true),
-    audience: read("VITE_AUTH_AUDIENCE", false),
+    emisor: leer("VITE_AUTH_ISSUER", true),
+    idCliente: leer("VITE_AUTH_CLIENT_ID", true),
+    audiencia: leer("VITE_AUTH_AUDIENCE", false),
   };
 }
 
-/** What the gateway needs of `oidc-client-ts`'s `UserManager`. */
-export type OidcClient = Pick<
+/** Lo que necesita la pasarela del `UserManager` de `oidc-client-ts`. */
+export type ClienteOidc = Pick<
   UserManager,
   "getUser" | "signinRedirect" | "signinRedirectCallback" | "signoutRedirect"
 >;
 
-/** `AuthGateway` over an OpenID Connect provider (Keycloak, Auth0): Authorization Code + PKCE. */
-export function oidcAuthGateway(settings: OidcSettings): AuthGateway {
-  const origin = window.location.origin;
-  const client = new UserManager({
-    authority: settings.issuer,
-    client_id: settings.clientId,
-    redirect_uri: `${origin}/auth/callback`,
-    post_logout_redirect_uri: origin,
+/** `PasarelaAuth` sobre un proveedor OpenID Connect (Keycloak, Auth0): Authorization Code + PKCE. */
+export function pasarelaOidc(ajustes: AjustesOidc): PasarelaAuth {
+  const origen = window.location.origin;
+  const cliente = new UserManager({
+    authority: ajustes.emisor,
+    client_id: ajustes.idCliente,
+    redirect_uri: `${origen}/auth/callback`,
+    post_logout_redirect_uri: origen,
     scope: "openid profile email",
-    // In memory, never in storage a script could read: a reload signs in again, through the
-    // provider's own session (ADR-0021 § 5).
+    // En memoria, nunca en un almacenamiento que pueda leer un script: al recargar se vuelve a
+    // iniciar sesión con la sesión del propio proveedor (ADR-0021 § 5).
     userStore: new WebStorageStateStore({ store: new InMemoryWebStorage() }),
-    extraQueryParams: settings.audience === "" ? {} : { audience: settings.audience },
+    extraQueryParams: ajustes.audiencia === "" ? {} : { audience: ajustes.audiencia },
   });
-  return oidcAuthGatewayOver(client, (url, init) => fetch(url, init));
+  return pasarelaOidcSobre(cliente, (url, init) => fetch(url, init));
 }
 
-interface MeBody {
+interface CuerpoMe {
   id: string;
   email?: string | null;
   nombre?: string | null;
   roles: string[];
 }
 
-/** How the gateway asks the API for `/me`. */
-export type FetchMe = (url: string, init: RequestInit) => Promise<Response>;
+/** Cómo pide la pasarela `/me` a la API. */
+export type PedirMe = (url: string, init: RequestInit) => Promise<Response>;
 
-/** `RespuestaError.codigo` of a failed `/me`, or `http.<status>` for a body that is not one. */
-async function errorCode(response: Response): Promise<string> {
-  const body: unknown = await response.json().catch(() => null);
-  if (typeof body === "object" && body !== null && "codigo" in body) {
-    const { codigo } = body;
+/** El `RespuestaError.codigo` de un `/me` que falló, o `http.<estado>` si la respuesta no es uno. */
+async function codigoDeError(respuesta: Response): Promise<string> {
+  const cuerpo: unknown = await respuesta.json().catch(() => null);
+  if (typeof cuerpo === "object" && cuerpo !== null && "codigo" in cuerpo) {
+    const { codigo } = cuerpo;
     if (typeof codigo === "string") return codigo;
   }
-  return `http.${response.status}`;
+  return `http.${respuesta.status}`;
 }
 
-/** The gateway over any client and `fetch`: what the tests drive. */
-export function oidcAuthGatewayOver(client: OidcClient, fetchMe: FetchMe): AuthGateway {
-  const accessToken = async () => {
-    const user = await client.getUser();
-    return user === null || user.expired === true ? null : user.access_token;
+/** La pasarela sobre cualquier cliente y `fetch`: lo que usan los tests. */
+export function pasarelaOidcSobre(cliente: ClienteOidc, pedirMe: PedirMe): PasarelaAuth {
+  const tokenAcceso = async () => {
+    const usuario = await cliente.getUser();
+    return usuario === null || usuario.expired === true ? null : usuario.access_token;
   };
   return {
-    accessToken,
-    async currentUser(): Promise<CurrentUser | null> {
-      const token = await accessToken();
+    tokenAcceso,
+    async usuarioActual(): Promise<UsuarioActual | null> {
+      const token = await tokenAcceso();
       if (token === null) return null;
-      // The API's view of the caller: its user id and the roles it checks.
-      const response = await fetchMe("/api/me", { headers: { Authorization: `Bearer ${token}` } });
-      if (!response.ok) throw new AuthError(await errorCode(response));
-      const me = (await response.json()) as MeBody;
-      return { id: me.id, email: me.email ?? null, name: me.nombre ?? null, roles: me.roles };
+      // Lo que la API sabe de quien llama: su id de usuario y los roles que comprueba.
+      const respuesta = await pedirMe("/api/me", { headers: { Authorization: `Bearer ${token}` } });
+      if (!respuesta.ok) throw new ErrorAuth(await codigoDeError(respuesta));
+      const me = (await respuesta.json()) as CuerpoMe;
+      return { id: me.id, email: me.email ?? null, nombre: me.nombre ?? null, roles: me.roles };
     },
-    login: (returnTo) => client.signinRedirect({ state: returnTo }),
-    async completeLogin() {
-      const user = await client.signinRedirectCallback();
-      return typeof user.state === "string" ? user.state : "/";
+    login: (volverA) => cliente.signinRedirect({ state: volverA }),
+    async completarLogin() {
+      const usuario = await cliente.signinRedirectCallback();
+      return typeof usuario.state === "string" ? usuario.state : "/";
     },
-    logout: () => client.signoutRedirect(),
+    logout: () => cliente.signoutRedirect(),
   };
 }
 
-=== web/src/auth/session.ts ===
-/** The signed-in user as the API resolved them (`GET /me`): never the provider's own claims. */
-export interface CurrentUser {
+=== web/src/auth/sesion.ts ===
+/** Quien tiene la sesión iniciada, tal como lo resolvió la API (`GET /me`): nunca los claims del proveedor. */
+export interface UsuarioActual {
   id: string;
   email: string | null;
-  name: string | null;
-  /** What the API checks with `#[requiere_rol]`. */
+  nombre: string | null;
+  /** Lo que la API comprueba con `#[requiere_rol]`. */
   roles: string[];
 }
 
 /**
- * Who is signed in, and how to sign in and out. The adapter talks to the provider (OIDC) or to
- * the API (local); screens reach it through `useAuth()`.
+ * Quién tiene la sesión iniciada, y cómo iniciarla y cerrarla. La pasarela habla con el proveedor
+ * (OIDC) o con la API (local); las pantallas llegan a ella con `useAuth()`.
  */
-export interface AuthGateway {
-  /** The signed-in user, or `null` when nobody is. */
-  currentUser(): Promise<CurrentUser | null>;
-  /** The bearer token for the API, or `null` when nobody is signed in. */
-  accessToken(): Promise<string | null>;
-  /** Signs in, then comes back to `returnTo` (a path of this app). */
-  login(returnTo: string): Promise<void>;
-  /** Finishes a sign-in on `/auth/callback`; answers the path `login` was given. */
-  completeLogin(): Promise<string>;
+export interface PasarelaAuth {
+  /** Quien tiene la sesión iniciada, o `null` si no la tiene nadie. */
+  usuarioActual(): Promise<UsuarioActual | null>;
+  /** El token bearer para la API, o `null` si no hay sesión. */
+  tokenAcceso(): Promise<string | null>;
+  /** Inicia sesión y después vuelve a `volverA` (una ruta de esta app). */
+  login(volverA: string): Promise<void>;
+  /** Termina un inicio de sesión en `/auth/callback`; responde la ruta que se le dio a `login`. */
+  completarLogin(): Promise<string>;
   logout(): Promise<void>;
 }
 
-/** A sign-in the provider or the API refused, or a `GET /me` that failed. */
-export class AuthError extends Error {
-  readonly code: string;
+/** Un inicio de sesión que rechazó el proveedor o la API, o un `GET /me` que falló. */
+export class ErrorAuth extends Error {
+  readonly codigo: string;
 
-  constructor(code: string) {
-    super(code);
-    this.name = "AuthError";
-    this.code = code;
+  constructor(codigo: string) {
+    super(codigo);
+    this.name = "ErrorAuth";
+    this.codigo = codigo;
   }
 }
 
-=== web/src/features/pedido/containers/pedido-detail-container.test.tsx ===
+=== web/src/compartido/ui/marco.tsx ===
+import type { ReactNode } from "react";
+import { Link } from "wouter";
+import { MenuUsuario } from "./menu-usuario";
+
+export interface EntradaMenu {
+  etiqueta: string;
+  href: string;
+}
+
+export function Marco({
+  titulo,
+  menu,
+  children,
+}: {
+  titulo: string;
+  menu: EntradaMenu[];
+  children: ReactNode;
+}) {
+  return (
+    <div className="min-h-screen bg-base-200">
+      <header className="navbar bg-base-100 shadow-sm">
+        <Link href="/" className="btn btn-ghost text-xl">
+          {titulo}
+        </Link>
+        <nav>
+          <ul className="menu menu-horizontal">
+            {menu.map((entrada) => (
+              <li key={entrada.href}>
+                <Link href={entrada.href}>{entrada.etiqueta}</Link>
+              </li>
+            ))}
+          </ul>
+        </nav>
+        <div className="ml-auto">
+          <MenuUsuario />
+        </div>
+      </header>
+      <main className="container mx-auto max-w-5xl p-4">{children}</main>
+    </div>
+  );
+}
+
+=== web/src/compartido/ui/menu-usuario.test.tsx ===
 import { describe, expect, test } from "bun:test";
 import { fireEvent, screen, waitFor } from "@testing-library/react";
-import { fakeApi } from "../../../test-support/fake-api";
-import { PedidoMother, pedidoCollection } from "../../../test-support/pedido";
-import { renderScreen } from "../../../test-support/render";
-import { PedidoDetailContainer } from "./pedido-detail-container";
+import { MadreUsuarioActual, pasarelaAuthFalsa } from "../../pruebas/auth";
+import { renderizarPantalla } from "../../pruebas/renderizar";
+import { MenuUsuario } from "./menu-usuario";
 
-describe("PedidoDetailContainer", () => {
-  test("should show the pedido when it exists", async () => {
-    // Arrange
-    const seeded = PedidoMother.random();
-    const api = fakeApi([pedidoCollection([seeded])]);
+describe("MenuUsuario", () => {
+  test("debería mostrar quién tiene la sesión iniciada", async () => {
+    // Preparar
+    const usuario = MadreUsuarioActual.aleatorio({ nombre: "Ana Lozano" });
 
-    // Act
-    renderScreen(<PedidoDetailContainer id={seeded.id} />, { api });
+    // Actuar
+    renderizarPantalla(<MenuUsuario />, {}, "/", { usuario });
 
-    // Assert
-    expect(await screen.findByText("Edit")).toBeTruthy();
+    // Comprobar
+    expect(await screen.findByText("Ana Lozano")).toBeTruthy();
+    expect(screen.getByText("Cerrar sesión")).toBeTruthy();
   });
 
-  test("should show the not-found code when the pedido does not exist", async () => {
-    // Arrange
-    const api = fakeApi([pedidoCollection()]);
+  test("debería iniciar sesión desde la página actual cuando se pulsa Iniciar sesión", async () => {
+    // Preparar
+    const auth = pasarelaAuthFalsa();
+    renderizarPantalla(<MenuUsuario />, { auth }, "/productos");
 
-    // Act
-    renderScreen(<PedidoDetailContainer id={crypto.randomUUID()} />, { api });
+    // Actuar
+    fireEvent.click(await screen.findByText("Iniciar sesión"));
 
-    // Assert
+    // Comprobar
+    await waitFor(() => expect(auth.logins).toEqual(["/productos"]));
+  });
+});
+
+=== web/src/compartido/ui/menu-usuario.tsx ===
+import { useAuth } from "../../auth/auth";
+
+/** Quién tiene la sesión iniciada, y el botón para iniciarla o cerrarla. */
+export function MenuUsuario() {
+  const { usuario, login, logout } = useAuth();
+  if (usuario === null) {
+    return (
+      <button type="button" className="btn btn-ghost" onClick={() => void login()}>
+        Iniciar sesión
+      </button>
+    );
+  }
+  return (
+    <div className="flex items-center gap-2">
+      <span className="text-sm">{usuario.nombre ?? usuario.email ?? "Con sesión"}</span>
+      <button type="button" className="btn btn-ghost btn-sm" onClick={() => void logout()}>
+        Cerrar sesión
+      </button>
+    </div>
+  );
+}
+
+=== web/src/contextos/pedido/contenedores/detalle-pedido.test.tsx ===
+import { describe, expect, test } from "bun:test";
+import { fireEvent, screen, waitFor } from "@testing-library/react";
+import { apiFalsa } from "../../../pruebas/api-falsa";
+import { coleccionPedido, MadrePedido } from "../../../pruebas/pedido";
+import { renderizarPantalla } from "../../../pruebas/renderizar";
+import { ContenedorDetallePedido } from "./detalle-pedido";
+
+describe("ContenedorDetallePedido", () => {
+  test("debería mostrar el detalle cuando existe", async () => {
+    // Preparar
+    const sembrado = MadrePedido.aleatorio();
+    const api = apiFalsa([coleccionPedido([sembrado])]);
+
+    const pantalla = <ContenedorDetallePedido id={sembrado.id} />;
+
+    // Actuar
+    renderizarPantalla(pantalla, { api });
+
+    // Comprobar
+    expect(await screen.findByText("Editar")).toBeTruthy();
+  });
+
+  test("debería mostrar el código de no encontrado cuando no existe", async () => {
+    // Preparar
+    const api = apiFalsa([coleccionPedido()]);
+    const pantalla = <ContenedorDetallePedido id={crypto.randomUUID()} />;
+
+    // Actuar
+    renderizarPantalla(pantalla, { api });
+
+    // Comprobar
     expect((await screen.findByRole("alert")).textContent).toBe("pedido.no_encontrado");
   });
 
-  test("should delete the pedido only once the deletion is confirmed", async () => {
-    // Arrange
-    const seeded = PedidoMother.random();
-    const stored = pedidoCollection([seeded]);
-    const api = fakeApi([stored]);
-    const { history } = renderScreen(<PedidoDetailContainer id={seeded.id} />, { api });
-    fireEvent.click(await screen.findByText("Delete", { selector: ".card-actions button" }));
-    expect(stored.items.has(seeded.id)).toBe(true);
+  test("debería borrar solo tras confirmar el borrado", async () => {
+    // Preparar
+    const sembrado = MadrePedido.aleatorio();
+    const guardados = coleccionPedido([sembrado]);
+    const api = apiFalsa([guardados]);
+    const pantalla = <ContenedorDetallePedido id={sembrado.id} />;
+    const { historial } = renderizarPantalla(pantalla, { api });
+    fireEvent.click(await screen.findByText("Borrar", { selector: ".card-actions button" }));
+    expect(guardados.elementos.has(sembrado.id)).toBe(true);
 
-    // Act
-    fireEvent.click(screen.getByText("Delete", { selector: ".modal-action button" }));
+    // Actuar
+    fireEvent.click(screen.getByText("Borrar", { selector: ".modal-action button" }));
 
-    // Assert
-    await waitFor(() => expect(history.at(-1)).toBe("/pedidos"));
-    expect(stored.items.has(seeded.id)).toBe(false);
+    // Comprobar
+    await waitFor(() => expect(historial.at(-1)).toBe("/pedidos"));
+    expect(guardados.elementos.has(sembrado.id)).toBe(false);
   });
 
-  test("should show auth.prohibido when the API refuses the deletion", async () => {
-    // Arrange
-    const seeded = PedidoMother.random();
-    const failures = { "DELETE /pedidos": "auth.prohibido" };
-    const api = fakeApi([pedidoCollection([seeded])], failures);
-    renderScreen(<PedidoDetailContainer id={seeded.id} />, { api });
-    fireEvent.click(await screen.findByText("Delete", { selector: ".card-actions button" }));
+  test("debería mostrar auth.prohibido cuando la API rechaza el borrado", async () => {
+    // Preparar
+    const sembrado = MadrePedido.aleatorio();
+    const fallos = { "DELETE /pedidos": "auth.prohibido" };
+    const api = apiFalsa([coleccionPedido([sembrado])], fallos);
+    const pantalla = <ContenedorDetallePedido id={sembrado.id} />;
+    renderizarPantalla(pantalla, { api });
+    fireEvent.click(await screen.findByText("Borrar", { selector: ".card-actions button" }));
 
-    // Act
-    fireEvent.click(screen.getByText("Delete", { selector: ".modal-action button" }));
+    // Actuar
+    fireEvent.click(screen.getByText("Borrar", { selector: ".modal-action button" }));
 
-    // Assert
+    // Comprobar
     expect((await screen.findByRole("alert")).textContent).toBe("auth.prohibido");
   });
 });
 
-=== web/src/features/pedido/containers/pedido-detail-container.tsx ===
+=== web/src/contextos/pedido/contenedores/detalle-pedido.tsx ===
 import { useState } from "react";
 import { Link, useLocation } from "wouter";
-import { unwrap } from "../../../api/http";
-import { useDependencies } from "../../../dependencies";
-import { ConfirmDialog } from "../../../shared/ui/confirm-dialog";
-import { ErrorAlert } from "../../../shared/ui/error-alert";
-import { useAsync } from "../../../shared/use-async";
-import { PedidoDetailView } from "../views/pedido-detail-view";
+import { desenvolver } from "../../../api/http";
+import { AlertaError } from "../../../compartido/ui/alerta-error";
+import { DialogoConfirmar } from "../../../compartido/ui/dialogo-confirmar";
+import { useCarga } from "../../../compartido/use-carga";
+import { useDependencias } from "../../../dependencias";
+import { VistaDetallePedido } from "../vistas/detalle-pedido";
 
-export function PedidoDetailContainer({ id }: { id: string }) {
-  const { api } = useDependencies();
-  const pedido = useAsync(
-    () => unwrap(api.GET("/pedidos/{id}", { params: { path: { id } } })),
+export function ContenedorDetallePedido({ id }: { id: string }) {
+  const { api } = useDependencias();
+  const pedido = useCarga(
+    () => desenvolver(api.GET("/pedidos/{id}", { params: { path: { id } } })),
     [api, id],
   );
-  const [, navigate] = useLocation();
-  const [confirming, setConfirming] = useState(false);
-  const [failure, setFailure] = useState<unknown>(null);
+  const [, navegar] = useLocation();
+  const [confirmando, setConfirmando] = useState(false);
+  const [fallo, setFallo] = useState<unknown>(null);
 
-  const remove = async () => {
-    setConfirming(false);
+  const borrar = async () => {
+    setConfirmando(false);
     try {
-      await unwrap(api.DELETE("/pedidos/{id}", { params: { path: { id } } }));
-      navigate("/pedidos");
+      await desenvolver(api.DELETE("/pedidos/{id}", { params: { path: { id } } }));
+      navegar("/pedidos");
     } catch (error) {
-      setFailure(error);
+      setFallo(error);
     }
   };
 
   return (
     <section className="space-y-4">
       <h1 className="text-2xl font-bold">Pedido</h1>
-      {failure !== null && <ErrorAlert error={failure} />}
-      {pedido.status === "loading" && <span className="loading loading-spinner" />}
-      {pedido.status === "error" && <ErrorAlert error={pedido.error} />}
-      {pedido.status === "ok" && (
+      {fallo !== null && <AlertaError error={fallo} />}
+      {pedido.estado === "cargando" && <span className="loading loading-spinner" />}
+      {pedido.estado === "error" && <AlertaError error={pedido.error} />}
+      {pedido.estado === "listo" && (
         <div className="card bg-base-100">
           <div className="card-body">
-            <PedidoDetailView pedido={pedido.data} />
+            <VistaDetallePedido pedido={pedido.datos} />
             <div className="card-actions justify-end">
-              <Link href={`/pedidos/${id}/edit`} className="btn">
-                Edit
+              <Link href={`/pedidos/${id}/editar`} className="btn">
+                Editar
               </Link>
-              <button type="button" className="btn btn-error" onClick={() => setConfirming(true)}>
-                Delete
+              <button type="button" className="btn btn-error" onClick={() => setConfirmando(true)}>
+                Borrar
               </button>
             </div>
           </div>
         </div>
       )}
       <Link href="/pedidos" className="link">
-        Back to pedidos
+        Volver a pedidos
       </Link>
-      <ConfirmDialog
-        open={confirming}
-        message="Delete this pedido?"
-        onConfirm={remove}
-        onCancel={() => setConfirming(false)}
+      <DialogoConfirmar
+        abierto={confirmando}
+        mensaje="¿Borrar pedido?"
+        alConfirmar={borrar}
+        alCancelar={() => setConfirmando(false)}
       />
     </section>
   );
 }
 
-=== web/src/features/pedido/containers/pedido-form-container.test.tsx ===
+=== web/src/contextos/pedido/contenedores/formulario-pedido.test.tsx ===
 import { describe, expect, test } from "bun:test";
 import { fireEvent, screen, waitFor } from "@testing-library/react";
-import type { Schemas } from "../../../api/client";
-import { fakeApi } from "../../../test-support/fake-api";
-import { PedidoMother, pedidoCollection } from "../../../test-support/pedido";
-import { renderScreen } from "../../../test-support/render";
-import { PedidoFormContainer } from "./pedido-form-container";
+import type { Esquemas } from "../../../api/cliente";
+import { apiFalsa } from "../../../pruebas/api-falsa";
+import { coleccionPedido, MadrePedido } from "../../../pruebas/pedido";
+import { renderizarPantalla } from "../../../pruebas/renderizar";
+import { ContenedorFormularioPedido } from "./formulario-pedido";
 
-function type(label: string, value: string) {
-  fireEvent.change(screen.getByLabelText(label), { target: { value } });
+function escribir(etiqueta: string, valor: string) {
+  fireEvent.change(screen.getByLabelText(etiqueta), { target: { value: valor } });
 }
 
-/** Fills the empty form with `request`, the way a user would. */
-async function fillIn(request: Schemas["PeticionCrearPedido"]) {
-  await screen.findByText("Save");
-  type("Total", String(request.total));
+/** Rellena el formulario vacío con `peticion`, como lo haría quien lo usa. */
+async function rellenar(peticion: Esquemas["PeticionCrearPedido"]) {
+  await screen.findByText("Guardar");
+  escribir("Total", String(peticion.total));
 }
 
-describe("PedidoFormContainer", () => {
-  test("should create the pedido from what was typed and show it", async () => {
-    // Arrange
-    const request = PedidoMother.request();
-    const stored = pedidoCollection();
-    const api = fakeApi([stored]);
-    const { history } = renderScreen(<PedidoFormContainer />, { api });
-    await fillIn(request);
+describe("ContenedorFormularioPedido", () => {
+  test("debería crear con lo escrito e ir a su detalle", async () => {
+    // Preparar
+    const peticion = MadrePedido.peticion();
+    const guardados = coleccionPedido();
+    const api = apiFalsa([guardados]);
+    const pantalla = <ContenedorFormularioPedido />;
+    const { historial } = renderizarPantalla(pantalla, { api });
+    await rellenar(peticion);
 
-    // Act
-    fireEvent.click(screen.getByText("Save"));
+    // Actuar
+    fireEvent.click(screen.getByText("Guardar"));
 
-    // Assert
-    await waitFor(() => expect(history.at(-1)).toStartWith("/pedidos/"));
-    const [created] = stored.items.values();
-    expect(created).toMatchObject(request);
-    expect(history.at(-1)).toBe(`/pedidos/${created?.id}`);
+    // Comprobar
+    await waitFor(() => expect(historial.at(-1)).toStartWith("/pedidos/"));
+    const [creado] = guardados.elementos.values();
+    expect(creado).toMatchObject(peticion);
+    expect(historial.at(-1)).toBe(`/pedidos/${creado?.id}`);
   });
 
-  test("should save the edited pedido when an existing one is submitted", async () => {
-    // Arrange
-    const seeded = PedidoMother.random();
-    const stored = pedidoCollection([seeded]);
-    const api = fakeApi([stored]);
-    const { history } = renderScreen(<PedidoFormContainer id={seeded.id} />, { api });
+  test("debería guardar la edición cuando se envía el formulario", async () => {
+    // Preparar
+    const sembrado = MadrePedido.aleatorio();
+    const guardados = coleccionPedido([sembrado]);
+    const api = apiFalsa([guardados]);
+    const pantalla = <ContenedorFormularioPedido id={sembrado.id} />;
+    const { historial } = renderizarPantalla(pantalla, { api });
 
-    // Act
-    fireEvent.click(await screen.findByText("Save"));
+    // Actuar
+    fireEvent.click(await screen.findByText("Guardar"));
 
-    // Assert
-    await waitFor(() => expect(history.at(-1)).toBe(`/pedidos/${seeded.id}`));
-    expect(stored.items.get(seeded.id)).toEqual(seeded);
-  });
-  test("should show the code itself when the API answers one the form does not know", async () => {
-    // Arrange
-    const request = PedidoMother.request();
-    const code = "pedido.validacion.invalid";
-    const failures = { "POST /pedidos": code };
-    const api = fakeApi([pedidoCollection()], failures);
-    renderScreen(<PedidoFormContainer />, { api });
-    await fillIn(request);
-
-    // Act
-    fireEvent.click(screen.getByText("Save"));
-
-    // Assert
-    expect((await screen.findByRole("alert")).textContent).toBe(code);
+    // Comprobar
+    await waitFor(() => expect(historial.at(-1)).toBe(`/pedidos/${sembrado.id}`));
+    expect(guardados.elementos.get(sembrado.id)).toEqual(sembrado);
   });
 
-  test("should say a pedido with these values exists when the API answers a duplicate", async () => {
-    // Arrange
-    const request = PedidoMother.request();
-    const failures = { "POST /pedidos": "pedido.duplicado" };
-    const api = fakeApi([pedidoCollection()], failures);
-    renderScreen(<PedidoFormContainer />, { api });
-    await fillIn(request);
+  test("debería mostrar el propio código cuando la API responde uno que el formulario no conoce", async () => {
+    // Preparar
+    const peticion = MadrePedido.peticion();
+    const codigo = "pedido.validacion.invalido";
+    const fallos = { "POST /pedidos": codigo };
+    const api = apiFalsa([coleccionPedido()], fallos);
+    renderizarPantalla(<ContenedorFormularioPedido />, { api });
+    await rellenar(peticion);
 
-    // Act
-    fireEvent.click(screen.getByText("Save"));
+    // Actuar
+    fireEvent.click(screen.getByText("Guardar"));
 
-    // Assert
-    expect((await screen.findByRole("alert")).textContent).toBe(
-      "A pedido with these values already exists",
-    );
+    // Comprobar
+    expect((await screen.findByRole("alert")).textContent).toBe(codigo);
+  });
+
+  test("debería decir que los valores ya están en uso cuando la API responde un duplicado", async () => {
+    // Preparar
+    const peticion = MadrePedido.peticion();
+    const fallos = { "POST /pedidos": "pedido.duplicado" };
+    const api = apiFalsa([coleccionPedido()], fallos);
+    renderizarPantalla(<ContenedorFormularioPedido />, { api });
+    await rellenar(peticion);
+
+    // Actuar
+    fireEvent.click(screen.getByText("Guardar"));
+
+    // Comprobar
+    expect((await screen.findByRole("alert")).textContent).toBe("Estos valores ya están en uso");
   });
 });
 
-=== web/src/features/pedido/containers/pedido-form-container.tsx ===
+=== web/src/contextos/pedido/contenedores/formulario-pedido.tsx ===
 import { useState } from "react";
 import { Link, useLocation } from "wouter";
-import type { Schemas } from "../../../api/client";
-import { unwrap } from "../../../api/http";
-import { useDependencies } from "../../../dependencies";
-import { ErrorAlert, errorCode } from "../../../shared/ui/error-alert";
-import { useAsync } from "../../../shared/use-async";
-import { toProblem } from "../messages";
-import { PedidoFormView, toPedidoForm, toPedidoRequest } from "../views/pedido-form-view";
+import type { Esquemas } from "../../../api/cliente";
+import { desenvolver } from "../../../api/http";
+import { AlertaError, codigoError } from "../../../compartido/ui/alerta-error";
+import { useCarga } from "../../../compartido/use-carga";
+import { useDependencias } from "../../../dependencias";
+import { aProblema } from "../mensajes";
+import {
+  aFormularioPedido,
+  aPeticionPedido,
+  VistaFormularioPedido,
+} from "../vistas/formulario-pedido";
 
-type Pedido = Schemas["DtoPedido"];
+type Pedido = Esquemas["DtoPedido"];
 
-/** Creates a pedido, or edits the one with `id`. */
-export function PedidoFormContainer({ id }: { id?: string }) {
-  const { api } = useDependencies();
-  const existing = useAsync(
+/** Crear, o editar con `id`: el formulario de pedidos. */
+export function ContenedorFormularioPedido({ id }: { id?: string }) {
+  const { api } = useDependencias();
+  const existente = useCarga(
     () =>
       id === undefined
         ? Promise.resolve(null)
-        : unwrap(api.GET("/pedidos/{id}", { params: { path: { id } } })),
+        : desenvolver(api.GET("/pedidos/{id}", { params: { path: { id } } })),
     [api, id],
   );
-  const title = id === undefined ? "New pedido" : "Edit pedido";
+  const titulo = id === undefined ? "Crear pedido" : "Editar pedido";
 
   return (
     <section className="space-y-4">
-      <h1 className="text-2xl font-bold">{title}</h1>
-      {existing.status === "loading" && <span className="loading loading-spinner" />}
-      {existing.status === "error" && <ErrorAlert error={existing.error} />}
-      {existing.status === "ok" && <PedidoForm existing={existing.data} />}
+      <h1 className="text-2xl font-bold">{titulo}</h1>
+      {existente.estado === "cargando" && <span className="loading loading-spinner" />}
+      {existente.estado === "error" && <AlertaError error={existente.error} />}
+      {existente.estado === "listo" && <FormularioPedido existente={existente.datos} />}
       <Link href={id === undefined ? "/pedidos" : `/pedidos/${id}`} className="link">
-        Cancel
+        Cancelar
       </Link>
     </section>
   );
 }
 
-function PedidoForm({ existing }: { existing: Pedido | null }) {
-  const { api } = useDependencies();
-  const [, navigate] = useLocation();
-  const [values, setValues] = useState(toPedidoForm(existing));
-  const [saving, setSaving] = useState(false);
-  const [failure, setFailure] = useState<unknown>(null);
-  const problem = failure === null ? null : toProblem(errorCode(failure));
+function FormularioPedido({ existente }: { existente: Pedido | null }) {
+  const { api } = useDependencias();
+  const [, navegar] = useLocation();
+  const [valores, setValores] = useState(aFormularioPedido(existente));
+  const [guardando, setGuardando] = useState(false);
+  const [fallo, setFallo] = useState<unknown>(null);
+  const problema = fallo === null ? null : aProblema(codigoError(fallo));
 
-  const save = async () => {
-    setSaving(true);
-    setFailure(null);
+  const guardar = async () => {
+    setGuardando(true);
+    setFallo(null);
     try {
-      const body = toPedidoRequest(values);
-      const saved = await unwrap(
-        existing === null
-          ? api.POST("/pedidos", { body })
-          : api.PUT("/pedidos/{id}", { params: { path: { id: existing.id } }, body }),
+      const cuerpo = aPeticionPedido(valores);
+      const guardado = await desenvolver(
+        existente === null
+          ? api.POST("/pedidos", { body: cuerpo })
+          : api.PUT("/pedidos/{id}", { params: { path: { id: existente.id } }, body: cuerpo }),
       );
-      navigate(`/pedidos/${saved.id}`);
+      navegar(`/pedidos/${guardado.id}`);
     } catch (error) {
-      setFailure(error);
-      setSaving(false);
+      setFallo(error);
+      setGuardando(false);
     }
   };
 
   return (
     <div className="card bg-base-100">
       <div className="card-body">
-        {problem?.field === null && <ErrorAlert error={failure} message={problem.text} />}
-        <PedidoFormView
-          values={values}
-          saving={saving}
-          problem={problem}
-          onChange={setValues}
-          onSubmit={save}
+        {problema?.campo === null && <AlertaError error={fallo} mensaje={problema.texto} />}
+        <VistaFormularioPedido
+          valores={valores}
+          guardando={guardando}
+          problema={problema}
+          alCambiar={setValores}
+          alEnviar={guardar}
         />
       </div>
     </div>
   );
 }
 
-=== web/src/features/pedido/containers/pedido-list-container.test.tsx ===
+=== web/src/contextos/pedido/contenedores/lista-pedido.test.tsx ===
 import { describe, expect, test } from "bun:test";
 import { fireEvent, screen } from "@testing-library/react";
-import { fakeApi } from "../../../test-support/fake-api";
-import { PedidoMother, pedidoCollection } from "../../../test-support/pedido";
-import { renderScreen } from "../../../test-support/render";
-import { PedidoListContainer } from "./pedido-list-container";
+import { apiFalsa } from "../../../pruebas/api-falsa";
+import { coleccionPedido, MadrePedido } from "../../../pruebas/pedido";
+import { renderizarPantalla } from "../../../pruebas/renderizar";
+import { ContenedorListaPedido } from "./lista-pedido";
 
-describe("PedidoListContainer", () => {
-  test("should show a row per pedido when there are some", async () => {
-    // Arrange
-    const seed = [PedidoMother.random(), PedidoMother.random()];
-    const api = fakeApi([pedidoCollection(seed)]);
+describe("ContenedorListaPedido", () => {
+  test("debería mostrar una fila por cada pedido", async () => {
+    // Preparar
+    const semilla = [MadrePedido.aleatorio(), MadrePedido.aleatorio()];
+    const api = apiFalsa([coleccionPedido(semilla)]);
 
-    // Act
-    renderScreen(<PedidoListContainer />, { api });
+    // Actuar
+    renderizarPantalla(<ContenedorListaPedido />, { api });
 
-    // Assert
-    expect(await screen.findAllByText("View")).toHaveLength(2);
+    // Comprobar
+    expect(await screen.findAllByText("Ver")).toHaveLength(2);
   });
 
-  test("should show the next page when Next is pressed", async () => {
-    // Arrange
-    const seed = Array.from({ length: 25 }, () => PedidoMother.random());
-    const api = fakeApi([pedidoCollection(seed)]);
-    renderScreen(<PedidoListContainer />, { api });
-    expect(await screen.findAllByText("View")).toHaveLength(20);
+  test("debería mostrar la página siguiente cuando se pulsa Siguiente", async () => {
+    // Preparar
+    const semilla = Array.from({ length: 25 }, () => MadrePedido.aleatorio());
+    const api = apiFalsa([coleccionPedido(semilla)]);
+    renderizarPantalla(<ContenedorListaPedido />, { api });
+    expect(await screen.findAllByText("Ver")).toHaveLength(20);
 
-    // Act
-    fireEvent.click(screen.getByRole("button", { name: "Next" }));
+    // Actuar
+    fireEvent.click(screen.getByRole("button", { name: "Siguiente" }));
 
-    // Assert
-    expect(await screen.findByText("21–25 of 25")).toBeTruthy();
-    expect(screen.getAllByText("View")).toHaveLength(5);
+    // Comprobar
+    expect(await screen.findByText("21–25 de 25")).toBeTruthy();
+    expect(screen.getAllByText("Ver")).toHaveLength(5);
   });
 
-  test("should open the page the URL names", async () => {
-    // Arrange
-    const seed = Array.from({ length: 25 }, () => PedidoMother.random());
-    const api = fakeApi([pedidoCollection(seed)]);
-    const path = "/pedidos?page=2";
+  test("debería abrir la página que nombra la URL", async () => {
+    // Preparar
+    const semilla = Array.from({ length: 25 }, () => MadrePedido.aleatorio());
+    const api = apiFalsa([coleccionPedido(semilla)]);
+    const ruta = "/pedidos?pagina=2";
 
-    // Act
-    renderScreen(<PedidoListContainer />, { api }, path);
+    // Actuar
+    renderizarPantalla(<ContenedorListaPedido />, { api }, ruta);
 
-    // Assert
-    expect(await screen.findByText("21–25 of 25")).toBeTruthy();
+    // Comprobar
+    expect(await screen.findByText("21–25 de 25")).toBeTruthy();
   });
 
-  test("should say so when there is no pedido", async () => {
-    // Arrange
-    const api = fakeApi([pedidoCollection()]);
+  test("debería decirlo cuando no hay pedidos", async () => {
+    // Preparar
+    const api = apiFalsa([coleccionPedido()]);
 
-    // Act
-    renderScreen(<PedidoListContainer />, { api });
+    // Actuar
+    renderizarPantalla(<ContenedorListaPedido />, { api });
 
-    // Assert
-    expect(await screen.findByText("No pedidos yet.")).toBeTruthy();
+    // Comprobar
+    expect(await screen.findByText("Todavía no hay pedidos.")).toBeTruthy();
   });
 
-  test("should show the error code when the pedidos cannot be listed", async () => {
-    // Arrange
-    const failures = { "GET /pedidos": "pedido.repositorio" };
-    const api = fakeApi([pedidoCollection()], failures);
+  test("debería mostrar el código del error cuando la API no da la lista", async () => {
+    // Preparar
+    const fallos = { "GET /pedidos": "pedido.repositorio" };
+    const api = apiFalsa([coleccionPedido()], fallos);
 
-    // Act
-    renderScreen(<PedidoListContainer />, { api });
+    // Actuar
+    renderizarPantalla(<ContenedorListaPedido />, { api });
 
-    // Assert
+    // Comprobar
     expect((await screen.findByRole("alert")).textContent).toBe("pedido.repositorio");
   });
 });
 
-=== web/src/features/pedido/containers/pedido-list-container.tsx ===
+=== web/src/contextos/pedido/contenedores/lista-pedido.tsx ===
 import { Link, useLocation, useSearch } from "wouter";
-import { PAGE_SIZE, unwrap } from "../../../api/http";
-import { useDependencies } from "../../../dependencies";
-import { EmptyState } from "../../../shared/ui/empty-state";
-import { ErrorAlert } from "../../../shared/ui/error-alert";
-import { offsetFromSearch, Pagination, pageSearch } from "../../../shared/ui/pagination";
-import { useAsync } from "../../../shared/use-async";
-import { PedidoListView } from "../views/pedido-list-view";
+import { desenvolver, TAMANO_PAGINA } from "../../../api/http";
+import { AlertaError } from "../../../compartido/ui/alerta-error";
+import { busquedaPagina, desplazamientoDeUrl, Paginacion } from "../../../compartido/ui/paginacion";
+import { SinElementos } from "../../../compartido/ui/sin-elementos";
+import { useCarga } from "../../../compartido/use-carga";
+import { useDependencias } from "../../../dependencias";
+import { VistaListaPedido } from "../vistas/lista-pedido";
 
-/** The list, one page at a time; the page is in the URL (`?page=2`), so reload and back keep it. */
-export function PedidoListContainer() {
-  const { api } = useDependencies();
-  const [location, navigate] = useLocation();
-  const offset = offsetFromSearch(useSearch(), PAGE_SIZE);
-  const goTo = (next: number) => navigate(location + pageSearch(next, PAGE_SIZE));
-  const query = { limite: PAGE_SIZE, desplazamiento: offset };
-  const pedidos = useAsync(() => unwrap(api.GET("/pedidos", { params: { query } })), [api, offset]);
+/** La lista, página a página; la página va en la URL (`?pagina=2`): recargar y volver la mantienen. */
+export function ContenedorListaPedido() {
+  const { api } = useDependencias();
+  const [ubicacion, navegar] = useLocation();
+  const desplazamiento = desplazamientoDeUrl(useSearch(), TAMANO_PAGINA);
+  const irA = (siguiente: number) => navegar(ubicacion + busquedaPagina(siguiente, TAMANO_PAGINA));
+  const consulta = { limite: TAMANO_PAGINA, desplazamiento };
+  const pedidos = useCarga(
+    () => desenvolver(api.GET("/pedidos", { params: { query: consulta } })),
+    [api, desplazamiento],
+  );
 
   return (
     <section className="space-y-4">
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-bold">Pedidos</h1>
-        <Link href="/pedidos/new" className="btn btn-primary">
-          New pedido
+        <Link href="/pedidos/nuevo" className="btn btn-primary">
+          Crear pedido
         </Link>
       </div>
-      {pedidos.status === "loading" && <span className="loading loading-spinner" />}
-      {pedidos.status === "error" && <ErrorAlert error={pedidos.error} />}
-      {pedidos.status === "ok" &&
-        (pedidos.data.total === 0 ? (
-          <EmptyState message="No pedidos yet." />
+      {pedidos.estado === "cargando" && <span className="loading loading-spinner" />}
+      {pedidos.estado === "error" && <AlertaError error={pedidos.error} />}
+      {pedidos.estado === "listo" &&
+        (pedidos.datos.total === 0 ? (
+          <SinElementos mensaje="Todavía no hay pedidos." />
         ) : (
           <>
-            <PedidoListView pedidos={pedidos.data.elementos} />
-            <Pagination
-              total={pedidos.data.total}
-              limit={pedidos.data.limite}
-              offset={pedidos.data.desplazamiento}
-              onOffsetChange={goTo}
+            <VistaListaPedido pedidos={pedidos.datos.elementos} />
+            <Paginacion
+              total={pedidos.datos.total}
+              limite={pedidos.datos.limite}
+              desplazamiento={pedidos.datos.desplazamiento}
+              alCambiarDesplazamiento={irA}
             />
           </>
         ))}
@@ -7579,37 +7694,37 @@ export function PedidoListContainer() {
   );
 }
 
-=== web/src/features/pedido/messages.ts ===
-/** What a screen shows for an API error: under the input it is about, or in the alert. */
-export interface PedidoProblem {
-  field: string | null;
-  text: string;
+=== web/src/contextos/pedido/mensajes.ts ===
+/** Lo que una pantalla muestra de un error de la API: bajo el input del que trata, o en la alerta. */
+export interface ProblemaPedido {
+  campo: string | null;
+  texto: string;
 }
 
 /**
- * The messages for the codes of the backend's `errores.rs`, generated from the same list. English:
- * this file is the place to translate them. A code missing here shows as it is.
+ * Los mensajes de los códigos de `errores.rs` del backend, generados de la misma lista. Un código que
+ * no está aquí se muestra tal cual.
  */
-const TEXTS: Record<string, string> = {
-  "pedido.duplicado": "A pedido with these values already exists",
-  "pedido.no_encontrado": "This pedido no longer exists",
-  "pedido.repositorio": "The pedido could not be saved, try again later",
-  "pedido.desconocido": "Something went wrong",
+const TEXTOS: Record<string, string> = {
+  "pedido.duplicado": "Estos valores ya están en uso",
+  "pedido.no_encontrado": "Ya no existe",
+  "pedido.repositorio": "No se ha podido guardar; inténtalo más tarde",
+  "pedido.desconocido": "Algo ha ido mal",
 };
 
-/** The input each field's code is about. */
-const FIELDS: Record<string, string> = {};
+/** El input del que trata el código de cada campo. */
+const CAMPOS: Record<string, string> = {};
 
-export function toProblem(code: string): PedidoProblem {
-  return { field: FIELDS[code] ?? null, text: TEXTS[code] ?? code };
+export function aProblema(codigo: string): ProblemaPedido {
+  return { campo: CAMPOS[codigo] ?? null, texto: TEXTOS[codigo] ?? codigo };
 }
 
-=== web/src/features/pedido/views/pedido-detail-view.tsx ===
-import type { Schemas } from "../../../api/client";
+=== web/src/contextos/pedido/vistas/detalle-pedido.tsx ===
+import type { Esquemas } from "../../../api/cliente";
 
-type Pedido = Schemas["DtoPedido"];
+type Pedido = Esquemas["DtoPedido"];
 
-export function PedidoDetailView({ pedido }: { pedido: Pedido }) {
+export function VistaDetallePedido({ pedido }: { pedido: Pedido }) {
   return (
     <dl className="grid grid-cols-[max-content_1fr] gap-x-6 gap-y-2">
       <dt className="font-semibold">Total</dt>
@@ -7618,21 +7733,21 @@ export function PedidoDetailView({ pedido }: { pedido: Pedido }) {
   );
 }
 
-=== web/src/features/pedido/views/pedido-form-view.tsx ===
-import type { Schemas } from "../../../api/client";
-import { FieldError } from "../../../shared/ui/field-error";
-import type { PedidoProblem } from "../messages";
+=== web/src/contextos/pedido/vistas/formulario-pedido.tsx ===
+import type { Esquemas } from "../../../api/cliente";
+import { ErrorCampo } from "../../../compartido/ui/error-campo";
+import type { ProblemaPedido } from "../mensajes";
 
-type Pedido = Schemas["DtoPedido"];
-type PedidoRequest = Schemas["PeticionCrearPedido"];
+type Pedido = Esquemas["DtoPedido"];
+type PeticionPedido = Esquemas["PeticionCrearPedido"];
 
-/** What the inputs hold: the text of every input, `checked` for a checkbox. */
-export interface PedidoFormValues {
+/** Lo que guardan los inputs: el texto de cada input, `checked` en una casilla. */
+export interface ValoresFormularioPedido {
   total: string;
 }
 
-/** The inputs for `pedido`, empty when there is none yet. */
-export function toPedidoForm(pedido: Pedido | null): PedidoFormValues {
+/** Los inputs de `pedido`, vacíos cuando todavía no hay ninguno. */
+export function aFormularioPedido(pedido: Pedido | null): ValoresFormularioPedido {
   if (pedido === null) {
     return {
       total: "",
@@ -7643,33 +7758,33 @@ export function toPedidoForm(pedido: Pedido | null): PedidoFormValues {
   };
 }
 
-/** What a create or an update sends: the same fields for both. */
-export function toPedidoRequest(values: PedidoFormValues): PedidoRequest {
+/** Lo que mandan crear y actualizar: los mismos campos en los dos. */
+export function aPeticionPedido(valores: ValoresFormularioPedido): PeticionPedido {
   return {
-    total: Number(values.total),
+    total: Number(valores.total),
   };
 }
 
-export function PedidoFormView({
-  values,
-  saving,
-  problem,
-  onChange,
-  onSubmit,
+export function VistaFormularioPedido({
+  valores,
+  guardando,
+  problema,
+  alCambiar,
+  alEnviar,
 }: {
-  values: PedidoFormValues;
-  saving: boolean;
-  /** What the API said about the last submit: shown under its input. */
-  problem: PedidoProblem | null;
-  onChange: (values: PedidoFormValues) => void;
-  onSubmit: () => void;
+  valores: ValoresFormularioPedido;
+  guardando: boolean;
+  /** Lo que dijo la API del último envío: se muestra bajo su input. */
+  problema: ProblemaPedido | null;
+  alCambiar: (valores: ValoresFormularioPedido) => void;
+  alEnviar: () => void;
 }) {
   return (
     <form
       className="space-y-2"
       onSubmit={(event) => {
         event.preventDefault();
-        onSubmit();
+        alEnviar();
       }}
     >
       <label className="fieldset">
@@ -7677,27 +7792,27 @@ export function PedidoFormView({
         <input
           className="input w-full"
           type="number"
-          aria-invalid={problem?.field === "total"}
+          aria-invalid={problema?.campo === "total"}
           required
-          value={values.total}
-          onChange={(event) => onChange({ ...values, total: event.target.value })}
+          value={valores.total}
+          onChange={(event) => alCambiar({ ...valores, total: event.target.value })}
         />
       </label>
-      <FieldError problem={problem} field="total" />
-      <button type="submit" className="btn btn-primary" disabled={saving}>
-        Save
+      <ErrorCampo problema={problema} campo="total" />
+      <button type="submit" className="btn btn-primary" disabled={guardando}>
+        Guardar
       </button>
     </form>
   );
 }
 
-=== web/src/features/pedido/views/pedido-list-view.tsx ===
+=== web/src/contextos/pedido/vistas/lista-pedido.tsx ===
 import { Link } from "wouter";
-import type { Schemas } from "../../../api/client";
+import type { Esquemas } from "../../../api/cliente";
 
-type Pedido = Schemas["DtoPedido"];
+type Pedido = Esquemas["DtoPedido"];
 
-export function PedidoListView({ pedidos }: { pedidos: Pedido[] }) {
+export function VistaListaPedido({ pedidos }: { pedidos: Pedido[] }) {
   return (
     <div className="overflow-x-auto rounded-box bg-base-100">
       <table className="table">
@@ -7713,7 +7828,7 @@ export function PedidoListView({ pedidos }: { pedidos: Pedido[] }) {
               <td>{pedido.total}</td>
               <td className="text-right">
                 <Link href={`/pedidos/${pedido.id}`} className="link">
-                  View
+                  Ver
                 </Link>
               </td>
             </tr>
@@ -7724,135 +7839,145 @@ export function PedidoListView({ pedidos }: { pedidos: Pedido[] }) {
   );
 }
 
-=== web/src/features/producto/containers/producto-detail-container.test.tsx ===
+=== web/src/contextos/producto/contenedores/detalle-producto.test.tsx ===
 import { describe, expect, test } from "bun:test";
 import { fireEvent, screen, waitFor } from "@testing-library/react";
-import { CurrentUserMother } from "../../../test-support/auth";
-import { fakeApi } from "../../../test-support/fake-api";
-import { ProductoMother, productoCollection } from "../../../test-support/producto";
-import { renderScreen } from "../../../test-support/render";
-import { ProductoDetailContainer } from "./producto-detail-container";
+import { apiFalsa } from "../../../pruebas/api-falsa";
+import { MadreUsuarioActual } from "../../../pruebas/auth";
+import { coleccionProducto, MadreProducto } from "../../../pruebas/producto";
+import { renderizarPantalla } from "../../../pruebas/renderizar";
+import { ContenedorDetalleProducto } from "./detalle-producto";
 
-describe("ProductoDetailContainer", () => {
-  test("should show the producto when it exists", async () => {
-    // Arrange
-    const seeded = ProductoMother.random();
-    const api = fakeApi([productoCollection([seeded])]);
+describe("ContenedorDetalleProducto", () => {
+  test("debería mostrar el detalle cuando existe", async () => {
+    // Preparar
+    const sembrado = MadreProducto.aleatorio();
+    const api = apiFalsa([coleccionProducto([sembrado])]);
 
-    // Act
-    renderScreen(<ProductoDetailContainer id={seeded.id} />, { api });
+    const pantalla = <ContenedorDetalleProducto id={sembrado.id} />;
 
-    // Assert
-    expect(await screen.findByText("Edit")).toBeTruthy();
+    // Actuar
+    renderizarPantalla(pantalla, { api });
+
+    // Comprobar
+    expect(await screen.findByText("Editar")).toBeTruthy();
   });
 
-  test("should show the not-found code when the producto does not exist", async () => {
-    // Arrange
-    const api = fakeApi([productoCollection()]);
+  test("debería mostrar el código de no encontrado cuando no existe", async () => {
+    // Preparar
+    const api = apiFalsa([coleccionProducto()]);
+    const pantalla = <ContenedorDetalleProducto id={crypto.randomUUID()} />;
 
-    // Act
-    renderScreen(<ProductoDetailContainer id={crypto.randomUUID()} />, { api });
+    // Actuar
+    renderizarPantalla(pantalla, { api });
 
-    // Assert
+    // Comprobar
     expect((await screen.findByRole("alert")).textContent).toBe("producto.no_encontrado");
   });
 
-  test("should delete the producto only once the deletion is confirmed", async () => {
-    // Arrange
-    const seeded = ProductoMother.random();
-    const stored = productoCollection([seeded]);
-    const api = fakeApi([stored]);
-    const { history } = renderScreen(<ProductoDetailContainer id={seeded.id} />, { api });
-    fireEvent.click(await screen.findByText("Delete", { selector: ".card-actions button" }));
-    expect(stored.items.has(seeded.id)).toBe(true);
+  test("debería borrar solo tras confirmar el borrado", async () => {
+    // Preparar
+    const sembrado = MadreProducto.aleatorio();
+    const guardados = coleccionProducto([sembrado]);
+    const api = apiFalsa([guardados]);
+    const pantalla = <ContenedorDetalleProducto id={sembrado.id} />;
+    const { historial } = renderizarPantalla(pantalla, { api });
+    fireEvent.click(await screen.findByText("Borrar", { selector: ".card-actions button" }));
+    expect(guardados.elementos.has(sembrado.id)).toBe(true);
 
-    // Act
-    fireEvent.click(screen.getByText("Delete", { selector: ".modal-action button" }));
+    // Actuar
+    fireEvent.click(screen.getByText("Borrar", { selector: ".modal-action button" }));
 
-    // Assert
-    await waitFor(() => expect(history.at(-1)).toBe("/productos"));
-    expect(stored.items.has(seeded.id)).toBe(false);
+    // Comprobar
+    await waitFor(() => expect(historial.at(-1)).toBe("/productos"));
+    expect(guardados.elementos.has(sembrado.id)).toBe(false);
   });
 
-  test("should not offer Delete to a user without its role", async () => {
-    // Arrange
-    const seeded = ProductoMother.random();
-    const api = fakeApi([productoCollection([seeded])]);
-    const user = CurrentUserMother.random();
+  test("no debería ofrecer Borrar a quien no tiene su rol", async () => {
+    // Preparar
+    const sembrado = MadreProducto.aleatorio();
+    const api = apiFalsa([coleccionProducto([sembrado])]);
+    const usuario = MadreUsuarioActual.aleatorio();
+    const pantalla = <ContenedorDetalleProducto id={sembrado.id} />;
 
-    // Act
-    renderScreen(<ProductoDetailContainer id={seeded.id} />, { api }, "/", { user });
+    // Actuar
+    renderizarPantalla(pantalla, { api }, "/", { usuario });
 
-    // Assert
+    // Comprobar
     expect(await screen.findByText("Name", { selector: "dt" })).toBeTruthy();
-    expect(screen.queryByText("Delete", { selector: ".card-actions *" })).toBeNull();
+    expect(screen.queryByText("Borrar", { selector: ".card-actions *" })).toBeNull();
   });
 
-  test("should show auth.prohibido when the API refuses the deletion", async () => {
-    // Arrange
-    const seeded = ProductoMother.random();
-    const failures = { "DELETE /productos": "auth.prohibido" };
-    const api = fakeApi([productoCollection([seeded])], failures);
-    renderScreen(<ProductoDetailContainer id={seeded.id} />, { api });
-    fireEvent.click(await screen.findByText("Delete", { selector: ".card-actions button" }));
+  test("debería mostrar auth.prohibido cuando la API rechaza el borrado", async () => {
+    // Preparar
+    const sembrado = MadreProducto.aleatorio();
+    const fallos = { "DELETE /productos": "auth.prohibido" };
+    const api = apiFalsa([coleccionProducto([sembrado])], fallos);
+    const pantalla = <ContenedorDetalleProducto id={sembrado.id} />;
+    renderizarPantalla(pantalla, { api });
+    fireEvent.click(await screen.findByText("Borrar", { selector: ".card-actions button" }));
 
-    // Act
-    fireEvent.click(screen.getByText("Delete", { selector: ".modal-action button" }));
+    // Actuar
+    fireEvent.click(screen.getByText("Borrar", { selector: ".modal-action button" }));
 
-    // Assert
+    // Comprobar
     expect((await screen.findByRole("alert")).textContent).toBe("auth.prohibido");
   });
 });
 
-=== web/src/features/producto/containers/producto-detail-container.tsx ===
+=== web/src/contextos/producto/contenedores/detalle-producto.tsx ===
 import { useState } from "react";
 import { Link, useLocation } from "wouter";
-import { unwrap } from "../../../api/http";
+import { desenvolver } from "../../../api/http";
 import { useAuth } from "../../../auth/auth";
-import { useDependencies } from "../../../dependencies";
-import { ConfirmDialog } from "../../../shared/ui/confirm-dialog";
-import { ErrorAlert } from "../../../shared/ui/error-alert";
-import { useAsync } from "../../../shared/use-async";
-import { ProductoDetailView } from "../views/producto-detail-view";
+import { AlertaError } from "../../../compartido/ui/alerta-error";
+import { DialogoConfirmar } from "../../../compartido/ui/dialogo-confirmar";
+import { useCarga } from "../../../compartido/use-carga";
+import { useDependencias } from "../../../dependencias";
+import { VistaDetalleProducto } from "../vistas/detalle-producto";
 
-export function ProductoDetailContainer({ id }: { id: string }) {
-  const { api } = useDependencies();
-  const { can } = useAuth();
-  const producto = useAsync(
-    () => unwrap(api.GET("/productos/{id}", { params: { path: { id } } })),
+export function ContenedorDetalleProducto({ id }: { id: string }) {
+  const { api } = useDependencias();
+  const { puede } = useAuth();
+  const producto = useCarga(
+    () => desenvolver(api.GET("/productos/{id}", { params: { path: { id } } })),
     [api, id],
   );
-  const [, navigate] = useLocation();
-  const [confirming, setConfirming] = useState(false);
-  const [failure, setFailure] = useState<unknown>(null);
+  const [, navegar] = useLocation();
+  const [confirmando, setConfirmando] = useState(false);
+  const [fallo, setFallo] = useState<unknown>(null);
 
-  const remove = async () => {
-    setConfirming(false);
+  const borrar = async () => {
+    setConfirmando(false);
     try {
-      await unwrap(api.DELETE("/productos/{id}", { params: { path: { id } } }));
-      navigate("/productos");
+      await desenvolver(api.DELETE("/productos/{id}", { params: { path: { id } } }));
+      navegar("/productos");
     } catch (error) {
-      setFailure(error);
+      setFallo(error);
     }
   };
 
   return (
     <section className="space-y-4">
       <h1 className="text-2xl font-bold">Producto</h1>
-      {failure !== null && <ErrorAlert error={failure} />}
-      {producto.status === "loading" && <span className="loading loading-spinner" />}
-      {producto.status === "error" && <ErrorAlert error={producto.error} />}
-      {producto.status === "ok" && (
+      {fallo !== null && <AlertaError error={fallo} />}
+      {producto.estado === "cargando" && <span className="loading loading-spinner" />}
+      {producto.estado === "error" && <AlertaError error={producto.error} />}
+      {producto.estado === "listo" && (
         <div className="card bg-base-100">
           <div className="card-body">
-            <ProductoDetailView producto={producto.data} />
+            <VistaDetalleProducto producto={producto.datos} />
             <div className="card-actions justify-end">
-              <Link href={`/productos/${id}/edit`} className="btn">
-                Edit
+              <Link href={`/productos/${id}/editar`} className="btn">
+                Editar
               </Link>
-              {can("admin") && can("owner") && (
-                <button type="button" className="btn btn-error" onClick={() => setConfirming(true)}>
-                  Delete
+              {puede("admin") && puede("owner") && (
+                <button
+                  type="button"
+                  className="btn btn-error"
+                  onClick={() => setConfirmando(true)}
+                >
+                  Borrar
                 </button>
               )}
             </div>
@@ -7860,338 +7985,343 @@ export function ProductoDetailContainer({ id }: { id: string }) {
         </div>
       )}
       <Link href="/productos" className="link">
-        Back to productos
+        Volver a productos
       </Link>
-      <ConfirmDialog
-        open={confirming}
-        message="Delete this producto?"
-        onConfirm={remove}
-        onCancel={() => setConfirming(false)}
+      <DialogoConfirmar
+        abierto={confirmando}
+        mensaje="¿Borrar producto?"
+        alConfirmar={borrar}
+        alCancelar={() => setConfirmando(false)}
       />
     </section>
   );
 }
 
-=== web/src/features/producto/containers/producto-form-container.test.tsx ===
+=== web/src/contextos/producto/contenedores/formulario-producto.test.tsx ===
 import { describe, expect, test } from "bun:test";
 import { fireEvent, screen, waitFor } from "@testing-library/react";
-import type { Schemas } from "../../../api/client";
-import { fakeApi } from "../../../test-support/fake-api";
-import { ProductoMother, productoCollection } from "../../../test-support/producto";
-import { renderScreen } from "../../../test-support/render";
-import { ProductoFormContainer } from "./producto-form-container";
+import type { Esquemas } from "../../../api/cliente";
+import { apiFalsa } from "../../../pruebas/api-falsa";
+import { coleccionProducto, MadreProducto } from "../../../pruebas/producto";
+import { renderizarPantalla } from "../../../pruebas/renderizar";
+import { ContenedorFormularioProducto } from "./formulario-producto";
 
-function type(label: string, value: string) {
-  fireEvent.change(screen.getByLabelText(label), { target: { value } });
+function escribir(etiqueta: string, valor: string) {
+  fireEvent.change(screen.getByLabelText(etiqueta), { target: { value: valor } });
 }
 
-/** Fills the empty form with `request`, the way a user would. */
-async function fillIn(request: Schemas["PeticionCrearProducto"]) {
-  await screen.findByText("Save");
-  type("Name", request.name);
-  type("Sku", request.sku);
-  type("Price", String(request.price));
-  type("Status", request.status);
+/** Rellena el formulario vacío con `peticion`, como lo haría quien lo usa. */
+async function rellenar(peticion: Esquemas["PeticionCrearProducto"]) {
+  await screen.findByText("Guardar");
+  escribir("Name", peticion.name);
+  escribir("Sku", peticion.sku);
+  escribir("Price", String(peticion.price));
+  escribir("Status", peticion.status);
 }
 
-describe("ProductoFormContainer", () => {
-  test("should create the producto from what was typed and show it", async () => {
-    // Arrange
-    const request = ProductoMother.request();
-    const stored = productoCollection();
-    const api = fakeApi([stored]);
-    const { history } = renderScreen(<ProductoFormContainer />, { api });
-    await fillIn(request);
+describe("ContenedorFormularioProducto", () => {
+  test("debería crear con lo escrito e ir a su detalle", async () => {
+    // Preparar
+    const peticion = MadreProducto.peticion();
+    const guardados = coleccionProducto();
+    const api = apiFalsa([guardados]);
+    const pantalla = <ContenedorFormularioProducto />;
+    const { historial } = renderizarPantalla(pantalla, { api });
+    await rellenar(peticion);
 
-    // Act
-    fireEvent.click(screen.getByText("Save"));
+    // Actuar
+    fireEvent.click(screen.getByText("Guardar"));
 
-    // Assert
-    await waitFor(() => expect(history.at(-1)).toStartWith("/productos/"));
-    const [created] = stored.items.values();
-    expect(created).toMatchObject(request);
-    expect(history.at(-1)).toBe(`/productos/${created?.id}`);
+    // Comprobar
+    await waitFor(() => expect(historial.at(-1)).toStartWith("/productos/"));
+    const [creado] = guardados.elementos.values();
+    expect(creado).toMatchObject(peticion);
+    expect(historial.at(-1)).toBe(`/productos/${creado?.id}`);
   });
 
-  test("should save the edited producto when an existing one is submitted", async () => {
-    // Arrange
-    const seeded = ProductoMother.random();
-    const stored = productoCollection([seeded]);
-    const api = fakeApi([stored]);
-    const { history } = renderScreen(<ProductoFormContainer id={seeded.id} />, { api });
+  test("debería guardar la edición cuando se envía el formulario", async () => {
+    // Preparar
+    const sembrado = MadreProducto.aleatorio();
+    const guardados = coleccionProducto([sembrado]);
+    const api = apiFalsa([guardados]);
+    const pantalla = <ContenedorFormularioProducto id={sembrado.id} />;
+    const { historial } = renderizarPantalla(pantalla, { api });
 
-    // Act
-    fireEvent.click(await screen.findByText("Save"));
+    // Actuar
+    fireEvent.click(await screen.findByText("Guardar"));
 
-    // Assert
-    await waitFor(() => expect(history.at(-1)).toBe(`/productos/${seeded.id}`));
-    expect(stored.items.get(seeded.id)).toEqual(seeded);
-  });
-  test("should show the code itself when the API answers one the form does not know", async () => {
-    // Arrange
-    const request = ProductoMother.request();
-    const code = "producto.validacion.invalid";
-    const failures = { "POST /productos": code };
-    const api = fakeApi([productoCollection()], failures);
-    renderScreen(<ProductoFormContainer />, { api });
-    await fillIn(request);
-
-    // Act
-    fireEvent.click(screen.getByText("Save"));
-
-    // Assert
-    expect((await screen.findByRole("alert")).textContent).toBe(code);
+    // Comprobar
+    await waitFor(() => expect(historial.at(-1)).toBe(`/productos/${sembrado.id}`));
+    expect(guardados.elementos.get(sembrado.id)).toEqual(sembrado);
   });
 
-  test("should say a producto with these values exists when the API answers a duplicate", async () => {
-    // Arrange
-    const request = ProductoMother.request();
-    const failures = { "POST /productos": "producto.duplicado" };
-    const api = fakeApi([productoCollection()], failures);
-    renderScreen(<ProductoFormContainer />, { api });
-    await fillIn(request);
+  test("debería mostrar el propio código cuando la API responde uno que el formulario no conoce", async () => {
+    // Preparar
+    const peticion = MadreProducto.peticion();
+    const codigo = "producto.validacion.invalido";
+    const fallos = { "POST /productos": codigo };
+    const api = apiFalsa([coleccionProducto()], fallos);
+    renderizarPantalla(<ContenedorFormularioProducto />, { api });
+    await rellenar(peticion);
 
-    // Act
-    fireEvent.click(screen.getByText("Save"));
+    // Actuar
+    fireEvent.click(screen.getByText("Guardar"));
 
-    // Assert
-    expect((await screen.findByRole("alert")).textContent).toBe(
-      "A producto with these values already exists",
-    );
+    // Comprobar
+    expect((await screen.findByRole("alert")).textContent).toBe(codigo);
   });
 
-  test("should show the message under its input when the API rejects one field", async () => {
-    // Arrange
-    const request = ProductoMother.request();
-    const failures = { "POST /productos": "producto.name_invalido" };
-    const api = fakeApi([productoCollection()], failures);
-    renderScreen(<ProductoFormContainer />, { api });
-    await fillIn(request);
+  test("debería decir que los valores ya están en uso cuando la API responde un duplicado", async () => {
+    // Preparar
+    const peticion = MadreProducto.peticion();
+    const fallos = { "POST /productos": "producto.duplicado" };
+    const api = apiFalsa([coleccionProducto()], fallos);
+    renderizarPantalla(<ContenedorFormularioProducto />, { api });
+    await rellenar(peticion);
 
-    // Act
-    fireEvent.click(screen.getByText("Save"));
+    // Actuar
+    fireEvent.click(screen.getByText("Guardar"));
 
-    // Assert
-    expect(await screen.findByText("Name is not valid")).toBeTruthy();
-    const input = screen.getByLabelText("Name");
-    expect(input.getAttribute("aria-invalid")).toBe("true");
+    // Comprobar
+    expect((await screen.findByRole("alert")).textContent).toBe("Estos valores ya están en uso");
+  });
+
+  test("debería mostrar el mensaje bajo su input cuando la API rechaza un campo", async () => {
+    // Preparar
+    const peticion = MadreProducto.peticion();
+    const fallos = { "POST /productos": "producto.name_invalido" };
+    const api = apiFalsa([coleccionProducto()], fallos);
+    renderizarPantalla(<ContenedorFormularioProducto />, { api });
+    await rellenar(peticion);
+
+    // Actuar
+    fireEvent.click(screen.getByText("Guardar"));
+
+    // Comprobar
+    expect(await screen.findByText("Name: no válido")).toBeTruthy();
+    const campo = screen.getByLabelText("Name");
+    expect(campo.getAttribute("aria-invalid")).toBe("true");
     expect(screen.queryByRole("alert")).toBeNull();
   });
 });
 
-=== web/src/features/producto/containers/producto-form-container.tsx ===
+=== web/src/contextos/producto/contenedores/formulario-producto.tsx ===
 import { useState } from "react";
 import { Link, useLocation } from "wouter";
-import type { Schemas } from "../../../api/client";
-import { unwrap } from "../../../api/http";
-import { useDependencies } from "../../../dependencies";
-import { ErrorAlert, errorCode } from "../../../shared/ui/error-alert";
-import { useAsync } from "../../../shared/use-async";
-import { toProblem } from "../messages";
-import { ProductoFormView, toProductoForm, toProductoRequest } from "../views/producto-form-view";
+import type { Esquemas } from "../../../api/cliente";
+import { desenvolver } from "../../../api/http";
+import { AlertaError, codigoError } from "../../../compartido/ui/alerta-error";
+import { useCarga } from "../../../compartido/use-carga";
+import { useDependencias } from "../../../dependencias";
+import { aProblema } from "../mensajes";
+import {
+  aFormularioProducto,
+  aPeticionProducto,
+  VistaFormularioProducto,
+} from "../vistas/formulario-producto";
 
-type Producto = Schemas["DtoProducto"];
+type Producto = Esquemas["DtoProducto"];
 
-/** Creates a producto, or edits the one with `id`. */
-export function ProductoFormContainer({ id }: { id?: string }) {
-  const { api } = useDependencies();
-  const existing = useAsync(
+/** Crear, o editar con `id`: el formulario de productos. */
+export function ContenedorFormularioProducto({ id }: { id?: string }) {
+  const { api } = useDependencias();
+  const existente = useCarga(
     () =>
       id === undefined
         ? Promise.resolve(null)
-        : unwrap(api.GET("/productos/{id}", { params: { path: { id } } })),
+        : desenvolver(api.GET("/productos/{id}", { params: { path: { id } } })),
     [api, id],
   );
-  const title = id === undefined ? "New producto" : "Edit producto";
+  const titulo = id === undefined ? "Crear producto" : "Editar producto";
 
   return (
     <section className="space-y-4">
-      <h1 className="text-2xl font-bold">{title}</h1>
-      {existing.status === "loading" && <span className="loading loading-spinner" />}
-      {existing.status === "error" && <ErrorAlert error={existing.error} />}
-      {existing.status === "ok" && <ProductoForm existing={existing.data} />}
+      <h1 className="text-2xl font-bold">{titulo}</h1>
+      {existente.estado === "cargando" && <span className="loading loading-spinner" />}
+      {existente.estado === "error" && <AlertaError error={existente.error} />}
+      {existente.estado === "listo" && <FormularioProducto existente={existente.datos} />}
       <Link href={id === undefined ? "/productos" : `/productos/${id}`} className="link">
-        Cancel
+        Cancelar
       </Link>
     </section>
   );
 }
 
-function ProductoForm({ existing }: { existing: Producto | null }) {
-  const { api } = useDependencies();
-  const [, navigate] = useLocation();
-  const [values, setValues] = useState(toProductoForm(existing));
-  const [saving, setSaving] = useState(false);
-  const [failure, setFailure] = useState<unknown>(null);
-  const problem = failure === null ? null : toProblem(errorCode(failure));
+function FormularioProducto({ existente }: { existente: Producto | null }) {
+  const { api } = useDependencias();
+  const [, navegar] = useLocation();
+  const [valores, setValores] = useState(aFormularioProducto(existente));
+  const [guardando, setGuardando] = useState(false);
+  const [fallo, setFallo] = useState<unknown>(null);
+  const problema = fallo === null ? null : aProblema(codigoError(fallo));
 
-  const save = async () => {
-    setSaving(true);
-    setFailure(null);
+  const guardar = async () => {
+    setGuardando(true);
+    setFallo(null);
     try {
-      const body = toProductoRequest(values);
-      const saved = await unwrap(
-        existing === null
-          ? api.POST("/productos", { body })
-          : api.PUT("/productos/{id}", { params: { path: { id: existing.id } }, body }),
+      const cuerpo = aPeticionProducto(valores);
+      const guardado = await desenvolver(
+        existente === null
+          ? api.POST("/productos", { body: cuerpo })
+          : api.PUT("/productos/{id}", { params: { path: { id: existente.id } }, body: cuerpo }),
       );
-      navigate(`/productos/${saved.id}`);
+      navegar(`/productos/${guardado.id}`);
     } catch (error) {
-      setFailure(error);
-      setSaving(false);
+      setFallo(error);
+      setGuardando(false);
     }
   };
 
   return (
     <div className="card bg-base-100">
       <div className="card-body">
-        {problem?.field === null && <ErrorAlert error={failure} message={problem.text} />}
-        <ProductoFormView
-          values={values}
-          saving={saving}
-          problem={problem}
-          onChange={setValues}
-          onSubmit={save}
+        {problema?.campo === null && <AlertaError error={fallo} mensaje={problema.texto} />}
+        <VistaFormularioProducto
+          valores={valores}
+          guardando={guardando}
+          problema={problema}
+          alCambiar={setValores}
+          alEnviar={guardar}
         />
       </div>
     </div>
   );
 }
 
-=== web/src/features/producto/containers/producto-list-container.test.tsx ===
+=== web/src/contextos/producto/contenedores/lista-producto.test.tsx ===
 import { describe, expect, test } from "bun:test";
 import { fireEvent, screen } from "@testing-library/react";
-import { CurrentUserMother } from "../../../test-support/auth";
-import { fakeApi } from "../../../test-support/fake-api";
-import { ProductoMother, productoCollection } from "../../../test-support/producto";
-import { renderScreen } from "../../../test-support/render";
-import { ProductoListContainer } from "./producto-list-container";
+import { apiFalsa } from "../../../pruebas/api-falsa";
+import { MadreUsuarioActual } from "../../../pruebas/auth";
+import { coleccionProducto, MadreProducto } from "../../../pruebas/producto";
+import { renderizarPantalla } from "../../../pruebas/renderizar";
+import { ContenedorListaProducto } from "./lista-producto";
 
-describe("ProductoListContainer", () => {
-  test("should show a row per producto when there are some", async () => {
-    // Arrange
-    const seed = [ProductoMother.random(), ProductoMother.random()];
-    const api = fakeApi([productoCollection(seed)]);
+describe("ContenedorListaProducto", () => {
+  test("debería mostrar una fila por cada producto", async () => {
+    // Preparar
+    const semilla = [MadreProducto.aleatorio(), MadreProducto.aleatorio()];
+    const api = apiFalsa([coleccionProducto(semilla)]);
 
-    // Act
-    renderScreen(<ProductoListContainer />, { api });
+    // Actuar
+    renderizarPantalla(<ContenedorListaProducto />, { api });
 
-    // Assert
-    expect(await screen.findAllByText("View")).toHaveLength(2);
+    // Comprobar
+    expect(await screen.findAllByText("Ver")).toHaveLength(2);
   });
 
-  test("should show the next page when Next is pressed", async () => {
-    // Arrange
-    const seed = Array.from({ length: 25 }, () => ProductoMother.random());
-    const api = fakeApi([productoCollection(seed)]);
-    renderScreen(<ProductoListContainer />, { api });
-    expect(await screen.findAllByText("View")).toHaveLength(20);
+  test("debería mostrar la página siguiente cuando se pulsa Siguiente", async () => {
+    // Preparar
+    const semilla = Array.from({ length: 25 }, () => MadreProducto.aleatorio());
+    const api = apiFalsa([coleccionProducto(semilla)]);
+    renderizarPantalla(<ContenedorListaProducto />, { api });
+    expect(await screen.findAllByText("Ver")).toHaveLength(20);
 
-    // Act
-    fireEvent.click(screen.getByRole("button", { name: "Next" }));
+    // Actuar
+    fireEvent.click(screen.getByRole("button", { name: "Siguiente" }));
 
-    // Assert
-    expect(await screen.findByText("21–25 of 25")).toBeTruthy();
-    expect(screen.getAllByText("View")).toHaveLength(5);
+    // Comprobar
+    expect(await screen.findByText("21–25 de 25")).toBeTruthy();
+    expect(screen.getAllByText("Ver")).toHaveLength(5);
   });
 
-  test("should open the page the URL names", async () => {
-    // Arrange
-    const seed = Array.from({ length: 25 }, () => ProductoMother.random());
-    const api = fakeApi([productoCollection(seed)]);
-    const path = "/productos?page=2";
+  test("debería abrir la página que nombra la URL", async () => {
+    // Preparar
+    const semilla = Array.from({ length: 25 }, () => MadreProducto.aleatorio());
+    const api = apiFalsa([coleccionProducto(semilla)]);
+    const ruta = "/productos?pagina=2";
 
-    // Act
-    renderScreen(<ProductoListContainer />, { api }, path);
+    // Actuar
+    renderizarPantalla(<ContenedorListaProducto />, { api }, ruta);
 
-    // Assert
-    expect(await screen.findByText("21–25 of 25")).toBeTruthy();
+    // Comprobar
+    expect(await screen.findByText("21–25 de 25")).toBeTruthy();
   });
 
-  test("should say so when there is no producto", async () => {
-    // Arrange
-    const api = fakeApi([productoCollection()]);
+  test("debería decirlo cuando no hay productos", async () => {
+    // Preparar
+    const api = apiFalsa([coleccionProducto()]);
 
-    // Act
-    renderScreen(<ProductoListContainer />, { api });
+    // Actuar
+    renderizarPantalla(<ContenedorListaProducto />, { api });
 
-    // Assert
-    expect(await screen.findByText("No productos yet.")).toBeTruthy();
+    // Comprobar
+    expect(await screen.findByText("Todavía no hay productos.")).toBeTruthy();
   });
 
-  test("should show the error code when the productos cannot be listed", async () => {
-    // Arrange
-    const failures = { "GET /productos": "producto.repositorio" };
-    const api = fakeApi([productoCollection()], failures);
+  test("debería mostrar el código del error cuando la API no da la lista", async () => {
+    // Preparar
+    const fallos = { "GET /productos": "producto.repositorio" };
+    const api = apiFalsa([coleccionProducto()], fallos);
 
-    // Act
-    renderScreen(<ProductoListContainer />, { api });
+    // Actuar
+    renderizarPantalla(<ContenedorListaProducto />, { api });
 
-    // Assert
+    // Comprobar
     expect((await screen.findByRole("alert")).textContent).toBe("producto.repositorio");
   });
 
-  test("should not offer New to a user without its role", async () => {
-    // Arrange
-    const api = fakeApi([productoCollection([ProductoMother.random()])]);
-    const user = CurrentUserMother.random();
+  test("no debería ofrecer Crear a quien no tiene su rol", async () => {
+    // Preparar
+    const api = apiFalsa([coleccionProducto([MadreProducto.aleatorio()])]);
+    const usuario = MadreUsuarioActual.aleatorio();
 
-    // Act
-    renderScreen(<ProductoListContainer />, { api }, "/", { user });
+    // Actuar
+    renderizarPantalla(<ContenedorListaProducto />, { api }, "/", { usuario });
 
-    // Assert
-    expect(await screen.findByText("View")).toBeTruthy();
-    expect(screen.queryByText("New producto")).toBeNull();
+    // Comprobar
+    expect(await screen.findByText("Ver")).toBeTruthy();
+    expect(screen.queryByText("Crear producto")).toBeNull();
   });
 });
 
-=== web/src/features/producto/containers/producto-list-container.tsx ===
+=== web/src/contextos/producto/contenedores/lista-producto.tsx ===
 import { Link, useLocation, useSearch } from "wouter";
-import { PAGE_SIZE, unwrap } from "../../../api/http";
+import { desenvolver, TAMANO_PAGINA } from "../../../api/http";
 import { useAuth } from "../../../auth/auth";
-import { useDependencies } from "../../../dependencies";
-import { EmptyState } from "../../../shared/ui/empty-state";
-import { ErrorAlert } from "../../../shared/ui/error-alert";
-import { offsetFromSearch, Pagination, pageSearch } from "../../../shared/ui/pagination";
-import { useAsync } from "../../../shared/use-async";
-import { ProductoListView } from "../views/producto-list-view";
+import { AlertaError } from "../../../compartido/ui/alerta-error";
+import { busquedaPagina, desplazamientoDeUrl, Paginacion } from "../../../compartido/ui/paginacion";
+import { SinElementos } from "../../../compartido/ui/sin-elementos";
+import { useCarga } from "../../../compartido/use-carga";
+import { useDependencias } from "../../../dependencias";
+import { VistaListaProducto } from "../vistas/lista-producto";
 
-/** The list, one page at a time; the page is in the URL (`?page=2`), so reload and back keep it. */
-export function ProductoListContainer() {
-  const { api } = useDependencies();
-  const { can } = useAuth();
-  const [location, navigate] = useLocation();
-  const offset = offsetFromSearch(useSearch(), PAGE_SIZE);
-  const goTo = (next: number) => navigate(location + pageSearch(next, PAGE_SIZE));
-  const query = { limite: PAGE_SIZE, desplazamiento: offset };
-  const productos = useAsync(
-    () => unwrap(api.GET("/productos", { params: { query } })),
-    [api, offset],
+/** La lista, página a página; la página va en la URL (`?pagina=2`): recargar y volver la mantienen. */
+export function ContenedorListaProducto() {
+  const { api } = useDependencias();
+  const { puede } = useAuth();
+  const [ubicacion, navegar] = useLocation();
+  const desplazamiento = desplazamientoDeUrl(useSearch(), TAMANO_PAGINA);
+  const irA = (siguiente: number) => navegar(ubicacion + busquedaPagina(siguiente, TAMANO_PAGINA));
+  const consulta = { limite: TAMANO_PAGINA, desplazamiento };
+  const productos = useCarga(
+    () => desenvolver(api.GET("/productos", { params: { query: consulta } })),
+    [api, desplazamiento],
   );
 
   return (
     <section className="space-y-4">
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-bold">Productos</h1>
-        {can("admin") && (
-          <Link href="/productos/new" className="btn btn-primary">
-            New producto
+        {puede("admin") && (
+          <Link href="/productos/nuevo" className="btn btn-primary">
+            Crear producto
           </Link>
         )}
       </div>
-      {productos.status === "loading" && <span className="loading loading-spinner" />}
-      {productos.status === "error" && <ErrorAlert error={productos.error} />}
-      {productos.status === "ok" &&
-        (productos.data.total === 0 ? (
-          <EmptyState message="No productos yet." />
+      {productos.estado === "cargando" && <span className="loading loading-spinner" />}
+      {productos.estado === "error" && <AlertaError error={productos.error} />}
+      {productos.estado === "listo" &&
+        (productos.datos.total === 0 ? (
+          <SinElementos mensaje="Todavía no hay productos." />
         ) : (
           <>
-            <ProductoListView productos={productos.data.elementos} />
-            <Pagination
-              total={productos.data.total}
-              limit={productos.data.limite}
-              offset={productos.data.desplazamiento}
-              onOffsetChange={goTo}
+            <VistaListaProducto productos={productos.datos.elementos} />
+            <Paginacion
+              total={productos.datos.total}
+              limite={productos.datos.limite}
+              desplazamiento={productos.datos.desplazamiento}
+              alCambiarDesplazamiento={irA}
             />
           </>
         ))}
@@ -8199,44 +8329,44 @@ export function ProductoListContainer() {
   );
 }
 
-=== web/src/features/producto/messages.ts ===
-/** What a screen shows for an API error: under the input it is about, or in the alert. */
-export interface ProductoProblem {
-  field: string | null;
-  text: string;
+=== web/src/contextos/producto/mensajes.ts ===
+/** Lo que una pantalla muestra de un error de la API: bajo el input del que trata, o en la alerta. */
+export interface ProblemaProducto {
+  campo: string | null;
+  texto: string;
 }
 
 /**
- * The messages for the codes of the backend's `errores.rs`, generated from the same list. English:
- * this file is the place to translate them. A code missing here shows as it is.
+ * Los mensajes de los códigos de `errores.rs` del backend, generados de la misma lista. Un código que
+ * no está aquí se muestra tal cual.
  */
-const TEXTS: Record<string, string> = {
-  "producto.name_invalido": "Name is not valid",
-  "producto.validacion.sku_vacio": "Sku is required",
-  "producto.status_invalido": "Status is not valid",
-  "producto.duplicado": "A producto with these values already exists",
-  "producto.no_encontrado": "This producto no longer exists",
-  "producto.repositorio": "The producto could not be saved, try again later",
-  "producto.desconocido": "Something went wrong",
+const TEXTOS: Record<string, string> = {
+  "producto.name_invalido": "Name: no válido",
+  "producto.validacion.sku_vacio": "Sku: obligatorio",
+  "producto.status_invalido": "Status: no válido",
+  "producto.duplicado": "Estos valores ya están en uso",
+  "producto.no_encontrado": "Ya no existe",
+  "producto.repositorio": "No se ha podido guardar; inténtalo más tarde",
+  "producto.desconocido": "Algo ha ido mal",
 };
 
-/** The input each field's code is about. */
-const FIELDS: Record<string, string> = {
+/** El input del que trata el código de cada campo. */
+const CAMPOS: Record<string, string> = {
   "producto.name_invalido": "name",
   "producto.validacion.sku_vacio": "sku",
   "producto.status_invalido": "status",
 };
 
-export function toProblem(code: string): ProductoProblem {
-  return { field: FIELDS[code] ?? null, text: TEXTS[code] ?? code };
+export function aProblema(codigo: string): ProblemaProducto {
+  return { campo: CAMPOS[codigo] ?? null, texto: TEXTOS[codigo] ?? codigo };
 }
 
-=== web/src/features/producto/views/producto-detail-view.tsx ===
-import type { Schemas } from "../../../api/client";
+=== web/src/contextos/producto/vistas/detalle-producto.tsx ===
+import type { Esquemas } from "../../../api/cliente";
 
-type Producto = Schemas["DtoProducto"];
+type Producto = Esquemas["DtoProducto"];
 
-export function ProductoDetailView({ producto }: { producto: Producto }) {
+export function VistaDetalleProducto({ producto }: { producto: Producto }) {
   return (
     <dl className="grid grid-cols-[max-content_1fr] gap-x-6 gap-y-2">
       <dt className="font-semibold">Name</dt>
@@ -8251,24 +8381,24 @@ export function ProductoDetailView({ producto }: { producto: Producto }) {
   );
 }
 
-=== web/src/features/producto/views/producto-form-view.tsx ===
-import type { Schemas } from "../../../api/client";
-import { FieldError } from "../../../shared/ui/field-error";
-import type { ProductoProblem } from "../messages";
+=== web/src/contextos/producto/vistas/formulario-producto.tsx ===
+import type { Esquemas } from "../../../api/cliente";
+import { ErrorCampo } from "../../../compartido/ui/error-campo";
+import type { ProblemaProducto } from "../mensajes";
 
-type Producto = Schemas["DtoProducto"];
-type ProductoRequest = Schemas["PeticionCrearProducto"];
+type Producto = Esquemas["DtoProducto"];
+type PeticionProducto = Esquemas["PeticionCrearProducto"];
 
-/** What the inputs hold: the text of every input, `checked` for a checkbox. */
-export interface ProductoFormValues {
+/** Lo que guardan los inputs: el texto de cada input, `checked` en una casilla. */
+export interface ValoresFormularioProducto {
   name: string;
   sku: string;
   price: string;
   status: string;
 }
 
-/** The inputs for `producto`, empty when there is none yet. */
-export function toProductoForm(producto: Producto | null): ProductoFormValues {
+/** Los inputs de `producto`, vacíos cuando todavía no hay ninguno. */
+export function aFormularioProducto(producto: Producto | null): ValoresFormularioProducto {
   if (producto === null) {
     return {
       name: "",
@@ -8285,36 +8415,36 @@ export function toProductoForm(producto: Producto | null): ProductoFormValues {
   };
 }
 
-/** What a create or an update sends: the same fields for both. */
-export function toProductoRequest(values: ProductoFormValues): ProductoRequest {
+/** Lo que mandan crear y actualizar: los mismos campos en los dos. */
+export function aPeticionProducto(valores: ValoresFormularioProducto): PeticionProducto {
   return {
-    name: values.name,
-    sku: values.sku,
-    price: Number(values.price),
-    status: values.status,
+    name: valores.name,
+    sku: valores.sku,
+    price: Number(valores.price),
+    status: valores.status,
   };
 }
 
-export function ProductoFormView({
-  values,
-  saving,
-  problem,
-  onChange,
-  onSubmit,
+export function VistaFormularioProducto({
+  valores,
+  guardando,
+  problema,
+  alCambiar,
+  alEnviar,
 }: {
-  values: ProductoFormValues;
-  saving: boolean;
-  /** What the API said about the last submit: shown under its input. */
-  problem: ProductoProblem | null;
-  onChange: (values: ProductoFormValues) => void;
-  onSubmit: () => void;
+  valores: ValoresFormularioProducto;
+  guardando: boolean;
+  /** Lo que dijo la API del último envío: se muestra bajo su input. */
+  problema: ProblemaProducto | null;
+  alCambiar: (valores: ValoresFormularioProducto) => void;
+  alEnviar: () => void;
 }) {
   return (
     <form
       className="space-y-2"
       onSubmit={(event) => {
         event.preventDefault();
-        onSubmit();
+        alEnviar();
       }}
     >
       <label className="fieldset">
@@ -8322,66 +8452,66 @@ export function ProductoFormView({
         <input
           className="input w-full"
           type="text"
-          aria-invalid={problem?.field === "name"}
+          aria-invalid={problema?.campo === "name"}
           required
-          value={values.name}
-          onChange={(event) => onChange({ ...values, name: event.target.value })}
+          value={valores.name}
+          onChange={(event) => alCambiar({ ...valores, name: event.target.value })}
         />
       </label>
-      <FieldError problem={problem} field="name" />
+      <ErrorCampo problema={problema} campo="name" />
       <label className="fieldset">
         <span className="fieldset-legend">Sku</span>
         <input
           className="input w-full"
           type="text"
-          aria-invalid={problem?.field === "sku"}
+          aria-invalid={problema?.campo === "sku"}
           required
-          value={values.sku}
-          onChange={(event) => onChange({ ...values, sku: event.target.value })}
+          value={valores.sku}
+          onChange={(event) => alCambiar({ ...valores, sku: event.target.value })}
         />
       </label>
-      <FieldError problem={problem} field="sku" />
+      <ErrorCampo problema={problema} campo="sku" />
       <label className="fieldset">
         <span className="fieldset-legend">Price</span>
         <input
           className="input w-full"
           type="number"
-          aria-invalid={problem?.field === "price"}
+          aria-invalid={problema?.campo === "price"}
           required
-          value={values.price}
-          onChange={(event) => onChange({ ...values, price: event.target.value })}
+          value={valores.price}
+          onChange={(event) => alCambiar({ ...valores, price: event.target.value })}
         />
       </label>
-      <FieldError problem={problem} field="price" />
+      <ErrorCampo problema={problema} campo="price" />
       <label className="fieldset">
         <span className="fieldset-legend">Status</span>
         <select
           className="select w-full"
-          aria-invalid={problem?.field === "status"}
+          aria-invalid={problema?.campo === "status"}
           required
-          value={values.status}
-          onChange={(event) => onChange({ ...values, status: event.target.value })}
+          value={valores.status}
+          onChange={(event) => alCambiar({ ...valores, status: event.target.value })}
         >
-          <option value="">Choose…</option>
+          <option value="">Elige una opción</option>
           <option value="Draft">Draft</option>
           <option value="Live">Live</option>
         </select>
       </label>
-      <FieldError problem={problem} field="status" />
-      <button type="submit" className="btn btn-primary" disabled={saving}>
-        Save
+      <ErrorCampo problema={problema} campo="status" />
+      <button type="submit" className="btn btn-primary" disabled={guardando}>
+        Guardar
       </button>
     </form>
   );
 }
 
-=== web/src/features/producto/views/producto-list-view.tsx ===
+=== web/src/contextos/producto/vistas/lista-producto.tsx ===
 import { Link } from "wouter";
-import type { Schemas } from "../../../api/client";
+import type { Esquemas } from "../../../api/cliente";
 
-type Producto = Schemas["DtoProducto"];
+type Producto = Esquemas["DtoProducto"];
 
-export function ProductoListView({ productos }: { productos: Producto[] }) {
+export function VistaListaProducto({ productos }: { productos: Producto[] }) {
   return (
     <div className="overflow-x-auto rounded-box bg-base-100">
       <table className="table">
@@ -8403,7 +8533,7 @@ export function ProductoListView({ productos }: { productos: Producto[] }) {
               <td>{producto.status}</td>
               <td className="text-right">
                 <Link href={`/productos/${producto.id}`} className="link">
-                  View
+                  Ver
                 </Link>
               </td>
             </tr>
@@ -8414,112 +8544,114 @@ export function ProductoListView({ productos }: { productos: Producto[] }) {
   );
 }
 
-=== web/src/generated/dependencies.ts ===
-// AUTO-GENERATED by puerto. Edit puerto.toml, then run `puerto generar bootstrap`.
+=== web/src/generado/dependencias.ts ===
+// GENERADO por puerto. Edita puerto.toml y después ejecuta `puerto generar bootstrap`.
 //
-// The composition root: the only module that builds the API client. Screens reach it through
-// `useDependencies()`, so a test hands them a fake instead.
+// La raíz de composición: el único módulo que construye el cliente de la API. Las pantallas llegan
+// a él con `useDependencias()`, así un test les da un falso.
 
-import { type ApiClient, createApiClient } from "../api/client";
-import { bearerMiddleware } from "../auth/bearer-middleware";
-import { oidcAuthGateway, oidcSettingsFromEnv } from "../auth/oidc-auth-gateway";
-import type { AuthGateway } from "../auth/session";
+import { type ClienteApi, crearClienteApi } from "../api/cliente";
+import { middlewareBearer } from "../auth/middleware-bearer";
+import { ajustesOidcDeEntorno, pasarelaOidc } from "../auth/pasarela-oidc";
+import type { PasarelaAuth } from "../auth/sesion";
 
-export interface Dependencies {
-  api: ApiClient;
-  auth: AuthGateway;
+export interface Dependencias {
+  api: ClienteApi;
+  auth: PasarelaAuth;
 }
 
-export function createDependencies(): Dependencies {
-  const auth = oidcAuthGateway(oidcSettingsFromEnv());
-  const api = createApiClient();
-  api.use(bearerMiddleware(auth));
+export function crearDependencias(): Dependencias {
+  const auth = pasarelaOidc(ajustesOidcDeEntorno());
+  const api = crearClienteApi();
+  api.use(middlewareBearer(auth));
   return { api, auth };
 }
 
-=== web/src/generated/roles.ts ===
-// AUTO-GENERATED by puerto. Edit puerto.toml, then run `puerto generar bootstrap`.
+=== web/src/generado/roles.ts ===
+// GENERADO por puerto. Edita puerto.toml y después ejecuta `puerto generar bootstrap`.
 
 /**
- * Every role a generated screen checks (`roles` in puerto.toml). The screen tests' caller holds
- * them all (`CurrentUserMother.caller()`).
+ * Cada rol que comprueba una pantalla generada (`roles` en puerto.toml). Quien llama en los tests de
+ * pantalla los tiene todos (`MadreUsuarioActual.llamante()`).
  */
 export const ROLES: string[] = ["admin", "owner"];
 
-=== web/src/generated/routes.tsx ===
-// AUTO-GENERATED by puerto. Edit puerto.toml, then run `puerto generar bootstrap`.
+=== web/src/generado/rutas.tsx ===
+// GENERADO por puerto. Edita puerto.toml y después ejecuta `puerto generar bootstrap`.
 
 import { Route, Switch } from "wouter";
-import { RequireAuth } from "../auth/auth";
-import { PedidoDetailContainer } from "../features/pedido/containers/pedido-detail-container";
-import { PedidoFormContainer } from "../features/pedido/containers/pedido-form-container";
-import { PedidoListContainer } from "../features/pedido/containers/pedido-list-container";
-import { ProductoDetailContainer } from "../features/producto/containers/producto-detail-container";
-import { ProductoFormContainer } from "../features/producto/containers/producto-form-container";
-import { ProductoListContainer } from "../features/producto/containers/producto-list-container";
-import { AuthCallbackPage } from "../pages/auth-callback";
-import { HomePage } from "../pages/home";
-import { NotFoundPage } from "../pages/not-found";
-import { customRoutes } from "../routes";
-import type { NavEntry } from "../shared/ui/layout";
+import { RequiereAuth } from "../auth/auth";
+import type { EntradaMenu } from "../compartido/ui/marco";
+import { ContenedorDetallePedido } from "../contextos/pedido/contenedores/detalle-pedido";
+import { ContenedorFormularioPedido } from "../contextos/pedido/contenedores/formulario-pedido";
+import { ContenedorListaPedido } from "../contextos/pedido/contenedores/lista-pedido";
+import { ContenedorDetalleProducto } from "../contextos/producto/contenedores/detalle-producto";
+import { ContenedorFormularioProducto } from "../contextos/producto/contenedores/formulario-producto";
+import { ContenedorListaProducto } from "../contextos/producto/contenedores/lista-producto";
+import { PaginaAuthCallback } from "../paginas/auth-callback";
+import { PaginaInicio } from "../paginas/inicio";
+import { PaginaNoEncontrada } from "../paginas/no-encontrada";
+import { rutasPropias } from "../rutas";
 
-export const navEntries: NavEntry[] = [
-  { label: "Pedidos", href: "/pedidos" },
-  { label: "Productos", href: "/productos" },
+export const entradasMenu: EntradaMenu[] = [
+  { etiqueta: "Pedidos", href: "/pedidos" },
+  { etiqueta: "Productos", href: "/productos" },
 ];
 
-export function AppRoutes() {
+export function RutasApp() {
   return (
     <Switch>
       <Route path="/">
-        <HomePage entries={navEntries} />
+        <PaginaInicio entradas={entradasMenu} />
       </Route>
       <Route path="/auth/callback">
-        <AuthCallbackPage />
+        <PaginaAuthCallback />
       </Route>
-      {customRoutes}
+      {rutasPropias}
       <Route path="/pedidos">
-        <RequireAuth>
-          <PedidoListContainer />
-        </RequireAuth>
+        <RequiereAuth>
+          <ContenedorListaPedido />
+        </RequiereAuth>
       </Route>
-      <Route path="/pedidos/new">
-        <RequireAuth>
-          <PedidoFormContainer />
-        </RequireAuth>
+      <Route path="/pedidos/nuevo">
+        <RequiereAuth>
+          <ContenedorFormularioPedido />
+        </RequiereAuth>
       </Route>
-      <Route path="/pedidos/:id/edit">
+      <Route path="/pedidos/:id/editar">
         {(params) => (
-          <RequireAuth>
-            <PedidoFormContainer id={params.id} />
-          </RequireAuth>
+          <RequiereAuth>
+            <ContenedorFormularioPedido id={params.id} />
+          </RequiereAuth>
         )}
       </Route>
       <Route path="/pedidos/:id">
         {(params) => (
-          <RequireAuth>
-            <PedidoDetailContainer id={params.id} />
-          </RequireAuth>
+          <RequiereAuth>
+            <ContenedorDetallePedido id={params.id} />
+          </RequiereAuth>
         )}
       </Route>
       <Route path="/productos">
-        <ProductoListContainer />
+        <ContenedorListaProducto />
       </Route>
-      <Route path="/productos/new">
-        <RequireAuth>
-          <ProductoFormContainer />
-        </RequireAuth>
+      <Route path="/productos/nuevo">
+        <RequiereAuth>
+          <ContenedorFormularioProducto />
+        </RequiereAuth>
       </Route>
-      <Route path="/productos/:id/edit">
+      <Route path="/productos/:id/editar">
         {(params) => (
-          <RequireAuth>
-            <ProductoFormContainer id={params.id} />
-          </RequireAuth>
+          <RequiereAuth>
+            <ContenedorFormularioProducto id={params.id} />
+          </RequiereAuth>
         )}
       </Route>
-      <Route path="/productos/:id">{(params) => <ProductoDetailContainer id={params.id} />}</Route>
+      <Route path="/productos/:id">
+        {(params) => <ContenedorDetalleProducto id={params.id} />}
+      </Route>
       <Route>
-        <NotFoundPage />
+        <PaginaNoEncontrada />
       </Route>
     </Switch>
   );
@@ -8530,389 +8662,292 @@ import "./index.css";
 
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
-import { AuthProvider } from "./auth/auth";
-import { DependenciesProvider } from "./dependencies";
-import { createDependencies } from "./generated/dependencies";
-import { AppRoutes, navEntries } from "./generated/routes";
-import { Layout } from "./shared/ui/layout";
+import { ProveedorAuth } from "./auth/auth";
+import { Marco } from "./compartido/ui/marco";
+import { ProveedorDependencias } from "./dependencias";
+import { crearDependencias } from "./generado/dependencias";
+import { entradasMenu, RutasApp } from "./generado/rutas";
 
-const root = document.getElementById("root");
-if (root === null) {
-  throw new Error("index.html has no #root element");
+const raiz = document.getElementById("root");
+if (raiz === null) {
+  throw new Error("index.html no tiene el elemento #root");
 }
 
-createRoot(root).render(
+createRoot(raiz).render(
   <StrictMode>
-    <DependenciesProvider value={createDependencies()}>
-      <AuthProvider>
-        <Layout title={document.title} nav={navEntries}>
-          <AppRoutes />
-        </Layout>
-      </AuthProvider>
-    </DependenciesProvider>
+    <ProveedorDependencias valor={crearDependencias()}>
+      <ProveedorAuth>
+        <Marco titulo={document.title} menu={entradasMenu}>
+          <RutasApp />
+        </Marco>
+      </ProveedorAuth>
+    </ProveedorDependencias>
   </StrictMode>,
 );
 
-=== web/src/pages/auth-callback.test.tsx ===
+=== web/src/paginas/auth-callback.test.tsx ===
 import { describe, expect, test } from "bun:test";
 import { screen, waitFor } from "@testing-library/react";
-import { CurrentUserMother, fakeAuthGateway } from "../test-support/auth";
-import { renderScreen } from "../test-support/render";
-import { AuthCallbackPage } from "./auth-callback";
+import { MadreUsuarioActual, pasarelaAuthFalsa } from "../pruebas/auth";
+import { renderizarPantalla } from "../pruebas/renderizar";
+import { PaginaAuthCallback } from "./auth-callback";
 
-describe("AuthCallbackPage", () => {
-  test("should go back to the page the sign-in started on", async () => {
-    // Arrange
-    const auth = { ...fakeAuthGateway(), completeLogin: async () => "/orders?page=2" };
+describe("PaginaAuthCallback", () => {
+  test("debería volver a la página en la que empezó el inicio de sesión", async () => {
+    // Preparar
+    const auth = { ...pasarelaAuthFalsa(), completarLogin: async () => "/pedidos?pagina=2" };
 
-    // Act
-    const { history } = renderScreen(<AuthCallbackPage />, { auth }, "/auth/callback");
+    // Actuar
+    const { historial } = renderizarPantalla(<PaginaAuthCallback />, { auth }, "/auth/callback");
 
-    // Assert
-    await waitFor(() => expect(history.at(-1)).toBe("/orders?page=2"));
+    // Comprobar
+    await waitFor(() => expect(historial.at(-1)).toBe("/pedidos?pagina=2"));
   });
 
-  test("should show why when the provider's answer is refused", async () => {
-    // Arrange
+  test("debería decir por qué cuando se rechaza la respuesta del proveedor", async () => {
+    // Preparar
     const auth = {
-      ...fakeAuthGateway({ user: CurrentUserMother.random() }),
-      completeLogin: () => Promise.reject(new Error("No matching state found in storage")),
+      ...pasarelaAuthFalsa({ usuario: MadreUsuarioActual.aleatorio() }),
+      completarLogin: () => Promise.reject(new Error("No matching state found in storage")),
     };
 
-    // Act
-    renderScreen(<AuthCallbackPage />, { auth }, "/auth/callback");
+    // Actuar
+    renderizarPantalla(<PaginaAuthCallback />, { auth }, "/auth/callback");
 
-    // Assert
+    // Comprobar
     expect((await screen.findByRole("alert")).textContent).toBe(
       "No matching state found in storage",
     );
   });
 });
 
-=== web/src/pages/auth-callback.tsx ===
+=== web/src/paginas/auth-callback.tsx ===
 import { useEffect, useRef, useState } from "react";
 import { useLocation } from "wouter";
 import { useAuth } from "../auth/auth";
-import { ErrorAlert } from "../shared/ui/error-alert";
+import { AlertaError } from "../compartido/ui/alerta-error";
 
-/** Where the provider sends the user back after signing in (`redirect_uri`). */
-export function AuthCallbackPage() {
-  const { completeLogin } = useAuth();
-  const [, navigate] = useLocation();
-  const [failure, setFailure] = useState<unknown>(null);
-  const started = useRef(false);
+/** Adonde devuelve el proveedor a quien acaba de iniciar sesión (`redirect_uri`). */
+export function PaginaAuthCallback() {
+  const { completarLogin } = useAuth();
+  const [, navegar] = useLocation();
+  const [fallo, setFallo] = useState<unknown>(null);
+  const empezado = useRef(false);
 
   useEffect(() => {
-    // Once: StrictMode runs effects twice, and the provider's answer can be redeemed only once.
-    if (started.current) return;
-    started.current = true;
-    completeLogin().then((back) => navigate(back, { replace: true }), setFailure);
-  }, [completeLogin, navigate]);
+    // Una vez: StrictMode ejecuta los efectos dos veces, y la respuesta del proveedor solo se canjea una.
+    if (empezado.current) return;
+    empezado.current = true;
+    completarLogin().then((vuelta) => navegar(vuelta, { replace: true }), setFallo);
+  }, [completarLogin, navegar]);
 
-  return failure === null ? (
+  return fallo === null ? (
     <span className="loading loading-spinner" />
   ) : (
-    <ErrorAlert error={failure} />
+    <AlertaError error={fallo} />
   );
 }
 
-=== web/src/shared/ui/layout.tsx ===
-import type { ReactNode } from "react";
-import { Link } from "wouter";
-import { UserMenu } from "./user-menu";
+=== web/src/pruebas/api-falsa.ts ===
+import { type ClienteApi, crearClienteApi } from "../api/cliente";
 
-export interface NavEntry {
-  label: string;
-  href: string;
+/** Lo que guarda la API falsa bajo `ruta`: los DTO de la API, por id. */
+export interface Coleccion<T extends { id: string }> {
+  ruta: string;
+  /** El código que responde un elemento que no está: `producto.no_encontrado`. */
+  noEncontrado: string;
+  elementos: Map<string, T>;
 }
 
-export function Layout({
-  title,
-  nav,
-  children,
-}: {
-  title: string;
-  nav: NavEntry[];
-  children: ReactNode;
-}) {
-  return (
-    <div className="min-h-screen bg-base-200">
-      <header className="navbar bg-base-100 shadow-sm">
-        <Link href="/" className="btn btn-ghost text-xl">
-          {title}
-        </Link>
-        <nav>
-          <ul className="menu menu-horizontal">
-            {nav.map((entry) => (
-              <li key={entry.href}>
-                <Link href={entry.href}>{entry.label}</Link>
-              </li>
-            ))}
-          </ul>
-        </nav>
-        <div className="ml-auto">
-          <UserMenu />
-        </div>
-      </header>
-      <main className="container mx-auto max-w-5xl p-4">{children}</main>
-    </div>
-  );
-}
-
-=== web/src/shared/ui/user-menu.test.tsx ===
-import { describe, expect, test } from "bun:test";
-import { fireEvent, screen, waitFor } from "@testing-library/react";
-import { CurrentUserMother, fakeAuthGateway } from "../../test-support/auth";
-import { renderScreen } from "../../test-support/render";
-import { UserMenu } from "./user-menu";
-
-describe("UserMenu", () => {
-  test("should show who is signed in", async () => {
-    // Arrange
-    const user = CurrentUserMother.random({ name: "Ada Lovelace" });
-
-    // Act
-    renderScreen(<UserMenu />, {}, "/", { user });
-
-    // Assert
-    expect(await screen.findByText("Ada Lovelace")).toBeTruthy();
-    expect(screen.getByText("Sign out")).toBeTruthy();
-  });
-
-  test("should start a sign-in from the current page when Sign in is pressed", async () => {
-    // Arrange
-    const auth = fakeAuthGateway();
-    renderScreen(<UserMenu />, { auth }, "/products");
-
-    // Act
-    fireEvent.click(await screen.findByText("Sign in"));
-
-    // Assert
-    await waitFor(() => expect(auth.logins).toEqual(["/products"]));
-  });
-});
-
-=== web/src/shared/ui/user-menu.tsx ===
-import { useAuth } from "../../auth/auth";
-
-/** Who is signed in, and the button to sign in or out. */
-export function UserMenu() {
-  const { user, login, logout } = useAuth();
-  if (user === null) {
-    return (
-      <button type="button" className="btn btn-ghost" onClick={() => void login()}>
-        Sign in
-      </button>
-    );
-  }
-  return (
-    <div className="flex items-center gap-2">
-      <span className="text-sm">{user.name ?? user.email ?? "Signed in"}</span>
-      <button type="button" className="btn btn-ghost btn-sm" onClick={() => void logout()}>
-        Sign out
-      </button>
-    </div>
-  );
-}
-
-=== web/src/test-support/auth.ts ===
-import type { AuthGateway, CurrentUser } from "../auth/session";
-import { ROLES } from "../generated/roles";
-
-/** Signed-in users for tests; pass `overrides` for what a test is about. */
-export const CurrentUserMother = {
-  random(overrides: Partial<CurrentUser> = {}): CurrentUser {
-    const id = crypto.randomUUID();
-    return { id, email: `ada-${id.slice(0, 8)}@example.com`, name: "Ada", roles: [], ...overrides };
-  },
-
-  /** Holds every role a generated screen checks: what `renderScreen` signs in by default. */
-  caller(): CurrentUser {
-    return CurrentUserMother.random({ roles: [...ROLES] });
-  },
-};
-
-/** An `AuthGateway` with `user` signed in (`null`: nobody). `logins` records each `login` call. */
-export function fakeAuthGateway({ user = null }: { user?: CurrentUser | null } = {}) {
-  const logins: string[] = [];
-  const gateway: AuthGateway = {
-    currentUser: async () => user,
-    accessToken: async () => (user === null ? null : `token-of-${user.id}`),
-    login: async (returnTo) => {
-      logins.push(returnTo);
-    },
-    completeLogin: async () => "/",
-    logout: async () => {},
-  };
-  return { ...gateway, logins };
-}
-
-=== web/src/test-support/fake-api.ts ===
-import { type ApiClient, createApiClient } from "../api/client";
-
-/** What the fake API holds under `path`: the API's DTOs, by id. */
-export interface Collection<T extends { id: string }> {
-  path: string;
-  /** The code a missing item answers: `producto.no_encontrado`. */
-  notFound: string;
-  items: Map<string, T>;
-}
-
-/** The items under `path` (`/productos`) of `entity` (`producto`), starting with `seed`. */
-export function collection<T extends { id: string }>(
-  path: string,
-  entity: string,
-  seed: T[] = [],
-): Collection<T> {
-  const items = new Map(seed.map((item) => [item.id, item]));
-  return { path, notFound: `${entity}.no_encontrado`, items };
+/** Los elementos bajo `ruta` (`/productos`) de `entidad` (`producto`), empezando por `semilla`. */
+export function coleccion<T extends { id: string }>(
+  ruta: string,
+  entidad: string,
+  semilla: T[] = [],
+): Coleccion<T> {
+  const elementos = new Map(semilla.map((elemento) => [elemento.id, elemento]));
+  return { ruta, noEncontrado: `${entidad}.no_encontrado`, elementos };
 }
 
 /**
- * An `ApiClient` that answers the way the generated API does, over in-memory collections: a page
- * per `limite` / `desplazamiento`, a `404` with `<entity>.no_encontrado`, `201`, `200` and `204`.
- * Each of `failures` (`{ "POST /productos": "producto.duplicado" }`) answers its code instead.
+ * Un `ClienteApi` que responde como la API generada, sobre colecciones en memoria: una página por
+ * `limite` / `desplazamiento`, un `404` con `<entidad>.no_encontrado`, `201`, `200` y `204`. Cada
+ * uno de `fallos` (`{ "POST /productos": "producto.duplicado" }`) responde su código en su lugar.
  */
-export function fakeApi(
-  collections: Collection<{ id: string }>[],
-  failures: Record<string, string> = {},
-): ApiClient {
-  return createApiClient({
+export function apiFalsa(
+  colecciones: Coleccion<{ id: string }>[],
+  fallos: Record<string, string> = {},
+): ClienteApi {
+  return crearClienteApi({
     baseUrl: "http://localhost/api",
-    fetch: async (request) => {
-      const url = new URL(request.url);
-      const path = url.pathname.replace(/^\/api/, "");
-      const target = collections.find((c) => path === c.path || path.startsWith(`${c.path}/`));
-      if (target === undefined) return answer(404, "http.404");
-      const failure = failures[`${request.method} ${target.path}`];
-      if (failure !== undefined) return answer(400, failure);
-      const id = path.slice(target.path.length + 1);
-      return id === "" ? serveList(target, request, url) : serveItem(target, request, id);
+    fetch: async (peticion) => {
+      const url = new URL(peticion.url);
+      const ruta = url.pathname.replace(/^\/api/, "");
+      const objetivo = colecciones.find((c) => ruta === c.ruta || ruta.startsWith(`${c.ruta}/`));
+      if (objetivo === undefined) return responderError(404, "http.404");
+      const fallo = fallos[`${peticion.method} ${objetivo.ruta}`];
+      if (fallo !== undefined) return responderError(400, fallo);
+      const id = ruta.slice(objetivo.ruta.length + 1);
+      return id === ""
+        ? servirLista(objetivo, peticion, url)
+        : servirElemento(objetivo, peticion, id);
     },
   });
 }
 
-async function serveList(target: Collection<{ id: string }>, request: Request, url: URL) {
-  if (request.method === "POST") {
-    const created = { ...(await request.json()), id: crypto.randomUUID() };
-    target.items.set(created.id, created);
-    return Response.json(created, { status: 201 });
+async function servirLista(objetivo: Coleccion<{ id: string }>, peticion: Request, url: URL) {
+  if (peticion.method === "POST") {
+    const creado = { ...(await peticion.json()), id: crypto.randomUUID() };
+    objetivo.elementos.set(creado.id, creado);
+    return Response.json(creado, { status: 201 });
   }
   const limite = Number(url.searchParams.get("limite") ?? 20);
   const desplazamiento = Number(url.searchParams.get("desplazamiento") ?? 0);
-  const all = [...target.items.values()];
-  const elementos = all.slice(desplazamiento, desplazamiento + limite);
-  return Response.json({ elementos, total: all.length, limite, desplazamiento });
+  const todos = [...objetivo.elementos.values()];
+  const elementos = todos.slice(desplazamiento, desplazamiento + limite);
+  return Response.json({ elementos, total: todos.length, limite, desplazamiento });
 }
 
-async function serveItem(target: Collection<{ id: string }>, request: Request, id: string) {
-  const found = target.items.get(id);
-  if (found === undefined) return answer(404, target.notFound);
-  if (request.method === "DELETE") {
-    target.items.delete(id);
+async function servirElemento(objetivo: Coleccion<{ id: string }>, peticion: Request, id: string) {
+  const encontrado = objetivo.elementos.get(id);
+  if (encontrado === undefined) return responderError(404, objetivo.noEncontrado);
+  if (peticion.method === "DELETE") {
+    objetivo.elementos.delete(id);
     return new Response(null, { status: 204 });
   }
-  if (request.method === "PUT") {
-    // Like the API, an update replaces every field: one left out is cleared.
-    const updated = { ...(await request.json()), id };
-    target.items.set(id, updated);
-    return Response.json(updated);
+  if (peticion.method === "PUT") {
+    // Como la API, actualizar reemplaza todos los campos: el que no se manda queda vacío.
+    const actualizado = { ...(await peticion.json()), id };
+    objetivo.elementos.set(id, actualizado);
+    return Response.json(actualizado);
   }
-  return Response.json(found);
+  return Response.json(encontrado);
 }
 
-/** A `RespuestaError` the way the API answers one. */
-function answer(status: number, codigo: string) {
-  return Response.json({ codigo, mensaje: codigo }, { status });
+/** Un `RespuestaError` como lo responde la API. */
+function responderError(estado: number, codigo: string) {
+  return Response.json({ codigo, mensaje: codigo }, { status: estado });
 }
 
-=== web/src/test-support/pedido.ts ===
-import type { Schemas } from "../api/client";
-import { collection } from "./fake-api";
+=== web/src/pruebas/auth.ts ===
+import type { PasarelaAuth, UsuarioActual } from "../auth/sesion";
+import { ROLES } from "../generado/roles";
 
-type Pedido = Schemas["DtoPedido"];
-type PedidoRequest = Schemas["PeticionCrearPedido"];
-
-/** Valid pedidos for tests; pass `overrides` for the fields a test is about. */
-export const PedidoMother = {
-  request(overrides: Partial<PedidoRequest> = {}): PedidoRequest {
-    return {
-      total: 42,
-      ...overrides,
-    };
+/** Usuarios con la sesión iniciada para los tests; en `cambios`, aquello de lo que trata el test. */
+export const MadreUsuarioActual = {
+  aleatorio(cambios: Partial<UsuarioActual> = {}): UsuarioActual {
+    const id = crypto.randomUUID();
+    return { id, email: `ana-${id.slice(0, 8)}@example.com`, nombre: "Ana", roles: [], ...cambios };
   },
 
-  random(overrides: Partial<Pedido> = {}): Pedido {
-    return { id: crypto.randomUUID(), ...PedidoMother.request(), ...overrides };
+  /** Tiene todos los roles que comprueba una pantalla generada: con él inicia sesión `renderizarPantalla`. */
+  llamante(): UsuarioActual {
+    return MadreUsuarioActual.aleatorio({ roles: [...ROLES] });
   },
 };
 
-/** The fake API's `/pedidos`, holding `seed`. */
-export function pedidoCollection(seed: Pedido[] = []) {
-  return collection("/pedidos", "pedido", seed);
+/** Una `PasarelaAuth` con `usuario` en sesión (`null`: nadie). `logins` guarda cada llamada a `login`. */
+export function pasarelaAuthFalsa({ usuario = null }: { usuario?: UsuarioActual | null } = {}) {
+  const logins: string[] = [];
+  const pasarela: PasarelaAuth = {
+    usuarioActual: async () => usuario,
+    tokenAcceso: async () => (usuario === null ? null : `token-de-${usuario.id}`),
+    login: async (volverA) => {
+      logins.push(volverA);
+    },
+    completarLogin: async () => "/",
+    logout: async () => {},
+  };
+  return { ...pasarela, logins };
 }
 
-=== web/src/test-support/producto.ts ===
-import type { Schemas } from "../api/client";
-import { collection } from "./fake-api";
+=== web/src/pruebas/pedido.ts ===
+import type { Esquemas } from "../api/cliente";
+import { coleccion } from "./api-falsa";
 
-type Producto = Schemas["DtoProducto"];
-type ProductoRequest = Schemas["PeticionCrearProducto"];
+type Pedido = Esquemas["DtoPedido"];
+type PeticionPedido = Esquemas["PeticionCrearPedido"];
 
-/** Valid productos for tests; pass `overrides` for the fields a test is about. */
-export const ProductoMother = {
-  request(overrides: Partial<ProductoRequest> = {}): ProductoRequest {
+/** Datos válidos de pedidos; en `cambios`, los campos de los que trata el test. */
+export const MadrePedido = {
+  peticion(cambios: Partial<PeticionPedido> = {}): PeticionPedido {
+    return {
+      total: 42,
+      ...cambios,
+    };
+  },
+
+  aleatorio(cambios: Partial<Pedido> = {}): Pedido {
+    return { id: crypto.randomUUID(), ...MadrePedido.peticion(), ...cambios };
+  },
+};
+
+/** El `/pedidos` de la API falsa, con `semilla`. */
+export function coleccionPedido(semilla: Pedido[] = []) {
+  return coleccion("/pedidos", "pedido", semilla);
+}
+
+=== web/src/pruebas/producto.ts ===
+import type { Esquemas } from "../api/cliente";
+import { coleccion } from "./api-falsa";
+
+type Producto = Esquemas["DtoProducto"];
+type PeticionProducto = Esquemas["PeticionCrearProducto"];
+
+/** Datos válidos de productos; en `cambios`, los campos de los que trata el test. */
+export const MadreProducto = {
+  peticion(cambios: Partial<PeticionProducto> = {}): PeticionProducto {
     return {
       name: "example",
       sku: "example",
       price: 42,
       status: "Draft",
-      ...overrides,
+      ...cambios,
     };
   },
 
-  random(overrides: Partial<Producto> = {}): Producto {
-    return { id: crypto.randomUUID(), ...ProductoMother.request(), ...overrides };
+  aleatorio(cambios: Partial<Producto> = {}): Producto {
+    return { id: crypto.randomUUID(), ...MadreProducto.peticion(), ...cambios };
   },
 };
 
-/** The fake API's `/productos`, holding `seed`. */
-export function productoCollection(seed: Producto[] = []) {
-  return collection("/productos", "producto", seed);
+/** El `/productos` de la API falsa, con `semilla`. */
+export function coleccionProducto(semilla: Producto[] = []) {
+  return coleccion("/productos", "producto", semilla);
 }
 
-=== web/src/test-support/render.tsx ===
+=== web/src/pruebas/renderizar.tsx ===
 import { render } from "@testing-library/react";
 import type { ReactNode } from "react";
 import { Router } from "wouter";
 import { memoryLocation } from "wouter/memory-location";
-import { AuthProvider } from "../auth/auth";
-import type { CurrentUser } from "../auth/session";
-import { DependenciesProvider } from "../dependencies";
-import type { Dependencies } from "../generated/dependencies";
-import { CurrentUserMother, fakeAuthGateway } from "./auth";
+import { ProveedorAuth } from "../auth/auth";
+import type { UsuarioActual } from "../auth/sesion";
+import { ProveedorDependencias } from "../dependencias";
+import type { Dependencias } from "../generado/dependencias";
+import { MadreUsuarioActual, pasarelaAuthFalsa } from "./auth";
 
 /**
- * Renders a screen with the adapters it uses (`dependencies` needs only those) at `path`, signed in
- * as `user`: by default a caller holding every role, `null` for nobody. `history` records every
- * location the screen navigates to.
+ * Pinta una pantalla en `ruta` con las dependencias que usa (`dependencias` solo necesita esas) y
+ * la sesión de `usuario`: por defecto, alguien con todos los roles; `null`, nadie. `historial`
+ * guarda cada ruta a la que navega la pantalla.
  */
-export function renderScreen(
+export function renderizarPantalla(
   ui: ReactNode,
-  dependencies: Partial<Dependencies>,
-  path = "/",
-  { user = CurrentUserMother.caller() }: { user?: CurrentUser | null } = {},
+  dependencias: Partial<Dependencias>,
+  ruta = "/",
+  { usuario = MadreUsuarioActual.llamante() }: { usuario?: UsuarioActual | null } = {},
 ) {
-  const location = memoryLocation({ path, record: true });
-  const result = render(
-    // A screen that reaches for an adapter it was not given fails loudly: it is `undefined`.
-    <DependenciesProvider
-      value={{ auth: fakeAuthGateway({ user }), ...dependencies } as Dependencies}
+  const ubicacion = memoryLocation({ path: ruta, record: true });
+  const resultado = render(
+    // Una pantalla que pide una dependencia que no se le dio falla a la vista: es `undefined`.
+    <ProveedorDependencias
+      valor={{ auth: pasarelaAuthFalsa({ usuario }), ...dependencias } as Dependencias}
     >
-      <Router hook={location.hook}>
-        <AuthProvider>{ui}</AuthProvider>
+      <Router hook={ubicacion.hook}>
+        <ProveedorAuth>{ui}</ProveedorAuth>
       </Router>
-    </DependenciesProvider>,
+    </ProveedorDependencias>,
   );
-  return { ...result, history: location.history };
+  return { ...resultado, historial: ubicacion.history };
 }

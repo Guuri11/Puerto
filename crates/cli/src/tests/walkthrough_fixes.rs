@@ -17,16 +17,19 @@ fn list_screen_reads_and_writes_its_page_in_the_url() {
 
     let container = read(
         &output,
-        "web/src/features/producto/containers/producto-list-container.tsx",
+        "web/src/contextos/producto/contenedores/lista-producto.tsx",
     );
-    assert!(container.contains("const offset = offsetFromSearch(useSearch(), PAGE_SIZE);"));
-    assert!(container.contains("navigate(location + pageSearch(next, PAGE_SIZE))"));
+    assert!(
+        container
+            .contains("const desplazamiento = desplazamientoDeUrl(useSearch(), TAMANO_PAGINA);")
+    );
+    assert!(container.contains("navegar(ubicacion + busquedaPagina(siguiente, TAMANO_PAGINA))"));
     assert!(!container.contains("useState"));
     let test = read(
         &output,
-        "web/src/features/producto/containers/producto-list-container.test.tsx",
+        "web/src/contextos/producto/contenedores/lista-producto.test.tsx",
     );
-    assert!(test.contains("const path = \"/productos?page=2\";"));
+    assert!(test.contains("const ruta = \"/productos?pagina=2\";"));
 
     cleanup(&dir);
 }

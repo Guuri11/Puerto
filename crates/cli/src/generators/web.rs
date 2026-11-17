@@ -1,7 +1,7 @@
 //! The frontend slice of an entity (`web/`, Phase 9 — ADR-0013, ADR-0025).
 //!
 //! `scaffold` writes it next to the Rust layers in a `[proyecto] web = true` project; `generate web`
-//! writes it alone. The files under `generated/` are regenerated from puerto.toml with
+//! writes it alone. The files under `generado/` are regenerated from puerto.toml with
 //! `bootstrap.rs`, never patched. The screens work on the API's own types (ADR-0025).
 
 use std::cmp::Ordering;
@@ -17,51 +17,51 @@ use crate::generators::naming::{
     snake_to_kebab, snake_to_words, to_pascal_case, write_file,
 };
 use crate::generators::render::{RenderError, render};
-use crate::generators::types::{WebFieldCtx, web_field_ctx, with_article};
+use crate::generators::types::{WebFieldCtx, web_field_ctx};
 use crate::puerto_toml::{Entity, Field, PuertoConfig};
 
 /// Every frontend file `scaffold` writes for one entity, relative to the project root — what the
-/// overwrite guard checks. `api/client.ts` and `test-support/fake-api.ts` are not: they are
-/// written once, with the first entity, and never overwritten.
+/// overwrite guard checks. `api/cliente.ts` and `pruebas/api-falsa.ts` are not: they are written
+/// once, with the first entity, and never overwritten.
 pub fn web_entity_files(snake: &str) -> Vec<PathBuf> {
     let k = snake_to_kebab(snake);
     [
-        format!("web/src/features/{k}/messages.ts"),
-        format!("web/src/features/{k}/views/{k}-list-view.tsx"),
-        format!("web/src/features/{k}/views/{k}-detail-view.tsx"),
-        format!("web/src/features/{k}/views/{k}-form-view.tsx"),
-        format!("web/src/features/{k}/containers/{k}-list-container.tsx"),
-        format!("web/src/features/{k}/containers/{k}-list-container.test.tsx"),
-        format!("web/src/features/{k}/containers/{k}-detail-container.tsx"),
-        format!("web/src/features/{k}/containers/{k}-detail-container.test.tsx"),
-        format!("web/src/features/{k}/containers/{k}-form-container.tsx"),
-        format!("web/src/features/{k}/containers/{k}-form-container.test.tsx"),
-        format!("web/src/test-support/{k}.ts"),
+        format!("web/src/contextos/{k}/mensajes.ts"),
+        format!("web/src/contextos/{k}/vistas/lista-{k}.tsx"),
+        format!("web/src/contextos/{k}/vistas/detalle-{k}.tsx"),
+        format!("web/src/contextos/{k}/vistas/formulario-{k}.tsx"),
+        format!("web/src/contextos/{k}/contenedores/lista-{k}.tsx"),
+        format!("web/src/contextos/{k}/contenedores/lista-{k}.test.tsx"),
+        format!("web/src/contextos/{k}/contenedores/detalle-{k}.tsx"),
+        format!("web/src/contextos/{k}/contenedores/detalle-{k}.test.tsx"),
+        format!("web/src/contextos/{k}/contenedores/formulario-{k}.tsx"),
+        format!("web/src/contextos/{k}/contenedores/formulario-{k}.test.tsx"),
+        format!("web/src/pruebas/{k}.ts"),
     ]
     .into_iter()
     .map(PathBuf::from)
     .collect()
 }
 
-/// The frontend files `generated/routes.tsx` imports for one entity: without them
+/// The frontend files `generado/rutas.tsx` imports for one entity: without them
 /// `bun run typecheck` fails, the way a missing module fails `cargo build` (see `consistency.rs`).
 pub fn web_required_files(snake: &str) -> Vec<PathBuf> {
     let k = snake_to_kebab(snake);
     [
-        format!("web/src/features/{k}/containers/{k}-list-container.tsx"),
-        format!("web/src/features/{k}/containers/{k}-detail-container.tsx"),
-        format!("web/src/features/{k}/containers/{k}-form-container.tsx"),
+        format!("web/src/contextos/{k}/contenedores/lista-{k}.tsx"),
+        format!("web/src/contextos/{k}/contenedores/detalle-{k}.tsx"),
+        format!("web/src/contextos/{k}/contenedores/formulario-{k}.tsx"),
     ]
     .into_iter()
     .map(PathBuf::from)
     .collect()
 }
 
-/// Written with the first entity, never overwritten: both import `api/schema.d.ts`, which exists
+/// Written with the first entity, never overwritten: both import `api/esquema.d.ts`, which exists
 /// only after `make web/sync`, and a fresh project's `bun run typecheck` must pass.
 const ONCE_FILES: [(&str, &str); 2] = [
-    ("web/src/api/client.ts", "web/client.tera"),
-    ("web/src/test-support/fake-api.ts", "web/fake_api.tera"),
+    ("web/src/api/cliente.ts", "web/client.tera"),
+    ("web/src/pruebas/api-falsa.ts", "web/fake_api.tera"),
 ];
 
 /// Whether `entity` gets a frontend slice: it has the five CRUD use cases, the endpoints the
@@ -84,13 +84,12 @@ struct WebEntityCtx {
     /// The local variable holding one entity (`orderItem`) and a list of them (`orderItems`).
     ident: String,
     plural_ident: String,
-    /// `Order item` / `Order items` / `order item` / `order items`.
+    /// `Linea pedido` / `Lineas pedido` / `linea pedido` / `lineas pedido`: the screens' texts
+    /// use them without an article, since the entity's gender is unknown (ADR-0024, Fase 22).
     label: String,
     label_plural: String,
     words: String,
     words_plural: String,
-    /// `an order item`, `a product`.
-    a_words: String,
 }
 
 /// TypeScript's reserved words, and the names the templates already give their own locals: an
@@ -144,29 +143,44 @@ const TAKEN_IDENTIFIERS: &[&str] = &[
     "yield",
     // locals and parameters of the generated files
     "api",
-    "body",
-    "code",
-    "existing",
-    "failure",
-    "history",
-    "location",
-    "navigate",
-    "offset",
-    "options",
-    "path",
-    "problem",
-    "query",
-    "remove",
-    "request",
-    "saving",
-    "seed",
-    "target",
-    "title",
-    "user",
-    "values",
+    "borrar",
+    "campo",
+    "codigo",
+    "confirmando",
+    "consulta",
+    "creado",
+    "cuerpo",
+    "desplazamiento",
+    "dueno",
+    "encontrado",
+    "etiqueta",
+    "existente",
+    "fallo",
+    "fallos",
+    "guardado",
+    "guardados",
+    "guardando",
+    "guardar",
+    "historial",
+    "navegar",
+    "objetivo",
+    "opciones",
+    "pantalla",
+    "params",
+    "peticion",
+    "problema",
+    "ruta",
+    "select",
+    "semilla",
+    "sembrado",
+    "titulo",
+    "ubicacion",
+    "usuario",
+    "valor",
+    "valores",
 ];
 
-/// `name`, unless it is taken; then `name` + `suffix` (`case` → `caseItem`).
+/// `name`, unless it is taken; then `name` + `suffix` (`case` → `caseElemento`).
 fn identifier(name: &str, suffix: &str) -> String {
     if TAKEN_IDENTIFIERS.contains(&name) {
         format!("{name}{suffix}")
@@ -178,13 +192,13 @@ fn identifier(name: &str, suffix: &str) -> String {
 fn web_entity_ctx(pascal: &str) -> WebEntityCtx {
     let snake = pascal_to_snake(pascal);
     let plural = pluralize(&snake);
-    let ident = identifier(&snake_to_camel(&snake), "Item");
+    let ident = identifier(&snake_to_camel(&snake), "Elemento");
     let plural_camel = snake_to_camel(&plural);
     // An uncountable noun (`series`) has no plural to tell the list from one of its items.
     let plural_ident = if plural_camel == ident {
-        format!("{plural_camel}List")
+        format!("{plural_camel}Lista")
     } else {
-        identifier(&plural_camel, "List")
+        identifier(&plural_camel, "Lista")
     };
     WebEntityCtx {
         pascal: pascal.to_string(),
@@ -195,7 +209,6 @@ fn web_entity_ctx(pascal: &str) -> WebEntityCtx {
         plural_camel,
         label: capitalize(&snake_to_words(&snake)),
         label_plural: capitalize(&snake_to_words(&plural)),
-        a_words: with_article(&snake_to_words(&snake)),
         words: snake_to_words(&snake),
         words_plural: snake_to_words(&plural),
         plural,
@@ -235,11 +248,11 @@ struct WebTargetCtx {
     label: String,
     /// The references to it, in field order (camelCase) — their selects share its options.
     fields: Vec<String>,
-    /// The `useAsync(…)` loading it fits on one line.
+    /// The `useCarga(…)` loading it fits on one line.
     load_inline: bool,
-    /// The form test's targets for `owner`: one `{Target}Mother.random({ id })` per reference.
+    /// The form test's targets for `dueno`: one `Madre{Target}.aleatorio({ id })` per reference.
     seeds: Vec<String>,
-    /// `{target}Collection([…seeds]),` fits on one line.
+    /// `coleccion{Target}([…seeds]),` fits on one line.
     seeds_inline: bool,
 }
 
@@ -252,16 +265,15 @@ struct WebReferenceCtx {
     label: String,
     ref_path: String,
     required: bool,
-    /// The target's names in the tests (`ClienteMother`, `clienteCollection`) and its label.
+    /// The target's name in the tests (`MadreCliente`, `coleccionCliente`) and its label.
     target_pascal: String,
-    target_camel: String,
     target_label: String,
-    /// What the detail view calls to name it: `clienteLabel`.
+    /// What the detail view calls to name it: `etiquetaCliente`.
     loader: String,
-    /// The view's `<ReferenceLink … />` fits on one line.
+    /// The view's `<EnlaceReferencia … />` fits on one line.
     link_inline: bool,
-    /// The detail test's `const target = …Mother.random({ id: … });` fits on one line, and so does
-    /// its `const api = fakeApi([…]);`.
+    /// The detail test's `const objetivo = Madre….aleatorio({ id: … });` fits on one line, and so
+    /// does its `const api = apiFalsa([…]);`.
     target_inline: bool,
     api_inline: bool,
 }
@@ -276,7 +288,8 @@ fn web_targets(fields: &[Field], config: Option<&PuertoConfig>) -> Vec<WebTarget
         };
         let camel = snake_to_camel(&f.name);
         // A Mother's reference is present; `??` only satisfies `Partial`.
-        let seed = format!("{target}Mother.random({{ id: owner.{camel} ?? crypto.randomUUID() }})");
+        let seed =
+            format!("Madre{target}.aleatorio({{ id: dueno.{camel} ?? crypto.randomUUID() }})");
         if let Some(known) = targets.iter_mut().find(|t| t.entity.pascal == target) {
             known.fields.push(camel);
             known.seeds.push(seed);
@@ -292,7 +305,7 @@ fn web_targets(fields: &[Field], config: Option<&PuertoConfig>) -> Vec<WebTarget
             .map_or_else(|| "id".to_string(), |t| snake_to_camel(&t.name));
         let entity = web_entity_ctx(target);
         let load_inline = fits(&format!(
-            "  const {} = useAsync(() => unwrap(api.GET(\"/{}\", OPTIONS)), [api]);",
+            "  const {} = useCarga(() => desenvolver(api.GET(\"/{}\", PRIMERA_PAGINA)), [api]);",
             entity.plural_ident, entity.plural
         ));
         targets.push(WebTargetCtx {
@@ -306,8 +319,8 @@ fn web_targets(fields: &[Field], config: Option<&PuertoConfig>) -> Vec<WebTarget
     }
     for t in &mut targets {
         t.seeds_inline = fits(&format!(
-            "    {}Collection([{}]),",
-            t.entity.camel,
+            "    coleccion{}([{}]),",
+            t.entity.pascal,
             t.seeds.join(", ")
         ));
     }
@@ -328,7 +341,7 @@ fn web_references(
             let target = targets
                 .iter()
                 .find(|t| Some(t.entity.pascal.as_str()) == field.references.as_deref())?;
-            let loader = format!("{}Label", target.entity.camel);
+            let loader = format!("etiqueta{}", target.entity.pascal);
             let fallback = if web.required {
                 ""
             } else {
@@ -336,23 +349,22 @@ fn web_references(
             };
             Some(WebReferenceCtx {
                 link_inline: fits(&format!(
-                    "        <ReferenceLink path=\"{}\" id={{{}.{}}} load={{{loader}}} />",
+                    "        <EnlaceReferencia ruta=\"{}\" id={{{}.{}}} cargar={{{loader}}} />",
                     web.ref_path, entity.ident, web.camel
                 )),
                 target_inline: fits(&format!(
-                    "    const target = {}Mother.random({{ id: seeded.{}{fallback} }});",
+                    "    const objetivo = Madre{}.aleatorio({{ id: sembrado.{}{fallback} }});",
                     target.entity.pascal, web.camel
                 )),
                 api_inline: fits(&format!(
-                    "    const api = fakeApi([{}Collection([seeded]), {}Collection([target])]);",
-                    entity.camel, target.entity.camel
+                    "    const api = apiFalsa([coleccion{}([sembrado]), coleccion{}([objetivo])]);",
+                    entity.pascal, target.entity.pascal
                 )),
                 camel: web.camel.clone(),
                 label: web.label.clone(),
                 ref_path: web.ref_path.clone(),
                 required: web.required,
                 target_pascal: target.entity.pascal.clone(),
-                target_camel: target.entity.camel.clone(),
                 target_label: target.label.clone(),
                 loader,
             })
@@ -372,7 +384,7 @@ fn entity_template_ctx(
         .iter()
         .map(|f| web_field_ctx(f, &entity.ident))
         .collect();
-    // The `shared/forms.ts` helpers each group of files calls.
+    // The `compartido/formularios.ts` helpers each group of files calls.
     let helpers = |pick: fn(&WebFieldCtx) -> &Vec<&'static str>| {
         let mut names: Vec<&str> = web_fields
             .iter()
@@ -393,9 +405,9 @@ fn entity_template_ctx(
     let form_helpers_type_only = form_helpers.is_empty() && !targets.is_empty();
     if !targets.is_empty() {
         form_helpers.push(if form_helpers_type_only {
-            "ReferenceOption"
+            "OpcionReferencia"
         } else {
-            "type ReferenceOption"
+            "type OpcionReferencia"
         });
     }
     ctx.insert("form_helpers", &form_helpers);
@@ -408,38 +420,54 @@ fn entity_template_ctx(
         &problems.iter().find(|p| p.field.is_some()),
     );
     ctx.insert("problems", &problems);
-    ctx.insert(
-        "duplicate_text",
-        &format!(
-            "{} with these values already exists",
-            capitalize(&entity.a_words)
-        ),
-    );
+    ctx.insert("duplicate_text", DUPLICATE_TEXT);
     ctx.insert(
         "list_load_inline",
         &fits(&format!(
-            "  const {} = useAsync(() => unwrap(api.GET(\"/{}\", {{ params: {{ query }} }})), [api, offset]);",
+            "  const {} = useCarga(() => desenvolver(api.GET(\"/{}\", {{ params: {{ query: consulta }} }})), [api, desplazamiento]);",
             entity.plural_ident, entity.plural
         )),
     );
     ctx.insert(
         "detail_load_inline",
         &fits(&format!(
-            "  const {} = useAsync(() => unwrap(api.GET(\"/{}/{{id}}\", {{ params: {{ path: {{ id }} }} }})), [api, id]);",
+            "  const {} = useCarga(() => desenvolver(api.GET(\"/{}/{{id}}\", {{ params: {{ path: {{ id }} }} }})), [api, id]);",
             entity.ident, entity.plural
         )),
     );
     ctx.insert(
         "detail_view_inline",
         &fits(&format!(
-            "            <{}DetailView {}={{{}.data}}{} />",
+            "            <VistaDetalle{} {}={{{}.datos}}{} />",
             entity.pascal,
             entity.ident,
             entity.ident,
             targets
                 .iter()
-                .map(|t| format!(" {0}Label={{{0}Label}}", t.entity.camel))
+                .map(|t| format!(" etiqueta{0}={{etiqueta{0}}}", t.entity.pascal))
                 .collect::<String>()
+        )),
+    );
+    // Signatures and calls whose length depends on the entity's name.
+    ctx.insert(
+        "save_inline",
+        &fits(&format!(
+            "          : api.PUT(\"/{}/{{id}}\", {{ params: {{ path: {{ id: existente.id }} }}, body: cuerpo }}),",
+            entity.plural
+        )),
+    );
+    ctx.insert(
+        "to_form_inline",
+        &fits(&format!(
+            "export function aFormulario{0}({1}: {0} | null): ValoresFormulario{0} {{",
+            entity.pascal, entity.ident
+        )),
+    );
+    ctx.insert(
+        "to_request_inline",
+        &fits(&format!(
+            "export function aPeticion{0}(valores: ValoresFormulario{0}): Peticion{0} {{",
+            entity.pascal
         )),
     );
     // Biome keeps an array on one line while it fits: one target, few references.
@@ -450,7 +478,7 @@ fn entity_template_ctx(
                 "  return [{}];",
                 targets
                     .iter()
-                    .map(|t| format!("{}Collection([{}])", t.entity.camel, t.seeds.join(", ")))
+                    .map(|t| format!("coleccion{}([{}])", t.entity.pascal, t.seeds.join(", ")))
                     .collect::<Vec<_>>()
                     .join(", ")
             ))),
@@ -464,7 +492,10 @@ fn entity_template_ctx(
     ctx
 }
 
-/// An error code of the entity's API and what the screens say for it (`features/<k>/messages.ts`).
+/// What the form says when the API answers a duplicate: no article, the entity's gender is unknown.
+const DUPLICATE_TEXT: &str = "Estos valores ya están en uso";
+
+/// An error code of the entity's API and what the screens say for it (`contextos/<k>/mensajes.ts`).
 #[derive(Serialize)]
 struct WebProblemCtx {
     code: String,
@@ -500,49 +531,36 @@ fn web_problems(
         if f.field_type == "String" && f.value_object.is_none() {
             add(
                 format!("{snake}.validacion.{}_vacio", f.name),
-                format!("{} is required", web.label),
+                format!("{}: obligatorio", web.label),
             );
         }
         if f.references.is_some() {
             add(
                 format!("{snake}.validacion.{}_no_encontrado", f.name),
-                format!("{} does not exist", web.label),
+                format!("{}: no existe", web.label),
             );
         }
         if let Some(vo) = &f.value_object {
-            // `Vec<VO>` fields are plural: "Labels are not valid".
-            let verb = if f.field_type.starts_with("Vec<") {
-                "are"
-            } else {
-                "is"
-            };
             add(
                 format!("{snake}.{}_invalido", pascal_to_snake(vo)),
-                format!("{} {verb} not valid", web.label),
+                format!("{}: no válido", web.label),
             );
         }
     }
-    let words = &entity.words;
     for (code, text) in [
-        (
-            "duplicado",
-            format!(
-                "{} with these values already exists",
-                capitalize(&entity.a_words)
-            ),
-        ),
-        ("no_encontrado", format!("This {words} no longer exists")),
+        ("duplicado", DUPLICATE_TEXT),
+        ("no_encontrado", "Ya no existe"),
         (
             "repositorio",
-            format!("The {words} could not be saved, try again later"),
+            "No se ha podido guardar; inténtalo más tarde",
         ),
-        ("desconocido", "Something went wrong".to_string()),
+        ("desconocido", "Algo ha ido mal"),
     ] {
         problems.push(WebProblemCtx {
             code: format!("{snake}.{code}"),
             field: None,
             label: String::new(),
-            text,
+            text: text.to_string(),
         });
     }
     problems
@@ -590,22 +608,22 @@ pub fn write_web_files(
     Ok(())
 }
 
-/// An entity in `generated/routes.tsx`, with the line-width decisions Biome would make.
+/// An entity in `generado/rutas.tsx`, with the line-width decisions Biome would make.
 #[derive(Serialize)]
 struct RoutedEntityCtx {
     #[serde(flatten)]
     entity: WebEntityCtx,
-    /// `<Route path="/…/:id/edit">{(params) => …}</Route>` fits on one line.
+    /// `<Route path="/…/:id/editar">{(params) => …}</Route>` fits on one line.
     edit_route_inline: bool,
     detail_route_inline: bool,
-    /// The screen sits behind `<RequireAuth>`: a use case it calls is protected (auth projects).
+    /// The screen sits behind `<RequiereAuth>`: a use case it calls is protected (auth projects).
     list_guarded: bool,
     new_guarded: bool,
     edit_guarded: bool,
     detail_guarded: bool,
 }
 
-/// Indentation of a `<Route>` inside `AppRoutes`.
+/// Indentation of a `<Route>` inside `RutasApp`.
 const ROUTE_INDENT: usize = 6;
 
 fn fits(line: &str) -> bool {
@@ -623,13 +641,13 @@ fn generated_ctx(config: &PuertoConfig) -> tera::Context {
             let guarded = |action: &str| access.is_protected(&crud_use_case(action, &entity.snake));
             let route = |suffix: &str, container: &str| {
                 fits(&format!(
-                    "{:ROUTE_INDENT$}<Route path=\"/{}/:id{suffix}\">{{(params) => <{}{container} id={{params.id}} />}}</Route>",
+                    "{:ROUTE_INDENT$}<Route path=\"/{}/:id{suffix}\">{{(params) => <Contenedor{container}{} id={{params.id}} />}}</Route>",
                     "", entity.plural, entity.pascal
                 ))
             };
             RoutedEntityCtx {
-                edit_route_inline: route("/edit", "FormContainer"),
-                detail_route_inline: route("", "DetailContainer"),
+                edit_route_inline: route("/editar", "Formulario"),
+                detail_route_inline: route("", "Detalle"),
                 list_guarded: guarded("list"),
                 new_guarded: guarded("create"),
                 // The form loads the entity, then saves it.
@@ -644,7 +662,7 @@ fn generated_ctx(config: &PuertoConfig) -> tera::Context {
     let nav_inline = match sliced.as_slice() {
         [] => true,
         [only] => fits(&format!(
-            "export const navEntries: NavEntry[] = [{{ label: \"{}\", href: \"/{}\" }}];",
+            "export const entradasMenu: EntradaMenu[] = [{{ etiqueta: \"{}\", href: \"/{}\" }}];",
             only.entity.label_plural, only.entity.plural
         )),
         _ => false,
@@ -674,22 +692,22 @@ fn generated_ctx(config: &PuertoConfig) -> tera::Context {
     ctx
 }
 
-/// `web/src/generated/dependencies.ts` — the composition root.
+/// `web/src/generado/dependencias.ts` — the composition root.
 pub fn generate_web_dependencies(config: &PuertoConfig) -> Result<String, RenderError> {
     render_ts("web/dependencies.tera", &generated_ctx(config))
 }
 
-/// `web/src/generated/routes.tsx` — the route table and the nav entries.
+/// `web/src/generado/rutas.tsx` — the route table and the menu entries.
 pub fn generate_web_routes(config: &PuertoConfig) -> Result<String, RenderError> {
     render_ts("web/routes.tera", &generated_ctx(config))
 }
 
-/// `web/src/generated/roles.ts` — auth projects only.
+/// `web/src/generado/roles.ts` — auth projects only.
 pub fn generate_web_roles(config: &PuertoConfig) -> Result<String, RenderError> {
     render_ts("web/roles.tera", &generated_ctx(config))
 }
 
-/// Rewrites the `generated/*` files from puerto.toml. Nothing in a project without `web`.
+/// Rewrites the `generado/*` files from puerto.toml. Nothing in a project without `web`.
 pub fn regenerate_web(
     base: &Path,
     config: &PuertoConfig,
@@ -697,12 +715,12 @@ pub fn regenerate_web(
     if !config.project.web {
         return Ok(());
     }
-    let generated = base.join("web/src/generated");
+    let generated = base.join("web/src/generado");
     write_file(
-        &generated.join("dependencies.ts"),
+        &generated.join("dependencias.ts"),
         &generate_web_dependencies(config)?,
     )?;
-    write_file(&generated.join("routes.tsx"), &generate_web_routes(config)?)?;
+    write_file(&generated.join("rutas.tsx"), &generate_web_routes(config)?)?;
     if config.project.has_auth() {
         write_file(&generated.join("roles.ts"), &generate_web_roles(config)?)?;
     }
@@ -725,7 +743,7 @@ pub fn web_slice_refusal(entity: &Entity) -> Option<String> {
     None
 }
 
-/// `puerto generar web <Name>` — the frontend slice alone, plus the `generated/*` files.
+/// `puerto generar web <Name>` — the frontend slice alone, plus the `generado/*` files.
 pub fn run_generate_web(
     name: &str,
     base: &Path,
@@ -754,8 +772,8 @@ pub fn run_generate_web(
     regenerate_web(base, &config)?;
 
     let kebab = snake_to_kebab(&snake);
-    println!("✓ web/src/features/{kebab}/ — containers, views, messages");
-    println!("✓ web/src/generated/       — dependencies.ts, routes.tsx");
+    println!("✓ web/src/contextos/{kebab}/ — contenedores, vistas, mensajes");
+    println!("✓ web/src/generado/       — dependencias.ts, rutas.tsx");
     println!("\nNext: make web/sync   (exports the spec, regenerates the web types)");
     Ok(())
 }
@@ -1010,17 +1028,14 @@ mod tests {
         let case = web_entity_ctx("Case");
         assert_eq!(
             (case.ident.as_str(), case.plural_ident.as_str()),
-            ("caseItem", "cases")
+            ("caseElemento", "cases")
         );
 
         let analisis = web_entity_ctx("Analisis");
         assert_eq!(
             (analisis.ident.as_str(), analisis.plural_ident.as_str()),
-            ("analisis", "analisisList")
+            ("analisis", "analisisLista")
         );
-
-        assert_eq!(web_entity_ctx("OrderItem").a_words, "an order item");
-        assert_eq!(web_entity_ctx("Product").a_words, "a product");
 
         let linea = web_entity_ctx("LineaPedido");
         assert_eq!(

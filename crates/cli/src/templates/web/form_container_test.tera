@@ -1,40 +1,40 @@
 import { describe, expect, test } from "bun:test";
 import { fireEvent, screen, waitFor } from "@testing-library/react";
-import type { Schemas } from "../../../api/client";
+import type { Esquemas } from "../../../api/cliente";
 {%- if fill_helpers %}
-import { {{ fill_helpers | join(sep=", ") }} } from "../../../shared/forms";
+import { {{ fill_helpers | join(sep=", ") }} } from "../../../compartido/formularios";
 {%- endif %}
-import { fakeApi } from "../../../test-support/fake-api";
+import { apiFalsa } from "../../../pruebas/api-falsa";
 {%- for t in targets %}
-import { {{ t.camel }}Collection, {{ t.pascal }}Mother } from "../../../test-support/{{ t.kebab }}";
+import { coleccion{{ t.pascal }}, Madre{{ t.pascal }} } from "../../../pruebas/{{ t.kebab }}";
 {%- endfor %}
-import { {{ camel }}Collection, {{ pascal }}Mother } from "../../../test-support/{{ kebab }}";
-import { renderScreen } from "../../../test-support/render";
-import { {{ pascal }}FormContainer } from "./{{ kebab }}-form-container";
+import { coleccion{{ pascal }}, Madre{{ pascal }} } from "../../../pruebas/{{ kebab }}";
+import { renderizarPantalla } from "../../../pruebas/renderizar";
+import { ContenedorFormulario{{ pascal }} } from "./formulario-{{ kebab }}";
 
-function type(label: string, value: string) {
-  fireEvent.change(screen.getByLabelText(label), { target: { value } });
+function escribir(etiqueta: string, valor: string) {
+  fireEvent.change(screen.getByLabelText(etiqueta), { target: { value: valor } });
 }
 {%- if targets %}
 
-/** Picks `id` in a reference's select, once its targets have loaded. */
-async function choose(label: string, id: string) {
-  const select = screen.getByLabelText(label);
+/** Elige `id` en el select de una referencia, en cuanto se cargan sus objetivos. */
+async function elegir(etiqueta: string, id: string) {
+  const select = screen.getByLabelText(etiqueta);
   await waitFor(() => expect(select.querySelector(`option[value="${id}"]`)).not.toBeNull());
   fireEvent.change(select, { target: { value: id } });
 }
 
-/** The collections the selects read, holding what `owner` references. */
-function referencedBy(owner: Partial<Schemas["Dto{{ pascal }}"]>) {
+/** Las colecciones que leen los selects, con lo que referencia `dueno`. */
+function referenciadosPor(dueno: Partial<Esquemas["Dto{{ pascal }}"]>) {
 {%- if referenced_inline %}
-  return [{% for t in targets %}{{ t.camel }}Collection([{{ t.seeds | join(sep=", ") }}]){% if not loop.last %}, {% endif %}{% endfor %}];
+  return [{% for t in targets %}coleccion{{ t.pascal }}([{{ t.seeds | join(sep=", ") }}]){% if not loop.last %}, {% endif %}{% endfor %}];
 {%- else %}
   return [
 {%- for t in targets %}
 {%- if t.seeds_inline %}
-    {{ t.camel }}Collection([{{ t.seeds | join(sep=", ") }}]),
+    coleccion{{ t.pascal }}([{{ t.seeds | join(sep=", ") }}]),
 {%- else %}
-    {{ t.camel }}Collection([
+    coleccion{{ t.pascal }}([
 {%- for seed in t.seeds %}
       {{ seed }},
 {%- endfor %}
@@ -46,117 +46,118 @@ function referencedBy(owner: Partial<Schemas["Dto{{ pascal }}"]>) {
 }
 {%- endif %}
 
-/** Fills the empty form with `request`, the way a user would. */
-async function fillIn(request: Schemas["PeticionCrear{{ pascal }}"]) {
-  await screen.findByText("Save");
+/** Rellena el formulario vacío con `peticion`, como lo haría quien lo usa. */
+async function rellenar(peticion: Esquemas["PeticionCrear{{ pascal }}"]) {
+  await screen.findByText("Guardar");
 {%- for f in fields %}
 {%- if f.input == "checkbox" %}
-  if (request.{{ f.camel }}) fireEvent.click(screen.getByLabelText("{{ f.label }}"));
+  if (peticion.{{ f.camel }}) fireEvent.click(screen.getByLabelText("{{ f.label }}"));
 {%- elif f.input == "reference" %}
-  await choose("{{ f.label }}", {{ f.request_to_form }});
+  await elegir("{{ f.label }}", {{ f.request_to_form }});
 {%- else %}
-  type("{{ f.label }}", {{ f.request_to_form }});
+  escribir("{{ f.label }}", {{ f.request_to_form }});
 {%- endif %}
 {%- endfor %}
 }
 
-describe("{{ pascal }}FormContainer", () => {
-  test("should create the {{ words }} from what was typed and show it", async () => {
-    // Arrange
-    const request = {{ pascal }}Mother.request();
-    const stored = {{ camel }}Collection();
-    const api = fakeApi([stored{% if targets %}, ...referencedBy(request){% endif %}]);
-    const { history } = renderScreen(<{{ pascal }}FormContainer />, { api });
-    await fillIn(request);
+describe("ContenedorFormulario{{ pascal }}", () => {
+  test("debería crear con lo escrito e ir a su detalle", async () => {
+    // Preparar
+    const peticion = Madre{{ pascal }}.peticion();
+    const guardados = coleccion{{ pascal }}();
+    const api = apiFalsa([guardados{% if targets %}, ...referenciadosPor(peticion){% endif %}]);
+    const pantalla = <ContenedorFormulario{{ pascal }} />;
+    const { historial } = renderizarPantalla(pantalla, { api });
+    await rellenar(peticion);
 
-    // Act
-    fireEvent.click(screen.getByText("Save"));
+    // Actuar
+    fireEvent.click(screen.getByText("Guardar"));
 
-    // Assert
-    await waitFor(() => expect(history.at(-1)).toStartWith("/{{ plural }}/"));
-    const [created] = stored.items.values();
-    expect(created).toMatchObject(request);
-    expect(history.at(-1)).toBe(`/{{ plural }}/${created?.id}`);
+    // Comprobar
+    await waitFor(() => expect(historial.at(-1)).toStartWith("/{{ plural }}/"));
+    const [creado] = guardados.elementos.values();
+    expect(creado).toMatchObject(peticion);
+    expect(historial.at(-1)).toBe(`/{{ plural }}/${creado?.id}`);
   });
 
-  test("should save the edited {{ words }} when an existing one is submitted", async () => {
-    // Arrange
-    const seeded = {{ pascal }}Mother.random();
-    const stored = {{ camel }}Collection([seeded]);
-    const api = fakeApi([stored{% if targets %}, ...referencedBy(seeded){% endif %}]);
-    const { history } = renderScreen(<{{ pascal }}FormContainer id={seeded.id} />, { api });
+  test("debería guardar la edición cuando se envía el formulario", async () => {
+    // Preparar
+    const sembrado = Madre{{ pascal }}.aleatorio();
+    const guardados = coleccion{{ pascal }}([sembrado]);
+    const api = apiFalsa([guardados{% if targets %}, ...referenciadosPor(sembrado){% endif %}]);
+    const pantalla = <ContenedorFormulario{{ pascal }} id={sembrado.id} />;
+    const { historial } = renderizarPantalla(pantalla, { api });
 
-    // Act
-    fireEvent.click(await screen.findByText("Save"));
+    // Actuar
+    fireEvent.click(await screen.findByText("Guardar"));
 
-    // Assert
-    await waitFor(() => expect(history.at(-1)).toBe(`/{{ plural }}/${seeded.id}`));
-    expect(stored.items.get(seeded.id)).toEqual(seeded);
-  });
-  test("should show the code itself when the API answers one the form does not know", async () => {
-    // Arrange
-    const request = {{ pascal }}Mother.request();
-    const code = "{{ snake }}.validacion.invalid";
-    const failures = { "POST /{{ plural }}": code };
-    const api = fakeApi([{{ camel }}Collection(){% if targets %}, ...referencedBy(request){% endif %}], failures);
-    renderScreen(<{{ pascal }}FormContainer />, { api });
-    await fillIn(request);
-
-    // Act
-    fireEvent.click(screen.getByText("Save"));
-
-    // Assert
-    expect((await screen.findByRole("alert")).textContent).toBe(code);
+    // Comprobar
+    await waitFor(() => expect(historial.at(-1)).toBe(`/{{ plural }}/${sembrado.id}`));
+    expect(guardados.elementos.get(sembrado.id)).toEqual(sembrado);
   });
 
-  test("should say a {{ words }} with these values exists when the API answers a duplicate", async () => {
-    // Arrange
-    const request = {{ pascal }}Mother.request();
-    const failures = { "POST /{{ plural }}": "{{ snake }}.duplicado" };
-    const api = fakeApi([{{ camel }}Collection(){% if targets %}, ...referencedBy(request){% endif %}], failures);
-    renderScreen(<{{ pascal }}FormContainer />, { api });
-    await fillIn(request);
+  test("debería mostrar el propio código cuando la API responde uno que el formulario no conoce", async () => {
+    // Preparar
+    const peticion = Madre{{ pascal }}.peticion();
+    const codigo = "{{ snake }}.validacion.invalido";
+    const fallos = { "POST /{{ plural }}": codigo };
+    const api = apiFalsa([coleccion{{ pascal }}(){% if targets %}, ...referenciadosPor(peticion){% endif %}], fallos);
+    renderizarPantalla(<ContenedorFormulario{{ pascal }} />, { api });
+    await rellenar(peticion);
 
-    // Act
-    fireEvent.click(screen.getByText("Save"));
+    // Actuar
+    fireEvent.click(screen.getByText("Guardar"));
 
-    // Assert
-    expect((await screen.findByRole("alert")).textContent).toBe(
-      "{{ duplicate_text }}",
-    );
+    // Comprobar
+    expect((await screen.findByRole("alert")).textContent).toBe(codigo);
+  });
+
+  test("debería decir que los valores ya están en uso cuando la API responde un duplicado", async () => {
+    // Preparar
+    const peticion = Madre{{ pascal }}.peticion();
+    const fallos = { "POST /{{ plural }}": "{{ snake }}.duplicado" };
+    const api = apiFalsa([coleccion{{ pascal }}(){% if targets %}, ...referenciadosPor(peticion){% endif %}], fallos);
+    renderizarPantalla(<ContenedorFormulario{{ pascal }} />, { api });
+    await rellenar(peticion);
+
+    // Actuar
+    fireEvent.click(screen.getByText("Guardar"));
+
+    // Comprobar
+    expect((await screen.findByRole("alert")).textContent).toBe("{{ duplicate_text }}");
   });
 {%- for t in targets %}
 
-  test("should offer every {{ t.words }} in the selects that reference one", async () => {
-    // Arrange
-    const {{ t.ident }} = {{ t.pascal }}Mother.random();
-    const api = fakeApi([{{ t.camel }}Collection([{{ t.ident }}])]);
+  test("debería ofrecer cada {{ t.words }} en sus selects", async () => {
+    // Preparar
+    const {{ t.ident }} = Madre{{ t.pascal }}.aleatorio();
+    const api = apiFalsa([coleccion{{ t.pascal }}([{{ t.ident }}])]);
 
-    // Act
-    renderScreen(<{{ pascal }}FormContainer />, { api });
+    // Actuar
+    renderizarPantalla(<ContenedorFormulario{{ pascal }} />, { api });
 
-    // Assert
-    const options = await screen.findAllByRole("option", { name: {{ t.ident }}.{{ t.label }} });
-    expect(options).toHaveLength({{ t.fields | length }});
+    // Comprobar
+    const opciones = await screen.findAllByRole("option", { name: {{ t.ident }}.{{ t.label }} });
+    expect(opciones).toHaveLength({{ t.fields | length }});
   });
 {%- endfor %}
 {%- if field_problem %}
 
-  test("should show the message under its input when the API rejects one field", async () => {
-    // Arrange
-    const request = {{ pascal }}Mother.request();
-    const failures = { "POST /{{ plural }}": "{{ field_problem.code }}" };
-    const api = fakeApi([{{ camel }}Collection(){% if targets %}, ...referencedBy(request){% endif %}], failures);
-    renderScreen(<{{ pascal }}FormContainer />, { api });
-    await fillIn(request);
+  test("debería mostrar el mensaje bajo su input cuando la API rechaza un campo", async () => {
+    // Preparar
+    const peticion = Madre{{ pascal }}.peticion();
+    const fallos = { "POST /{{ plural }}": "{{ field_problem.code }}" };
+    const api = apiFalsa([coleccion{{ pascal }}(){% if targets %}, ...referenciadosPor(peticion){% endif %}], fallos);
+    renderizarPantalla(<ContenedorFormulario{{ pascal }} />, { api });
+    await rellenar(peticion);
 
-    // Act
-    fireEvent.click(screen.getByText("Save"));
+    // Actuar
+    fireEvent.click(screen.getByText("Guardar"));
 
-    // Assert
+    // Comprobar
     expect(await screen.findByText("{{ field_problem.text }}")).toBeTruthy();
-    const input = screen.getByLabelText("{{ field_problem.label }}");
-    expect(input.getAttribute("aria-invalid")).toBe("true");
+    const campo = screen.getByLabelText("{{ field_problem.label }}");
+    expect(campo.getAttribute("aria-invalid")).toBe("true");
     expect(screen.queryByRole("alert")).toBeNull();
   });
 {%- endif %}

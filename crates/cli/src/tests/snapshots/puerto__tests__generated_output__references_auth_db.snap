@@ -465,7 +465,7 @@ web/lint: web/require-install ## Comprueba tipos, lint y la regla de dependencia
 web/sync: web/require-install ## Tras un scaffold o un cambio de DTO: exporta la spec OpenAPI y regenera los tipos del frontend
 	@echo "${CYAN}Exportando docs/api/openapi.json...${NC}"
 	UPDATE_OPENAPI=1 $(CARGO) test -p api openapi
-	@echo "${CYAN}Generando web/src/api/schema.d.ts...${NC}"
+	@echo "${CYAN}Generando web/src/api/esquema.d.ts...${NC}"
 	cd web && $(BUN) run openapi:types
 	@echo "${CYAN}Formateando web/ (Biome, sin arreglos de lint)...${NC}"
 	cd web && $(BUN) run format
@@ -6807,13 +6807,61 @@ privado = true
 === web/src/api/http.ts ===
 (borrado)
 
-=== web/src/dependencies.tsx ===
+=== web/src/compartido/formularios.test.ts ===
 (borrado)
 
-=== web/src/generated/dependencies.ts ===
+=== web/src/compartido/formularios.ts ===
 (borrado)
 
-=== web/src/generated/routes.tsx ===
+=== web/src/compartido/ui/alerta-error.test.tsx ===
+(borrado)
+
+=== web/src/compartido/ui/alerta-error.tsx ===
+(borrado)
+
+=== web/src/compartido/ui/dialogo-confirmar.test.tsx ===
+(borrado)
+
+=== web/src/compartido/ui/dialogo-confirmar.tsx ===
+(borrado)
+
+=== web/src/compartido/ui/enlace-referencia.test.tsx ===
+(borrado)
+
+=== web/src/compartido/ui/enlace-referencia.tsx ===
+(borrado)
+
+=== web/src/compartido/ui/error-campo.test.tsx ===
+(borrado)
+
+=== web/src/compartido/ui/error-campo.tsx ===
+(borrado)
+
+=== web/src/compartido/ui/marco.tsx ===
+(borrado)
+
+=== web/src/compartido/ui/paginacion.test.tsx ===
+(borrado)
+
+=== web/src/compartido/ui/paginacion.tsx ===
+(borrado)
+
+=== web/src/compartido/ui/sin-elementos.tsx ===
+(borrado)
+
+=== web/src/compartido/use-carga.test.ts ===
+(borrado)
+
+=== web/src/compartido/use-carga.ts ===
+(borrado)
+
+=== web/src/dependencias.tsx ===
+(borrado)
+
+=== web/src/generado/dependencias.ts ===
+(borrado)
+
+=== web/src/generado/rutas.tsx ===
 (borrado)
 
 === web/src/index.css ===
@@ -6822,73 +6870,25 @@ privado = true
 === web/src/main.tsx ===
 (borrado)
 
-=== web/src/pages/home.test.tsx ===
+=== web/src/paginas/inicio.test.tsx ===
 (borrado)
 
-=== web/src/pages/home.tsx ===
+=== web/src/paginas/inicio.tsx ===
 (borrado)
 
-=== web/src/pages/not-found.tsx ===
+=== web/src/paginas/no-encontrada.tsx ===
 (borrado)
 
-=== web/src/routes.tsx ===
+=== web/src/pruebas/happy-dom.ts ===
 (borrado)
 
-=== web/src/shared/forms.test.ts ===
+=== web/src/pruebas/renderizar.tsx ===
 (borrado)
 
-=== web/src/shared/forms.ts ===
+=== web/src/pruebas/testing-library.ts ===
 (borrado)
 
-=== web/src/shared/ui/confirm-dialog.test.tsx ===
-(borrado)
-
-=== web/src/shared/ui/confirm-dialog.tsx ===
-(borrado)
-
-=== web/src/shared/ui/empty-state.tsx ===
-(borrado)
-
-=== web/src/shared/ui/error-alert.test.tsx ===
-(borrado)
-
-=== web/src/shared/ui/error-alert.tsx ===
-(borrado)
-
-=== web/src/shared/ui/field-error.test.tsx ===
-(borrado)
-
-=== web/src/shared/ui/field-error.tsx ===
-(borrado)
-
-=== web/src/shared/ui/layout.tsx ===
-(borrado)
-
-=== web/src/shared/ui/pagination.test.tsx ===
-(borrado)
-
-=== web/src/shared/ui/pagination.tsx ===
-(borrado)
-
-=== web/src/shared/ui/reference-link.test.tsx ===
-(borrado)
-
-=== web/src/shared/ui/reference-link.tsx ===
-(borrado)
-
-=== web/src/shared/use-async.test.ts ===
-(borrado)
-
-=== web/src/shared/use-async.ts ===
-(borrado)
-
-=== web/src/test-support/happy-dom.ts ===
-(borrado)
-
-=== web/src/test-support/render.tsx ===
-(borrado)
-
-=== web/src/test-support/testing-library.ts ===
+=== web/src/rutas.tsx ===
 (borrado)
 
 === web/tsconfig.json ===

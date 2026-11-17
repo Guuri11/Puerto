@@ -937,15 +937,18 @@ fn should_filter_the_page_and_its_total_in_postgres() {
 
 // ── 18.5: the frontend ──────────────────────────────────────────────────────
 
-const PEDIDO_WEB: &str = "web/src/features/pedido";
+const PEDIDO_WEB: &str = "web/src/contextos/pedido";
 
 #[test]
 fn should_choose_a_reference_from_a_select_of_its_targets() {
     let (dir, output) = pedido_project("references_web_form", false, false);
 
-    let view = read(&output, &format!("{PEDIDO_WEB}/views/pedido-form-view.tsx"));
+    let view = read(
+        &output,
+        &format!("{PEDIDO_WEB}/vistas/formulario-pedido.tsx"),
+    );
     assert!(
-        view.contains("export interface PedidoFormOptions {\n  clienteId: ReferenceOption[];\n  reviewerId: ReferenceOption[];\n}"),
+        view.contains("export interface OpcionesFormularioPedido {\n  clienteId: OpcionReferencia[];\n  reviewerId: OpcionReferencia[];\n}"),
         "{view}"
     );
     assert!(
@@ -953,28 +956,28 @@ fn should_choose_a_reference_from_a_select_of_its_targets() {
         "{view}"
     );
     assert!(
-        view.contains("<option value=\"\">Choose a cliente</option>"),
+        view.contains("<option value=\"\">Elige una opción</option>"),
         "{view}"
     );
-    assert!(view.contains("<option value=\"\">None</option>"), "{view}");
+    assert!(view.contains("<option value=\"\">—</option>"), "{view}");
     assert!(
-        view.contains("{options.clienteId.map((option) => ("),
+        view.contains("{opciones.clienteId.map((opcion) => ("),
         "{view}"
     );
 
     let container = read(
         &output,
-        &format!("{PEDIDO_WEB}/containers/pedido-form-container.tsx"),
+        &format!("{PEDIDO_WEB}/contenedores/formulario-pedido.tsx"),
     );
     assert!(
         container.contains(
-            r#"const clientes = useAsync(() => unwrap(api.GET("/clientes", OPTIONS)), [api]);"#
+            r#"const clientes = useCarga(() => desenvolver(api.GET("/clientes", PRIMERA_PAGINA)), [api]);"#
         ),
         "{container}"
     );
-    assert!(
-        container.contains("const OPTIONS = { params: { query: { limite: MAX_PAGE_LIMIT } } };")
-    );
+    assert!(container.contains(
+        "const PRIMERA_PAGINA = { params: { query: { limite: LIMITE_PAGINA_MAXIMO } } };"
+    ));
     // One load per target entity, whatever the number of references to it.
     assert_eq!(
         container.matches(r#"api.GET("/clientes""#).count(),
@@ -982,32 +985,32 @@ fn should_choose_a_reference_from_a_select_of_its_targets() {
         "{container}"
     );
     assert!(
-        container.contains("clienteId: referenceOptions(clientes, (cliente) => cliente.nombre),"),
+        container.contains("clienteId: opcionesReferencia(clientes, (cliente) => cliente.nombre),"),
         "{container}"
     );
 
     let test = read(
         &output,
-        &format!("{PEDIDO_WEB}/containers/pedido-form-container.test.tsx"),
+        &format!("{PEDIDO_WEB}/contenedores/formulario-pedido.test.tsx"),
     );
-    assert!(test.contains("...referencedBy(request)"), "{test}");
+    assert!(test.contains("...referenciadosPor(peticion)"), "{test}");
     assert!(
-        test.contains("ClienteMother.random({ id: owner.clienteId ?? crypto.randomUUID() }),"),
+        test.contains("MadreCliente.aleatorio({ id: dueno.clienteId ?? crypto.randomUUID() }),"),
         "{test}"
     );
     assert!(
-        test.contains("test(\"should offer every cliente in the selects that reference one\""),
+        test.contains("test(\"debería ofrecer cada cliente en sus selects\""),
         "{test}"
     );
 
     let http = read(&output, "web/src/api/http.ts");
     assert!(
-        http.contains("export const MAX_PAGE_LIMIT = 100;"),
+        http.contains("export const LIMITE_PAGINA_MAXIMO = 100;"),
         "{http}"
     );
-    let forms = read(&output, "web/src/shared/forms.ts");
+    let forms = read(&output, "web/src/compartido/formularios.ts");
     assert!(
-        forms.contains("export function referenceOptions<"),
+        forms.contains("export function opcionesReferencia<"),
         "{forms}"
     );
 
@@ -1027,7 +1030,7 @@ fn should_label_a_target_without_a_string_field_by_its_id() {
 
     let container = read(
         &output,
-        "web/src/features/parcel/containers/parcel-form-container.tsx",
+        "web/src/contextos/parcel/contenedores/formulario-parcel.tsx",
     );
     assert!(container.contains("(pallet) => pallet.id)"), "{container}");
 
@@ -1053,12 +1056,12 @@ fn should_offer_one_targets_items_while_the_fake_api_answers_the_other_with_a_40
 
     let test = read(
         &output,
-        "web/src/features/parcel/containers/parcel-form-container.test.tsx",
+        "web/src/contextos/parcel/contenedores/formulario-parcel.test.tsx",
     );
     let offer = |target: &str| {
         let start = test
             .find(&format!(
-                "test(\"should offer every {target} in the selects"
+                "test(\"debería ofrecer cada {target} en sus selects"
             ))
             .unwrap_or_else(|| panic!("no offer test for {target}\n{test}"));
         let body = &test[start..];
@@ -1066,17 +1069,17 @@ fn should_offer_one_targets_items_while_the_fake_api_answers_the_other_with_a_40
     };
     let cliente = offer("cliente");
     assert!(
-        cliente.contains("const api = fakeApi([clienteCollection([cliente])]);"),
+        cliente.contains("const api = apiFalsa([coleccionCliente([cliente])]);"),
         "{cliente}"
     );
     let pallet = offer("pallet");
     assert!(
-        pallet.contains("const api = fakeApi([palletCollection([pallet])]);"),
+        pallet.contains("const api = apiFalsa([coleccionPallet([pallet])]);"),
         "{pallet}"
     );
-    let fake = read(&output, "web/src/test-support/fake-api.ts");
+    let fake = read(&output, "web/src/pruebas/api-falsa.ts");
     assert!(
-        fake.contains(r#"if (target === undefined) return answer(404, "http.404");"#),
+        fake.contains(r#"if (objetivo === undefined) return responderError(404, "http.404");"#),
         "{fake}"
     );
 
@@ -1087,51 +1090,54 @@ fn should_offer_one_targets_items_while_the_fake_api_answers_the_other_with_a_40
 fn should_link_a_reference_to_its_target_and_say_when_it_is_missing() {
     let (dir, output) = pedido_project("references_web_detail", false, false);
 
-    let detail = read(
-        &output,
-        &format!("{PEDIDO_WEB}/views/pedido-detail-view.tsx"),
-    );
+    let detail = read(&output, &format!("{PEDIDO_WEB}/vistas/detalle-pedido.tsx"));
     // canasta's detail showed a UUID: the link is named by the target's label (Phase 20.6),
     // which the container loads — the view only takes props (ADR-0025).
     assert!(
         detail.contains(
-            r#"<ReferenceLink path="/clientes" id={pedido.clienteId} load={clienteLabel} />"#
+            r#"<EnlaceReferencia ruta="/clientes" id={pedido.clienteId} cargar={etiquetaCliente} />"#
         ),
         "{detail}"
     );
-    assert!(!detail.contains("useDependencies"), "{detail}");
+    assert!(!detail.contains("useDependencias"), "{detail}");
     let container = read(
         &output,
-        &format!("{PEDIDO_WEB}/containers/pedido-detail-container.tsx"),
+        &format!("{PEDIDO_WEB}/contenedores/detalle-pedido.tsx"),
     );
     assert!(
-        container.contains(r#"const found = await unwrap(api.GET("/clientes/{id}", { params }));"#),
+        container.contains(
+            r#"const encontrado = await desenvolver(api.GET("/clientes/{id}", { params }));"#
+        ),
         "{container}"
     );
     assert!(
-        container.contains("    return found.nombre;"),
+        container.contains("    return encontrado.nombre;"),
         "{container}"
     );
-    assert!(output.join("web/src/shared/ui/reference-link.tsx").exists());
+    assert!(
+        output
+            .join("web/src/compartido/ui/enlace-referencia.tsx")
+            .exists()
+    );
     let detail_test = read(
         &output,
-        &format!("{PEDIDO_WEB}/containers/pedido-detail-container.test.tsx"),
+        &format!("{PEDIDO_WEB}/contenedores/detalle-pedido.test.tsx"),
     );
     assert!(
-        detail_test.contains("test(\"should link the reviewer to its page, named by its label\""),
+        detail_test.contains("test(\"debería enlazar Reviewer con su página y su etiqueta\""),
         "{detail_test}"
     );
     assert!(
-        detail_test
-            .contains("expect(await screen.findByText(target.nombre, { selector })).toBeTruthy();"),
+        detail_test.contains(
+            "expect(await screen.findByText(objetivo.nombre, { selector })).toBeTruthy();"
+        ),
         "{detail_test}"
     );
 
-    let messages = read(&output, "web/src/features/pedido/messages.ts");
+    let messages = read(&output, "web/src/contextos/pedido/mensajes.ts");
     assert!(
-        messages.contains(
-            "\"pedido.validacion.cliente_id_no_encontrado\": \"Cliente does not exist\","
-        ),
+        messages
+            .contains("\"pedido.validacion.cliente_id_no_encontrado\": \"Cliente: no existe\","),
         "{messages}"
     );
     assert!(

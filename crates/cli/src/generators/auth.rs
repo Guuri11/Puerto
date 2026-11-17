@@ -469,46 +469,46 @@ fn add_makefile_targets(
 /// paths). The last three replace the template's own: the app runs inside `AuthProvider`, the
 /// layout shows the user, and `renderScreen` signs a caller in.
 const WEB_FILES: [&str; 11] = [
-    "src/auth/session.ts",
-    "src/auth/bearer-middleware.ts",
-    "src/auth/bearer-middleware.test.ts",
+    "src/auth/sesion.ts",
+    "src/auth/middleware-bearer.ts",
+    "src/auth/middleware-bearer.test.ts",
     "src/auth/auth.tsx",
     "src/auth/auth.test.tsx",
-    "src/shared/ui/user-menu.tsx",
-    "src/shared/ui/user-menu.test.tsx",
-    "src/test-support/auth.ts",
+    "src/compartido/ui/menu-usuario.tsx",
+    "src/compartido/ui/menu-usuario.test.tsx",
+    "src/pruebas/auth.ts",
     "src/main.tsx",
-    "src/shared/ui/layout.tsx",
-    "src/test-support/render.tsx",
+    "src/compartido/ui/marco.tsx",
+    "src/pruebas/renderizar.tsx",
 ];
 
 /// An OIDC project's: the provider's client and the page it sends the user back to.
 const OIDC_WEB_FILES: [&str; 4] = [
-    "src/auth/oidc-auth-gateway.ts",
-    "src/auth/oidc-auth-gateway.test.ts",
-    "src/pages/auth-callback.tsx",
-    "src/pages/auth-callback.test.tsx",
+    "src/auth/pasarela-oidc.ts",
+    "src/auth/pasarela-oidc.test.ts",
+    "src/paginas/auth-callback.tsx",
+    "src/paginas/auth-callback.test.tsx",
 ];
 
 /// A local project's: the `Accounts` port, the gateway over `/auth/*`, the sign-in and sign-up pages.
 const LOCAL_WEB_FILES: [&str; 8] = [
-    "src/auth/accounts.ts",
-    "src/auth/messages.ts",
-    "src/auth/local-auth-gateway.ts",
-    "src/auth/local-auth-gateway.test.ts",
-    "src/pages/login.tsx",
-    "src/pages/login.test.tsx",
-    "src/pages/register.tsx",
-    "src/pages/register.test.tsx",
+    "src/auth/cuentas.ts",
+    "src/auth/mensajes.ts",
+    "src/auth/pasarela-local.ts",
+    "src/auth/pasarela-local.test.ts",
+    "src/paginas/login.tsx",
+    "src/paginas/login.test.tsx",
+    "src/paginas/registro.tsx",
+    "src/paginas/registro.test.tsx",
 ];
 
-/// The dependency-cruiser rule that keeps the provider's client behind `AuthGateway`.
+/// The dependency-cruiser rule that keeps the provider's client behind `PasarelaAuth`.
 const CRUISER_RULE: &str = r#"    {
-      name: "only-the-auth-adapter-imports-oidc-client-ts",
+      name: "solo-la-pasarela-importa-oidc-client-ts",
       comment:
-        "The provider's client stays behind AuthGateway: screens see a CurrentUser, never a token.",
+        "El cliente del proveedor se queda detrás de PasarelaAuth: las pantallas ven un UsuarioActual, nunca un token.",
       severity: "error",
-      from: { pathNot: "^src/auth/oidc-auth-gateway" },
+      from: { pathNot: "^src/auth/pasarela-oidc" },
       to: { path: "oidc-client-ts" },
     },
 "#;
@@ -657,37 +657,38 @@ envía el token como `Authorization: Bearer <token>`; la base de datos solo guar
 /// What follows [`AGENTS_AUTH_SECTION`] in a project with `web/`.
 pub const AGENTS_AUTH_WEB_SECTION: &str = r#"### Auth en `web/`
 
-- `useAuth()` (`auth/auth.tsx`) da `{ user, can(role), login, logout }`; `user` es `GET /me`,
-  nunca el token. Las pantallas generadas esconden lo que `can` niega, pero decide la API: su
-  `403` llega a la alerta como `auth.prohibido`.
-- `generated/routes.tsx` envuelve cada pantalla no pública en `<RequireAuth>`, que inicia sesión y
-  vuelve. Envuelve igual tus propias rutas en `routes.tsx`.
-- El token se queda en memoria y `oidc-client-ts` se queda en `auth/oidc-auth-gateway.ts`
+- `useAuth()` (`auth/auth.tsx`) da `{ usuario, puede(rol), login, logout }`; `usuario` es
+  `GET /me`, nunca el token. Las pantallas generadas esconden lo que `puede` niega, pero decide la
+  API: su `403` llega a la alerta como `auth.prohibido`.
+- `generado/rutas.tsx` envuelve cada pantalla no pública en `<RequiereAuth>`, que inicia sesión y
+  vuelve. Envuelve igual tus propias rutas en `rutas.tsx`.
+- El token se queda en memoria y `oidc-client-ts` se queda en `auth/pasarela-oidc.ts`
   (`make web/lint` lo comprueba): al recargar se vuelve a iniciar sesión con la sesión del
   proveedor. `web/.env` guarda `VITE_AUTH_*`.
-- Los tests de pantalla inician sesión con alguien que tiene todos los roles (`renderScreen`); pasa
-  `{ user }` para otro (`CurrentUserMother`), o `{ auth: fakeAuthGateway(…) }` para ver los inicios
-  de sesión que lanza.
+- Los tests de pantalla inician sesión con alguien que tiene todos los roles
+  (`renderizarPantalla`); pasa `{ usuario }` para otro (`MadreUsuarioActual`), o
+  `{ auth: pasarelaAuthFalsa(…) }` para ver los inicios de sesión que lanza.
 
 "#;
 
 /// What follows [`AGENTS_AUTH_LOCAL_SECTION`] in a project with `web/`.
 pub const AGENTS_AUTH_LOCAL_WEB_SECTION: &str = r#"### Auth en `web/`
 
-- `useAuth()` (`auth/auth.tsx`) da `{ user, can(role), login, logout }`; `user` es `GET /me`. Las
-  pantallas generadas esconden lo que `can` niega, pero decide la API: su `403` llega a la alerta
-  como `auth.prohibido`.
-- `generated/routes.tsx` envuelve cada pantalla no pública en `<RequireAuth>`, que manda a quien
-  no tiene sesión iniciada a `/login?next=…`, igual que un `401` de cualquier llamada. Envuelve
-  igual tus propias rutas en `routes.tsx`.
-- `/login` y `/register` (`pages/`) inician sesión a través de `Accounts` (`auth/accounts.ts`);
-  `auth/messages.ts` convierte los códigos de la API en lo que dicen los formularios, bajo el campo
+- `useAuth()` (`auth/auth.tsx`) da `{ usuario, puede(rol), login, logout }`; `usuario` es
+  `GET /me`. Las pantallas generadas esconden lo que `puede` niega, pero decide la API: su `403`
+  llega a la alerta como `auth.prohibido`.
+- `generado/rutas.tsx` envuelve cada pantalla no pública en `<RequiereAuth>`, que manda a quien no
+  tiene sesión iniciada a `/login?siguiente=…`, igual que un `401` de cualquier llamada. Envuelve
+  igual tus propias rutas en `rutas.tsx`.
+- `/login` y `/registro` (`paginas/`) inician sesión a través de `Cuentas` (`auth/cuentas.ts`);
+  `auth/mensajes.ts` convierte los códigos de la API en lo que dicen los formularios, bajo el campo
   al que se refieren. Estos ficheros son tuyos.
-- El token de sesión está en `localStorage` (`auth/local-auth-gateway.ts`): al recargar se sigue
-  con la sesión iniciada; «Sign out» la revoca en la API.
-- Los tests de pantalla inician sesión con alguien que tiene todos los roles (`renderScreen`); pasa
-  `{ user }` para otro (`CurrentUserMother`), `{ auth: fakeAuthGateway(…) }` o
-  `{ accounts: fakeAccounts() }` para ver lo que pidió una pantalla.
+- El token de sesión está en `localStorage` (`auth/pasarela-local.ts`): al recargar se sigue con la
+  sesión iniciada; «Cerrar sesión» la revoca en la API.
+- Los tests de pantalla inician sesión con alguien que tiene todos los roles
+  (`renderizarPantalla`); pasa `{ usuario }` para otro (`MadreUsuarioActual`),
+  `{ auth: pasarelaAuthFalsa(…) }` o `{ cuentas: cuentasFalsas() }` para ver lo que pidió una
+  pantalla.
 
 "#;
 

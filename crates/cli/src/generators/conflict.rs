@@ -172,7 +172,7 @@ mod tests {
         assert!(!has_web(entity_files("order_item", false, false)));
         assert!(
             entity_files("order_item", false, true)
-                .contains(&PathBuf::from("web/src/test-support/order-item.ts"))
+                .contains(&PathBuf::from("web/src/pruebas/order-item.ts"))
         );
     }
 }

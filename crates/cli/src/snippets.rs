@@ -1157,93 +1157,95 @@ pub const SQL_SNIPPETS_JSON: &str = r##"{
 // ── Frontend snippets (web projects) ─────────────────────────────────────────
 //
 // Zed reads them per language (`tsx.json`); VS Code from one file, each entry scoped to it. The
-// screens call the API from their containers (ADR-0025): there is no `.ts` layer to snippet.
+// screens call the API from their containers (ADR-0025): there is no `.ts` layer to snippet. They
+// name what the generated frontend names, in Spanish (Fase 22).
 
 pub const WEB_TSX_SNIPPETS_JSON: &str = r##"{
-  "Web — container + view": {
+  "Web — contenedor + vista": {
     "prefix": "web-container",
     "body": [
-      "import type { Schemas } from \"../../../api/client\";",
-      "import { unwrap } from \"../../../api/http\";",
-      "import { useDependencies } from \"../../../dependencies\";",
-      "import { ErrorAlert } from \"../../../shared/ui/error-alert\";",
-      "import { useAsync } from \"../../../shared/use-async\";",
+      "import type { Esquemas } from \"../../../api/cliente\";",
+      "import { desenvolver } from \"../../../api/http\";",
+      "import { AlertaError } from \"../../../compartido/ui/alerta-error\";",
+      "import { useCarga } from \"../../../compartido/use-carga\";",
+      "import { useDependencias } from \"../../../dependencias\";",
       "",
-      "export function ${1:Entity}${3:Summary}Container({ id }: { id: string }) {",
-      "\tconst { api } = useDependencies();",
-      "\tconst ${4:entity} = useAsync(",
-      "\t\t() => unwrap(api.GET(\"/${5:entities}/{id}\", { params: { path: { id } } })),",
+      "export function Contenedor${3:Resumen}${1:Entidad}({ id }: { id: string }) {",
+      "\tconst { api } = useDependencias();",
+      "\tconst ${4:entidad} = useCarga(",
+      "\t\t() => desenvolver(api.GET(\"/${5:entidades}/{id}\", { params: { path: { id } } })),",
       "\t\t[api, id],",
       "\t);",
       "",
       "\treturn (",
       "\t\t<section className=\"space-y-4\">",
-      "\t\t\t{${4:entity}.status === \"loading\" && <span className=\"loading loading-spinner\" />}",
-      "\t\t\t{${4:entity}.status === \"error\" && <ErrorAlert error={${4:entity}.error} />}",
-      "\t\t\t{${4:entity}.status === \"ok\" && <${1:Entity}${3:Summary}View ${4:entity}={${4:entity}.data} />}",
+      "\t\t\t{${4:entidad}.estado === \"cargando\" && <span className=\"loading loading-spinner\" />}",
+      "\t\t\t{${4:entidad}.estado === \"error\" && <AlertaError error={${4:entidad}.error} />}",
+      "\t\t\t{${4:entidad}.estado === \"listo\" && <Vista${3:Resumen}${1:Entidad} ${4:entidad}={${4:entidad}.datos} />}",
       "\t\t</section>",
       "\t);",
       "}",
       "",
-      "/** Props only. Move it to `views/` once it grows: containers load, views render. */",
-      "function ${1:Entity}${3:Summary}View({ ${4:entity} }: { ${4:entity}: Schemas[\"Dto${1:Entity}\"] }) {",
-      "\treturn <p>{${4:entity}.id}</p>;$0",
+      "/** Solo props. Pásala a `vistas/` cuando crezca: los contenedores cargan, las vistas pintan. */",
+      "function Vista${3:Resumen}${1:Entidad}({ ${4:entidad} }: { ${4:entidad}: Esquemas[\"Dto${1:Entidad}\"] }) {",
+      "\treturn <p>{${4:entidad}.id}</p>;$0",
       "}"
     ],
-    "description": "A container (features/<entity>/containers/): calls the API through useDependencies() + useAsync + unwrap, renders loading / error / its view."
+    "description": "Un contenedor (contextos/<entidad>/contenedores/): llama a la API con useDependencias() + useCarga + desenvolver, y pinta cargando / error / su vista."
   },
-  "Web — container test": {
+  "Web — test de contenedor": {
     "prefix": "web-container-test",
     "body": [
       "import { describe, expect, test } from \"bun:test\";",
       "import { screen } from \"@testing-library/react\";",
-      "import { fakeApi } from \"../../../test-support/fake-api\";",
-      "import { ${1:Entity}Mother, ${4:entity}Collection } from \"../../../test-support/${2:entity-name}\";",
-      "import { renderScreen } from \"../../../test-support/render\";",
-      "import { ${1:Entity}${3:Summary}Container } from \"./${2:entity-name}-${6:summary}-container\";",
+      "import { apiFalsa } from \"../../../pruebas/api-falsa\";",
+      "import { coleccion${1:Entidad}, Madre${1:Entidad} } from \"../../../pruebas/${2:nombre-entidad}\";",
+      "import { renderizarPantalla } from \"../../../pruebas/renderizar\";",
+      "import { Contenedor${3:Resumen}${1:Entidad} } from \"./${6:resumen}-${2:nombre-entidad}\";",
       "",
-      "describe(\"${1:Entity}${3:Summary}Container\", () => {",
-      "\ttest(\"should show the ${7:entity label} when it exists\", async () => {",
-      "\t\t// Arrange",
-      "\t\tconst seeded = ${1:Entity}Mother.random();",
-      "\t\tconst api = fakeApi([${4:entity}Collection([seeded])]);",
+      "describe(\"Contenedor${3:Resumen}${1:Entidad}\", () => {",
+      "\ttest(\"debería mostrar ${7:qué} cuando existe\", async () => {",
+      "\t\t// Preparar",
+      "\t\tconst sembrado = Madre${1:Entidad}.aleatorio();",
+      "\t\tconst api = apiFalsa([coleccion${1:Entidad}([sembrado])]);",
+      "\t\tconst pantalla = <Contenedor${3:Resumen}${1:Entidad} id={sembrado.id} />;",
       "",
-      "\t\t// Act",
-      "\t\trenderScreen(<${1:Entity}${3:Summary}Container id={seeded.id} />, { api });",
+      "\t\t// Actuar",
+      "\t\trenderizarPantalla(pantalla, { api });",
       "",
-      "\t\t// Assert",
-      "\t\texpect(await screen.findByText(seeded.id)).toBeTruthy();",
+      "\t\t// Comprobar",
+      "\t\texpect(await screen.findByText(sembrado.id)).toBeTruthy();",
       "\t});",
       "});"
     ],
-    "description": "A container test: render it against the fake API (test-support/fake-api.ts), assert on what the user sees."
+    "description": "Un test de contenedor: lo pinta contra la API falsa (pruebas/api-falsa.ts) y comprueba lo que ve el usuario."
   },
-  "Web — form field": {
+  "Web — campo de formulario": {
     "prefix": "web-form-field",
     "body": [
       "<label className=\"fieldset\">",
-      "\t<span className=\"fieldset-legend\">${1:Label}</span>",
+      "\t<span className=\"fieldset-legend\">${1:Etiqueta}</span>",
       "\t<input",
       "\t\tclassName=\"input w-full\"",
       "\t\ttype=\"${2:text}\"",
       "\t\trequired",
-      "\t\taria-invalid={problem?.field === \"${3:field}\"}",
-      "\t\tvalue={values.${3:field}}",
-      "\t\tonChange={(event) => onChange({ ...values, ${3:field}: event.target.value })}",
+      "\t\taria-invalid={problema?.campo === \"${3:campo}\"}",
+      "\t\tvalue={valores.${3:campo}}",
+      "\t\tonChange={(event) => alCambiar({ ...valores, ${3:campo}: event.target.value })}",
       "\t/>",
       "</label>",
-      "<FieldError problem={problem} field=\"${3:field}\" />"
+      "<ErrorCampo problema={problema} campo=\"${3:campo}\" />"
     ],
-    "description": "A daisyUI input bound to the form view's values (views/<entity>-form-view.tsx), and the API's message about it underneath; add the field to <Entity>FormValues and its two mappings."
+    "description": "Un input de daisyUI unido a los valores de la vista de formulario (vistas/formulario-<entidad>.tsx), con el mensaje de la API debajo; añade el campo a ValoresFormulario<Entidad> y a sus dos conversiones."
   },
-  "Web — route": {
+  "Web — ruta": {
     "prefix": "web-route",
     "body": [
-      "<Route key=\"${1:/entities/:id/summary}\" path=\"${1:/entities/:id/summary}\">",
-      "\t{(params) => <${2:Entity}${3:Summary}Container id={params.id} />}",
+      "<Route key=\"${1:/entidades/:id/resumen}\" path=\"${1:/entidades/:id/resumen}\">",
+      "\t{(params) => <Contenedor${3:Resumen}${2:Entidad} id={params.id} />}",
       "</Route>,"
     ],
-    "description": "A route in customRoutes (src/routes.tsx — yours; generated/routes.tsx is rewritten)."
+    "description": "Una ruta en rutasPropias (src/rutas.tsx, tuyo; generado/rutas.tsx se reescribe)."
   }
 }"##;
 

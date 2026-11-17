@@ -1,77 +1,79 @@
-import { type ApiClient, createApiClient } from "../api/client";
+import { type ClienteApi, crearClienteApi } from "../api/cliente";
 
-/** What the fake API holds under `path`: the API's DTOs, by id. */
-export interface Collection<T extends { id: string }> {
-  path: string;
-  /** The code a missing item answers: `producto.no_encontrado`. */
-  notFound: string;
-  items: Map<string, T>;
+/** Lo que guarda la API falsa bajo `ruta`: los DTO de la API, por id. */
+export interface Coleccion<T extends { id: string }> {
+  ruta: string;
+  /** El código que responde un elemento que no está: `producto.no_encontrado`. */
+  noEncontrado: string;
+  elementos: Map<string, T>;
 }
 
-/** The items under `path` (`/productos`) of `entity` (`producto`), starting with `seed`. */
-export function collection<T extends { id: string }>(
-  path: string,
-  entity: string,
-  seed: T[] = [],
-): Collection<T> {
-  const items = new Map(seed.map((item) => [item.id, item]));
-  return { path, notFound: `${entity}.no_encontrado`, items };
+/** Los elementos bajo `ruta` (`/productos`) de `entidad` (`producto`), empezando por `semilla`. */
+export function coleccion<T extends { id: string }>(
+  ruta: string,
+  entidad: string,
+  semilla: T[] = [],
+): Coleccion<T> {
+  const elementos = new Map(semilla.map((elemento) => [elemento.id, elemento]));
+  return { ruta, noEncontrado: `${entidad}.no_encontrado`, elementos };
 }
 
 /**
- * An `ApiClient` that answers the way the generated API does, over in-memory collections: a page
- * per `limite` / `desplazamiento`, a `404` with `<entity>.no_encontrado`, `201`, `200` and `204`.
- * Each of `failures` (`{ "POST /productos": "producto.duplicado" }`) answers its code instead.
+ * Un `ClienteApi` que responde como la API generada, sobre colecciones en memoria: una página por
+ * `limite` / `desplazamiento`, un `404` con `<entidad>.no_encontrado`, `201`, `200` y `204`. Cada
+ * uno de `fallos` (`{ "POST /productos": "producto.duplicado" }`) responde su código en su lugar.
  */
-export function fakeApi(
-  collections: Collection<{ id: string }>[],
-  failures: Record<string, string> = {},
-): ApiClient {
-  return createApiClient({
+export function apiFalsa(
+  colecciones: Coleccion<{ id: string }>[],
+  fallos: Record<string, string> = {},
+): ClienteApi {
+  return crearClienteApi({
     baseUrl: "http://localhost/api",
-    fetch: async (request) => {
-      const url = new URL(request.url);
-      const path = url.pathname.replace(/^\/api/, "");
-      const target = collections.find((c) => path === c.path || path.startsWith(`${c.path}/`));
-      if (target === undefined) return answer(404, "http.404");
-      const failure = failures[`${request.method} ${target.path}`];
-      if (failure !== undefined) return answer(400, failure);
-      const id = path.slice(target.path.length + 1);
-      return id === "" ? serveList(target, request, url) : serveItem(target, request, id);
+    fetch: async (peticion) => {
+      const url = new URL(peticion.url);
+      const ruta = url.pathname.replace(/^\/api/, "");
+      const objetivo = colecciones.find((c) => ruta === c.ruta || ruta.startsWith(`${c.ruta}/`));
+      if (objetivo === undefined) return responderError(404, "http.404");
+      const fallo = fallos[`${peticion.method} ${objetivo.ruta}`];
+      if (fallo !== undefined) return responderError(400, fallo);
+      const id = ruta.slice(objetivo.ruta.length + 1);
+      return id === ""
+        ? servirLista(objetivo, peticion, url)
+        : servirElemento(objetivo, peticion, id);
     },
   });
 }
 
-async function serveList(target: Collection<{ id: string }>, request: Request, url: URL) {
-  if (request.method === "POST") {
-    const created = { ...(await request.json()), id: crypto.randomUUID() };
-    target.items.set(created.id, created);
-    return Response.json(created, { status: 201 });
+async function servirLista(objetivo: Coleccion<{ id: string }>, peticion: Request, url: URL) {
+  if (peticion.method === "POST") {
+    const creado = { ...(await peticion.json()), id: crypto.randomUUID() };
+    objetivo.elementos.set(creado.id, creado);
+    return Response.json(creado, { status: 201 });
   }
   const limite = Number(url.searchParams.get("limite") ?? 20);
   const desplazamiento = Number(url.searchParams.get("desplazamiento") ?? 0);
-  const all = [...target.items.values()];
-  const elementos = all.slice(desplazamiento, desplazamiento + limite);
-  return Response.json({ elementos, total: all.length, limite, desplazamiento });
+  const todos = [...objetivo.elementos.values()];
+  const elementos = todos.slice(desplazamiento, desplazamiento + limite);
+  return Response.json({ elementos, total: todos.length, limite, desplazamiento });
 }
 
-async function serveItem(target: Collection<{ id: string }>, request: Request, id: string) {
-  const found = target.items.get(id);
-  if (found === undefined) return answer(404, target.notFound);
-  if (request.method === "DELETE") {
-    target.items.delete(id);
+async function servirElemento(objetivo: Coleccion<{ id: string }>, peticion: Request, id: string) {
+  const encontrado = objetivo.elementos.get(id);
+  if (encontrado === undefined) return responderError(404, objetivo.noEncontrado);
+  if (peticion.method === "DELETE") {
+    objetivo.elementos.delete(id);
     return new Response(null, { status: 204 });
   }
-  if (request.method === "PUT") {
-    // Like the API, an update replaces every field: one left out is cleared.
-    const updated = { ...(await request.json()), id };
-    target.items.set(id, updated);
-    return Response.json(updated);
+  if (peticion.method === "PUT") {
+    // Como la API, actualizar reemplaza todos los campos: el que no se manda queda vacío.
+    const actualizado = { ...(await peticion.json()), id };
+    objetivo.elementos.set(id, actualizado);
+    return Response.json(actualizado);
   }
-  return Response.json(found);
+  return Response.json(encontrado);
 }
 
-/** A `RespuestaError` the way the API answers one. */
-function answer(status: number, codigo: string) {
-  return Response.json({ codigo, mensaje: codigo }, { status });
+/** Un `RespuestaError` como lo responde la API. */
+function responderError(estado: number, codigo: string) {
+  return Response.json({ codigo, mensaje: codigo }, { status: estado });
 }

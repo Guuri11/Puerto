@@ -1,28 +1,28 @@
-import type { Schemas } from "../../../api/client";
-{%- if display_helpers %}
-import { {{ display_helpers | join(sep=", ") }} } from "../../../shared/forms";
-{%- endif %}
+import type { Esquemas } from "../../../api/cliente";
 {%- if targets %}
-import { ReferenceLink } from "../../../shared/ui/reference-link";
+import { EnlaceReferencia } from "../../../compartido/ui/enlace-referencia";
+{%- endif %}
+{%- if display_helpers %}
+import { {{ display_helpers | join(sep=", ") }} } from "../../../compartido/formularios";
 {%- endif %}
 
-type {{ pascal }} = Schemas["Dto{{ pascal }}"];
+type {{ pascal }} = Esquemas["Dto{{ pascal }}"];
 
 {% if targets -%}
-/** `{{ ident }}`, and the label of each {% for t in targets %}{{ t.words }}{% if not loop.last %} and {% endif %}{% endfor %} it references, for its links. */
-export function {{ pascal }}DetailView({
+/** `{{ ident }}`, y cómo se cargan las etiquetas de lo que referencia, para sus enlaces. */
+export function VistaDetalle{{ pascal }}({
   {{ ident }},
 {%- for t in targets %}
-  {{ t.camel }}Label,
+  etiqueta{{ t.pascal }},
 {%- endfor %}
 }: {
   {{ ident }}: {{ pascal }};
 {%- for t in targets %}
-  {{ t.camel }}Label: (id: string) => Promise<string>;
+  etiqueta{{ t.pascal }}: (id: string) => Promise<string>;
 {%- endfor %}
 }) {
 {%- else -%}
-export function {{ pascal }}DetailView({ {{ ident }} }: { {{ ident }}: {{ pascal }} }) {
+export function VistaDetalle{{ pascal }}({ {{ ident }} }: { {{ ident }}: {{ pascal }} }) {
 {%- endif %}
   return (
     <dl className="grid grid-cols-[max-content_1fr] gap-x-6 gap-y-2">
@@ -32,12 +32,12 @@ export function {{ pascal }}DetailView({ {{ ident }} }: { {{ ident }}: {{ pascal
 {%- for r in references %}{% if r.camel == f.camel %}
       <dd>
 {%- if r.link_inline %}
-        <ReferenceLink path="{{ r.ref_path }}" id={{ "{" }}{{ ident }}.{{ r.camel }}} load={{ "{" }}{{ r.loader }}} />
+        <EnlaceReferencia ruta="{{ r.ref_path }}" id={{ "{" }}{{ ident }}.{{ r.camel }}} cargar={{ "{" }}{{ r.loader }}} />
 {%- else %}
-        <ReferenceLink
-          path="{{ r.ref_path }}"
+        <EnlaceReferencia
+          ruta="{{ r.ref_path }}"
           id={{ "{" }}{{ ident }}.{{ r.camel }}}
-          load={{ "{" }}{{ r.loader }}}
+          cargar={{ "{" }}{{ r.loader }}}
         />
 {%- endif %}
       </dd>

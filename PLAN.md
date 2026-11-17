@@ -3358,12 +3358,12 @@ los enums en la especificación OpenAPI; TanStack Query.
 
 ## Fase 22 — El frontend en castellano (ADR-0024)
 
-**Estado:** en curso. La ADR-0024 dejó el frontend para su propia fase; el vocabulario lo decidió
+**Estado:** hecha (2026-11-17), sin publicar. La ADR-0024 dejó el frontend para su propia fase; el vocabulario lo decidió
 Sergio el 2026-11-17 (`docs/glosario.md` § Fase 22): estructura, nombres, rutas, textos y tests en
 castellano, con frases neutras donde el género de la entidad importaría, y las pantallas de una
 entidad en `web/src/contextos/<e>/` (el mismo nombre que el backend). Va en la 0.23, con la Fase 21.
 
-### 22.1 — Todo `web/` en castellano
+### 22.1 — Todo `web/` en castellano ✅
 
 - `web/src/`: `api/` (`cliente.ts`, `esquema.d.ts`, `http.ts`), `contextos/<e>/` (`contenedores/`,
   `vistas/`, `mensajes.ts`), `paginas/`, `compartido/` (`formularios.ts`, `use-carga.ts`, `ui/`),

@@ -1,0 +1,62 @@
+import { describe, expect, test } from "bun:test";
+import { fireEvent, screen, waitFor } from "@testing-library/react";
+import { ErrorAuth } from "../auth/sesion";
+import { cuentasFalsas } from "../pruebas/auth";
+import { renderizarPantalla } from "../pruebas/renderizar";
+import { PaginaLogin, rutaSiguiente } from "./login";
+
+function escribir(etiqueta: string, valor: string) {
+  fireEvent.change(screen.getByLabelText(etiqueta), { target: { value: valor } });
+}
+
+describe("PaginaLogin", () => {
+  test("debería iniciar sesión y volver a la página que lo pidió", async () => {
+    // Preparar
+    const cuentas = cuentasFalsas();
+    const { historial } = renderizarPantalla(
+      <PaginaLogin />,
+      { cuentas },
+      "/login?siguiente=%2Fpedidos%3Fpagina%3D2",
+      { usuario: null },
+    );
+    await screen.findByText("Crea una cuenta");
+    escribir("Email", "ana@example.com");
+    escribir("Contraseña", "caballo correcto bateria");
+
+    // Actuar
+    fireEvent.click(screen.getByRole("button", { name: "Iniciar sesión" }));
+
+    // Comprobar
+    await waitFor(() => expect(historial.at(-1)).toBe("/pedidos?pagina=2"));
+    expect(cuentas.inicios).toEqual([
+      { email: "ana@example.com", contrasena: "caballo correcto bateria" },
+    ]);
+  });
+
+  test("debería decirlo cuando el email o la contraseña están mal", async () => {
+    // Preparar
+    const cuentas = {
+      ...cuentasFalsas(),
+      iniciarSesion: () => Promise.reject(new ErrorAuth("auth.credenciales_invalidas")),
+    };
+    renderizarPantalla(<PaginaLogin />, { cuentas }, "/login", { usuario: null });
+    await screen.findByText("Crea una cuenta");
+    escribir("Email", "ana@example.com");
+    escribir("Contraseña", "¡contraseña mal!");
+
+    // Actuar
+    fireEvent.click(screen.getByRole("button", { name: "Iniciar sesión" }));
+
+    // Comprobar
+    expect((await screen.findByRole("alert")).textContent).toBe("Email o contraseña incorrectos");
+  });
+});
+
+describe("rutaSiguiente", () => {
+  test("debería volver solo a una página de esta app", () => {
+    expect(rutaSiguiente("siguiente=%2Fpedidos")).toBe("/pedidos");
+    expect(rutaSiguiente("")).toBe("/");
+    expect(rutaSiguiente("siguiente=%2F%2Fmalo.example")).toBe("/");
+    expect(rutaSiguiente("siguiente=https%3A%2F%2Fmalo.example")).toBe("/");
+  });
+});

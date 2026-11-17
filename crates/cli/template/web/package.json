@@ -13,7 +13,7 @@
     "format": "biome check --write --linter-enabled=false .",
     "lint:arch": "bun --bun depcruise src",
     "test": "bun test",
-    "openapi:types": "bun --bun openapi-typescript ../docs/api/openapi.json -o src/api/schema.d.ts"
+    "openapi:types": "bun --bun openapi-typescript ../docs/api/openapi.json -o src/api/esquema.d.ts"
   },
   "dependencies": {
     "openapi-fetch": "0.17.0",

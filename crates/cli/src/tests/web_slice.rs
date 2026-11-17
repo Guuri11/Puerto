@@ -36,21 +36,21 @@ fn should_name_frontend_identifiers_after_the_snake_case_name() {
 
 #[test]
 fn template_generated_web_files_are_exactly_what_the_generator_writes_for_no_entity() {
-    // `puerto nuevo` copies `generated/*` verbatim, like `bootstrap.rs`; the first scaffold
+    // `puerto nuevo` copies `generado/*` verbatim, like `bootstrap.rs`; the first scaffold
     // rewrites them. A template copy that drifts from the generator ships a different shell.
     let (dir, output) = web_project("web_template_generated");
     let config = puerto_toml::read(&output).unwrap();
-    let generated = "web/src/generated";
+    let generated = "web/src/generado";
 
     assert_eq!(
-        read(&output, &format!("{generated}/dependencies.ts")),
+        read(&output, &format!("{generated}/dependencias.ts")),
         generate_web_dependencies(&config).unwrap(),
-        "template/{generated}/dependencies.ts is stale"
+        "template/{generated}/dependencias.ts is stale"
     );
     assert_eq!(
-        read(&output, &format!("{generated}/routes.tsx")),
+        read(&output, &format!("{generated}/rutas.tsx")),
         generate_web_routes(&config).unwrap(),
-        "template/{generated}/routes.tsx is stale"
+        "template/{generated}/rutas.tsx is stale"
     );
     cleanup(&dir);
 }
@@ -70,8 +70,8 @@ fn scaffold_in_a_web_project_writes_the_whole_slice_and_no_frontend_use_case() {
     for file in web_entity_files("linea_pedido") {
         assert!(output.join(&file).exists(), "{} missing", file.display());
     }
-    assert!(output.join("web/src/api/client.ts").exists());
-    assert!(output.join("web/src/test-support/fake-api.ts").exists());
+    assert!(output.join("web/src/api/cliente.ts").exists());
+    assert!(output.join("web/src/pruebas/api-falsa.ts").exists());
     // ADR-0025: the frontend is presentation — no model, port or adapter per entity.
     for layer in [
         "domain",
@@ -79,6 +79,11 @@ fn scaffold_in_a_web_project_writes_the_whole_slice_and_no_frontend_use_case() {
         "infrastructure",
         "presentation",
         "core",
+        "features",
+        "shared",
+        "pages",
+        "generated",
+        "test-support",
     ] {
         assert!(
             !output.join("web/src").join(layer).exists(),
@@ -94,32 +99,32 @@ fn scaffold_names_files_in_kebab_case_routes_after_the_plural_and_variables_in_c
 
     scaffold::run_scaffold("LineaPedido", &output, &[], OverwritePolicy::Ask).unwrap();
 
-    let routes = read(&output, "web/src/generated/routes.tsx");
+    let routes = read(&output, "web/src/generado/rutas.tsx");
     assert!(
-        routes.contains(r#"<Route path="/lineas_pedido/:id/edit">"#),
+        routes.contains(r#"<Route path="/lineas_pedido/:id/editar">"#),
         "{routes}"
     );
-    assert!(routes.contains(r#"<Route path="/lineas_pedido/new">"#));
-    assert!(routes.contains(r#"{ label: "Lineas pedido", href: "/lineas_pedido" }"#));
-    assert!(routes.contains("../features/linea-pedido/containers/linea-pedido-list-container"));
+    assert!(routes.contains(r#"<Route path="/lineas_pedido/nuevo">"#));
+    assert!(routes.contains(r#"{ etiqueta: "Lineas pedido", href: "/lineas_pedido" }"#));
+    assert!(routes.contains("../contextos/linea-pedido/contenedores/lista-linea-pedido"));
 
-    let features = "web/src/features/linea-pedido";
+    let screens = "web/src/contextos/linea-pedido";
     let detail = read(
         &output,
-        &format!("{features}/containers/linea-pedido-detail-container.tsx"),
+        &format!("{screens}/contenedores/detalle-linea-pedido.tsx"),
     );
     assert!(
         detail.contains(r#"api.GET("/lineas_pedido/{id}""#),
         "{detail}"
     );
-    assert!(detail.contains("const lineaPedido = useAsync("));
+    assert!(detail.contains("const lineaPedido = useCarga("));
     let view = read(
         &output,
-        &format!("{features}/views/linea-pedido-detail-view.tsx"),
+        &format!("{screens}/vistas/detalle-linea-pedido.tsx"),
     );
-    assert!(view.contains(r#"type LineaPedido = Schemas["DtoLineaPedido"];"#));
-    let support = read(&output, "web/src/test-support/linea-pedido.ts");
-    assert!(support.contains(r#"return collection("/lineas_pedido", "linea_pedido", seed);"#));
+    assert!(view.contains(r#"type LineaPedido = Esquemas["DtoLineaPedido"];"#));
+    let support = read(&output, "web/src/pruebas/linea-pedido.ts");
+    assert!(support.contains(r#"return coleccion("/lineas_pedido", "linea_pedido", semilla);"#));
     cleanup(&dir);
 }
 
@@ -144,14 +149,14 @@ fn scaffold_maps_every_field_to_its_type_input_and_wire_name() {
 
     let form = read(
         &output,
-        "web/src/features/producto/views/producto-form-view.tsx",
+        "web/src/contextos/producto/vistas/formulario-producto.tsx",
     );
-    assert!(form.contains(r#"type ProductoRequest = Schemas["PeticionCrearProducto"];"#));
+    assert!(form.contains(r#"type PeticionProducto = Esquemas["PeticionCrearProducto"];"#));
     assert!(form.contains(
-        "export function toProductoRequest(values: ProductoFormValues): ProductoRequest {"
+        "export function aPeticionProducto(valores: ValoresFormularioProducto): PeticionProducto {"
     ));
-    assert!(form.contains("price: Number(values.price),"));
-    assert!(form.contains("refId: values.refId,"));
+    assert!(form.contains("price: Number(valores.price),"));
+    assert!(form.contains("refId: valores.refId,"));
     assert!(form.contains("inStock: producto.inStock,"));
     assert!(form.contains(r#"step="any""#), "an f64 takes decimals");
     assert_eq!(
@@ -184,15 +189,18 @@ fn generated_files_list_every_crud_entity_and_skip_saludo() {
     scaffold::run_scaffold("Producto", &output, &[], OverwritePolicy::Ask).unwrap();
     scaffold::run_scaffold("Categoria", &output, &[], OverwritePolicy::Ask).unwrap();
 
-    let routes = read(&output, "web/src/generated/routes.tsx");
+    let routes = read(&output, "web/src/generado/rutas.tsx");
     assert!(routes.contains("Producto") && routes.contains("Categoria"));
     assert!(
         !routes.contains("Saludo"),
         "Saludo has no CRUD endpoints:\n{routes}"
     );
     // The screens share one client: adding an entity adds nothing to the composition root.
-    let dependencies = read(&output, "web/src/generated/dependencies.ts");
-    assert!(dependencies.contains("  api: ApiClient;"), "{dependencies}");
+    let dependencies = read(&output, "web/src/generado/dependencias.ts");
+    assert!(
+        dependencies.contains("  api: ClienteApi;"),
+        "{dependencies}"
+    );
     assert!(!dependencies.contains("Producto") && !dependencies.contains("Categoria"));
     cleanup(&dir);
 }
@@ -216,31 +224,34 @@ fn every_field_type_reaches_the_frontend_with_its_own_input() {
     )
     .unwrap();
 
-    let form = read(&output, "web/src/features/event/views/event-form-view.tsx");
+    let form = read(
+        &output,
+        "web/src/contextos/event/vistas/formulario-event.tsx",
+    );
     for line in [
-        "summary: textOf(event.summary),",
-        "summary: optionalText(values.summary),",
-        "flag: optionalBoolean(values.flag),",
-        "startsAt: fromDateTimeLocal(values.startsAt),",
-        "tags: splitList(values.tags),",
-        "meta: parseEntries(values.meta),",
-        "status: values.status,",
+        "summary: textoDe(event.summary),",
+        "summary: textoOpcional(valores.summary),",
+        "flag: booleanoOpcional(valores.flag),",
+        "startsAt: deFechaHoraLocal(valores.startsAt),",
+        "tags: separarLista(valores.tags),",
+        "meta: leerEntradas(valores.meta),",
+        "status: valores.status,",
     ] {
         assert!(form.contains(line), "{line} in:\n{form}");
     }
-    let list = read(&output, "web/src/features/event/views/event-list-view.tsx");
+    let list = read(&output, "web/src/contextos/event/vistas/lista-event.tsx");
     assert!(
-        list.contains(r#"<td>{event.flag == null ? "—" : event.flag ? "Yes" : "No"}</td>"#),
+        list.contains(r#"<td>{event.flag == null ? "—" : event.flag ? "Sí" : "No"}</td>"#),
         "the API answers null for an absent one:\n{list}"
     );
     assert!(form.contains(r#"type="datetime-local""#));
     assert!(form.contains("<textarea"));
     assert!(form.contains(r#"<option value="Published">Published</option>"#));
     assert!(
-        form.contains(r#"<option value="true">Yes</option>"#),
+        form.contains(r#"<option value="true">Sí</option>"#),
         "optional bool: a select"
     );
-    assert!(form.contains(r#"from "../../../shared/forms";"#));
+    assert!(form.contains(r#"from "../../../compartido/formularios";"#));
     assert!(validate::run_validate(&output).is_ok());
     cleanup(&dir);
 }
@@ -260,7 +271,7 @@ fn every_enum_of_an_entity_offers_its_variants_in_its_own_select() {
     )
     .unwrap();
 
-    let form = read(&output, "web/src/features/task/views/task-form-view.tsx");
+    let form = read(&output, "web/src/contextos/task/vistas/formulario-task.tsx");
     for option in ["Open", "Closed", "Low", "High"] {
         let line = format!(r#"<option value="{option}">{option}</option>"#);
         assert_eq!(form.matches(&line).count(), 1, "{line} in:\n{form}");
@@ -289,7 +300,7 @@ fn rescaffold_without_force_refuses_when_only_web_files_exist() {
     for file in crate::generators::conflict::entity_files("producto", false, false) {
         let _ = fs::remove_file(output.join(file));
     }
-    let form = output.join("web/src/features/producto/views/producto-form-view.tsx");
+    let form = output.join("web/src/contextos/producto/vistas/formulario-producto.tsx");
     fs::write(&form, "// hand-written\n").unwrap();
 
     let result = scaffold::run_scaffold("Producto", &output, &[], OverwritePolicy::Ask);
@@ -304,7 +315,7 @@ fn rescaffold_without_force_refuses_when_only_web_files_exist() {
 
 #[test]
 fn generate_web_is_the_last_step_of_the_layered_flow() {
-    // `generate presentation` regenerates `generated/*` with the entity, whose screens do not
+    // `generate presentation` regenerates `generado/*` with the entity, whose screens do not
     // exist yet: the drift warning points at `generate web`, which writes them.
     let (dir, output) = web_project("web_generate_web");
     let factura = fields(&["amount:i64"]);
@@ -362,8 +373,8 @@ fn generate_web_refuses_an_undeclared_entity_a_non_crud_one_and_a_project_withou
 fn the_api_client_and_the_fake_api_are_written_once_and_never_overwritten() {
     let (dir, output) = web_project("web_client_once");
     let once = [
-        output.join("web/src/api/client.ts"),
-        output.join("web/src/test-support/fake-api.ts"),
+        output.join("web/src/api/cliente.ts"),
+        output.join("web/src/pruebas/api-falsa.ts"),
     ];
     for file in &once {
         assert!(
@@ -389,7 +400,7 @@ fn the_api_client_and_the_fake_api_are_written_once_and_never_overwritten() {
 fn validate_and_bootstrap_report_a_crud_entity_without_its_screens() {
     let (dir, output) = web_project("web_validate_drift");
     scaffold::run_scaffold("Producto", &output, &[], OverwritePolicy::Ask).unwrap();
-    fs::remove_dir_all(output.join("web/src/features/producto")).unwrap();
+    fs::remove_dir_all(output.join("web/src/contextos/producto")).unwrap();
 
     let validated = validate::run_validate(&output);
     let bootstrap = scaffold::run_bootstrap_command(&output, false);
@@ -397,7 +408,7 @@ fn validate_and_bootstrap_report_a_crud_entity_without_its_screens() {
     for err in [validated.unwrap_err(), bootstrap.unwrap_err()] {
         let err = err.to_string();
         assert!(
-            err.contains("web/src/features/producto/containers")
+            err.contains("web/src/contextos/producto/contenedores")
                 && err.contains("puerto generar web Producto"),
             "{err}"
         );
@@ -410,7 +421,7 @@ fn web_agents_rules_describe_the_slice_and_the_sync_step() {
     let web_agents = TEMPLATE_DIR_WEB_AGENTS;
     assert!(web_agents.contains("make web/sync"));
     assert!(web_agents.contains("puerto generar web"));
-    assert!(web_agents.contains("test-support/"));
+    assert!(web_agents.contains("pruebas/"));
 }
 
 /// The frontend rules shipped to every web project (ADR-0010).
@@ -420,16 +431,16 @@ const TEMPLATE_DIR_WEB_AGENTS: &str = include_str!("../../template/web/AGENTS.md
 
 #[test]
 fn new_web_project_has_a_routes_file_of_its_own() {
-    // `generated/routes.tsx` is rewritten by every scaffold: a screen the user adds needs a
+    // `generado/rutas.tsx` is rewritten by every scaffold: a screen the user adds needs a
     // route table puerto never touches (the `web-route` snippet goes there).
     let (dir, output) = web_project("web_custom_routes");
 
-    let custom = read(&output, "web/src/routes.tsx");
-    assert!(custom.contains("export const customRoutes: ReactElement[] = [];"));
-    assert!(!custom.contains("AUTO-GENERATED"));
-    let generated = read(&output, "web/src/generated/routes.tsx");
-    assert!(generated.contains("import { customRoutes } from \"../routes\";"));
-    assert!(generated.contains("      {customRoutes}\n"));
+    let custom = read(&output, "web/src/rutas.tsx");
+    assert!(custom.contains("export const rutasPropias: ReactElement[] = [];"));
+    assert!(!custom.contains("GENERADO"));
+    let generated = read(&output, "web/src/generado/rutas.tsx");
+    assert!(generated.contains("import { rutasPropias } from \"../rutas\";"));
+    assert!(generated.contains("      {rutasPropias}\n"));
 
     cleanup(&dir);
 }
@@ -439,10 +450,10 @@ fn generated_routes_match_custom_routes_before_the_entities() {
     let (dir, output) = web_project("web_custom_routes_pedido");
     scaffold::run_scaffold("Producto", &output, &[], OverwritePolicy::Ask).unwrap();
 
-    let generated = read(&output, "web/src/generated/routes.tsx");
-    let custom = generated.find("{customRoutes}").unwrap();
+    let generated = read(&output, "web/src/generado/rutas.tsx");
+    let custom = generated.find("{rutasPropias}").unwrap();
     assert!(custom < generated.find("<Route path=\"/productos\">").unwrap());
-    assert!(custom > generated.find("<HomePage").unwrap());
+    assert!(custom > generated.find("<PaginaInicio").unwrap());
 
     cleanup(&dir);
 }
@@ -461,7 +472,7 @@ fn messages_cover_every_code_of_errors_rs_and_name_the_field_it_is_about() {
     ]);
     scaffold::run_scaffold("Producto", &output, &args, OverwritePolicy::Ask).unwrap();
 
-    let messages = read(&output, "web/src/features/producto/messages.ts");
+    let messages = read(&output, "web/src/contextos/producto/mensajes.ts");
     let errors = read(&output, "contextos/producto/dominio/src/errores.rs");
     for line in errors.lines().filter(|l| l.contains("#[error(\"producto.")) {
         let code = line.split('"').nth(1).unwrap();
@@ -473,35 +484,33 @@ fn messages_cover_every_code_of_errors_rs_and_name_the_field_it_is_about() {
             "{code} has no message"
         );
     }
-    assert!(messages.contains("\"producto.validacion.title_vacio\": \"Title is required\","));
+    assert!(messages.contains("\"producto.validacion.title_vacio\": \"Title: obligatorio\","));
     assert!(messages.contains("\"producto.validacion.title_vacio\": \"title\","));
-    assert!(messages.contains("\"producto.sku_invalido\": \"Sku is not valid\","));
+    assert!(messages.contains("\"producto.sku_invalido\": \"Sku: no válido\","));
     assert!(messages.contains("\"producto.status_invalido\": \"status\","));
-    assert!(
-        messages
-            .contains("\"producto.duplicado\": \"A producto with these values already exists\",")
-    );
+    assert!(messages.contains("\"producto.duplicado\": \"Estos valores ya están en uso\","));
     assert!(!messages.contains("note_vacio"));
     assert!(
-        messages.contains("return { field: FIELDS[code] ?? null, text: TEXTS[code] ?? code };")
+        messages
+            .contains("return { campo: CAMPOS[codigo] ?? null, texto: TEXTOS[codigo] ?? codigo };")
     );
 
     let view = read(
         &output,
-        "web/src/features/producto/views/producto-form-view.tsx",
+        "web/src/contextos/producto/vistas/formulario-producto.tsx",
     );
-    assert!(view.contains("<FieldError problem={problem} field=\"title\" />"));
-    assert!(view.contains("aria-invalid={problem?.field === \"status\"}"));
+    assert!(view.contains("<ErrorCampo problema={problema} campo=\"title\" />"));
+    assert!(view.contains("aria-invalid={problema?.campo === \"status\"}"));
     let container = read(
         &output,
-        "web/src/features/producto/containers/producto-form-container.tsx",
+        "web/src/contextos/producto/contenedores/formulario-producto.tsx",
     );
     assert!(
         container
-            .contains("const problem = failure === null ? null : toProblem(errorCode(failure));")
+            .contains("const problema = fallo === null ? null : aProblema(codigoError(fallo));")
     );
     assert!(container.contains(
-        "{problem?.field === null && <ErrorAlert error={failure} message={problem.text} />}"
+        "{problema?.campo === null && <AlertaError error={fallo} mensaje={problema.texto} />}"
     ));
 
     cleanup(&dir);
@@ -518,8 +527,8 @@ fn messages_of_an_entity_without_field_codes_map_no_field() {
     )
     .unwrap();
 
-    let messages = read(&output, "web/src/features/counter/messages.ts");
-    assert!(messages.contains("const FIELDS: Record<string, string> = {};"));
+    let messages = read(&output, "web/src/contextos/counter/mensajes.ts");
+    assert!(messages.contains("const CAMPOS: Record<string, string> = {};"));
 
     cleanup(&dir);
 }

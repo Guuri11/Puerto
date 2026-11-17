@@ -1,76 +1,76 @@
 import { describe, expect, test } from "bun:test";
 import { screen, waitFor } from "@testing-library/react";
-import { CurrentUserMother, fakeAuthGateway } from "../test-support/auth";
-import { renderScreen } from "../test-support/render";
-import { RequireAuth, useAuth } from "./auth";
+import { MadreUsuarioActual, pasarelaAuthFalsa } from "../pruebas/auth";
+import { renderizarPantalla } from "../pruebas/renderizar";
+import { RequiereAuth, useAuth } from "./auth";
 
-function Secret() {
-  const { can } = useAuth();
-  return <p>{can("admin") ? "admin area" : "member area"}</p>;
+function Secreto() {
+  const { puede } = useAuth();
+  return <p>{puede("admin") ? "zona de admin" : "zona de socios"}</p>;
 }
 
-describe("RequireAuth", () => {
-  test("should start a sign-in that comes back here when nobody is signed in", async () => {
-    // Arrange
-    const auth = fakeAuthGateway({ user: null });
+describe("RequiereAuth", () => {
+  test("debería iniciar una sesión que vuelve aquí cuando no hay sesión", async () => {
+    // Preparar
+    const auth = pasarelaAuthFalsa({ usuario: null });
 
-    // Act
-    renderScreen(
-      <RequireAuth>
-        <Secret />
-      </RequireAuth>,
+    // Actuar
+    renderizarPantalla(
+      <RequiereAuth>
+        <Secreto />
+      </RequiereAuth>,
       { auth },
-      "/orders?page=2",
+      "/pedidos?pagina=2",
     );
 
-    // Assert
-    await waitFor(() => expect(auth.logins).toEqual(["/orders?page=2"]));
-    expect(screen.queryByText("member area")).toBeNull();
+    // Comprobar
+    await waitFor(() => expect(auth.logins).toEqual(["/pedidos?pagina=2"]));
+    expect(screen.queryByText("zona de socios")).toBeNull();
   });
 
-  test("should show the page to a signed-in user without signing in again", async () => {
-    // Arrange
-    const auth = fakeAuthGateway({ user: CurrentUserMother.random() });
+  test("debería mostrar la página a quien tiene la sesión sin volver a iniciarla", async () => {
+    // Preparar
+    const auth = pasarelaAuthFalsa({ usuario: MadreUsuarioActual.aleatorio() });
 
-    // Act
-    renderScreen(
-      <RequireAuth>
-        <Secret />
-      </RequireAuth>,
+    // Actuar
+    renderizarPantalla(
+      <RequiereAuth>
+        <Secreto />
+      </RequiereAuth>,
       { auth },
     );
 
-    // Assert
-    expect(await screen.findByText("member area")).toBeTruthy();
+    // Comprobar
+    expect(await screen.findByText("zona de socios")).toBeTruthy();
     expect(auth.logins).toEqual([]);
   });
 });
 
 describe("useAuth", () => {
-  test("should allow a role only when the user holds it", async () => {
-    // Arrange
-    const user = CurrentUserMother.random({ roles: ["admin"] });
+  test("debería permitir un rol solo cuando quien tiene la sesión lo tiene", async () => {
+    // Preparar
+    const usuario = MadreUsuarioActual.aleatorio({ roles: ["admin"] });
 
-    // Act
-    renderScreen(<Secret />, {}, "/", { user });
+    // Actuar
+    renderizarPantalla(<Secreto />, {}, "/", { usuario });
 
-    // Assert
-    expect(await screen.findByText("admin area")).toBeTruthy();
+    // Comprobar
+    expect(await screen.findByText("zona de admin")).toBeTruthy();
   });
 });
 
-describe("AuthProvider", () => {
-  test("should show the error code when the API does not accept the session", async () => {
-    // Arrange
+describe("ProveedorAuth", () => {
+  test("debería mostrar el código del error cuando la API no acepta la sesión", async () => {
+    // Preparar
     const auth = {
-      ...fakeAuthGateway(),
-      currentUser: () => Promise.reject(new Error("auth.no_autenticado")),
+      ...pasarelaAuthFalsa(),
+      usuarioActual: () => Promise.reject(new Error("auth.no_autenticado")),
     };
 
-    // Act
-    renderScreen(<Secret />, { auth });
+    // Actuar
+    renderizarPantalla(<Secreto />, { auth });
 
-    // Assert
+    // Comprobar
     expect((await screen.findByRole("alert")).textContent).toBe("auth.no_autenticado");
   });
 });

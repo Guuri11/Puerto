@@ -1,22 +1,28 @@
-import type { Schemas } from "../../../api/client";
+import type { Esquemas } from "../../../api/cliente";
 {%- if form_helpers %}
-import {% if form_helpers_type_only %}type {% endif %}{ {{ form_helpers | join(sep=", ") }} } from "../../../shared/forms";
+import {% if form_helpers_type_only %}type {% endif %}{ {{ form_helpers | join(sep=", ") }} } from "../../../compartido/formularios";
 {%- endif %}
-import { FieldError } from "../../../shared/ui/field-error";
-import type { {{ pascal }}Problem } from "../messages";
+import { ErrorCampo } from "../../../compartido/ui/error-campo";
+import type { Problema{{ pascal }} } from "../mensajes";
 
-type {{ pascal }} = Schemas["Dto{{ pascal }}"];
-type {{ pascal }}Request = Schemas["PeticionCrear{{ pascal }}"];
+type {{ pascal }} = Esquemas["Dto{{ pascal }}"];
+type Peticion{{ pascal }} = Esquemas["PeticionCrear{{ pascal }}"];
 
-/** What the inputs hold: the text of every input, `checked` for a checkbox. */
-export interface {{ pascal }}FormValues {
+/** Lo que guardan los inputs: el texto de cada input, `checked` en una casilla. */
+export interface ValoresFormulario{{ pascal }} {
 {%- for f in fields %}
   {{ f.camel }}: {% if f.input == "checkbox" %}boolean{% else %}string{% endif %};
 {%- endfor %}
 }
 
-/** The inputs for `{{ ident }}`, empty when there is none yet. */
-export function to{{ pascal }}Form({{ ident }}: {{ pascal }} | null): {{ pascal }}FormValues {
+/** Los inputs de `{{ ident }}`, vacíos cuando todavía no hay ninguno. */
+{% if to_form_inline -%}
+export function aFormulario{{ pascal }}({{ ident }}: {{ pascal }} | null): ValoresFormulario{{ pascal }} {
+{%- else -%}
+export function aFormulario{{ pascal }}(
+  {{ ident }}: {{ pascal }} | null,
+): ValoresFormulario{{ pascal }} {
+{%- endif %}
   if ({{ ident }} === null) {
     return {
 {%- for f in fields %}
@@ -32,16 +38,22 @@ export function to{{ pascal }}Form({{ ident }}: {{ pascal }} | null): {{ pascal 
 }
 
 {% if targets -%}
-/** What each reference's select offers. */
-export interface {{ pascal }}FormOptions {
+/** Lo que ofrece el select de cada referencia. */
+export interface OpcionesFormulario{{ pascal }} {
 {%- for f in fields %}{% if f.input == "reference" %}
-  {{ f.camel }}: ReferenceOption[];
+  {{ f.camel }}: OpcionReferencia[];
 {%- endif %}{% endfor %}
 }
 
 {% endif -%}
-/** What a create or an update sends: the same fields for both. */
-export function to{{ pascal }}Request(values: {{ pascal }}FormValues): {{ pascal }}Request {
+/** Lo que mandan crear y actualizar: los mismos campos en los dos. */
+{% if to_request_inline -%}
+export function aPeticion{{ pascal }}(valores: ValoresFormulario{{ pascal }}): Peticion{{ pascal }} {
+{%- else -%}
+export function aPeticion{{ pascal }}(
+  valores: ValoresFormulario{{ pascal }},
+): Peticion{{ pascal }} {
+{%- endif %}
   return {
 {%- for f in fields %}
     {{ f.camel }}: {{ f.from_form }},
@@ -49,32 +61,32 @@ export function to{{ pascal }}Request(values: {{ pascal }}FormValues): {{ pascal
   };
 }
 
-export function {{ pascal }}FormView({
-  values,
+export function VistaFormulario{{ pascal }}({
+  valores,
 {%- if targets %}
-  options,
+  opciones,
 {%- endif %}
-  saving,
-  problem,
-  onChange,
-  onSubmit,
+  guardando,
+  problema,
+  alCambiar,
+  alEnviar,
 }: {
-  values: {{ pascal }}FormValues;
+  valores: ValoresFormulario{{ pascal }};
 {%- if targets %}
-  options: {{ pascal }}FormOptions;
+  opciones: OpcionesFormulario{{ pascal }};
 {%- endif %}
-  saving: boolean;
-  /** What the API said about the last submit: shown under its input. */
-  problem: {{ pascal }}Problem | null;
-  onChange: (values: {{ pascal }}FormValues) => void;
-  onSubmit: () => void;
+  guardando: boolean;
+  /** Lo que dijo la API del último envío: se muestra bajo su input. */
+  problema: Problema{{ pascal }} | null;
+  alCambiar: (valores: ValoresFormulario{{ pascal }}) => void;
+  alEnviar: () => void;
 }) {
   return (
     <form
       className="space-y-2"
       onSubmit={(event) => {
         event.preventDefault();
-        onSubmit();
+        alEnviar();
       }}
     >
 {%- for f in fields %}
@@ -83,8 +95,8 @@ export function {{ pascal }}FormView({
         <input
           className="checkbox"
           type="checkbox"
-          checked={values.{{ f.camel }}}
-          onChange={(event) => onChange({ ...values, {{ f.camel }}: event.target.checked })}
+          checked={valores.{{ f.camel }}}
+          onChange={(event) => alCambiar({ ...valores, {{ f.camel }}: event.target.checked })}
         />
         {{ f.label }}
       </label>
@@ -93,12 +105,12 @@ export function {{ pascal }}FormView({
         <span className="fieldset-legend">{{ f.label }}</span>
         <select
           className="select w-full"
-          aria-invalid={problem?.field === "{{ f.camel }}"}
+          aria-invalid={problema?.campo === "{{ f.camel }}"}
 {%- if f.required %}
           required
 {%- endif %}
-          value={values.{{ f.camel }}}
-          onChange={(event) => onChange({ ...values, {{ f.camel }}: event.target.value })}
+          value={valores.{{ f.camel }}}
+          onChange={(event) => alCambiar({ ...valores, {{ f.camel }}: event.target.value })}
         >
           <option value="">{{ f.placeholder }}</option>
 {%- for o in f.options %}
@@ -106,62 +118,62 @@ export function {{ pascal }}FormView({
 {%- endfor %}
         </select>
       </label>
-      <FieldError problem={problem} field="{{ f.camel }}" />
+      <ErrorCampo problema={problema} campo="{{ f.camel }}" />
 {%- elif f.input == "reference" %}
       <label className="fieldset">
         <span className="fieldset-legend">{{ f.label }}</span>
         <select
           className="select w-full"
-          aria-invalid={problem?.field === "{{ f.camel }}"}
+          aria-invalid={problema?.campo === "{{ f.camel }}"}
 {%- if f.required %}
           required
 {%- endif %}
-          value={values.{{ f.camel }}}
-          onChange={(event) => onChange({ ...values, {{ f.camel }}: event.target.value })}
+          value={valores.{{ f.camel }}}
+          onChange={(event) => alCambiar({ ...valores, {{ f.camel }}: event.target.value })}
         >
           <option value="">{{ f.placeholder }}</option>
-          {options.{{ f.camel }}.map((option) => (
-            <option key={option.id} value={option.id}>
-              {option.label}
+          {opciones.{{ f.camel }}.map((opcion) => (
+            <option key={opcion.id} value={opcion.id}>
+              {opcion.etiqueta}
             </option>
           ))}
         </select>
       </label>
-      <FieldError problem={problem} field="{{ f.camel }}" />
+      <ErrorCampo problema={problema} campo="{{ f.camel }}" />
 {%- elif f.input == "textarea" %}
       <label className="fieldset">
         <span className="fieldset-legend">{{ f.label }}</span>
         <textarea
           className="textarea w-full"
-          aria-invalid={problem?.field === "{{ f.camel }}"}
-          placeholder="key=value, one per line"
-          value={values.{{ f.camel }}}
-          onChange={(event) => onChange({ ...values, {{ f.camel }}: event.target.value })}
+          aria-invalid={problema?.campo === "{{ f.camel }}"}
+          placeholder="clave=valor, una por línea"
+          value={valores.{{ f.camel }}}
+          onChange={(event) => alCambiar({ ...valores, {{ f.camel }}: event.target.value })}
         />
       </label>
-      <FieldError problem={problem} field="{{ f.camel }}" />
+      <ErrorCampo problema={problema} campo="{{ f.camel }}" />
 {%- else %}
       <label className="fieldset">
         <span className="fieldset-legend">{{ f.label }}</span>
         <input
           className="input w-full"
           type="{{ f.input }}"
-          aria-invalid={problem?.field === "{{ f.camel }}"}
+          aria-invalid={problema?.campo === "{{ f.camel }}"}
 {%- if f.decimal %}
           step="any"
 {%- endif %}
 {%- if f.required %}
           required
 {%- endif %}
-          value={values.{{ f.camel }}}
-          onChange={(event) => onChange({ ...values, {{ f.camel }}: event.target.value })}
+          value={valores.{{ f.camel }}}
+          onChange={(event) => alCambiar({ ...valores, {{ f.camel }}: event.target.value })}
         />
       </label>
-      <FieldError problem={problem} field="{{ f.camel }}" />
+      <ErrorCampo problema={problema} campo="{{ f.camel }}" />
 {%- endif %}
 {%- endfor %}
-      <button type="submit" className="btn btn-primary" disabled={saving}>
-        Save
+      <button type="submit" className="btn btn-primary" disabled={guardando}>
+        Guardar
       </button>
     </form>
   );

@@ -6,8 +6,8 @@ export default defineConfig({
   plugins: [react(), tailwindcss()],
   server: {
     port: 5173,
-    // The API answers under /api on :8080 (`make run`). Proxied, the browser sees one origin: no
-    // CORS in development.
+    // La API responde bajo /api en :8080 (`make run`). Con el proxy, el navegador ve un solo
+    // origen: sin CORS en desarrollo.
     proxy: { "/api": "http://localhost:8080" },
   },
 });

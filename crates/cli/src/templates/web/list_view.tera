@@ -1,12 +1,12 @@
 import { Link } from "wouter";
-import type { Schemas } from "../../../api/client";
+import type { Esquemas } from "../../../api/cliente";
 {%- if display_helpers %}
-import { {{ display_helpers | join(sep=", ") }} } from "../../../shared/forms";
+import { {{ display_helpers | join(sep=", ") }} } from "../../../compartido/formularios";
 {%- endif %}
 
-type {{ pascal }} = Schemas["Dto{{ pascal }}"];
+type {{ pascal }} = Esquemas["Dto{{ pascal }}"];
 
-export function {{ pascal }}ListView({ {{ plural_ident }} }: { {{ plural_ident }}: {{ pascal }}[] }) {
+export function VistaLista{{ pascal }}({ {{ plural_ident }} }: { {{ plural_ident }}: {{ pascal }}[] }) {
   return (
     <div className="overflow-x-auto rounded-box bg-base-100">
       <table className="table">
@@ -26,7 +26,7 @@ export function {{ pascal }}ListView({ {{ plural_ident }} }: { {{ plural_ident }
 {%- endfor %}
               <td className="text-right">
                 <Link href={`/{{ plural }}/${{ "{" }}{{ ident }}.id}`} className="link">
-                  View
+                  Ver
                 </Link>
               </td>
             </tr>

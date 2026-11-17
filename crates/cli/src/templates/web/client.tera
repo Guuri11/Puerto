@@ -1,13 +1,13 @@
 import createClient, { type Client, type ClientOptions } from "openapi-fetch";
-import type { components, paths } from "./schema";
+import type { components, paths } from "./esquema";
 
-/** The typed API client. `paths` is generated from the backend's spec (`make web/sync`). */
-export type ApiClient = Client<paths>;
+/** El cliente tipado de la API. `paths` sale de la especificación del backend (`make web/sync`). */
+export type ClienteApi = Client<paths>;
 
-/** The API's DTOs by name: `Schemas["DtoProducto"]`, `Schemas["PeticionCrearProducto"]`. */
-export type Schemas = components["schemas"];
+/** Los DTO de la API por nombre: `Esquemas["DtoProducto"]`, `Esquemas["PeticionCrearProducto"]`. */
+export type Esquemas = components["schemas"];
 
-/** `/api` is the backend: proxied to `:8080` by Vite in development. */
-export function createApiClient(options: ClientOptions = {}): ApiClient {
-  return createClient<paths>({ baseUrl: "/api", ...options });
+/** `/api` es el backend: en desarrollo, Vite lo pasa a `:8080`. */
+export function crearClienteApi(opciones: ClientOptions = {}): ClienteApi {
+  return createClient<paths>({ baseUrl: "/api", ...opciones });
 }

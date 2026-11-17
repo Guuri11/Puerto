@@ -138,9 +138,9 @@ apuntándole. La lista filtra por cada referencia: `GET /pedidos?clienteId=…` 
 | **Parcheados**: se añade una línea y se conserva el resto | el `Cargo.toml` raíz (miembros, `[workspace.dependencies]`), `presentacion/api/Cargo.toml` y `presentacion/worker/Cargo.toml` (el crate de un contexto), el `lib.rs` del crate de aplicación, `rutas.rs` (los campos de `Api<Entidad>`), `presentacion/worker/src/consumidores.rs`, `puerto.toml` | editándolos libremente; conserva las líneas que añadió Puerto |
 | **Se escriben una vez**: tuyos desde el principio | `presentacion/api/src/app.rs` (tus middleware y rutas), la impl de un `generar caso-de-uso`, los consumidores, los correos y sus plantillas, las migraciones, los ficheros de auth | editándolos |
 
-Con `web/`: `web/src/generated/*`, `web/src/api/schema.d.ts` y `docs/api/openapi.json` también se
+Con `web/`: `web/src/generado/*`, `web/src/api/esquema.d.ts` y `docs/api/openapi.json` también se
 reescriben (`generar bootstrap`, `make web/sync`); las pantallas de una entidad son ficheros suyos
-como los demás; `web/src/routes.tsx` (tus propias pantallas) es tuyo. El detalle, en
+como los demás; `web/src/rutas.tsx` (tus propias pantallas) es tuyo. El detalle, en
 `web/AGENTS.md`.
 
 ### Cambiar los campos de una entidad
@@ -2894,436 +2894,445 @@ nombre = "weight"
 tipo = "i64"
 objeto_valor = "Weight"
 
-=== web/src/api/client.ts ===
+=== web/src/api/cliente.ts ===
 import createClient, { type Client, type ClientOptions } from "openapi-fetch";
-import type { components, paths } from "./schema";
+import type { components, paths } from "./esquema";
 
-/** The typed API client. `paths` is generated from the backend's spec (`make web/sync`). */
-export type ApiClient = Client<paths>;
+/** El cliente tipado de la API. `paths` sale de la especificación del backend (`make web/sync`). */
+export type ClienteApi = Client<paths>;
 
-/** The API's DTOs by name: `Schemas["DtoProducto"]`, `Schemas["PeticionCrearProducto"]`. */
-export type Schemas = components["schemas"];
+/** Los DTO de la API por nombre: `Esquemas["DtoProducto"]`, `Esquemas["PeticionCrearProducto"]`. */
+export type Esquemas = components["schemas"];
 
-/** `/api` is the backend: proxied to `:8080` by Vite in development. */
-export function createApiClient(options: ClientOptions = {}): ApiClient {
-  return createClient<paths>({ baseUrl: "/api", ...options });
+/** `/api` es el backend: en desarrollo, Vite lo pasa a `:8080`. */
+export function crearClienteApi(opciones: ClientOptions = {}): ClienteApi {
+  return createClient<paths>({ baseUrl: "/api", ...opciones });
 }
 
-=== web/src/features/articulo/containers/articulo-detail-container.test.tsx ===
+=== web/src/contextos/articulo/contenedores/detalle-articulo.test.tsx ===
 import { describe, expect, test } from "bun:test";
 import { fireEvent, screen, waitFor } from "@testing-library/react";
-import { ArticuloMother, articuloCollection } from "../../../test-support/articulo";
-import { fakeApi } from "../../../test-support/fake-api";
-import { renderScreen } from "../../../test-support/render";
-import { ArticuloDetailContainer } from "./articulo-detail-container";
+import { apiFalsa } from "../../../pruebas/api-falsa";
+import { coleccionArticulo, MadreArticulo } from "../../../pruebas/articulo";
+import { renderizarPantalla } from "../../../pruebas/renderizar";
+import { ContenedorDetalleArticulo } from "./detalle-articulo";
 
-describe("ArticuloDetailContainer", () => {
-  test("should show the articulo when it exists", async () => {
-    // Arrange
-    const seeded = ArticuloMother.random();
-    const api = fakeApi([articuloCollection([seeded])]);
+describe("ContenedorDetalleArticulo", () => {
+  test("debería mostrar el detalle cuando existe", async () => {
+    // Preparar
+    const sembrado = MadreArticulo.aleatorio();
+    const api = apiFalsa([coleccionArticulo([sembrado])]);
 
-    // Act
-    renderScreen(<ArticuloDetailContainer id={seeded.id} />, { api });
+    const pantalla = <ContenedorDetalleArticulo id={sembrado.id} />;
 
-    // Assert
-    expect(await screen.findByText("Edit")).toBeTruthy();
+    // Actuar
+    renderizarPantalla(pantalla, { api });
+
+    // Comprobar
+    expect(await screen.findByText("Editar")).toBeTruthy();
   });
 
-  test("should show the not-found code when the articulo does not exist", async () => {
-    // Arrange
-    const api = fakeApi([articuloCollection()]);
+  test("debería mostrar el código de no encontrado cuando no existe", async () => {
+    // Preparar
+    const api = apiFalsa([coleccionArticulo()]);
+    const pantalla = <ContenedorDetalleArticulo id={crypto.randomUUID()} />;
 
-    // Act
-    renderScreen(<ArticuloDetailContainer id={crypto.randomUUID()} />, { api });
+    // Actuar
+    renderizarPantalla(pantalla, { api });
 
-    // Assert
+    // Comprobar
     expect((await screen.findByRole("alert")).textContent).toBe("articulo.no_encontrado");
   });
 
-  test("should delete the articulo only once the deletion is confirmed", async () => {
-    // Arrange
-    const seeded = ArticuloMother.random();
-    const stored = articuloCollection([seeded]);
-    const api = fakeApi([stored]);
-    const { history } = renderScreen(<ArticuloDetailContainer id={seeded.id} />, { api });
-    fireEvent.click(await screen.findByText("Delete", { selector: ".card-actions button" }));
-    expect(stored.items.has(seeded.id)).toBe(true);
+  test("debería borrar solo tras confirmar el borrado", async () => {
+    // Preparar
+    const sembrado = MadreArticulo.aleatorio();
+    const guardados = coleccionArticulo([sembrado]);
+    const api = apiFalsa([guardados]);
+    const pantalla = <ContenedorDetalleArticulo id={sembrado.id} />;
+    const { historial } = renderizarPantalla(pantalla, { api });
+    fireEvent.click(await screen.findByText("Borrar", { selector: ".card-actions button" }));
+    expect(guardados.elementos.has(sembrado.id)).toBe(true);
 
-    // Act
-    fireEvent.click(screen.getByText("Delete", { selector: ".modal-action button" }));
+    // Actuar
+    fireEvent.click(screen.getByText("Borrar", { selector: ".modal-action button" }));
 
-    // Assert
-    await waitFor(() => expect(history.at(-1)).toBe("/articulos"));
-    expect(stored.items.has(seeded.id)).toBe(false);
+    // Comprobar
+    await waitFor(() => expect(historial.at(-1)).toBe("/articulos"));
+    expect(guardados.elementos.has(sembrado.id)).toBe(false);
   });
 });
 
-=== web/src/features/articulo/containers/articulo-detail-container.tsx ===
+=== web/src/contextos/articulo/contenedores/detalle-articulo.tsx ===
 import { useState } from "react";
 import { Link, useLocation } from "wouter";
-import { unwrap } from "../../../api/http";
-import { useDependencies } from "../../../dependencies";
-import { ConfirmDialog } from "../../../shared/ui/confirm-dialog";
-import { ErrorAlert } from "../../../shared/ui/error-alert";
-import { useAsync } from "../../../shared/use-async";
-import { ArticuloDetailView } from "../views/articulo-detail-view";
+import { desenvolver } from "../../../api/http";
+import { AlertaError } from "../../../compartido/ui/alerta-error";
+import { DialogoConfirmar } from "../../../compartido/ui/dialogo-confirmar";
+import { useCarga } from "../../../compartido/use-carga";
+import { useDependencias } from "../../../dependencias";
+import { VistaDetalleArticulo } from "../vistas/detalle-articulo";
 
-export function ArticuloDetailContainer({ id }: { id: string }) {
-  const { api } = useDependencies();
-  const articulo = useAsync(
-    () => unwrap(api.GET("/articulos/{id}", { params: { path: { id } } })),
+export function ContenedorDetalleArticulo({ id }: { id: string }) {
+  const { api } = useDependencias();
+  const articulo = useCarga(
+    () => desenvolver(api.GET("/articulos/{id}", { params: { path: { id } } })),
     [api, id],
   );
-  const [, navigate] = useLocation();
-  const [confirming, setConfirming] = useState(false);
-  const [failure, setFailure] = useState<unknown>(null);
+  const [, navegar] = useLocation();
+  const [confirmando, setConfirmando] = useState(false);
+  const [fallo, setFallo] = useState<unknown>(null);
 
-  const remove = async () => {
-    setConfirming(false);
+  const borrar = async () => {
+    setConfirmando(false);
     try {
-      await unwrap(api.DELETE("/articulos/{id}", { params: { path: { id } } }));
-      navigate("/articulos");
+      await desenvolver(api.DELETE("/articulos/{id}", { params: { path: { id } } }));
+      navegar("/articulos");
     } catch (error) {
-      setFailure(error);
+      setFallo(error);
     }
   };
 
   return (
     <section className="space-y-4">
       <h1 className="text-2xl font-bold">Articulo</h1>
-      {failure !== null && <ErrorAlert error={failure} />}
-      {articulo.status === "loading" && <span className="loading loading-spinner" />}
-      {articulo.status === "error" && <ErrorAlert error={articulo.error} />}
-      {articulo.status === "ok" && (
+      {fallo !== null && <AlertaError error={fallo} />}
+      {articulo.estado === "cargando" && <span className="loading loading-spinner" />}
+      {articulo.estado === "error" && <AlertaError error={articulo.error} />}
+      {articulo.estado === "listo" && (
         <div className="card bg-base-100">
           <div className="card-body">
-            <ArticuloDetailView articulo={articulo.data} />
+            <VistaDetalleArticulo articulo={articulo.datos} />
             <div className="card-actions justify-end">
-              <Link href={`/articulos/${id}/edit`} className="btn">
-                Edit
+              <Link href={`/articulos/${id}/editar`} className="btn">
+                Editar
               </Link>
-              <button type="button" className="btn btn-error" onClick={() => setConfirming(true)}>
-                Delete
+              <button type="button" className="btn btn-error" onClick={() => setConfirmando(true)}>
+                Borrar
               </button>
             </div>
           </div>
         </div>
       )}
       <Link href="/articulos" className="link">
-        Back to articulos
+        Volver a articulos
       </Link>
-      <ConfirmDialog
-        open={confirming}
-        message="Delete this articulo?"
-        onConfirm={remove}
-        onCancel={() => setConfirming(false)}
+      <DialogoConfirmar
+        abierto={confirmando}
+        mensaje="¿Borrar articulo?"
+        alConfirmar={borrar}
+        alCancelar={() => setConfirmando(false)}
       />
     </section>
   );
 }
 
-=== web/src/features/articulo/containers/articulo-form-container.test.tsx ===
+=== web/src/contextos/articulo/contenedores/formulario-articulo.test.tsx ===
 import { describe, expect, test } from "bun:test";
 import { fireEvent, screen, waitFor } from "@testing-library/react";
-import type { Schemas } from "../../../api/client";
-import { ArticuloMother, articuloCollection } from "../../../test-support/articulo";
-import { fakeApi } from "../../../test-support/fake-api";
-import { renderScreen } from "../../../test-support/render";
-import { ArticuloFormContainer } from "./articulo-form-container";
+import type { Esquemas } from "../../../api/cliente";
+import { apiFalsa } from "../../../pruebas/api-falsa";
+import { coleccionArticulo, MadreArticulo } from "../../../pruebas/articulo";
+import { renderizarPantalla } from "../../../pruebas/renderizar";
+import { ContenedorFormularioArticulo } from "./formulario-articulo";
 
-function type(label: string, value: string) {
-  fireEvent.change(screen.getByLabelText(label), { target: { value } });
+function escribir(etiqueta: string, valor: string) {
+  fireEvent.change(screen.getByLabelText(etiqueta), { target: { value: valor } });
 }
 
-/** Fills the empty form with `request`, the way a user would. */
-async function fillIn(request: Schemas["PeticionCrearArticulo"]) {
-  await screen.findByText("Save");
-  type("Name", request.name);
-  type("Sku", request.sku);
-  type("Weight", String(request.weight));
+/** Rellena el formulario vacío con `peticion`, como lo haría quien lo usa. */
+async function rellenar(peticion: Esquemas["PeticionCrearArticulo"]) {
+  await screen.findByText("Guardar");
+  escribir("Name", peticion.name);
+  escribir("Sku", peticion.sku);
+  escribir("Weight", String(peticion.weight));
 }
 
-describe("ArticuloFormContainer", () => {
-  test("should create the articulo from what was typed and show it", async () => {
-    // Arrange
-    const request = ArticuloMother.request();
-    const stored = articuloCollection();
-    const api = fakeApi([stored]);
-    const { history } = renderScreen(<ArticuloFormContainer />, { api });
-    await fillIn(request);
+describe("ContenedorFormularioArticulo", () => {
+  test("debería crear con lo escrito e ir a su detalle", async () => {
+    // Preparar
+    const peticion = MadreArticulo.peticion();
+    const guardados = coleccionArticulo();
+    const api = apiFalsa([guardados]);
+    const pantalla = <ContenedorFormularioArticulo />;
+    const { historial } = renderizarPantalla(pantalla, { api });
+    await rellenar(peticion);
 
-    // Act
-    fireEvent.click(screen.getByText("Save"));
+    // Actuar
+    fireEvent.click(screen.getByText("Guardar"));
 
-    // Assert
-    await waitFor(() => expect(history.at(-1)).toStartWith("/articulos/"));
-    const [created] = stored.items.values();
-    expect(created).toMatchObject(request);
-    expect(history.at(-1)).toBe(`/articulos/${created?.id}`);
+    // Comprobar
+    await waitFor(() => expect(historial.at(-1)).toStartWith("/articulos/"));
+    const [creado] = guardados.elementos.values();
+    expect(creado).toMatchObject(peticion);
+    expect(historial.at(-1)).toBe(`/articulos/${creado?.id}`);
   });
 
-  test("should save the edited articulo when an existing one is submitted", async () => {
-    // Arrange
-    const seeded = ArticuloMother.random();
-    const stored = articuloCollection([seeded]);
-    const api = fakeApi([stored]);
-    const { history } = renderScreen(<ArticuloFormContainer id={seeded.id} />, { api });
+  test("debería guardar la edición cuando se envía el formulario", async () => {
+    // Preparar
+    const sembrado = MadreArticulo.aleatorio();
+    const guardados = coleccionArticulo([sembrado]);
+    const api = apiFalsa([guardados]);
+    const pantalla = <ContenedorFormularioArticulo id={sembrado.id} />;
+    const { historial } = renderizarPantalla(pantalla, { api });
 
-    // Act
-    fireEvent.click(await screen.findByText("Save"));
+    // Actuar
+    fireEvent.click(await screen.findByText("Guardar"));
 
-    // Assert
-    await waitFor(() => expect(history.at(-1)).toBe(`/articulos/${seeded.id}`));
-    expect(stored.items.get(seeded.id)).toEqual(seeded);
-  });
-  test("should show the code itself when the API answers one the form does not know", async () => {
-    // Arrange
-    const request = ArticuloMother.request();
-    const code = "articulo.validacion.invalid";
-    const failures = { "POST /articulos": code };
-    const api = fakeApi([articuloCollection()], failures);
-    renderScreen(<ArticuloFormContainer />, { api });
-    await fillIn(request);
-
-    // Act
-    fireEvent.click(screen.getByText("Save"));
-
-    // Assert
-    expect((await screen.findByRole("alert")).textContent).toBe(code);
+    // Comprobar
+    await waitFor(() => expect(historial.at(-1)).toBe(`/articulos/${sembrado.id}`));
+    expect(guardados.elementos.get(sembrado.id)).toEqual(sembrado);
   });
 
-  test("should say a articulo with these values exists when the API answers a duplicate", async () => {
-    // Arrange
-    const request = ArticuloMother.request();
-    const failures = { "POST /articulos": "articulo.duplicado" };
-    const api = fakeApi([articuloCollection()], failures);
-    renderScreen(<ArticuloFormContainer />, { api });
-    await fillIn(request);
+  test("debería mostrar el propio código cuando la API responde uno que el formulario no conoce", async () => {
+    // Preparar
+    const peticion = MadreArticulo.peticion();
+    const codigo = "articulo.validacion.invalido";
+    const fallos = { "POST /articulos": codigo };
+    const api = apiFalsa([coleccionArticulo()], fallos);
+    renderizarPantalla(<ContenedorFormularioArticulo />, { api });
+    await rellenar(peticion);
 
-    // Act
-    fireEvent.click(screen.getByText("Save"));
+    // Actuar
+    fireEvent.click(screen.getByText("Guardar"));
 
-    // Assert
-    expect((await screen.findByRole("alert")).textContent).toBe(
-      "An articulo with these values already exists",
-    );
+    // Comprobar
+    expect((await screen.findByRole("alert")).textContent).toBe(codigo);
   });
 
-  test("should show the message under its input when the API rejects one field", async () => {
-    // Arrange
-    const request = ArticuloMother.request();
-    const failures = { "POST /articulos": "articulo.name_invalido" };
-    const api = fakeApi([articuloCollection()], failures);
-    renderScreen(<ArticuloFormContainer />, { api });
-    await fillIn(request);
+  test("debería decir que los valores ya están en uso cuando la API responde un duplicado", async () => {
+    // Preparar
+    const peticion = MadreArticulo.peticion();
+    const fallos = { "POST /articulos": "articulo.duplicado" };
+    const api = apiFalsa([coleccionArticulo()], fallos);
+    renderizarPantalla(<ContenedorFormularioArticulo />, { api });
+    await rellenar(peticion);
 
-    // Act
-    fireEvent.click(screen.getByText("Save"));
+    // Actuar
+    fireEvent.click(screen.getByText("Guardar"));
 
-    // Assert
-    expect(await screen.findByText("Name is not valid")).toBeTruthy();
-    const input = screen.getByLabelText("Name");
-    expect(input.getAttribute("aria-invalid")).toBe("true");
+    // Comprobar
+    expect((await screen.findByRole("alert")).textContent).toBe("Estos valores ya están en uso");
+  });
+
+  test("debería mostrar el mensaje bajo su input cuando la API rechaza un campo", async () => {
+    // Preparar
+    const peticion = MadreArticulo.peticion();
+    const fallos = { "POST /articulos": "articulo.name_invalido" };
+    const api = apiFalsa([coleccionArticulo()], fallos);
+    renderizarPantalla(<ContenedorFormularioArticulo />, { api });
+    await rellenar(peticion);
+
+    // Actuar
+    fireEvent.click(screen.getByText("Guardar"));
+
+    // Comprobar
+    expect(await screen.findByText("Name: no válido")).toBeTruthy();
+    const campo = screen.getByLabelText("Name");
+    expect(campo.getAttribute("aria-invalid")).toBe("true");
     expect(screen.queryByRole("alert")).toBeNull();
   });
 });
 
-=== web/src/features/articulo/containers/articulo-form-container.tsx ===
+=== web/src/contextos/articulo/contenedores/formulario-articulo.tsx ===
 import { useState } from "react";
 import { Link, useLocation } from "wouter";
-import type { Schemas } from "../../../api/client";
-import { unwrap } from "../../../api/http";
-import { useDependencies } from "../../../dependencies";
-import { ErrorAlert, errorCode } from "../../../shared/ui/error-alert";
-import { useAsync } from "../../../shared/use-async";
-import { toProblem } from "../messages";
-import { ArticuloFormView, toArticuloForm, toArticuloRequest } from "../views/articulo-form-view";
+import type { Esquemas } from "../../../api/cliente";
+import { desenvolver } from "../../../api/http";
+import { AlertaError, codigoError } from "../../../compartido/ui/alerta-error";
+import { useCarga } from "../../../compartido/use-carga";
+import { useDependencias } from "../../../dependencias";
+import { aProblema } from "../mensajes";
+import {
+  aFormularioArticulo,
+  aPeticionArticulo,
+  VistaFormularioArticulo,
+} from "../vistas/formulario-articulo";
 
-type Articulo = Schemas["DtoArticulo"];
+type Articulo = Esquemas["DtoArticulo"];
 
-/** Creates an articulo, or edits the one with `id`. */
-export function ArticuloFormContainer({ id }: { id?: string }) {
-  const { api } = useDependencies();
-  const existing = useAsync(
+/** Crear, o editar con `id`: el formulario de articulos. */
+export function ContenedorFormularioArticulo({ id }: { id?: string }) {
+  const { api } = useDependencias();
+  const existente = useCarga(
     () =>
       id === undefined
         ? Promise.resolve(null)
-        : unwrap(api.GET("/articulos/{id}", { params: { path: { id } } })),
+        : desenvolver(api.GET("/articulos/{id}", { params: { path: { id } } })),
     [api, id],
   );
-  const title = id === undefined ? "New articulo" : "Edit articulo";
+  const titulo = id === undefined ? "Crear articulo" : "Editar articulo";
 
   return (
     <section className="space-y-4">
-      <h1 className="text-2xl font-bold">{title}</h1>
-      {existing.status === "loading" && <span className="loading loading-spinner" />}
-      {existing.status === "error" && <ErrorAlert error={existing.error} />}
-      {existing.status === "ok" && <ArticuloForm existing={existing.data} />}
+      <h1 className="text-2xl font-bold">{titulo}</h1>
+      {existente.estado === "cargando" && <span className="loading loading-spinner" />}
+      {existente.estado === "error" && <AlertaError error={existente.error} />}
+      {existente.estado === "listo" && <FormularioArticulo existente={existente.datos} />}
       <Link href={id === undefined ? "/articulos" : `/articulos/${id}`} className="link">
-        Cancel
+        Cancelar
       </Link>
     </section>
   );
 }
 
-function ArticuloForm({ existing }: { existing: Articulo | null }) {
-  const { api } = useDependencies();
-  const [, navigate] = useLocation();
-  const [values, setValues] = useState(toArticuloForm(existing));
-  const [saving, setSaving] = useState(false);
-  const [failure, setFailure] = useState<unknown>(null);
-  const problem = failure === null ? null : toProblem(errorCode(failure));
+function FormularioArticulo({ existente }: { existente: Articulo | null }) {
+  const { api } = useDependencias();
+  const [, navegar] = useLocation();
+  const [valores, setValores] = useState(aFormularioArticulo(existente));
+  const [guardando, setGuardando] = useState(false);
+  const [fallo, setFallo] = useState<unknown>(null);
+  const problema = fallo === null ? null : aProblema(codigoError(fallo));
 
-  const save = async () => {
-    setSaving(true);
-    setFailure(null);
+  const guardar = async () => {
+    setGuardando(true);
+    setFallo(null);
     try {
-      const body = toArticuloRequest(values);
-      const saved = await unwrap(
-        existing === null
-          ? api.POST("/articulos", { body })
-          : api.PUT("/articulos/{id}", { params: { path: { id: existing.id } }, body }),
+      const cuerpo = aPeticionArticulo(valores);
+      const guardado = await desenvolver(
+        existente === null
+          ? api.POST("/articulos", { body: cuerpo })
+          : api.PUT("/articulos/{id}", { params: { path: { id: existente.id } }, body: cuerpo }),
       );
-      navigate(`/articulos/${saved.id}`);
+      navegar(`/articulos/${guardado.id}`);
     } catch (error) {
-      setFailure(error);
-      setSaving(false);
+      setFallo(error);
+      setGuardando(false);
     }
   };
 
   return (
     <div className="card bg-base-100">
       <div className="card-body">
-        {problem?.field === null && <ErrorAlert error={failure} message={problem.text} />}
-        <ArticuloFormView
-          values={values}
-          saving={saving}
-          problem={problem}
-          onChange={setValues}
-          onSubmit={save}
+        {problema?.campo === null && <AlertaError error={fallo} mensaje={problema.texto} />}
+        <VistaFormularioArticulo
+          valores={valores}
+          guardando={guardando}
+          problema={problema}
+          alCambiar={setValores}
+          alEnviar={guardar}
         />
       </div>
     </div>
   );
 }
 
-=== web/src/features/articulo/containers/articulo-list-container.test.tsx ===
+=== web/src/contextos/articulo/contenedores/lista-articulo.test.tsx ===
 import { describe, expect, test } from "bun:test";
 import { fireEvent, screen } from "@testing-library/react";
-import { ArticuloMother, articuloCollection } from "../../../test-support/articulo";
-import { fakeApi } from "../../../test-support/fake-api";
-import { renderScreen } from "../../../test-support/render";
-import { ArticuloListContainer } from "./articulo-list-container";
+import { apiFalsa } from "../../../pruebas/api-falsa";
+import { coleccionArticulo, MadreArticulo } from "../../../pruebas/articulo";
+import { renderizarPantalla } from "../../../pruebas/renderizar";
+import { ContenedorListaArticulo } from "./lista-articulo";
 
-describe("ArticuloListContainer", () => {
-  test("should show a row per articulo when there are some", async () => {
-    // Arrange
-    const seed = [ArticuloMother.random(), ArticuloMother.random()];
-    const api = fakeApi([articuloCollection(seed)]);
+describe("ContenedorListaArticulo", () => {
+  test("debería mostrar una fila por cada articulo", async () => {
+    // Preparar
+    const semilla = [MadreArticulo.aleatorio(), MadreArticulo.aleatorio()];
+    const api = apiFalsa([coleccionArticulo(semilla)]);
 
-    // Act
-    renderScreen(<ArticuloListContainer />, { api });
+    // Actuar
+    renderizarPantalla(<ContenedorListaArticulo />, { api });
 
-    // Assert
-    expect(await screen.findAllByText("View")).toHaveLength(2);
+    // Comprobar
+    expect(await screen.findAllByText("Ver")).toHaveLength(2);
   });
 
-  test("should show the next page when Next is pressed", async () => {
-    // Arrange
-    const seed = Array.from({ length: 25 }, () => ArticuloMother.random());
-    const api = fakeApi([articuloCollection(seed)]);
-    renderScreen(<ArticuloListContainer />, { api });
-    expect(await screen.findAllByText("View")).toHaveLength(20);
+  test("debería mostrar la página siguiente cuando se pulsa Siguiente", async () => {
+    // Preparar
+    const semilla = Array.from({ length: 25 }, () => MadreArticulo.aleatorio());
+    const api = apiFalsa([coleccionArticulo(semilla)]);
+    renderizarPantalla(<ContenedorListaArticulo />, { api });
+    expect(await screen.findAllByText("Ver")).toHaveLength(20);
 
-    // Act
-    fireEvent.click(screen.getByRole("button", { name: "Next" }));
+    // Actuar
+    fireEvent.click(screen.getByRole("button", { name: "Siguiente" }));
 
-    // Assert
-    expect(await screen.findByText("21–25 of 25")).toBeTruthy();
-    expect(screen.getAllByText("View")).toHaveLength(5);
+    // Comprobar
+    expect(await screen.findByText("21–25 de 25")).toBeTruthy();
+    expect(screen.getAllByText("Ver")).toHaveLength(5);
   });
 
-  test("should open the page the URL names", async () => {
-    // Arrange
-    const seed = Array.from({ length: 25 }, () => ArticuloMother.random());
-    const api = fakeApi([articuloCollection(seed)]);
-    const path = "/articulos?page=2";
+  test("debería abrir la página que nombra la URL", async () => {
+    // Preparar
+    const semilla = Array.from({ length: 25 }, () => MadreArticulo.aleatorio());
+    const api = apiFalsa([coleccionArticulo(semilla)]);
+    const ruta = "/articulos?pagina=2";
 
-    // Act
-    renderScreen(<ArticuloListContainer />, { api }, path);
+    // Actuar
+    renderizarPantalla(<ContenedorListaArticulo />, { api }, ruta);
 
-    // Assert
-    expect(await screen.findByText("21–25 of 25")).toBeTruthy();
+    // Comprobar
+    expect(await screen.findByText("21–25 de 25")).toBeTruthy();
   });
 
-  test("should say so when there is no articulo", async () => {
-    // Arrange
-    const api = fakeApi([articuloCollection()]);
+  test("debería decirlo cuando no hay articulos", async () => {
+    // Preparar
+    const api = apiFalsa([coleccionArticulo()]);
 
-    // Act
-    renderScreen(<ArticuloListContainer />, { api });
+    // Actuar
+    renderizarPantalla(<ContenedorListaArticulo />, { api });
 
-    // Assert
-    expect(await screen.findByText("No articulos yet.")).toBeTruthy();
+    // Comprobar
+    expect(await screen.findByText("Todavía no hay articulos.")).toBeTruthy();
   });
 
-  test("should show the error code when the articulos cannot be listed", async () => {
-    // Arrange
-    const failures = { "GET /articulos": "articulo.repositorio" };
-    const api = fakeApi([articuloCollection()], failures);
+  test("debería mostrar el código del error cuando la API no da la lista", async () => {
+    // Preparar
+    const fallos = { "GET /articulos": "articulo.repositorio" };
+    const api = apiFalsa([coleccionArticulo()], fallos);
 
-    // Act
-    renderScreen(<ArticuloListContainer />, { api });
+    // Actuar
+    renderizarPantalla(<ContenedorListaArticulo />, { api });
 
-    // Assert
+    // Comprobar
     expect((await screen.findByRole("alert")).textContent).toBe("articulo.repositorio");
   });
 });
 
-=== web/src/features/articulo/containers/articulo-list-container.tsx ===
+=== web/src/contextos/articulo/contenedores/lista-articulo.tsx ===
 import { Link, useLocation, useSearch } from "wouter";
-import { PAGE_SIZE, unwrap } from "../../../api/http";
-import { useDependencies } from "../../../dependencies";
-import { EmptyState } from "../../../shared/ui/empty-state";
-import { ErrorAlert } from "../../../shared/ui/error-alert";
-import { offsetFromSearch, Pagination, pageSearch } from "../../../shared/ui/pagination";
-import { useAsync } from "../../../shared/use-async";
-import { ArticuloListView } from "../views/articulo-list-view";
+import { desenvolver, TAMANO_PAGINA } from "../../../api/http";
+import { AlertaError } from "../../../compartido/ui/alerta-error";
+import { busquedaPagina, desplazamientoDeUrl, Paginacion } from "../../../compartido/ui/paginacion";
+import { SinElementos } from "../../../compartido/ui/sin-elementos";
+import { useCarga } from "../../../compartido/use-carga";
+import { useDependencias } from "../../../dependencias";
+import { VistaListaArticulo } from "../vistas/lista-articulo";
 
-/** The list, one page at a time; the page is in the URL (`?page=2`), so reload and back keep it. */
-export function ArticuloListContainer() {
-  const { api } = useDependencies();
-  const [location, navigate] = useLocation();
-  const offset = offsetFromSearch(useSearch(), PAGE_SIZE);
-  const goTo = (next: number) => navigate(location + pageSearch(next, PAGE_SIZE));
-  const query = { limite: PAGE_SIZE, desplazamiento: offset };
-  const articulos = useAsync(
-    () => unwrap(api.GET("/articulos", { params: { query } })),
-    [api, offset],
+/** La lista, página a página; la página va en la URL (`?pagina=2`): recargar y volver la mantienen. */
+export function ContenedorListaArticulo() {
+  const { api } = useDependencias();
+  const [ubicacion, navegar] = useLocation();
+  const desplazamiento = desplazamientoDeUrl(useSearch(), TAMANO_PAGINA);
+  const irA = (siguiente: number) => navegar(ubicacion + busquedaPagina(siguiente, TAMANO_PAGINA));
+  const consulta = { limite: TAMANO_PAGINA, desplazamiento };
+  const articulos = useCarga(
+    () => desenvolver(api.GET("/articulos", { params: { query: consulta } })),
+    [api, desplazamiento],
   );
 
   return (
     <section className="space-y-4">
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-bold">Articulos</h1>
-        <Link href="/articulos/new" className="btn btn-primary">
-          New articulo
+        <Link href="/articulos/nuevo" className="btn btn-primary">
+          Crear articulo
         </Link>
       </div>
-      {articulos.status === "loading" && <span className="loading loading-spinner" />}
-      {articulos.status === "error" && <ErrorAlert error={articulos.error} />}
-      {articulos.status === "ok" &&
-        (articulos.data.total === 0 ? (
-          <EmptyState message="No articulos yet." />
+      {articulos.estado === "cargando" && <span className="loading loading-spinner" />}
+      {articulos.estado === "error" && <AlertaError error={articulos.error} />}
+      {articulos.estado === "listo" &&
+        (articulos.datos.total === 0 ? (
+          <SinElementos mensaje="Todavía no hay articulos." />
         ) : (
           <>
-            <ArticuloListView articulos={articulos.data.elementos} />
-            <Pagination
-              total={articulos.data.total}
-              limit={articulos.data.limite}
-              offset={articulos.data.desplazamiento}
-              onOffsetChange={goTo}
+            <VistaListaArticulo articulos={articulos.datos.elementos} />
+            <Paginacion
+              total={articulos.datos.total}
+              limite={articulos.datos.limite}
+              desplazamiento={articulos.datos.desplazamiento}
+              alCambiarDesplazamiento={irA}
             />
           </>
         ))}
@@ -3331,44 +3340,44 @@ export function ArticuloListContainer() {
   );
 }
 
-=== web/src/features/articulo/messages.ts ===
-/** What a screen shows for an API error: under the input it is about, or in the alert. */
-export interface ArticuloProblem {
-  field: string | null;
-  text: string;
+=== web/src/contextos/articulo/mensajes.ts ===
+/** Lo que una pantalla muestra de un error de la API: bajo el input del que trata, o en la alerta. */
+export interface ProblemaArticulo {
+  campo: string | null;
+  texto: string;
 }
 
 /**
- * The messages for the codes of the backend's `errores.rs`, generated from the same list. English:
- * this file is the place to translate them. A code missing here shows as it is.
+ * Los mensajes de los códigos de `errores.rs` del backend, generados de la misma lista. Un código que
+ * no está aquí se muestra tal cual.
  */
-const TEXTS: Record<string, string> = {
-  "articulo.name_invalido": "Name is not valid",
-  "articulo.sku_invalido": "Sku is not valid",
-  "articulo.weight_invalido": "Weight is not valid",
-  "articulo.duplicado": "An articulo with these values already exists",
-  "articulo.no_encontrado": "This articulo no longer exists",
-  "articulo.repositorio": "The articulo could not be saved, try again later",
-  "articulo.desconocido": "Something went wrong",
+const TEXTOS: Record<string, string> = {
+  "articulo.name_invalido": "Name: no válido",
+  "articulo.sku_invalido": "Sku: no válido",
+  "articulo.weight_invalido": "Weight: no válido",
+  "articulo.duplicado": "Estos valores ya están en uso",
+  "articulo.no_encontrado": "Ya no existe",
+  "articulo.repositorio": "No se ha podido guardar; inténtalo más tarde",
+  "articulo.desconocido": "Algo ha ido mal",
 };
 
-/** The input each field's code is about. */
-const FIELDS: Record<string, string> = {
+/** El input del que trata el código de cada campo. */
+const CAMPOS: Record<string, string> = {
   "articulo.name_invalido": "name",
   "articulo.sku_invalido": "sku",
   "articulo.weight_invalido": "weight",
 };
 
-export function toProblem(code: string): ArticuloProblem {
-  return { field: FIELDS[code] ?? null, text: TEXTS[code] ?? code };
+export function aProblema(codigo: string): ProblemaArticulo {
+  return { campo: CAMPOS[codigo] ?? null, texto: TEXTOS[codigo] ?? codigo };
 }
 
-=== web/src/features/articulo/views/articulo-detail-view.tsx ===
-import type { Schemas } from "../../../api/client";
+=== web/src/contextos/articulo/vistas/detalle-articulo.tsx ===
+import type { Esquemas } from "../../../api/cliente";
 
-type Articulo = Schemas["DtoArticulo"];
+type Articulo = Esquemas["DtoArticulo"];
 
-export function ArticuloDetailView({ articulo }: { articulo: Articulo }) {
+export function VistaDetalleArticulo({ articulo }: { articulo: Articulo }) {
   return (
     <dl className="grid grid-cols-[max-content_1fr] gap-x-6 gap-y-2">
       <dt className="font-semibold">Name</dt>
@@ -3381,23 +3390,23 @@ export function ArticuloDetailView({ articulo }: { articulo: Articulo }) {
   );
 }
 
-=== web/src/features/articulo/views/articulo-form-view.tsx ===
-import type { Schemas } from "../../../api/client";
-import { FieldError } from "../../../shared/ui/field-error";
-import type { ArticuloProblem } from "../messages";
+=== web/src/contextos/articulo/vistas/formulario-articulo.tsx ===
+import type { Esquemas } from "../../../api/cliente";
+import { ErrorCampo } from "../../../compartido/ui/error-campo";
+import type { ProblemaArticulo } from "../mensajes";
 
-type Articulo = Schemas["DtoArticulo"];
-type ArticuloRequest = Schemas["PeticionCrearArticulo"];
+type Articulo = Esquemas["DtoArticulo"];
+type PeticionArticulo = Esquemas["PeticionCrearArticulo"];
 
-/** What the inputs hold: the text of every input, `checked` for a checkbox. */
-export interface ArticuloFormValues {
+/** Lo que guardan los inputs: el texto de cada input, `checked` en una casilla. */
+export interface ValoresFormularioArticulo {
   name: string;
   sku: string;
   weight: string;
 }
 
-/** The inputs for `articulo`, empty when there is none yet. */
-export function toArticuloForm(articulo: Articulo | null): ArticuloFormValues {
+/** Los inputs de `articulo`, vacíos cuando todavía no hay ninguno. */
+export function aFormularioArticulo(articulo: Articulo | null): ValoresFormularioArticulo {
   if (articulo === null) {
     return {
       name: "",
@@ -3412,35 +3421,35 @@ export function toArticuloForm(articulo: Articulo | null): ArticuloFormValues {
   };
 }
 
-/** What a create or an update sends: the same fields for both. */
-export function toArticuloRequest(values: ArticuloFormValues): ArticuloRequest {
+/** Lo que mandan crear y actualizar: los mismos campos en los dos. */
+export function aPeticionArticulo(valores: ValoresFormularioArticulo): PeticionArticulo {
   return {
-    name: values.name,
-    sku: values.sku,
-    weight: Number(values.weight),
+    name: valores.name,
+    sku: valores.sku,
+    weight: Number(valores.weight),
   };
 }
 
-export function ArticuloFormView({
-  values,
-  saving,
-  problem,
-  onChange,
-  onSubmit,
+export function VistaFormularioArticulo({
+  valores,
+  guardando,
+  problema,
+  alCambiar,
+  alEnviar,
 }: {
-  values: ArticuloFormValues;
-  saving: boolean;
-  /** What the API said about the last submit: shown under its input. */
-  problem: ArticuloProblem | null;
-  onChange: (values: ArticuloFormValues) => void;
-  onSubmit: () => void;
+  valores: ValoresFormularioArticulo;
+  guardando: boolean;
+  /** Lo que dijo la API del último envío: se muestra bajo su input. */
+  problema: ProblemaArticulo | null;
+  alCambiar: (valores: ValoresFormularioArticulo) => void;
+  alEnviar: () => void;
 }) {
   return (
     <form
       className="space-y-2"
       onSubmit={(event) => {
         event.preventDefault();
-        onSubmit();
+        alEnviar();
       }}
     >
       <label className="fieldset">
@@ -3448,51 +3457,51 @@ export function ArticuloFormView({
         <input
           className="input w-full"
           type="text"
-          aria-invalid={problem?.field === "name"}
+          aria-invalid={problema?.campo === "name"}
           required
-          value={values.name}
-          onChange={(event) => onChange({ ...values, name: event.target.value })}
+          value={valores.name}
+          onChange={(event) => alCambiar({ ...valores, name: event.target.value })}
         />
       </label>
-      <FieldError problem={problem} field="name" />
+      <ErrorCampo problema={problema} campo="name" />
       <label className="fieldset">
         <span className="fieldset-legend">Sku</span>
         <input
           className="input w-full"
           type="text"
-          aria-invalid={problem?.field === "sku"}
+          aria-invalid={problema?.campo === "sku"}
           required
-          value={values.sku}
-          onChange={(event) => onChange({ ...values, sku: event.target.value })}
+          value={valores.sku}
+          onChange={(event) => alCambiar({ ...valores, sku: event.target.value })}
         />
       </label>
-      <FieldError problem={problem} field="sku" />
+      <ErrorCampo problema={problema} campo="sku" />
       <label className="fieldset">
         <span className="fieldset-legend">Weight</span>
         <input
           className="input w-full"
           type="number"
-          aria-invalid={problem?.field === "weight"}
+          aria-invalid={problema?.campo === "weight"}
           required
-          value={values.weight}
-          onChange={(event) => onChange({ ...values, weight: event.target.value })}
+          value={valores.weight}
+          onChange={(event) => alCambiar({ ...valores, weight: event.target.value })}
         />
       </label>
-      <FieldError problem={problem} field="weight" />
-      <button type="submit" className="btn btn-primary" disabled={saving}>
-        Save
+      <ErrorCampo problema={problema} campo="weight" />
+      <button type="submit" className="btn btn-primary" disabled={guardando}>
+        Guardar
       </button>
     </form>
   );
 }
 
-=== web/src/features/articulo/views/articulo-list-view.tsx ===
+=== web/src/contextos/articulo/vistas/lista-articulo.tsx ===
 import { Link } from "wouter";
-import type { Schemas } from "../../../api/client";
+import type { Esquemas } from "../../../api/cliente";
 
-type Articulo = Schemas["DtoArticulo"];
+type Articulo = Esquemas["DtoArticulo"];
 
-export function ArticuloListView({ articulos }: { articulos: Articulo[] }) {
+export function VistaListaArticulo({ articulos }: { articulos: Articulo[] }) {
   return (
     <div className="overflow-x-auto rounded-box bg-base-100">
       <table className="table">
@@ -3512,7 +3521,7 @@ export function ArticuloListView({ articulos }: { articulos: Articulo[] }) {
               <td>{articulo.weight}</td>
               <td className="text-right">
                 <Link href={`/articulos/${articulo.id}`} className="link">
-                  View
+                  Ver
                 </Link>
               </td>
             </tr>
@@ -3523,164 +3532,168 @@ export function ArticuloListView({ articulos }: { articulos: Articulo[] }) {
   );
 }
 
-=== web/src/generated/dependencies.ts ===
-// AUTO-GENERATED by puerto. Edit puerto.toml, then run `puerto generar bootstrap`.
+=== web/src/generado/dependencias.ts ===
+// GENERADO por puerto. Edita puerto.toml y después ejecuta `puerto generar bootstrap`.
 //
-// The composition root: the only module that builds the API client. Screens reach it through
-// `useDependencies()`, so a test hands them a fake instead.
+// La raíz de composición: el único módulo que construye el cliente de la API. Las pantallas llegan
+// a él con `useDependencias()`, así un test les da un falso.
 
-import { type ApiClient, createApiClient } from "../api/client";
+import { type ClienteApi, crearClienteApi } from "../api/cliente";
 
-export interface Dependencies {
-  api: ApiClient;
+export interface Dependencias {
+  api: ClienteApi;
 }
 
-export function createDependencies(): Dependencies {
-  const api = createApiClient();
+export function crearDependencias(): Dependencias {
+  const api = crearClienteApi();
   return { api };
 }
 
-=== web/src/generated/routes.tsx ===
-// AUTO-GENERATED by puerto. Edit puerto.toml, then run `puerto generar bootstrap`.
+=== web/src/generado/rutas.tsx ===
+// GENERADO por puerto. Edita puerto.toml y después ejecuta `puerto generar bootstrap`.
 
 import { Route, Switch } from "wouter";
-import { ArticuloDetailContainer } from "../features/articulo/containers/articulo-detail-container";
-import { ArticuloFormContainer } from "../features/articulo/containers/articulo-form-container";
-import { ArticuloListContainer } from "../features/articulo/containers/articulo-list-container";
-import { HomePage } from "../pages/home";
-import { NotFoundPage } from "../pages/not-found";
-import { customRoutes } from "../routes";
-import type { NavEntry } from "../shared/ui/layout";
+import type { EntradaMenu } from "../compartido/ui/marco";
+import { ContenedorDetalleArticulo } from "../contextos/articulo/contenedores/detalle-articulo";
+import { ContenedorFormularioArticulo } from "../contextos/articulo/contenedores/formulario-articulo";
+import { ContenedorListaArticulo } from "../contextos/articulo/contenedores/lista-articulo";
+import { PaginaInicio } from "../paginas/inicio";
+import { PaginaNoEncontrada } from "../paginas/no-encontrada";
+import { rutasPropias } from "../rutas";
 
-export const navEntries: NavEntry[] = [{ label: "Articulos", href: "/articulos" }];
+export const entradasMenu: EntradaMenu[] = [{ etiqueta: "Articulos", href: "/articulos" }];
 
-export function AppRoutes() {
+export function RutasApp() {
   return (
     <Switch>
       <Route path="/">
-        <HomePage entries={navEntries} />
+        <PaginaInicio entradas={entradasMenu} />
       </Route>
-      {customRoutes}
+      {rutasPropias}
       <Route path="/articulos">
-        <ArticuloListContainer />
+        <ContenedorListaArticulo />
       </Route>
-      <Route path="/articulos/new">
-        <ArticuloFormContainer />
+      <Route path="/articulos/nuevo">
+        <ContenedorFormularioArticulo />
       </Route>
-      <Route path="/articulos/:id/edit">
-        {(params) => <ArticuloFormContainer id={params.id} />}
+      <Route path="/articulos/:id/editar">
+        {(params) => <ContenedorFormularioArticulo id={params.id} />}
       </Route>
-      <Route path="/articulos/:id">{(params) => <ArticuloDetailContainer id={params.id} />}</Route>
+      <Route path="/articulos/:id">
+        {(params) => <ContenedorDetalleArticulo id={params.id} />}
+      </Route>
       <Route>
-        <NotFoundPage />
+        <PaginaNoEncontrada />
       </Route>
     </Switch>
   );
 }
 
-=== web/src/test-support/articulo.ts ===
-import type { Schemas } from "../api/client";
-import { collection } from "./fake-api";
+=== web/src/pruebas/api-falsa.ts ===
+import { type ClienteApi, crearClienteApi } from "../api/cliente";
 
-type Articulo = Schemas["DtoArticulo"];
-type ArticuloRequest = Schemas["PeticionCrearArticulo"];
-
-/** Valid articulos for tests; pass `overrides` for the fields a test is about. */
-export const ArticuloMother = {
-  request(overrides: Partial<ArticuloRequest> = {}): ArticuloRequest {
-    return {
-      name: "example",
-      sku: "example",
-      weight: 42,
-      ...overrides,
-    };
-  },
-
-  random(overrides: Partial<Articulo> = {}): Articulo {
-    return { id: crypto.randomUUID(), ...ArticuloMother.request(), ...overrides };
-  },
-};
-
-/** The fake API's `/articulos`, holding `seed`. */
-export function articuloCollection(seed: Articulo[] = []) {
-  return collection("/articulos", "articulo", seed);
+/** Lo que guarda la API falsa bajo `ruta`: los DTO de la API, por id. */
+export interface Coleccion<T extends { id: string }> {
+  ruta: string;
+  /** El código que responde un elemento que no está: `producto.no_encontrado`. */
+  noEncontrado: string;
+  elementos: Map<string, T>;
 }
 
-=== web/src/test-support/fake-api.ts ===
-import { type ApiClient, createApiClient } from "../api/client";
-
-/** What the fake API holds under `path`: the API's DTOs, by id. */
-export interface Collection<T extends { id: string }> {
-  path: string;
-  /** The code a missing item answers: `producto.no_encontrado`. */
-  notFound: string;
-  items: Map<string, T>;
-}
-
-/** The items under `path` (`/productos`) of `entity` (`producto`), starting with `seed`. */
-export function collection<T extends { id: string }>(
-  path: string,
-  entity: string,
-  seed: T[] = [],
-): Collection<T> {
-  const items = new Map(seed.map((item) => [item.id, item]));
-  return { path, notFound: `${entity}.no_encontrado`, items };
+/** Los elementos bajo `ruta` (`/productos`) de `entidad` (`producto`), empezando por `semilla`. */
+export function coleccion<T extends { id: string }>(
+  ruta: string,
+  entidad: string,
+  semilla: T[] = [],
+): Coleccion<T> {
+  const elementos = new Map(semilla.map((elemento) => [elemento.id, elemento]));
+  return { ruta, noEncontrado: `${entidad}.no_encontrado`, elementos };
 }
 
 /**
- * An `ApiClient` that answers the way the generated API does, over in-memory collections: a page
- * per `limite` / `desplazamiento`, a `404` with `<entity>.no_encontrado`, `201`, `200` and `204`.
- * Each of `failures` (`{ "POST /productos": "producto.duplicado" }`) answers its code instead.
+ * Un `ClienteApi` que responde como la API generada, sobre colecciones en memoria: una página por
+ * `limite` / `desplazamiento`, un `404` con `<entidad>.no_encontrado`, `201`, `200` y `204`. Cada
+ * uno de `fallos` (`{ "POST /productos": "producto.duplicado" }`) responde su código en su lugar.
  */
-export function fakeApi(
-  collections: Collection<{ id: string }>[],
-  failures: Record<string, string> = {},
-): ApiClient {
-  return createApiClient({
+export function apiFalsa(
+  colecciones: Coleccion<{ id: string }>[],
+  fallos: Record<string, string> = {},
+): ClienteApi {
+  return crearClienteApi({
     baseUrl: "http://localhost/api",
-    fetch: async (request) => {
-      const url = new URL(request.url);
-      const path = url.pathname.replace(/^\/api/, "");
-      const target = collections.find((c) => path === c.path || path.startsWith(`${c.path}/`));
-      if (target === undefined) return answer(404, "http.404");
-      const failure = failures[`${request.method} ${target.path}`];
-      if (failure !== undefined) return answer(400, failure);
-      const id = path.slice(target.path.length + 1);
-      return id === "" ? serveList(target, request, url) : serveItem(target, request, id);
+    fetch: async (peticion) => {
+      const url = new URL(peticion.url);
+      const ruta = url.pathname.replace(/^\/api/, "");
+      const objetivo = colecciones.find((c) => ruta === c.ruta || ruta.startsWith(`${c.ruta}/`));
+      if (objetivo === undefined) return responderError(404, "http.404");
+      const fallo = fallos[`${peticion.method} ${objetivo.ruta}`];
+      if (fallo !== undefined) return responderError(400, fallo);
+      const id = ruta.slice(objetivo.ruta.length + 1);
+      return id === ""
+        ? servirLista(objetivo, peticion, url)
+        : servirElemento(objetivo, peticion, id);
     },
   });
 }
 
-async function serveList(target: Collection<{ id: string }>, request: Request, url: URL) {
-  if (request.method === "POST") {
-    const created = { ...(await request.json()), id: crypto.randomUUID() };
-    target.items.set(created.id, created);
-    return Response.json(created, { status: 201 });
+async function servirLista(objetivo: Coleccion<{ id: string }>, peticion: Request, url: URL) {
+  if (peticion.method === "POST") {
+    const creado = { ...(await peticion.json()), id: crypto.randomUUID() };
+    objetivo.elementos.set(creado.id, creado);
+    return Response.json(creado, { status: 201 });
   }
   const limite = Number(url.searchParams.get("limite") ?? 20);
   const desplazamiento = Number(url.searchParams.get("desplazamiento") ?? 0);
-  const all = [...target.items.values()];
-  const elementos = all.slice(desplazamiento, desplazamiento + limite);
-  return Response.json({ elementos, total: all.length, limite, desplazamiento });
+  const todos = [...objetivo.elementos.values()];
+  const elementos = todos.slice(desplazamiento, desplazamiento + limite);
+  return Response.json({ elementos, total: todos.length, limite, desplazamiento });
 }
 
-async function serveItem(target: Collection<{ id: string }>, request: Request, id: string) {
-  const found = target.items.get(id);
-  if (found === undefined) return answer(404, target.notFound);
-  if (request.method === "DELETE") {
-    target.items.delete(id);
+async function servirElemento(objetivo: Coleccion<{ id: string }>, peticion: Request, id: string) {
+  const encontrado = objetivo.elementos.get(id);
+  if (encontrado === undefined) return responderError(404, objetivo.noEncontrado);
+  if (peticion.method === "DELETE") {
+    objetivo.elementos.delete(id);
     return new Response(null, { status: 204 });
   }
-  if (request.method === "PUT") {
-    // Like the API, an update replaces every field: one left out is cleared.
-    const updated = { ...(await request.json()), id };
-    target.items.set(id, updated);
-    return Response.json(updated);
+  if (peticion.method === "PUT") {
+    // Como la API, actualizar reemplaza todos los campos: el que no se manda queda vacío.
+    const actualizado = { ...(await peticion.json()), id };
+    objetivo.elementos.set(id, actualizado);
+    return Response.json(actualizado);
   }
-  return Response.json(found);
+  return Response.json(encontrado);
 }
 
-/** A `RespuestaError` the way the API answers one. */
-function answer(status: number, codigo: string) {
-  return Response.json({ codigo, mensaje: codigo }, { status });
+/** Un `RespuestaError` como lo responde la API. */
+function responderError(estado: number, codigo: string) {
+  return Response.json({ codigo, mensaje: codigo }, { status: estado });
+}
+
+=== web/src/pruebas/articulo.ts ===
+import type { Esquemas } from "../api/cliente";
+import { coleccion } from "./api-falsa";
+
+type Articulo = Esquemas["DtoArticulo"];
+type PeticionArticulo = Esquemas["PeticionCrearArticulo"];
+
+/** Datos válidos de articulos; en `cambios`, los campos de los que trata el test. */
+export const MadreArticulo = {
+  peticion(cambios: Partial<PeticionArticulo> = {}): PeticionArticulo {
+    return {
+      name: "example",
+      sku: "example",
+      weight: 42,
+      ...cambios,
+    };
+  },
+
+  aleatorio(cambios: Partial<Articulo> = {}): Articulo {
+    return { id: crypto.randomUUID(), ...MadreArticulo.peticion(), ...cambios };
+  },
+};
+
+/** El `/articulos` de la API falsa, con `semilla`. */
+export function coleccionArticulo(semilla: Articulo[] = []) {
+  return coleccion("/articulos", "articulo", semilla);
 }

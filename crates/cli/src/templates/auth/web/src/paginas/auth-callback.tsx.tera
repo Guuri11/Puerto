@@ -1,0 +1,25 @@
+import { useEffect, useRef, useState } from "react";
+import { useLocation } from "wouter";
+import { useAuth } from "../auth/auth";
+import { AlertaError } from "../compartido/ui/alerta-error";
+
+/** Adonde devuelve el proveedor a quien acaba de iniciar sesión (`redirect_uri`). */
+export function PaginaAuthCallback() {
+  const { completarLogin } = useAuth();
+  const [, navegar] = useLocation();
+  const [fallo, setFallo] = useState<unknown>(null);
+  const empezado = useRef(false);
+
+  useEffect(() => {
+    // Una vez: StrictMode ejecuta los efectos dos veces, y la respuesta del proveedor solo se canjea una.
+    if (empezado.current) return;
+    empezado.current = true;
+    completarLogin().then((vuelta) => navegar(vuelta, { replace: true }), setFallo);
+  }, [completarLogin, navegar]);
+
+  return fallo === null ? (
+    <span className="loading loading-spinner" />
+  ) : (
+    <AlertaError error={fallo} />
+  );
+}

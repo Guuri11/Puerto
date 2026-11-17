@@ -1161,7 +1161,7 @@ fn web_shell_passes_its_own_checks() {
     // What `puerto nuevo` does last.
     crate::generators::format::format_project(&output).unwrap();
     assert_generated_project_is_clean(&output, &dir, "web_shell", &[]);
-    assert!(output.join("web/src/api/schema.d.ts").exists());
+    assert!(output.join("web/src/api/esquema.d.ts").exists());
 
     cleanup(&dir);
 }

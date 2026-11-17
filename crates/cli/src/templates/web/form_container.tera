@@ -1,103 +1,110 @@
 import { useState } from "react";
 import { Link, useLocation } from "wouter";
-import type { Schemas } from "../../../api/client";
-import { {% if targets %}MAX_PAGE_LIMIT, {% endif %}unwrap } from "../../../api/http";
-import { useDependencies } from "../../../dependencies";
+import type { Esquemas } from "../../../api/cliente";
+import { desenvolver{% if targets %}, LIMITE_PAGINA_MAXIMO{% endif %} } from "../../../api/http";
 {%- if targets %}
-import { referenceOptions } from "../../../shared/forms";
+import { opcionesReferencia } from "../../../compartido/formularios";
 {%- endif %}
-import { ErrorAlert, errorCode } from "../../../shared/ui/error-alert";
-import { useAsync } from "../../../shared/use-async";
-import { toProblem } from "../messages";
-import { {{ pascal }}FormView, to{{ pascal }}Form, to{{ pascal }}Request } from "../views/{{ kebab }}-form-view";
+import { AlertaError, codigoError } from "../../../compartido/ui/alerta-error";
+import { useCarga } from "../../../compartido/use-carga";
+import { useDependencias } from "../../../dependencias";
+import { aProblema } from "../mensajes";
+import { aFormulario{{ pascal }}, aPeticion{{ pascal }}, VistaFormulario{{ pascal }} } from "../vistas/formulario-{{ kebab }}";
 
-type {{ pascal }} = Schemas["Dto{{ pascal }}"];
+type {{ pascal }} = Esquemas["Dto{{ pascal }}"];
 {%- if targets %}
 
-/** The first page of each referenced entity: what its selects offer. */
-const OPTIONS = { params: { query: { limite: MAX_PAGE_LIMIT } } };
+/** La primera página de cada entidad referenciada: lo que ofrecen sus selects. */
+const PRIMERA_PAGINA = { params: { query: { limite: LIMITE_PAGINA_MAXIMO } } };
 {%- endif %}
 
-/** Creates {{ a_words }}, or edits the one with `id`. */
-export function {{ pascal }}FormContainer({ id }: { id?: string }) {
-  const { api } = useDependencies();
-  const existing = useAsync(
+/** Crear, o editar con `id`: el formulario de {{ words_plural }}. */
+export function ContenedorFormulario{{ pascal }}({ id }: { id?: string }) {
+  const { api } = useDependencias();
+  const existente = useCarga(
     () =>
       id === undefined
         ? Promise.resolve(null)
-        : unwrap(api.GET("/{{ plural }}/{id}", { params: { path: { id } } })),
+        : desenvolver(api.GET("/{{ plural }}/{id}", { params: { path: { id } } })),
     [api, id],
   );
-  const title = id === undefined ? "New {{ words }}" : "Edit {{ words }}";
+  const titulo = id === undefined ? "Crear {{ words }}" : "Editar {{ words }}";
 
   return (
     <section className="space-y-4">
-      <h1 className="text-2xl font-bold">{title}</h1>
-      {existing.status === "loading" && <span className="loading loading-spinner" />}
-      {existing.status === "error" && <ErrorAlert error={existing.error} />}
-      {existing.status === "ok" && <{{ pascal }}Form existing={existing.data} />}
+      <h1 className="text-2xl font-bold">{titulo}</h1>
+      {existente.estado === "cargando" && <span className="loading loading-spinner" />}
+      {existente.estado === "error" && <AlertaError error={existente.error} />}
+      {existente.estado === "listo" && <Formulario{{ pascal }} existente={existente.datos} />}
       <Link href={id === undefined ? "/{{ plural }}" : `/{{ plural }}/${id}`} className="link">
-        Cancel
+        Cancelar
       </Link>
     </section>
   );
 }
 
-function {{ pascal }}Form({ existing }: { existing: {{ pascal }} | null }) {
-  const { api } = useDependencies();
+function Formulario{{ pascal }}({ existente }: { existente: {{ pascal }} | null }) {
+  const { api } = useDependencias();
 {%- for t in targets %}
 {%- if t.load_inline %}
-  const {{ t.plural_ident }} = useAsync(() => unwrap(api.GET("/{{ t.plural }}", OPTIONS)), [api]);
+  const {{ t.plural_ident }} = useCarga(() => desenvolver(api.GET("/{{ t.plural }}", PRIMERA_PAGINA)), [api]);
 {%- else %}
-  const {{ t.plural_ident }} = useAsync(
-    () => unwrap(api.GET("/{{ t.plural }}", OPTIONS)),
+  const {{ t.plural_ident }} = useCarga(
+    () => desenvolver(api.GET("/{{ t.plural }}", PRIMERA_PAGINA)),
     [api],
   );
 {%- endif %}
 {%- endfor %}
-  const [, navigate] = useLocation();
-  const [values, setValues] = useState(to{{ pascal }}Form(existing));
-  const [saving, setSaving] = useState(false);
-  const [failure, setFailure] = useState<unknown>(null);
-  const problem = failure === null ? null : toProblem(errorCode(failure));
+  const [, navegar] = useLocation();
+  const [valores, setValores] = useState(aFormulario{{ pascal }}(existente));
+  const [guardando, setGuardando] = useState(false);
+  const [fallo, setFallo] = useState<unknown>(null);
+  const problema = fallo === null ? null : aProblema(codigoError(fallo));
 
-  const save = async () => {
-    setSaving(true);
-    setFailure(null);
+  const guardar = async () => {
+    setGuardando(true);
+    setFallo(null);
     try {
-      const body = to{{ pascal }}Request(values);
-      const saved = await unwrap(
-        existing === null
-          ? api.POST("/{{ plural }}", { body })
-          : api.PUT("/{{ plural }}/{id}", { params: { path: { id: existing.id } }, body }),
+      const cuerpo = aPeticion{{ pascal }}(valores);
+      const guardado = await desenvolver(
+        existente === null
+          ? api.POST("/{{ plural }}", { body: cuerpo })
+{%- if save_inline %}
+          : api.PUT("/{{ plural }}/{id}", { params: { path: { id: existente.id } }, body: cuerpo }),
+{%- else %}
+          : api.PUT("/{{ plural }}/{id}", {
+              params: { path: { id: existente.id } },
+              body: cuerpo,
+            }),
+{%- endif %}
       );
-      navigate(`/{{ plural }}/${saved.id}`);
+      navegar(`/{{ plural }}/${guardado.id}`);
     } catch (error) {
-      setFailure(error);
-      setSaving(false);
+      setFallo(error);
+      setGuardando(false);
     }
   };
 
   return (
     <div className="card bg-base-100">
       <div className="card-body">
-        {problem?.field === null && <ErrorAlert error={failure} message={problem.text} />}
+        {problema?.campo === null && <AlertaError error={fallo} mensaje={problema.texto} />}
 {%- for t in targets %}
-        {{ "{" }}{{ t.plural_ident }}.status === "error" && <ErrorAlert error={{ "{" }}{{ t.plural_ident }}.error} />}
+        {{ "{" }}{{ t.plural_ident }}.estado === "error" && <AlertaError error={{ "{" }}{{ t.plural_ident }}.error} />}
 {%- endfor %}
-        <{{ pascal }}FormView
-          values={values}
+        <VistaFormulario{{ pascal }}
+          valores={valores}
 {%- if targets %}
-          options={{ "{{" }}
+          opciones={{ "{{" }}
 {%- for t in targets %}{% for c in t.fields %}
-            {{ c }}: referenceOptions({{ t.plural_ident }}, ({{ t.ident }}) => {{ t.ident }}.{{ t.label }}),
+            {{ c }}: opcionesReferencia({{ t.plural_ident }}, ({{ t.ident }}) => {{ t.ident }}.{{ t.label }}),
 {%- endfor %}{% endfor %}
           }}
 {%- endif %}
-          saving={saving}
-          problem={problem}
-          onChange={setValues}
-          onSubmit={save}
+          guardando={guardando}
+          problema={problema}
+          alCambiar={setValores}
+          alEnviar={guardar}
         />
       </div>
     </div>

@@ -138,9 +138,9 @@ apuntándole. La lista filtra por cada referencia: `GET /pedidos?clienteId=…` 
 | **Parcheados**: se añade una línea y se conserva el resto | el `Cargo.toml` raíz (miembros, `[workspace.dependencies]`), `presentacion/api/Cargo.toml` y `presentacion/worker/Cargo.toml` (el crate de un contexto), el `lib.rs` del crate de aplicación, `rutas.rs` (los campos de `Api<Entidad>`), `presentacion/worker/src/consumidores.rs`, `puerto.toml` | editándolos libremente; conserva las líneas que añadió Puerto |
 | **Se escriben una vez**: tuyos desde el principio | `presentacion/api/src/app.rs` (tus middleware y rutas), la impl de un `generar caso-de-uso`, los consumidores, los correos y sus plantillas, las migraciones, los ficheros de auth | editándolos |
 
-Con `web/`: `web/src/generated/*`, `web/src/api/schema.d.ts` y `docs/api/openapi.json` también se
+Con `web/`: `web/src/generado/*`, `web/src/api/esquema.d.ts` y `docs/api/openapi.json` también se
 reescriben (`generar bootstrap`, `make web/sync`); las pantallas de una entidad son ficheros suyos
-como los demás; `web/src/routes.tsx` (tus propias pantallas) es tuyo. El detalle, en
+como los demás; `web/src/rutas.tsx` (tus propias pantallas) es tuyo. El detalle, en
 `web/AGENTS.md`.
 
 ### Cambiar los campos de una entidad
@@ -2892,436 +2892,445 @@ tipo = "String"
 nombre = "Money"
 tipo = "i64"
 
-=== web/src/api/client.ts ===
+=== web/src/api/cliente.ts ===
 import createClient, { type Client, type ClientOptions } from "openapi-fetch";
-import type { components, paths } from "./schema";
+import type { components, paths } from "./esquema";
 
-/** The typed API client. `paths` is generated from the backend's spec (`make web/sync`). */
-export type ApiClient = Client<paths>;
+/** El cliente tipado de la API. `paths` sale de la especificación del backend (`make web/sync`). */
+export type ClienteApi = Client<paths>;
 
-/** The API's DTOs by name: `Schemas["DtoProducto"]`, `Schemas["PeticionCrearProducto"]`. */
-export type Schemas = components["schemas"];
+/** Los DTO de la API por nombre: `Esquemas["DtoProducto"]`, `Esquemas["PeticionCrearProducto"]`. */
+export type Esquemas = components["schemas"];
 
-/** `/api` is the backend: proxied to `:8080` by Vite in development. */
-export function createApiClient(options: ClientOptions = {}): ApiClient {
-  return createClient<paths>({ baseUrl: "/api", ...options });
+/** `/api` es el backend: en desarrollo, Vite lo pasa a `:8080`. */
+export function crearClienteApi(opciones: ClientOptions = {}): ClienteApi {
+  return createClient<paths>({ baseUrl: "/api", ...opciones });
 }
 
-=== web/src/features/cliente/containers/cliente-detail-container.test.tsx ===
+=== web/src/contextos/cliente/contenedores/detalle-cliente.test.tsx ===
 import { describe, expect, test } from "bun:test";
 import { fireEvent, screen, waitFor } from "@testing-library/react";
-import { ClienteMother, clienteCollection } from "../../../test-support/cliente";
-import { fakeApi } from "../../../test-support/fake-api";
-import { renderScreen } from "../../../test-support/render";
-import { ClienteDetailContainer } from "./cliente-detail-container";
+import { apiFalsa } from "../../../pruebas/api-falsa";
+import { coleccionCliente, MadreCliente } from "../../../pruebas/cliente";
+import { renderizarPantalla } from "../../../pruebas/renderizar";
+import { ContenedorDetalleCliente } from "./detalle-cliente";
 
-describe("ClienteDetailContainer", () => {
-  test("should show the cliente when it exists", async () => {
-    // Arrange
-    const seeded = ClienteMother.random();
-    const api = fakeApi([clienteCollection([seeded])]);
+describe("ContenedorDetalleCliente", () => {
+  test("debería mostrar el detalle cuando existe", async () => {
+    // Preparar
+    const sembrado = MadreCliente.aleatorio();
+    const api = apiFalsa([coleccionCliente([sembrado])]);
 
-    // Act
-    renderScreen(<ClienteDetailContainer id={seeded.id} />, { api });
+    const pantalla = <ContenedorDetalleCliente id={sembrado.id} />;
 
-    // Assert
-    expect(await screen.findByText("Edit")).toBeTruthy();
+    // Actuar
+    renderizarPantalla(pantalla, { api });
+
+    // Comprobar
+    expect(await screen.findByText("Editar")).toBeTruthy();
   });
 
-  test("should show the not-found code when the cliente does not exist", async () => {
-    // Arrange
-    const api = fakeApi([clienteCollection()]);
+  test("debería mostrar el código de no encontrado cuando no existe", async () => {
+    // Preparar
+    const api = apiFalsa([coleccionCliente()]);
+    const pantalla = <ContenedorDetalleCliente id={crypto.randomUUID()} />;
 
-    // Act
-    renderScreen(<ClienteDetailContainer id={crypto.randomUUID()} />, { api });
+    // Actuar
+    renderizarPantalla(pantalla, { api });
 
-    // Assert
+    // Comprobar
     expect((await screen.findByRole("alert")).textContent).toBe("cliente.no_encontrado");
   });
 
-  test("should delete the cliente only once the deletion is confirmed", async () => {
-    // Arrange
-    const seeded = ClienteMother.random();
-    const stored = clienteCollection([seeded]);
-    const api = fakeApi([stored]);
-    const { history } = renderScreen(<ClienteDetailContainer id={seeded.id} />, { api });
-    fireEvent.click(await screen.findByText("Delete", { selector: ".card-actions button" }));
-    expect(stored.items.has(seeded.id)).toBe(true);
+  test("debería borrar solo tras confirmar el borrado", async () => {
+    // Preparar
+    const sembrado = MadreCliente.aleatorio();
+    const guardados = coleccionCliente([sembrado]);
+    const api = apiFalsa([guardados]);
+    const pantalla = <ContenedorDetalleCliente id={sembrado.id} />;
+    const { historial } = renderizarPantalla(pantalla, { api });
+    fireEvent.click(await screen.findByText("Borrar", { selector: ".card-actions button" }));
+    expect(guardados.elementos.has(sembrado.id)).toBe(true);
 
-    // Act
-    fireEvent.click(screen.getByText("Delete", { selector: ".modal-action button" }));
+    // Actuar
+    fireEvent.click(screen.getByText("Borrar", { selector: ".modal-action button" }));
 
-    // Assert
-    await waitFor(() => expect(history.at(-1)).toBe("/clientes"));
-    expect(stored.items.has(seeded.id)).toBe(false);
+    // Comprobar
+    await waitFor(() => expect(historial.at(-1)).toBe("/clientes"));
+    expect(guardados.elementos.has(sembrado.id)).toBe(false);
   });
 });
 
-=== web/src/features/cliente/containers/cliente-detail-container.tsx ===
+=== web/src/contextos/cliente/contenedores/detalle-cliente.tsx ===
 import { useState } from "react";
 import { Link, useLocation } from "wouter";
-import { unwrap } from "../../../api/http";
-import { useDependencies } from "../../../dependencies";
-import { ConfirmDialog } from "../../../shared/ui/confirm-dialog";
-import { ErrorAlert } from "../../../shared/ui/error-alert";
-import { useAsync } from "../../../shared/use-async";
-import { ClienteDetailView } from "../views/cliente-detail-view";
+import { desenvolver } from "../../../api/http";
+import { AlertaError } from "../../../compartido/ui/alerta-error";
+import { DialogoConfirmar } from "../../../compartido/ui/dialogo-confirmar";
+import { useCarga } from "../../../compartido/use-carga";
+import { useDependencias } from "../../../dependencias";
+import { VistaDetalleCliente } from "../vistas/detalle-cliente";
 
-export function ClienteDetailContainer({ id }: { id: string }) {
-  const { api } = useDependencies();
-  const cliente = useAsync(
-    () => unwrap(api.GET("/clientes/{id}", { params: { path: { id } } })),
+export function ContenedorDetalleCliente({ id }: { id: string }) {
+  const { api } = useDependencias();
+  const cliente = useCarga(
+    () => desenvolver(api.GET("/clientes/{id}", { params: { path: { id } } })),
     [api, id],
   );
-  const [, navigate] = useLocation();
-  const [confirming, setConfirming] = useState(false);
-  const [failure, setFailure] = useState<unknown>(null);
+  const [, navegar] = useLocation();
+  const [confirmando, setConfirmando] = useState(false);
+  const [fallo, setFallo] = useState<unknown>(null);
 
-  const remove = async () => {
-    setConfirming(false);
+  const borrar = async () => {
+    setConfirmando(false);
     try {
-      await unwrap(api.DELETE("/clientes/{id}", { params: { path: { id } } }));
-      navigate("/clientes");
+      await desenvolver(api.DELETE("/clientes/{id}", { params: { path: { id } } }));
+      navegar("/clientes");
     } catch (error) {
-      setFailure(error);
+      setFallo(error);
     }
   };
 
   return (
     <section className="space-y-4">
       <h1 className="text-2xl font-bold">Cliente</h1>
-      {failure !== null && <ErrorAlert error={failure} />}
-      {cliente.status === "loading" && <span className="loading loading-spinner" />}
-      {cliente.status === "error" && <ErrorAlert error={cliente.error} />}
-      {cliente.status === "ok" && (
+      {fallo !== null && <AlertaError error={fallo} />}
+      {cliente.estado === "cargando" && <span className="loading loading-spinner" />}
+      {cliente.estado === "error" && <AlertaError error={cliente.error} />}
+      {cliente.estado === "listo" && (
         <div className="card bg-base-100">
           <div className="card-body">
-            <ClienteDetailView cliente={cliente.data} />
+            <VistaDetalleCliente cliente={cliente.datos} />
             <div className="card-actions justify-end">
-              <Link href={`/clientes/${id}/edit`} className="btn">
-                Edit
+              <Link href={`/clientes/${id}/editar`} className="btn">
+                Editar
               </Link>
-              <button type="button" className="btn btn-error" onClick={() => setConfirming(true)}>
-                Delete
+              <button type="button" className="btn btn-error" onClick={() => setConfirmando(true)}>
+                Borrar
               </button>
             </div>
           </div>
         </div>
       )}
       <Link href="/clientes" className="link">
-        Back to clientes
+        Volver a clientes
       </Link>
-      <ConfirmDialog
-        open={confirming}
-        message="Delete this cliente?"
-        onConfirm={remove}
-        onCancel={() => setConfirming(false)}
+      <DialogoConfirmar
+        abierto={confirmando}
+        mensaje="¿Borrar cliente?"
+        alConfirmar={borrar}
+        alCancelar={() => setConfirmando(false)}
       />
     </section>
   );
 }
 
-=== web/src/features/cliente/containers/cliente-form-container.test.tsx ===
+=== web/src/contextos/cliente/contenedores/formulario-cliente.test.tsx ===
 import { describe, expect, test } from "bun:test";
 import { fireEvent, screen, waitFor } from "@testing-library/react";
-import type { Schemas } from "../../../api/client";
-import { ClienteMother, clienteCollection } from "../../../test-support/cliente";
-import { fakeApi } from "../../../test-support/fake-api";
-import { renderScreen } from "../../../test-support/render";
-import { ClienteFormContainer } from "./cliente-form-container";
+import type { Esquemas } from "../../../api/cliente";
+import { apiFalsa } from "../../../pruebas/api-falsa";
+import { coleccionCliente, MadreCliente } from "../../../pruebas/cliente";
+import { renderizarPantalla } from "../../../pruebas/renderizar";
+import { ContenedorFormularioCliente } from "./formulario-cliente";
 
-function type(label: string, value: string) {
-  fireEvent.change(screen.getByLabelText(label), { target: { value } });
+function escribir(etiqueta: string, valor: string) {
+  fireEvent.change(screen.getByLabelText(etiqueta), { target: { value: valor } });
 }
 
-/** Fills the empty form with `request`, the way a user would. */
-async function fillIn(request: Schemas["PeticionCrearCliente"]) {
-  await screen.findByText("Save");
-  type("Name", request.name);
-  type("Email", request.email);
-  type("Credit", String(request.credit));
+/** Rellena el formulario vacío con `peticion`, como lo haría quien lo usa. */
+async function rellenar(peticion: Esquemas["PeticionCrearCliente"]) {
+  await screen.findByText("Guardar");
+  escribir("Name", peticion.name);
+  escribir("Email", peticion.email);
+  escribir("Credit", String(peticion.credit));
 }
 
-describe("ClienteFormContainer", () => {
-  test("should create the cliente from what was typed and show it", async () => {
-    // Arrange
-    const request = ClienteMother.request();
-    const stored = clienteCollection();
-    const api = fakeApi([stored]);
-    const { history } = renderScreen(<ClienteFormContainer />, { api });
-    await fillIn(request);
+describe("ContenedorFormularioCliente", () => {
+  test("debería crear con lo escrito e ir a su detalle", async () => {
+    // Preparar
+    const peticion = MadreCliente.peticion();
+    const guardados = coleccionCliente();
+    const api = apiFalsa([guardados]);
+    const pantalla = <ContenedorFormularioCliente />;
+    const { historial } = renderizarPantalla(pantalla, { api });
+    await rellenar(peticion);
 
-    // Act
-    fireEvent.click(screen.getByText("Save"));
+    // Actuar
+    fireEvent.click(screen.getByText("Guardar"));
 
-    // Assert
-    await waitFor(() => expect(history.at(-1)).toStartWith("/clientes/"));
-    const [created] = stored.items.values();
-    expect(created).toMatchObject(request);
-    expect(history.at(-1)).toBe(`/clientes/${created?.id}`);
+    // Comprobar
+    await waitFor(() => expect(historial.at(-1)).toStartWith("/clientes/"));
+    const [creado] = guardados.elementos.values();
+    expect(creado).toMatchObject(peticion);
+    expect(historial.at(-1)).toBe(`/clientes/${creado?.id}`);
   });
 
-  test("should save the edited cliente when an existing one is submitted", async () => {
-    // Arrange
-    const seeded = ClienteMother.random();
-    const stored = clienteCollection([seeded]);
-    const api = fakeApi([stored]);
-    const { history } = renderScreen(<ClienteFormContainer id={seeded.id} />, { api });
+  test("debería guardar la edición cuando se envía el formulario", async () => {
+    // Preparar
+    const sembrado = MadreCliente.aleatorio();
+    const guardados = coleccionCliente([sembrado]);
+    const api = apiFalsa([guardados]);
+    const pantalla = <ContenedorFormularioCliente id={sembrado.id} />;
+    const { historial } = renderizarPantalla(pantalla, { api });
 
-    // Act
-    fireEvent.click(await screen.findByText("Save"));
+    // Actuar
+    fireEvent.click(await screen.findByText("Guardar"));
 
-    // Assert
-    await waitFor(() => expect(history.at(-1)).toBe(`/clientes/${seeded.id}`));
-    expect(stored.items.get(seeded.id)).toEqual(seeded);
-  });
-  test("should show the code itself when the API answers one the form does not know", async () => {
-    // Arrange
-    const request = ClienteMother.request();
-    const code = "cliente.validacion.invalid";
-    const failures = { "POST /clientes": code };
-    const api = fakeApi([clienteCollection()], failures);
-    renderScreen(<ClienteFormContainer />, { api });
-    await fillIn(request);
-
-    // Act
-    fireEvent.click(screen.getByText("Save"));
-
-    // Assert
-    expect((await screen.findByRole("alert")).textContent).toBe(code);
+    // Comprobar
+    await waitFor(() => expect(historial.at(-1)).toBe(`/clientes/${sembrado.id}`));
+    expect(guardados.elementos.get(sembrado.id)).toEqual(sembrado);
   });
 
-  test("should say a cliente with these values exists when the API answers a duplicate", async () => {
-    // Arrange
-    const request = ClienteMother.request();
-    const failures = { "POST /clientes": "cliente.duplicado" };
-    const api = fakeApi([clienteCollection()], failures);
-    renderScreen(<ClienteFormContainer />, { api });
-    await fillIn(request);
+  test("debería mostrar el propio código cuando la API responde uno que el formulario no conoce", async () => {
+    // Preparar
+    const peticion = MadreCliente.peticion();
+    const codigo = "cliente.validacion.invalido";
+    const fallos = { "POST /clientes": codigo };
+    const api = apiFalsa([coleccionCliente()], fallos);
+    renderizarPantalla(<ContenedorFormularioCliente />, { api });
+    await rellenar(peticion);
 
-    // Act
-    fireEvent.click(screen.getByText("Save"));
+    // Actuar
+    fireEvent.click(screen.getByText("Guardar"));
 
-    // Assert
-    expect((await screen.findByRole("alert")).textContent).toBe(
-      "A cliente with these values already exists",
-    );
+    // Comprobar
+    expect((await screen.findByRole("alert")).textContent).toBe(codigo);
   });
 
-  test("should show the message under its input when the API rejects one field", async () => {
-    // Arrange
-    const request = ClienteMother.request();
-    const failures = { "POST /clientes": "cliente.validacion.name_vacio" };
-    const api = fakeApi([clienteCollection()], failures);
-    renderScreen(<ClienteFormContainer />, { api });
-    await fillIn(request);
+  test("debería decir que los valores ya están en uso cuando la API responde un duplicado", async () => {
+    // Preparar
+    const peticion = MadreCliente.peticion();
+    const fallos = { "POST /clientes": "cliente.duplicado" };
+    const api = apiFalsa([coleccionCliente()], fallos);
+    renderizarPantalla(<ContenedorFormularioCliente />, { api });
+    await rellenar(peticion);
 
-    // Act
-    fireEvent.click(screen.getByText("Save"));
+    // Actuar
+    fireEvent.click(screen.getByText("Guardar"));
 
-    // Assert
-    expect(await screen.findByText("Name is required")).toBeTruthy();
-    const input = screen.getByLabelText("Name");
-    expect(input.getAttribute("aria-invalid")).toBe("true");
+    // Comprobar
+    expect((await screen.findByRole("alert")).textContent).toBe("Estos valores ya están en uso");
+  });
+
+  test("debería mostrar el mensaje bajo su input cuando la API rechaza un campo", async () => {
+    // Preparar
+    const peticion = MadreCliente.peticion();
+    const fallos = { "POST /clientes": "cliente.validacion.name_vacio" };
+    const api = apiFalsa([coleccionCliente()], fallos);
+    renderizarPantalla(<ContenedorFormularioCliente />, { api });
+    await rellenar(peticion);
+
+    // Actuar
+    fireEvent.click(screen.getByText("Guardar"));
+
+    // Comprobar
+    expect(await screen.findByText("Name: obligatorio")).toBeTruthy();
+    const campo = screen.getByLabelText("Name");
+    expect(campo.getAttribute("aria-invalid")).toBe("true");
     expect(screen.queryByRole("alert")).toBeNull();
   });
 });
 
-=== web/src/features/cliente/containers/cliente-form-container.tsx ===
+=== web/src/contextos/cliente/contenedores/formulario-cliente.tsx ===
 import { useState } from "react";
 import { Link, useLocation } from "wouter";
-import type { Schemas } from "../../../api/client";
-import { unwrap } from "../../../api/http";
-import { useDependencies } from "../../../dependencies";
-import { ErrorAlert, errorCode } from "../../../shared/ui/error-alert";
-import { useAsync } from "../../../shared/use-async";
-import { toProblem } from "../messages";
-import { ClienteFormView, toClienteForm, toClienteRequest } from "../views/cliente-form-view";
+import type { Esquemas } from "../../../api/cliente";
+import { desenvolver } from "../../../api/http";
+import { AlertaError, codigoError } from "../../../compartido/ui/alerta-error";
+import { useCarga } from "../../../compartido/use-carga";
+import { useDependencias } from "../../../dependencias";
+import { aProblema } from "../mensajes";
+import {
+  aFormularioCliente,
+  aPeticionCliente,
+  VistaFormularioCliente,
+} from "../vistas/formulario-cliente";
 
-type Cliente = Schemas["DtoCliente"];
+type Cliente = Esquemas["DtoCliente"];
 
-/** Creates a cliente, or edits the one with `id`. */
-export function ClienteFormContainer({ id }: { id?: string }) {
-  const { api } = useDependencies();
-  const existing = useAsync(
+/** Crear, o editar con `id`: el formulario de clientes. */
+export function ContenedorFormularioCliente({ id }: { id?: string }) {
+  const { api } = useDependencias();
+  const existente = useCarga(
     () =>
       id === undefined
         ? Promise.resolve(null)
-        : unwrap(api.GET("/clientes/{id}", { params: { path: { id } } })),
+        : desenvolver(api.GET("/clientes/{id}", { params: { path: { id } } })),
     [api, id],
   );
-  const title = id === undefined ? "New cliente" : "Edit cliente";
+  const titulo = id === undefined ? "Crear cliente" : "Editar cliente";
 
   return (
     <section className="space-y-4">
-      <h1 className="text-2xl font-bold">{title}</h1>
-      {existing.status === "loading" && <span className="loading loading-spinner" />}
-      {existing.status === "error" && <ErrorAlert error={existing.error} />}
-      {existing.status === "ok" && <ClienteForm existing={existing.data} />}
+      <h1 className="text-2xl font-bold">{titulo}</h1>
+      {existente.estado === "cargando" && <span className="loading loading-spinner" />}
+      {existente.estado === "error" && <AlertaError error={existente.error} />}
+      {existente.estado === "listo" && <FormularioCliente existente={existente.datos} />}
       <Link href={id === undefined ? "/clientes" : `/clientes/${id}`} className="link">
-        Cancel
+        Cancelar
       </Link>
     </section>
   );
 }
 
-function ClienteForm({ existing }: { existing: Cliente | null }) {
-  const { api } = useDependencies();
-  const [, navigate] = useLocation();
-  const [values, setValues] = useState(toClienteForm(existing));
-  const [saving, setSaving] = useState(false);
-  const [failure, setFailure] = useState<unknown>(null);
-  const problem = failure === null ? null : toProblem(errorCode(failure));
+function FormularioCliente({ existente }: { existente: Cliente | null }) {
+  const { api } = useDependencias();
+  const [, navegar] = useLocation();
+  const [valores, setValores] = useState(aFormularioCliente(existente));
+  const [guardando, setGuardando] = useState(false);
+  const [fallo, setFallo] = useState<unknown>(null);
+  const problema = fallo === null ? null : aProblema(codigoError(fallo));
 
-  const save = async () => {
-    setSaving(true);
-    setFailure(null);
+  const guardar = async () => {
+    setGuardando(true);
+    setFallo(null);
     try {
-      const body = toClienteRequest(values);
-      const saved = await unwrap(
-        existing === null
-          ? api.POST("/clientes", { body })
-          : api.PUT("/clientes/{id}", { params: { path: { id: existing.id } }, body }),
+      const cuerpo = aPeticionCliente(valores);
+      const guardado = await desenvolver(
+        existente === null
+          ? api.POST("/clientes", { body: cuerpo })
+          : api.PUT("/clientes/{id}", { params: { path: { id: existente.id } }, body: cuerpo }),
       );
-      navigate(`/clientes/${saved.id}`);
+      navegar(`/clientes/${guardado.id}`);
     } catch (error) {
-      setFailure(error);
-      setSaving(false);
+      setFallo(error);
+      setGuardando(false);
     }
   };
 
   return (
     <div className="card bg-base-100">
       <div className="card-body">
-        {problem?.field === null && <ErrorAlert error={failure} message={problem.text} />}
-        <ClienteFormView
-          values={values}
-          saving={saving}
-          problem={problem}
-          onChange={setValues}
-          onSubmit={save}
+        {problema?.campo === null && <AlertaError error={fallo} mensaje={problema.texto} />}
+        <VistaFormularioCliente
+          valores={valores}
+          guardando={guardando}
+          problema={problema}
+          alCambiar={setValores}
+          alEnviar={guardar}
         />
       </div>
     </div>
   );
 }
 
-=== web/src/features/cliente/containers/cliente-list-container.test.tsx ===
+=== web/src/contextos/cliente/contenedores/lista-cliente.test.tsx ===
 import { describe, expect, test } from "bun:test";
 import { fireEvent, screen } from "@testing-library/react";
-import { ClienteMother, clienteCollection } from "../../../test-support/cliente";
-import { fakeApi } from "../../../test-support/fake-api";
-import { renderScreen } from "../../../test-support/render";
-import { ClienteListContainer } from "./cliente-list-container";
+import { apiFalsa } from "../../../pruebas/api-falsa";
+import { coleccionCliente, MadreCliente } from "../../../pruebas/cliente";
+import { renderizarPantalla } from "../../../pruebas/renderizar";
+import { ContenedorListaCliente } from "./lista-cliente";
 
-describe("ClienteListContainer", () => {
-  test("should show a row per cliente when there are some", async () => {
-    // Arrange
-    const seed = [ClienteMother.random(), ClienteMother.random()];
-    const api = fakeApi([clienteCollection(seed)]);
+describe("ContenedorListaCliente", () => {
+  test("debería mostrar una fila por cada cliente", async () => {
+    // Preparar
+    const semilla = [MadreCliente.aleatorio(), MadreCliente.aleatorio()];
+    const api = apiFalsa([coleccionCliente(semilla)]);
 
-    // Act
-    renderScreen(<ClienteListContainer />, { api });
+    // Actuar
+    renderizarPantalla(<ContenedorListaCliente />, { api });
 
-    // Assert
-    expect(await screen.findAllByText("View")).toHaveLength(2);
+    // Comprobar
+    expect(await screen.findAllByText("Ver")).toHaveLength(2);
   });
 
-  test("should show the next page when Next is pressed", async () => {
-    // Arrange
-    const seed = Array.from({ length: 25 }, () => ClienteMother.random());
-    const api = fakeApi([clienteCollection(seed)]);
-    renderScreen(<ClienteListContainer />, { api });
-    expect(await screen.findAllByText("View")).toHaveLength(20);
+  test("debería mostrar la página siguiente cuando se pulsa Siguiente", async () => {
+    // Preparar
+    const semilla = Array.from({ length: 25 }, () => MadreCliente.aleatorio());
+    const api = apiFalsa([coleccionCliente(semilla)]);
+    renderizarPantalla(<ContenedorListaCliente />, { api });
+    expect(await screen.findAllByText("Ver")).toHaveLength(20);
 
-    // Act
-    fireEvent.click(screen.getByRole("button", { name: "Next" }));
+    // Actuar
+    fireEvent.click(screen.getByRole("button", { name: "Siguiente" }));
 
-    // Assert
-    expect(await screen.findByText("21–25 of 25")).toBeTruthy();
-    expect(screen.getAllByText("View")).toHaveLength(5);
+    // Comprobar
+    expect(await screen.findByText("21–25 de 25")).toBeTruthy();
+    expect(screen.getAllByText("Ver")).toHaveLength(5);
   });
 
-  test("should open the page the URL names", async () => {
-    // Arrange
-    const seed = Array.from({ length: 25 }, () => ClienteMother.random());
-    const api = fakeApi([clienteCollection(seed)]);
-    const path = "/clientes?page=2";
+  test("debería abrir la página que nombra la URL", async () => {
+    // Preparar
+    const semilla = Array.from({ length: 25 }, () => MadreCliente.aleatorio());
+    const api = apiFalsa([coleccionCliente(semilla)]);
+    const ruta = "/clientes?pagina=2";
 
-    // Act
-    renderScreen(<ClienteListContainer />, { api }, path);
+    // Actuar
+    renderizarPantalla(<ContenedorListaCliente />, { api }, ruta);
 
-    // Assert
-    expect(await screen.findByText("21–25 of 25")).toBeTruthy();
+    // Comprobar
+    expect(await screen.findByText("21–25 de 25")).toBeTruthy();
   });
 
-  test("should say so when there is no cliente", async () => {
-    // Arrange
-    const api = fakeApi([clienteCollection()]);
+  test("debería decirlo cuando no hay clientes", async () => {
+    // Preparar
+    const api = apiFalsa([coleccionCliente()]);
 
-    // Act
-    renderScreen(<ClienteListContainer />, { api });
+    // Actuar
+    renderizarPantalla(<ContenedorListaCliente />, { api });
 
-    // Assert
-    expect(await screen.findByText("No clientes yet.")).toBeTruthy();
+    // Comprobar
+    expect(await screen.findByText("Todavía no hay clientes.")).toBeTruthy();
   });
 
-  test("should show the error code when the clientes cannot be listed", async () => {
-    // Arrange
-    const failures = { "GET /clientes": "cliente.repositorio" };
-    const api = fakeApi([clienteCollection()], failures);
+  test("debería mostrar el código del error cuando la API no da la lista", async () => {
+    // Preparar
+    const fallos = { "GET /clientes": "cliente.repositorio" };
+    const api = apiFalsa([coleccionCliente()], fallos);
 
-    // Act
-    renderScreen(<ClienteListContainer />, { api });
+    // Actuar
+    renderizarPantalla(<ContenedorListaCliente />, { api });
 
-    // Assert
+    // Comprobar
     expect((await screen.findByRole("alert")).textContent).toBe("cliente.repositorio");
   });
 });
 
-=== web/src/features/cliente/containers/cliente-list-container.tsx ===
+=== web/src/contextos/cliente/contenedores/lista-cliente.tsx ===
 import { Link, useLocation, useSearch } from "wouter";
-import { PAGE_SIZE, unwrap } from "../../../api/http";
-import { useDependencies } from "../../../dependencies";
-import { EmptyState } from "../../../shared/ui/empty-state";
-import { ErrorAlert } from "../../../shared/ui/error-alert";
-import { offsetFromSearch, Pagination, pageSearch } from "../../../shared/ui/pagination";
-import { useAsync } from "../../../shared/use-async";
-import { ClienteListView } from "../views/cliente-list-view";
+import { desenvolver, TAMANO_PAGINA } from "../../../api/http";
+import { AlertaError } from "../../../compartido/ui/alerta-error";
+import { busquedaPagina, desplazamientoDeUrl, Paginacion } from "../../../compartido/ui/paginacion";
+import { SinElementos } from "../../../compartido/ui/sin-elementos";
+import { useCarga } from "../../../compartido/use-carga";
+import { useDependencias } from "../../../dependencias";
+import { VistaListaCliente } from "../vistas/lista-cliente";
 
-/** The list, one page at a time; the page is in the URL (`?page=2`), so reload and back keep it. */
-export function ClienteListContainer() {
-  const { api } = useDependencies();
-  const [location, navigate] = useLocation();
-  const offset = offsetFromSearch(useSearch(), PAGE_SIZE);
-  const goTo = (next: number) => navigate(location + pageSearch(next, PAGE_SIZE));
-  const query = { limite: PAGE_SIZE, desplazamiento: offset };
-  const clientes = useAsync(
-    () => unwrap(api.GET("/clientes", { params: { query } })),
-    [api, offset],
+/** La lista, página a página; la página va en la URL (`?pagina=2`): recargar y volver la mantienen. */
+export function ContenedorListaCliente() {
+  const { api } = useDependencias();
+  const [ubicacion, navegar] = useLocation();
+  const desplazamiento = desplazamientoDeUrl(useSearch(), TAMANO_PAGINA);
+  const irA = (siguiente: number) => navegar(ubicacion + busquedaPagina(siguiente, TAMANO_PAGINA));
+  const consulta = { limite: TAMANO_PAGINA, desplazamiento };
+  const clientes = useCarga(
+    () => desenvolver(api.GET("/clientes", { params: { query: consulta } })),
+    [api, desplazamiento],
   );
 
   return (
     <section className="space-y-4">
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-bold">Clientes</h1>
-        <Link href="/clientes/new" className="btn btn-primary">
-          New cliente
+        <Link href="/clientes/nuevo" className="btn btn-primary">
+          Crear cliente
         </Link>
       </div>
-      {clientes.status === "loading" && <span className="loading loading-spinner" />}
-      {clientes.status === "error" && <ErrorAlert error={clientes.error} />}
-      {clientes.status === "ok" &&
-        (clientes.data.total === 0 ? (
-          <EmptyState message="No clientes yet." />
+      {clientes.estado === "cargando" && <span className="loading loading-spinner" />}
+      {clientes.estado === "error" && <AlertaError error={clientes.error} />}
+      {clientes.estado === "listo" &&
+        (clientes.datos.total === 0 ? (
+          <SinElementos mensaje="Todavía no hay clientes." />
         ) : (
           <>
-            <ClienteListView clientes={clientes.data.elementos} />
-            <Pagination
-              total={clientes.data.total}
-              limit={clientes.data.limite}
-              offset={clientes.data.desplazamiento}
-              onOffsetChange={goTo}
+            <VistaListaCliente clientes={clientes.datos.elementos} />
+            <Paginacion
+              total={clientes.datos.total}
+              limite={clientes.datos.limite}
+              desplazamiento={clientes.datos.desplazamiento}
+              alCambiarDesplazamiento={irA}
             />
           </>
         ))}
@@ -3329,44 +3338,44 @@ export function ClienteListContainer() {
   );
 }
 
-=== web/src/features/cliente/messages.ts ===
-/** What a screen shows for an API error: under the input it is about, or in the alert. */
-export interface ClienteProblem {
-  field: string | null;
-  text: string;
+=== web/src/contextos/cliente/mensajes.ts ===
+/** Lo que una pantalla muestra de un error de la API: bajo el input del que trata, o en la alerta. */
+export interface ProblemaCliente {
+  campo: string | null;
+  texto: string;
 }
 
 /**
- * The messages for the codes of the backend's `errores.rs`, generated from the same list. English:
- * this file is the place to translate them. A code missing here shows as it is.
+ * Los mensajes de los códigos de `errores.rs` del backend, generados de la misma lista. Un código que
+ * no está aquí se muestra tal cual.
  */
-const TEXTS: Record<string, string> = {
-  "cliente.validacion.name_vacio": "Name is required",
-  "cliente.email_invalido": "Email is not valid",
-  "cliente.money_invalido": "Credit is not valid",
-  "cliente.duplicado": "A cliente with these values already exists",
-  "cliente.no_encontrado": "This cliente no longer exists",
-  "cliente.repositorio": "The cliente could not be saved, try again later",
-  "cliente.desconocido": "Something went wrong",
+const TEXTOS: Record<string, string> = {
+  "cliente.validacion.name_vacio": "Name: obligatorio",
+  "cliente.email_invalido": "Email: no válido",
+  "cliente.money_invalido": "Credit: no válido",
+  "cliente.duplicado": "Estos valores ya están en uso",
+  "cliente.no_encontrado": "Ya no existe",
+  "cliente.repositorio": "No se ha podido guardar; inténtalo más tarde",
+  "cliente.desconocido": "Algo ha ido mal",
 };
 
-/** The input each field's code is about. */
-const FIELDS: Record<string, string> = {
+/** El input del que trata el código de cada campo. */
+const CAMPOS: Record<string, string> = {
   "cliente.validacion.name_vacio": "name",
   "cliente.email_invalido": "email",
   "cliente.money_invalido": "credit",
 };
 
-export function toProblem(code: string): ClienteProblem {
-  return { field: FIELDS[code] ?? null, text: TEXTS[code] ?? code };
+export function aProblema(codigo: string): ProblemaCliente {
+  return { campo: CAMPOS[codigo] ?? null, texto: TEXTOS[codigo] ?? codigo };
 }
 
-=== web/src/features/cliente/views/cliente-detail-view.tsx ===
-import type { Schemas } from "../../../api/client";
+=== web/src/contextos/cliente/vistas/detalle-cliente.tsx ===
+import type { Esquemas } from "../../../api/cliente";
 
-type Cliente = Schemas["DtoCliente"];
+type Cliente = Esquemas["DtoCliente"];
 
-export function ClienteDetailView({ cliente }: { cliente: Cliente }) {
+export function VistaDetalleCliente({ cliente }: { cliente: Cliente }) {
   return (
     <dl className="grid grid-cols-[max-content_1fr] gap-x-6 gap-y-2">
       <dt className="font-semibold">Name</dt>
@@ -3379,23 +3388,23 @@ export function ClienteDetailView({ cliente }: { cliente: Cliente }) {
   );
 }
 
-=== web/src/features/cliente/views/cliente-form-view.tsx ===
-import type { Schemas } from "../../../api/client";
-import { FieldError } from "../../../shared/ui/field-error";
-import type { ClienteProblem } from "../messages";
+=== web/src/contextos/cliente/vistas/formulario-cliente.tsx ===
+import type { Esquemas } from "../../../api/cliente";
+import { ErrorCampo } from "../../../compartido/ui/error-campo";
+import type { ProblemaCliente } from "../mensajes";
 
-type Cliente = Schemas["DtoCliente"];
-type ClienteRequest = Schemas["PeticionCrearCliente"];
+type Cliente = Esquemas["DtoCliente"];
+type PeticionCliente = Esquemas["PeticionCrearCliente"];
 
-/** What the inputs hold: the text of every input, `checked` for a checkbox. */
-export interface ClienteFormValues {
+/** Lo que guardan los inputs: el texto de cada input, `checked` en una casilla. */
+export interface ValoresFormularioCliente {
   name: string;
   email: string;
   credit: string;
 }
 
-/** The inputs for `cliente`, empty when there is none yet. */
-export function toClienteForm(cliente: Cliente | null): ClienteFormValues {
+/** Los inputs de `cliente`, vacíos cuando todavía no hay ninguno. */
+export function aFormularioCliente(cliente: Cliente | null): ValoresFormularioCliente {
   if (cliente === null) {
     return {
       name: "",
@@ -3410,35 +3419,35 @@ export function toClienteForm(cliente: Cliente | null): ClienteFormValues {
   };
 }
 
-/** What a create or an update sends: the same fields for both. */
-export function toClienteRequest(values: ClienteFormValues): ClienteRequest {
+/** Lo que mandan crear y actualizar: los mismos campos en los dos. */
+export function aPeticionCliente(valores: ValoresFormularioCliente): PeticionCliente {
   return {
-    name: values.name,
-    email: values.email,
-    credit: Number(values.credit),
+    name: valores.name,
+    email: valores.email,
+    credit: Number(valores.credit),
   };
 }
 
-export function ClienteFormView({
-  values,
-  saving,
-  problem,
-  onChange,
-  onSubmit,
+export function VistaFormularioCliente({
+  valores,
+  guardando,
+  problema,
+  alCambiar,
+  alEnviar,
 }: {
-  values: ClienteFormValues;
-  saving: boolean;
-  /** What the API said about the last submit: shown under its input. */
-  problem: ClienteProblem | null;
-  onChange: (values: ClienteFormValues) => void;
-  onSubmit: () => void;
+  valores: ValoresFormularioCliente;
+  guardando: boolean;
+  /** Lo que dijo la API del último envío: se muestra bajo su input. */
+  problema: ProblemaCliente | null;
+  alCambiar: (valores: ValoresFormularioCliente) => void;
+  alEnviar: () => void;
 }) {
   return (
     <form
       className="space-y-2"
       onSubmit={(event) => {
         event.preventDefault();
-        onSubmit();
+        alEnviar();
       }}
     >
       <label className="fieldset">
@@ -3446,51 +3455,51 @@ export function ClienteFormView({
         <input
           className="input w-full"
           type="text"
-          aria-invalid={problem?.field === "name"}
+          aria-invalid={problema?.campo === "name"}
           required
-          value={values.name}
-          onChange={(event) => onChange({ ...values, name: event.target.value })}
+          value={valores.name}
+          onChange={(event) => alCambiar({ ...valores, name: event.target.value })}
         />
       </label>
-      <FieldError problem={problem} field="name" />
+      <ErrorCampo problema={problema} campo="name" />
       <label className="fieldset">
         <span className="fieldset-legend">Email</span>
         <input
           className="input w-full"
           type="text"
-          aria-invalid={problem?.field === "email"}
+          aria-invalid={problema?.campo === "email"}
           required
-          value={values.email}
-          onChange={(event) => onChange({ ...values, email: event.target.value })}
+          value={valores.email}
+          onChange={(event) => alCambiar({ ...valores, email: event.target.value })}
         />
       </label>
-      <FieldError problem={problem} field="email" />
+      <ErrorCampo problema={problema} campo="email" />
       <label className="fieldset">
         <span className="fieldset-legend">Credit</span>
         <input
           className="input w-full"
           type="number"
-          aria-invalid={problem?.field === "credit"}
+          aria-invalid={problema?.campo === "credit"}
           required
-          value={values.credit}
-          onChange={(event) => onChange({ ...values, credit: event.target.value })}
+          value={valores.credit}
+          onChange={(event) => alCambiar({ ...valores, credit: event.target.value })}
         />
       </label>
-      <FieldError problem={problem} field="credit" />
-      <button type="submit" className="btn btn-primary" disabled={saving}>
-        Save
+      <ErrorCampo problema={problema} campo="credit" />
+      <button type="submit" className="btn btn-primary" disabled={guardando}>
+        Guardar
       </button>
     </form>
   );
 }
 
-=== web/src/features/cliente/views/cliente-list-view.tsx ===
+=== web/src/contextos/cliente/vistas/lista-cliente.tsx ===
 import { Link } from "wouter";
-import type { Schemas } from "../../../api/client";
+import type { Esquemas } from "../../../api/cliente";
 
-type Cliente = Schemas["DtoCliente"];
+type Cliente = Esquemas["DtoCliente"];
 
-export function ClienteListView({ clientes }: { clientes: Cliente[] }) {
+export function VistaListaCliente({ clientes }: { clientes: Cliente[] }) {
   return (
     <div className="overflow-x-auto rounded-box bg-base-100">
       <table className="table">
@@ -3510,7 +3519,7 @@ export function ClienteListView({ clientes }: { clientes: Cliente[] }) {
               <td>{cliente.credit}</td>
               <td className="text-right">
                 <Link href={`/clientes/${cliente.id}`} className="link">
-                  View
+                  Ver
                 </Link>
               </td>
             </tr>
@@ -3521,162 +3530,166 @@ export function ClienteListView({ clientes }: { clientes: Cliente[] }) {
   );
 }
 
-=== web/src/generated/dependencies.ts ===
-// AUTO-GENERATED by puerto. Edit puerto.toml, then run `puerto generar bootstrap`.
+=== web/src/generado/dependencias.ts ===
+// GENERADO por puerto. Edita puerto.toml y después ejecuta `puerto generar bootstrap`.
 //
-// The composition root: the only module that builds the API client. Screens reach it through
-// `useDependencies()`, so a test hands them a fake instead.
+// La raíz de composición: el único módulo que construye el cliente de la API. Las pantallas llegan
+// a él con `useDependencias()`, así un test les da un falso.
 
-import { type ApiClient, createApiClient } from "../api/client";
+import { type ClienteApi, crearClienteApi } from "../api/cliente";
 
-export interface Dependencies {
-  api: ApiClient;
+export interface Dependencias {
+  api: ClienteApi;
 }
 
-export function createDependencies(): Dependencies {
-  const api = createApiClient();
+export function crearDependencias(): Dependencias {
+  const api = crearClienteApi();
   return { api };
 }
 
-=== web/src/generated/routes.tsx ===
-// AUTO-GENERATED by puerto. Edit puerto.toml, then run `puerto generar bootstrap`.
+=== web/src/generado/rutas.tsx ===
+// GENERADO por puerto. Edita puerto.toml y después ejecuta `puerto generar bootstrap`.
 
 import { Route, Switch } from "wouter";
-import { ClienteDetailContainer } from "../features/cliente/containers/cliente-detail-container";
-import { ClienteFormContainer } from "../features/cliente/containers/cliente-form-container";
-import { ClienteListContainer } from "../features/cliente/containers/cliente-list-container";
-import { HomePage } from "../pages/home";
-import { NotFoundPage } from "../pages/not-found";
-import { customRoutes } from "../routes";
-import type { NavEntry } from "../shared/ui/layout";
+import type { EntradaMenu } from "../compartido/ui/marco";
+import { ContenedorDetalleCliente } from "../contextos/cliente/contenedores/detalle-cliente";
+import { ContenedorFormularioCliente } from "../contextos/cliente/contenedores/formulario-cliente";
+import { ContenedorListaCliente } from "../contextos/cliente/contenedores/lista-cliente";
+import { PaginaInicio } from "../paginas/inicio";
+import { PaginaNoEncontrada } from "../paginas/no-encontrada";
+import { rutasPropias } from "../rutas";
 
-export const navEntries: NavEntry[] = [{ label: "Clientes", href: "/clientes" }];
+export const entradasMenu: EntradaMenu[] = [{ etiqueta: "Clientes", href: "/clientes" }];
 
-export function AppRoutes() {
+export function RutasApp() {
   return (
     <Switch>
       <Route path="/">
-        <HomePage entries={navEntries} />
+        <PaginaInicio entradas={entradasMenu} />
       </Route>
-      {customRoutes}
+      {rutasPropias}
       <Route path="/clientes">
-        <ClienteListContainer />
+        <ContenedorListaCliente />
       </Route>
-      <Route path="/clientes/new">
-        <ClienteFormContainer />
+      <Route path="/clientes/nuevo">
+        <ContenedorFormularioCliente />
       </Route>
-      <Route path="/clientes/:id/edit">{(params) => <ClienteFormContainer id={params.id} />}</Route>
-      <Route path="/clientes/:id">{(params) => <ClienteDetailContainer id={params.id} />}</Route>
+      <Route path="/clientes/:id/editar">
+        {(params) => <ContenedorFormularioCliente id={params.id} />}
+      </Route>
+      <Route path="/clientes/:id">{(params) => <ContenedorDetalleCliente id={params.id} />}</Route>
       <Route>
-        <NotFoundPage />
+        <PaginaNoEncontrada />
       </Route>
     </Switch>
   );
 }
 
-=== web/src/test-support/cliente.ts ===
-import type { Schemas } from "../api/client";
-import { collection } from "./fake-api";
+=== web/src/pruebas/api-falsa.ts ===
+import { type ClienteApi, crearClienteApi } from "../api/cliente";
 
-type Cliente = Schemas["DtoCliente"];
-type ClienteRequest = Schemas["PeticionCrearCliente"];
-
-/** Valid clientes for tests; pass `overrides` for the fields a test is about. */
-export const ClienteMother = {
-  request(overrides: Partial<ClienteRequest> = {}): ClienteRequest {
-    return {
-      name: "example",
-      email: "example",
-      credit: 42,
-      ...overrides,
-    };
-  },
-
-  random(overrides: Partial<Cliente> = {}): Cliente {
-    return { id: crypto.randomUUID(), ...ClienteMother.request(), ...overrides };
-  },
-};
-
-/** The fake API's `/clientes`, holding `seed`. */
-export function clienteCollection(seed: Cliente[] = []) {
-  return collection("/clientes", "cliente", seed);
+/** Lo que guarda la API falsa bajo `ruta`: los DTO de la API, por id. */
+export interface Coleccion<T extends { id: string }> {
+  ruta: string;
+  /** El código que responde un elemento que no está: `producto.no_encontrado`. */
+  noEncontrado: string;
+  elementos: Map<string, T>;
 }
 
-=== web/src/test-support/fake-api.ts ===
-import { type ApiClient, createApiClient } from "../api/client";
-
-/** What the fake API holds under `path`: the API's DTOs, by id. */
-export interface Collection<T extends { id: string }> {
-  path: string;
-  /** The code a missing item answers: `producto.no_encontrado`. */
-  notFound: string;
-  items: Map<string, T>;
-}
-
-/** The items under `path` (`/productos`) of `entity` (`producto`), starting with `seed`. */
-export function collection<T extends { id: string }>(
-  path: string,
-  entity: string,
-  seed: T[] = [],
-): Collection<T> {
-  const items = new Map(seed.map((item) => [item.id, item]));
-  return { path, notFound: `${entity}.no_encontrado`, items };
+/** Los elementos bajo `ruta` (`/productos`) de `entidad` (`producto`), empezando por `semilla`. */
+export function coleccion<T extends { id: string }>(
+  ruta: string,
+  entidad: string,
+  semilla: T[] = [],
+): Coleccion<T> {
+  const elementos = new Map(semilla.map((elemento) => [elemento.id, elemento]));
+  return { ruta, noEncontrado: `${entidad}.no_encontrado`, elementos };
 }
 
 /**
- * An `ApiClient` that answers the way the generated API does, over in-memory collections: a page
- * per `limite` / `desplazamiento`, a `404` with `<entity>.no_encontrado`, `201`, `200` and `204`.
- * Each of `failures` (`{ "POST /productos": "producto.duplicado" }`) answers its code instead.
+ * Un `ClienteApi` que responde como la API generada, sobre colecciones en memoria: una página por
+ * `limite` / `desplazamiento`, un `404` con `<entidad>.no_encontrado`, `201`, `200` y `204`. Cada
+ * uno de `fallos` (`{ "POST /productos": "producto.duplicado" }`) responde su código en su lugar.
  */
-export function fakeApi(
-  collections: Collection<{ id: string }>[],
-  failures: Record<string, string> = {},
-): ApiClient {
-  return createApiClient({
+export function apiFalsa(
+  colecciones: Coleccion<{ id: string }>[],
+  fallos: Record<string, string> = {},
+): ClienteApi {
+  return crearClienteApi({
     baseUrl: "http://localhost/api",
-    fetch: async (request) => {
-      const url = new URL(request.url);
-      const path = url.pathname.replace(/^\/api/, "");
-      const target = collections.find((c) => path === c.path || path.startsWith(`${c.path}/`));
-      if (target === undefined) return answer(404, "http.404");
-      const failure = failures[`${request.method} ${target.path}`];
-      if (failure !== undefined) return answer(400, failure);
-      const id = path.slice(target.path.length + 1);
-      return id === "" ? serveList(target, request, url) : serveItem(target, request, id);
+    fetch: async (peticion) => {
+      const url = new URL(peticion.url);
+      const ruta = url.pathname.replace(/^\/api/, "");
+      const objetivo = colecciones.find((c) => ruta === c.ruta || ruta.startsWith(`${c.ruta}/`));
+      if (objetivo === undefined) return responderError(404, "http.404");
+      const fallo = fallos[`${peticion.method} ${objetivo.ruta}`];
+      if (fallo !== undefined) return responderError(400, fallo);
+      const id = ruta.slice(objetivo.ruta.length + 1);
+      return id === ""
+        ? servirLista(objetivo, peticion, url)
+        : servirElemento(objetivo, peticion, id);
     },
   });
 }
 
-async function serveList(target: Collection<{ id: string }>, request: Request, url: URL) {
-  if (request.method === "POST") {
-    const created = { ...(await request.json()), id: crypto.randomUUID() };
-    target.items.set(created.id, created);
-    return Response.json(created, { status: 201 });
+async function servirLista(objetivo: Coleccion<{ id: string }>, peticion: Request, url: URL) {
+  if (peticion.method === "POST") {
+    const creado = { ...(await peticion.json()), id: crypto.randomUUID() };
+    objetivo.elementos.set(creado.id, creado);
+    return Response.json(creado, { status: 201 });
   }
   const limite = Number(url.searchParams.get("limite") ?? 20);
   const desplazamiento = Number(url.searchParams.get("desplazamiento") ?? 0);
-  const all = [...target.items.values()];
-  const elementos = all.slice(desplazamiento, desplazamiento + limite);
-  return Response.json({ elementos, total: all.length, limite, desplazamiento });
+  const todos = [...objetivo.elementos.values()];
+  const elementos = todos.slice(desplazamiento, desplazamiento + limite);
+  return Response.json({ elementos, total: todos.length, limite, desplazamiento });
 }
 
-async function serveItem(target: Collection<{ id: string }>, request: Request, id: string) {
-  const found = target.items.get(id);
-  if (found === undefined) return answer(404, target.notFound);
-  if (request.method === "DELETE") {
-    target.items.delete(id);
+async function servirElemento(objetivo: Coleccion<{ id: string }>, peticion: Request, id: string) {
+  const encontrado = objetivo.elementos.get(id);
+  if (encontrado === undefined) return responderError(404, objetivo.noEncontrado);
+  if (peticion.method === "DELETE") {
+    objetivo.elementos.delete(id);
     return new Response(null, { status: 204 });
   }
-  if (request.method === "PUT") {
-    // Like the API, an update replaces every field: one left out is cleared.
-    const updated = { ...(await request.json()), id };
-    target.items.set(id, updated);
-    return Response.json(updated);
+  if (peticion.method === "PUT") {
+    // Como la API, actualizar reemplaza todos los campos: el que no se manda queda vacío.
+    const actualizado = { ...(await peticion.json()), id };
+    objetivo.elementos.set(id, actualizado);
+    return Response.json(actualizado);
   }
-  return Response.json(found);
+  return Response.json(encontrado);
 }
 
-/** A `RespuestaError` the way the API answers one. */
-function answer(status: number, codigo: string) {
-  return Response.json({ codigo, mensaje: codigo }, { status });
+/** Un `RespuestaError` como lo responde la API. */
+function responderError(estado: number, codigo: string) {
+  return Response.json({ codigo, mensaje: codigo }, { status: estado });
+}
+
+=== web/src/pruebas/cliente.ts ===
+import type { Esquemas } from "../api/cliente";
+import { coleccion } from "./api-falsa";
+
+type Cliente = Esquemas["DtoCliente"];
+type PeticionCliente = Esquemas["PeticionCrearCliente"];
+
+/** Datos válidos de clientes; en `cambios`, los campos de los que trata el test. */
+export const MadreCliente = {
+  peticion(cambios: Partial<PeticionCliente> = {}): PeticionCliente {
+    return {
+      name: "example",
+      email: "example",
+      credit: 42,
+      ...cambios,
+    };
+  },
+
+  aleatorio(cambios: Partial<Cliente> = {}): Cliente {
+    return { id: crypto.randomUUID(), ...MadreCliente.peticion(), ...cambios };
+  },
+};
+
+/** El `/clientes` de la API falsa, con `semilla`. */
+export function coleccionCliente(semilla: Cliente[] = []) {
+  return coleccion("/clientes", "cliente", semilla);
 }

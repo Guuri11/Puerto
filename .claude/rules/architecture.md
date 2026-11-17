@@ -48,7 +48,7 @@ presentacion/
   cableado/               → cableado          GENERADO entero, Cargo.toml incluido
   api/                    → api               el binario: main.rs + lib.rs, app.rs, generado/bootstrap.rs
   worker/                 → worker            (proyectos con eventos) generado/registro.rs, consumidores/
-web/                      el frontend: solo presentación (ADR-0025), aún en inglés (su traducción es otra fase)
+web/                      el frontend: solo presentación (ADR-0025), en castellano (`docs/glosario.md` § Fase 22)
 ```
 
 - En la v1 **una entidad es un contexto**: `[[entidad]] nombre = "LineaPedido"` →
@@ -272,9 +272,10 @@ navegación ni carga perezosa; un caso de uso que necesita el cliente se lo pide
   `FiltroPedido` se declara junto al puerto, solo para una entidad con referencias. Postgres: una
   sola consulta estática, `AND ($3::uuid IS NULL OR cliente_id = $3)` en la página y en su
   `COUNT`. `GET /pedidos?clienteId=&limite=&desplazamiento=`
-- Web: el `<select>` del formulario lista los primeros `MAX_PAGE_LIMIT` elementos del objetivo,
-  cargados una vez por entidad objetivo (`referenceOptions(loaded, label)` en `shared/forms.ts`);
-  el detalle muestra `<ReferenceLink path="/clientes" id={…} />`; `messages.ts` asocia
+- Web: el `<select>` del formulario lista los primeros `LIMITE_PAGINA_MAXIMO` elementos del
+  objetivo, cargados una vez por entidad objetivo (`opcionesReferencia(cargados, etiqueta)` en
+  `compartido/formularios.ts`); el detalle muestra `<EnlaceReferencia ruta="/clientes" id={…} />`,
+  con la etiqueta que carga su contenedor; `mensajes.ts` asocia
   `cliente_id_no_encontrado` a `clienteId`
 
 ### Eventos de dominio (`[proyecto] eventos` — ADR-0018)

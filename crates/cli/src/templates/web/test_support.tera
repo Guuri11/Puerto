@@ -1,26 +1,26 @@
-import type { Schemas } from "../api/client";
-import { collection } from "./fake-api";
+import type { Esquemas } from "../api/cliente";
+import { coleccion } from "./api-falsa";
 
-type {{ pascal }} = Schemas["Dto{{ pascal }}"];
-type {{ pascal }}Request = Schemas["PeticionCrear{{ pascal }}"];
+type {{ pascal }} = Esquemas["Dto{{ pascal }}"];
+type Peticion{{ pascal }} = Esquemas["PeticionCrear{{ pascal }}"];
 
-/** Valid {{ words_plural }} for tests; pass `overrides` for the fields a test is about. */
-export const {{ pascal }}Mother = {
-  request(overrides: Partial<{{ pascal }}Request> = {}): {{ pascal }}Request {
+/** Datos válidos de {{ words_plural }}; en `cambios`, los campos de los que trata el test. */
+export const Madre{{ pascal }} = {
+  peticion(cambios: Partial<Peticion{{ pascal }}> = {}): Peticion{{ pascal }} {
     return {
 {%- for f in fields %}
       {{ f.camel }}: {{ f.mother }},
 {%- endfor %}
-      ...overrides,
+      ...cambios,
     };
   },
 
-  random(overrides: Partial<{{ pascal }}> = {}): {{ pascal }} {
-    return { id: crypto.randomUUID(), ...{{ pascal }}Mother.request(), ...overrides };
+  aleatorio(cambios: Partial<{{ pascal }}> = {}): {{ pascal }} {
+    return { id: crypto.randomUUID(), ...Madre{{ pascal }}.peticion(), ...cambios };
   },
 };
 
-/** The fake API's `/{{ plural }}`, holding `seed`. */
-export function {{ camel }}Collection(seed: {{ pascal }}[] = []) {
-  return collection("/{{ plural }}", "{{ snake }}", seed);
+/** El `/{{ plural }}` de la API falsa, con `semilla`. */
+export function coleccion{{ pascal }}(semilla: {{ pascal }}[] = []) {
+  return coleccion("/{{ plural }}", "{{ snake }}", semilla);
 }

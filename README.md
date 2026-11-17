@@ -127,7 +127,7 @@ curl http://localhost:8080/api/saludos/Mundo
 `puerto generar scaffold <Nombre>` also writes the entity's screens — list, detail and a
 create/edit form: containers that call the typed API client, views that only take props, and
 `bun test` tests against a fake API — and every field type gets its input. A rejected form says
-what went wrong next to the field (`features/<entity>/messages.ts`, from
+what went wrong next to the field (`contextos/<entidad>/mensajes.ts`, from
 the same codes as `errores.rs`), and list pages live in the URL. The OpenAPI spec is the contract
 between the two halves:
 

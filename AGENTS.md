@@ -75,7 +75,7 @@ crates/
                       sobrescritura), consistency (deriva, incluida la deriva textual de auth en
                       `rutas.rs`), auth (`nuevo --auth`: el contexto `usuario`, aprovisionamiento,
                       `GET /me`, Keycloak), web (el slice del frontend +
-                      web/src/generated/*), events (`eventos.rs`, los puertos de
+                      web/src/generado/*), events (`eventos.rs`, los puertos de
                       unidad de trabajo, `generar evento`), worker (`presentacion/worker`,
                       `registro.rs`, `generar consumidor`), mail (el contexto `correo`, `generar correo`),
                       naming (pascal/snake, el plural en castellano, los verbos CRUD), layout (dónde va
@@ -366,17 +366,17 @@ make format/fix    # cargo fmt --all
   cada uno), `generar/entidad`, `generar/caso-de-uso`, `generar/bootstrap`, `clean/incremental`;
   con `--db`, `db/arrancar`, `db/parar`, `db/reiniciar`, `sqlx/*`, `generar/migracion`
 - `web/` salvo con `--sin-web`: `[proyecto] web = true`, targets `make web/*` (ADR-0013). Es
-  solo presentación (ADR-0025): `scaffold` escribe las pantallas de una entidad CRUD en
-  `web/src/features/<entidad>/` (contenedores que llaman al cliente tipado de `api/` con
-  `useDependencies()` + `unwrap`, vistas que solo reciben los DTO de `schema.d.ts`, `messages.ts`,
-  tests contra `test-support/fake-api.ts`) y regenera `web/src/generated/{dependencies.ts,routes.tsx}`;
-  sin modelo, puerto ni adaptador por entidad, y dependency-cruiser impide que una vista llame a la
-  API. `bootstrap.rs` exporta la
-  especificación OpenAPI a `docs/api/openapi.json` desde los dobles de los casos de uso, y
-  `make web/sync` la convierte en los tipos del frontend. El frontend sigue en inglés (su
-  traducción es una fase aparte)
-- Los formularios web dicen qué falló junto al campo: `features/<entity>/messages.ts` (generado de
-  los mismos códigos que `errores.rs`) asocia un código a un mensaje y un campo; `FieldError` lo
+  solo presentación (ADR-0025) y va en castellano (Fase 22, `docs/glosario.md`): `scaffold` escribe
+  las pantallas de una entidad CRUD en `web/src/contextos/<entidad>/` (contenedores que llaman al
+  cliente tipado de `api/` con `useDependencias()` + `desenvolver`, vistas que solo reciben los DTO
+  de `esquema.d.ts`, `mensajes.ts`, tests contra `pruebas/api-falsa.ts`) y regenera
+  `web/src/generado/{dependencias.ts,rutas.tsx}`; sin modelo, puerto ni adaptador por entidad, y
+  dependency-cruiser impide que una vista llame a la API. Los textos de la interfaz son frases
+  neutras (`Crear producto`, `¿Borrar producto?`): Puerto no sabe el género de una entidad.
+  `bootstrap.rs` exporta la especificación OpenAPI a `docs/api/openapi.json` desde los dobles de
+  los casos de uso, y `make web/sync` la convierte en los tipos del frontend
+- Los formularios web dicen qué falló junto al campo: `contextos/<entidad>/mensajes.ts` (generado de
+  los mismos códigos que `errores.rs`) asocia un código a un mensaje y un campo; `ErrorCampo` lo
   muestra bajo ese input, los demás códigos van a la alerta, los desconocidos se muestran tal cual
 - `--eventos db|kafka` (necesita `--db`, ADR-0018): `[proyecto] eventos`, la migración del outbox
   (el `templates/infrastructure/outbox.sql` de la CLI), por cada entidad CRUD `eventos.rs`
@@ -420,22 +420,22 @@ make format/fix    # cargo fmt --all
   de rutas). `bootstrap.rs` construye `HasherArgon2`, `CredencialesPostgres` y `SesionesPostgres` —
   el autenticador. Las migraciones de `usuarios` y de `auth`, `AUTH_SESSION_TTL=30d` en `.env`,
   `make auth/conceder EMAIL= ROL=`, su propia sección Auth en el `AGENTS.md` raíz
-- `--auth local` con `web/`: los mismos ficheros compartidos que OIDC (`session.ts`, el middleware
-  bearer, `auth.tsx`, el menú de usuario, `renderScreen`), más `auth/{accounts,messages}.ts`
-  (el puerto `Accounts`, los códigos de la API como mensajes de formulario),
-  `auth/local-auth-gateway.ts` (el token en `localStorage`; `login(returnTo)` lo
-  borra y va a `/login?next=`) y las páginas `/login` y `/register`. `dependencies.ts` construye un
-  solo `localAuthGateway()` como `auth` y `accounts`; `routes.tsx` tiene `/login` y `/register` en
-  vez de `/auth/callback`. Sin `oidc-client-ts`, sin `web/.env`
-- `--auth oidc` con `web/`: escrito una vez, en `web/src/auth/` — `session.ts` (`AuthGateway`,
-  `CurrentUser`), `{oidc-auth-gateway,bearer-middleware}.ts` (`oidc-client-ts`, fijado, en
-  memoria; dependency-cruiser lo mantiene en el gateway), `auth.tsx`
-  (`AuthProvider`, `useAuth`, `RequireAuth`), `/auth/callback`, un menú de usuario en el layout,
-  `test-support/auth.ts` y un `renderScreen` que inicia sesión con un llamante con todos los roles;
-  `VITE_AUTH_*` en `web/.env`. Regenerados: `dependencies.ts` construye el gateway y firma el
-  cliente, `routes.tsx` envuelve en `<RequireAuth>` cada pantalla cuyo caso de uso está protegido,
-  `roles.ts` lista los roles. Las pantallas del scaffold ocultan Nuevo/Editar/Borrar tras
-  `can(role)` cuando el caso de uso tiene rol, con un test cada uno, y un test de 403 en un borrado
+- `--auth local` con `web/`: los mismos ficheros compartidos que OIDC (`sesion.ts`, el middleware
+  bearer, `auth.tsx`, el menú de usuario, `renderizarPantalla`), más `auth/{cuentas,mensajes}.ts`
+  (el puerto `Cuentas`, los códigos de la API como mensajes de formulario),
+  `auth/pasarela-local.ts` (el token en `localStorage`; `login(volverA)` lo borra y va a
+  `/login?siguiente=`) y las páginas `/login` y `/registro`. `dependencias.ts` construye una sola
+  `pasarelaLocal()` como `auth` y `cuentas`; `rutas.tsx` tiene `/login` y `/registro` en vez de
+  `/auth/callback`. Sin `oidc-client-ts`, sin `web/.env`
+- `--auth oidc` con `web/`: escrito una vez, en `web/src/auth/` — `sesion.ts` (`PasarelaAuth`,
+  `UsuarioActual`), `{pasarela-oidc,middleware-bearer}.ts` (`oidc-client-ts`, fijado, en memoria;
+  dependency-cruiser lo mantiene en la pasarela), `auth.tsx` (`ProveedorAuth`, `useAuth`,
+  `RequiereAuth`), `/auth/callback`, un menú de usuario en el marco, `pruebas/auth.ts` y un
+  `renderizarPantalla` que inicia sesión con un llamante con todos los roles; `VITE_AUTH_*` en
+  `web/.env`. Regenerados: `dependencias.ts` construye la pasarela y firma el cliente, `rutas.tsx`
+  envuelve en `<RequiereAuth>` cada pantalla cuyo caso de uso está protegido, `roles.ts` lista los
+  roles. Las pantallas del scaffold ocultan Crear/Editar/Borrar tras `puede(rol)` cuando el caso de
+  uso tiene rol, con un test cada uno, y un test de 403 en un borrado
   protegido
 - Referencias (ADR-0022): `cliente_id:ref:Cliente` (`[[entidad.campos]] referencia`) — el dominio,
   los Params y la madre guardan `IdCliente` (`IdCliente::generar()` en los tests), las filas y los
@@ -447,10 +447,10 @@ make format/fix    # cargo fmt --all
   `infra_cliente::pruebas::siembra::sembrar` (dependencia opcional activada por la feature
   `pruebas`). La lista filtra por cada referencia: `GET /pedidos?clienteId=` →
   `ParamsListarPedidos { cliente_id }` → `buscar_todos(pagina, FiltroPedido)` (Postgres:
-  `$3::uuid IS NULL OR cliente_id = $3`). Web: un `<select>` con los primeros `MAX_PAGE_LIMIT`
-  elementos del objetivo (`referenceOptions`, etiquetados por su primer campo `String` obligatorio
-  o, si no, por su id), `<ReferenceLink>` en el detalle, `cliente_id_no_encontrado` bajo el select
-  (`messages.ts`). `scaffold` rechaza un objetivo que aún no tiene código, y `scaffold` y `validar`,
+  `$3::uuid IS NULL OR cliente_id = $3`). Web: un `<select>` con los primeros `LIMITE_PAGINA_MAXIMO`
+  elementos del objetivo (`opcionesReferencia`, etiquetados por su primer campo `String` obligatorio
+  o, si no, por su id), `<EnlaceReferencia>` en el detalle, `cliente_id_no_encontrado` bajo el
+  select (`mensajes.ts`). `scaffold` rechaza un objetivo que aún no tiene código, y `scaffold` y `validar`,
   una referencia que cierra un ciclo; todavía no hay autorreferencias, `vec:ref:` ni `ref:Usuario`
 - `puerto generar correo <nombre>` (cualquier proyecto, ADR-0020): el contexto `correo`
   (`contextos/correo/{dominio,infraestructura}`, sin aplicación): `dominio_correo::<nombre>`

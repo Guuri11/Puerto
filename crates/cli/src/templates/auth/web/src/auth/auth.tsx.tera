@@ -9,96 +9,96 @@ import {
   useState,
 } from "react";
 import { useLocation, useSearch } from "wouter";
-import { useDependencies } from "../dependencies";
-import { ErrorAlert } from "../shared/ui/error-alert";
-import type { CurrentUser } from "./session";
+import { AlertaError } from "../compartido/ui/alerta-error";
+import { useDependencias } from "../dependencias";
+import type { UsuarioActual } from "./sesion";
 
 export interface Auth {
-  /** The signed-in user, `null` when nobody is. */
-  user: CurrentUser | null;
-  /** Whether the user holds `role`. Screens hide what the API would refuse; the API still decides. */
-  can(role: string): boolean;
-  /** Signs in, then comes back to the current page. */
+  /** Quien tiene la sesión iniciada; `null` si no la tiene nadie. */
+  usuario: UsuarioActual | null;
+  /** Si tiene `rol`. Las pantallas esconden lo que la API rechazaría; decide la API. */
+  puede(rol: string): boolean;
+  /** Inicia sesión y después vuelve a la página actual. */
   login(): Promise<void>;
   logout(): Promise<void>;
-  /** Asks the gateway again who is signed in: after a sign-in that did not leave the app. */
-  refresh(): Promise<void>;
-  /** Finishes a sign-in (`/auth/callback`): answers the page to go back to. */
-  completeLogin(): Promise<string>;
+  /** Vuelve a preguntar a la pasarela quién tiene la sesión: tras un inicio que no salió de la app. */
+  refrescar(): Promise<void>;
+  /** Termina un inicio de sesión (`/auth/callback`): responde la página a la que volver. */
+  completarLogin(): Promise<string>;
 }
 
-type State =
-  | { status: "loading" }
-  | { status: "ready"; user: CurrentUser | null }
-  | { status: "error"; error: unknown };
+type Estado =
+  | { estado: "cargando" }
+  | { estado: "listo"; usuario: UsuarioActual | null }
+  | { estado: "error"; error: unknown };
 
-const AuthContext = createContext<Auth | null>(null);
+const ContextoAuth = createContext<Auth | null>(null);
 
-/** Asks the gateway who is signed in once, before rendering the app: no screen flickers. */
-export function AuthProvider({ children }: { children: ReactNode }) {
-  const { auth } = useDependencies();
-  const [location] = useLocation();
-  const search = useSearch();
-  const [state, setState] = useState<State>({ status: "loading" });
+/** Pregunta a la pasarela quién tiene la sesión una vez, antes de pintar la app: nada parpadea. */
+export function ProveedorAuth({ children }: { children: ReactNode }) {
+  const { auth } = useDependencias();
+  const [ubicacion] = useLocation();
+  const busqueda = useSearch();
+  const [estado, setEstado] = useState<Estado>({ estado: "cargando" });
 
   useEffect(() => {
-    auth.currentUser().then(
-      (user) => setState({ status: "ready", user }),
-      (error: unknown) => setState({ status: "error", error }),
+    auth.usuarioActual().then(
+      (usuario) => setEstado({ estado: "listo", usuario }),
+      (error: unknown) => setEstado({ estado: "error", error }),
     );
   }, [auth]);
 
-  const here = search === "" ? location : `${location}?${search}`;
-  const login = useCallback(() => auth.login(here), [auth, here]);
-  const refresh = useCallback(async () => {
-    setState({ status: "ready", user: await auth.currentUser() });
+  const aqui = busqueda === "" ? ubicacion : `${ubicacion}?${busqueda}`;
+  const login = useCallback(() => auth.login(aqui), [auth, aqui]);
+  const refrescar = useCallback(async () => {
+    setEstado({ estado: "listo", usuario: await auth.usuarioActual() });
   }, [auth]);
-  const completeLogin = useCallback(async () => {
-    const back = await auth.completeLogin();
-    await refresh();
-    return back;
-  }, [auth, refresh]);
+  const completarLogin = useCallback(async () => {
+    const vuelta = await auth.completarLogin();
+    await refrescar();
+    return vuelta;
+  }, [auth, refrescar]);
   const logout = useCallback(async () => {
     await auth.logout();
-    setState({ status: "ready", user: null });
+    setEstado({ estado: "listo", usuario: null });
   }, [auth]);
-  const user = state.status === "ready" ? state.user : null;
-  const value = useMemo<Auth>(
+  const usuario = estado.estado === "listo" ? estado.usuario : null;
+  const valor = useMemo<Auth>(
     () => ({
-      user,
-      can: (role) => user?.roles.includes(role) ?? false,
+      usuario,
+      puede: (rol) => usuario?.roles.includes(rol) ?? false,
       login,
       logout,
-      refresh,
-      completeLogin,
+      refrescar,
+      completarLogin,
     }),
-    [user, login, logout, refresh, completeLogin],
+    [usuario, login, logout, refrescar, completarLogin],
   );
 
-  if (state.status === "loading") return <span className="loading loading-spinner" />;
-  if (state.status === "error") return <ErrorAlert error={state.error} />;
-  return <AuthContext value={value}>{children}</AuthContext>;
+  if (estado.estado === "cargando") return <span className="loading loading-spinner" />;
+  if (estado.estado === "error") return <AlertaError error={estado.error} />;
+  return <ContextoAuth value={valor}>{children}</ContextoAuth>;
 }
 
 export function useAuth(): Auth {
-  const auth = useContext(AuthContext);
+  const auth = useContext(ContextoAuth);
   if (auth === null) {
-    throw new Error("useAuth() called outside <AuthProvider>");
+    throw new Error("useAuth() llamado fuera de <ProveedorAuth>");
   }
   return auth;
 }
 
-/** Renders `children` for a signed-in user; anyone else is sent to sign in, and back here. */
-export function RequireAuth({ children }: { children: ReactNode }) {
-  const { user, login } = useAuth();
-  const started = useRef(false);
+/** Pinta `children` a quien tiene la sesión iniciada; a cualquier otro lo manda a iniciarla, y vuelve. */
+export function RequiereAuth({ children }: { children: ReactNode }) {
+  const { usuario, login } = useAuth();
+  const empezado = useRef(false);
 
   useEffect(() => {
-    // Once: StrictMode runs effects twice.
-    if (user !== null || started.current) return;
-    started.current = true;
+    // Una vez: StrictMode ejecuta los efectos dos veces.
+    if (usuario !== null || empezado.current) return;
+    empezado.current = true;
     void login();
-  }, [user, login]);
+  }, [usuario, login]);
 
-  return user === null ? <span className="loading loading-spinner" /> : children;
+  return usuario === null ? <span className="loading loading-spinner" /> : children;
 }

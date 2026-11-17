@@ -154,9 +154,9 @@ apuntándole. La lista filtra por cada referencia: `GET /pedidos?clienteId=…` 
 | **Parcheados**: se añade una línea y se conserva el resto | el `Cargo.toml` raíz (miembros, `[workspace.dependencies]`), `presentacion/api/Cargo.toml` y `presentacion/worker/Cargo.toml` (el crate de un contexto), el `lib.rs` del crate de aplicación, `rutas.rs` (los campos de `Api<Entidad>`), `presentacion/worker/src/consumidores.rs`, `puerto.toml` | editándolos libremente; conserva las líneas que añadió Puerto |
 | **Se escriben una vez**: tuyos desde el principio | `presentacion/api/src/app.rs` (tus middleware y rutas), la impl de un `generar caso-de-uso`, los consumidores, los correos y sus plantillas, las migraciones, los ficheros de auth | editándolos |
 
-Con `web/`: `web/src/generated/*`, `web/src/api/schema.d.ts` y `docs/api/openapi.json` también se
+Con `web/`: `web/src/generado/*`, `web/src/api/esquema.d.ts` y `docs/api/openapi.json` también se
 reescriben (`generar bootstrap`, `make web/sync`); las pantallas de una entidad son ficheros suyos
-como los demás; `web/src/routes.tsx` (tus propias pantallas) es tuyo. El detalle, en
+como los demás; `web/src/rutas.tsx` (tus propias pantallas) es tuyo. El detalle, en
 `web/AGENTS.md`.
 
 ### Cambiar los campos de una entidad
@@ -447,7 +447,7 @@ web/lint: web/require-install ## Comprueba tipos, lint y la regla de dependencia
 web/sync: web/require-install ## Tras un scaffold o un cambio de DTO: exporta la spec OpenAPI y regenera los tipos del frontend
 	@echo "${CYAN}Exportando docs/api/openapi.json...${NC}"
 	UPDATE_OPENAPI=1 $(CARGO) test -p api openapi
-	@echo "${CYAN}Generando web/src/api/schema.d.ts...${NC}"
+	@echo "${CYAN}Generando web/src/api/esquema.d.ts...${NC}"
 	cd web && $(BUN) run openapi:types
 	@echo "${CYAN}Formateando web/ (Biome, sin arreglos de lint)...${NC}"
 	cd web && $(BUN) run format
@@ -8987,434 +8987,443 @@ variantes = [
 nombre = "Email"
 tipo = "String"
 
-=== web/src/api/client.ts ===
+=== web/src/api/cliente.ts ===
 import createClient, { type Client, type ClientOptions } from "openapi-fetch";
-import type { components, paths } from "./schema";
+import type { components, paths } from "./esquema";
 
-/** The typed API client. `paths` is generated from the backend's spec (`make web/sync`). */
-export type ApiClient = Client<paths>;
+/** El cliente tipado de la API. `paths` sale de la especificación del backend (`make web/sync`). */
+export type ClienteApi = Client<paths>;
 
-/** The API's DTOs by name: `Schemas["DtoProducto"]`, `Schemas["PeticionCrearProducto"]`. */
-export type Schemas = components["schemas"];
+/** Los DTO de la API por nombre: `Esquemas["DtoProducto"]`, `Esquemas["PeticionCrearProducto"]`. */
+export type Esquemas = components["schemas"];
 
-/** `/api` is the backend: proxied to `:8080` by Vite in development. */
-export function createApiClient(options: ClientOptions = {}): ApiClient {
-  return createClient<paths>({ baseUrl: "/api", ...options });
+/** `/api` es el backend: en desarrollo, Vite lo pasa a `:8080`. */
+export function crearClienteApi(opciones: ClientOptions = {}): ClienteApi {
+  return createClient<paths>({ baseUrl: "/api", ...opciones });
 }
 
-=== web/src/features/billete/containers/billete-detail-container.test.tsx ===
+=== web/src/contextos/billete/contenedores/detalle-billete.test.tsx ===
 import { describe, expect, test } from "bun:test";
 import { fireEvent, screen, waitFor } from "@testing-library/react";
-import { BilleteMother, billeteCollection } from "../../../test-support/billete";
-import { fakeApi } from "../../../test-support/fake-api";
-import { renderScreen } from "../../../test-support/render";
-import { BilleteDetailContainer } from "./billete-detail-container";
+import { apiFalsa } from "../../../pruebas/api-falsa";
+import { coleccionBillete, MadreBillete } from "../../../pruebas/billete";
+import { renderizarPantalla } from "../../../pruebas/renderizar";
+import { ContenedorDetalleBillete } from "./detalle-billete";
 
-describe("BilleteDetailContainer", () => {
-  test("should show the billete when it exists", async () => {
-    // Arrange
-    const seeded = BilleteMother.random();
-    const api = fakeApi([billeteCollection([seeded])]);
+describe("ContenedorDetalleBillete", () => {
+  test("debería mostrar el detalle cuando existe", async () => {
+    // Preparar
+    const sembrado = MadreBillete.aleatorio();
+    const api = apiFalsa([coleccionBillete([sembrado])]);
 
-    // Act
-    renderScreen(<BilleteDetailContainer id={seeded.id} />, { api });
+    const pantalla = <ContenedorDetalleBillete id={sembrado.id} />;
 
-    // Assert
-    expect(await screen.findByText("Edit")).toBeTruthy();
+    // Actuar
+    renderizarPantalla(pantalla, { api });
+
+    // Comprobar
+    expect(await screen.findByText("Editar")).toBeTruthy();
   });
 
-  test("should show the not-found code when the billete does not exist", async () => {
-    // Arrange
-    const api = fakeApi([billeteCollection()]);
+  test("debería mostrar el código de no encontrado cuando no existe", async () => {
+    // Preparar
+    const api = apiFalsa([coleccionBillete()]);
+    const pantalla = <ContenedorDetalleBillete id={crypto.randomUUID()} />;
 
-    // Act
-    renderScreen(<BilleteDetailContainer id={crypto.randomUUID()} />, { api });
+    // Actuar
+    renderizarPantalla(pantalla, { api });
 
-    // Assert
+    // Comprobar
     expect((await screen.findByRole("alert")).textContent).toBe("billete.no_encontrado");
   });
 
-  test("should delete the billete only once the deletion is confirmed", async () => {
-    // Arrange
-    const seeded = BilleteMother.random();
-    const stored = billeteCollection([seeded]);
-    const api = fakeApi([stored]);
-    const { history } = renderScreen(<BilleteDetailContainer id={seeded.id} />, { api });
-    fireEvent.click(await screen.findByText("Delete", { selector: ".card-actions button" }));
-    expect(stored.items.has(seeded.id)).toBe(true);
+  test("debería borrar solo tras confirmar el borrado", async () => {
+    // Preparar
+    const sembrado = MadreBillete.aleatorio();
+    const guardados = coleccionBillete([sembrado]);
+    const api = apiFalsa([guardados]);
+    const pantalla = <ContenedorDetalleBillete id={sembrado.id} />;
+    const { historial } = renderizarPantalla(pantalla, { api });
+    fireEvent.click(await screen.findByText("Borrar", { selector: ".card-actions button" }));
+    expect(guardados.elementos.has(sembrado.id)).toBe(true);
 
-    // Act
-    fireEvent.click(screen.getByText("Delete", { selector: ".modal-action button" }));
+    // Actuar
+    fireEvent.click(screen.getByText("Borrar", { selector: ".modal-action button" }));
 
-    // Assert
-    await waitFor(() => expect(history.at(-1)).toBe("/billetes"));
-    expect(stored.items.has(seeded.id)).toBe(false);
+    // Comprobar
+    await waitFor(() => expect(historial.at(-1)).toBe("/billetes"));
+    expect(guardados.elementos.has(sembrado.id)).toBe(false);
   });
 });
 
-=== web/src/features/billete/containers/billete-detail-container.tsx ===
+=== web/src/contextos/billete/contenedores/detalle-billete.tsx ===
 import { useState } from "react";
 import { Link, useLocation } from "wouter";
-import { unwrap } from "../../../api/http";
-import { useDependencies } from "../../../dependencies";
-import { ConfirmDialog } from "../../../shared/ui/confirm-dialog";
-import { ErrorAlert } from "../../../shared/ui/error-alert";
-import { useAsync } from "../../../shared/use-async";
-import { BilleteDetailView } from "../views/billete-detail-view";
+import { desenvolver } from "../../../api/http";
+import { AlertaError } from "../../../compartido/ui/alerta-error";
+import { DialogoConfirmar } from "../../../compartido/ui/dialogo-confirmar";
+import { useCarga } from "../../../compartido/use-carga";
+import { useDependencias } from "../../../dependencias";
+import { VistaDetalleBillete } from "../vistas/detalle-billete";
 
-export function BilleteDetailContainer({ id }: { id: string }) {
-  const { api } = useDependencies();
-  const billete = useAsync(
-    () => unwrap(api.GET("/billetes/{id}", { params: { path: { id } } })),
+export function ContenedorDetalleBillete({ id }: { id: string }) {
+  const { api } = useDependencias();
+  const billete = useCarga(
+    () => desenvolver(api.GET("/billetes/{id}", { params: { path: { id } } })),
     [api, id],
   );
-  const [, navigate] = useLocation();
-  const [confirming, setConfirming] = useState(false);
-  const [failure, setFailure] = useState<unknown>(null);
+  const [, navegar] = useLocation();
+  const [confirmando, setConfirmando] = useState(false);
+  const [fallo, setFallo] = useState<unknown>(null);
 
-  const remove = async () => {
-    setConfirming(false);
+  const borrar = async () => {
+    setConfirmando(false);
     try {
-      await unwrap(api.DELETE("/billetes/{id}", { params: { path: { id } } }));
-      navigate("/billetes");
+      await desenvolver(api.DELETE("/billetes/{id}", { params: { path: { id } } }));
+      navegar("/billetes");
     } catch (error) {
-      setFailure(error);
+      setFallo(error);
     }
   };
 
   return (
     <section className="space-y-4">
       <h1 className="text-2xl font-bold">Billete</h1>
-      {failure !== null && <ErrorAlert error={failure} />}
-      {billete.status === "loading" && <span className="loading loading-spinner" />}
-      {billete.status === "error" && <ErrorAlert error={billete.error} />}
-      {billete.status === "ok" && (
+      {fallo !== null && <AlertaError error={fallo} />}
+      {billete.estado === "cargando" && <span className="loading loading-spinner" />}
+      {billete.estado === "error" && <AlertaError error={billete.error} />}
+      {billete.estado === "listo" && (
         <div className="card bg-base-100">
           <div className="card-body">
-            <BilleteDetailView billete={billete.data} />
+            <VistaDetalleBillete billete={billete.datos} />
             <div className="card-actions justify-end">
-              <Link href={`/billetes/${id}/edit`} className="btn">
-                Edit
+              <Link href={`/billetes/${id}/editar`} className="btn">
+                Editar
               </Link>
-              <button type="button" className="btn btn-error" onClick={() => setConfirming(true)}>
-                Delete
+              <button type="button" className="btn btn-error" onClick={() => setConfirmando(true)}>
+                Borrar
               </button>
             </div>
           </div>
         </div>
       )}
       <Link href="/billetes" className="link">
-        Back to billetes
+        Volver a billetes
       </Link>
-      <ConfirmDialog
-        open={confirming}
-        message="Delete this billete?"
-        onConfirm={remove}
-        onCancel={() => setConfirming(false)}
+      <DialogoConfirmar
+        abierto={confirmando}
+        mensaje="¿Borrar billete?"
+        alConfirmar={borrar}
+        alCancelar={() => setConfirmando(false)}
       />
     </section>
   );
 }
 
-=== web/src/features/billete/containers/billete-form-container.test.tsx ===
+=== web/src/contextos/billete/contenedores/formulario-billete.test.tsx ===
 import { describe, expect, test } from "bun:test";
 import { fireEvent, screen, waitFor } from "@testing-library/react";
-import type { Schemas } from "../../../api/client";
-import { BilleteMother, billeteCollection } from "../../../test-support/billete";
-import { fakeApi } from "../../../test-support/fake-api";
-import { renderScreen } from "../../../test-support/render";
-import { BilleteFormContainer } from "./billete-form-container";
+import type { Esquemas } from "../../../api/cliente";
+import { apiFalsa } from "../../../pruebas/api-falsa";
+import { coleccionBillete, MadreBillete } from "../../../pruebas/billete";
+import { renderizarPantalla } from "../../../pruebas/renderizar";
+import { ContenedorFormularioBillete } from "./formulario-billete";
 
-function type(label: string, value: string) {
-  fireEvent.change(screen.getByLabelText(label), { target: { value } });
+function escribir(etiqueta: string, valor: string) {
+  fireEvent.change(screen.getByLabelText(etiqueta), { target: { value: valor } });
 }
 
-/** Fills the empty form with `request`, the way a user would. */
-async function fillIn(request: Schemas["PeticionCrearBillete"]) {
-  await screen.findByText("Save");
-  type("State", request.state);
+/** Rellena el formulario vacío con `peticion`, como lo haría quien lo usa. */
+async function rellenar(peticion: Esquemas["PeticionCrearBillete"]) {
+  await screen.findByText("Guardar");
+  escribir("State", peticion.state);
 }
 
-describe("BilleteFormContainer", () => {
-  test("should create the billete from what was typed and show it", async () => {
-    // Arrange
-    const request = BilleteMother.request();
-    const stored = billeteCollection();
-    const api = fakeApi([stored]);
-    const { history } = renderScreen(<BilleteFormContainer />, { api });
-    await fillIn(request);
+describe("ContenedorFormularioBillete", () => {
+  test("debería crear con lo escrito e ir a su detalle", async () => {
+    // Preparar
+    const peticion = MadreBillete.peticion();
+    const guardados = coleccionBillete();
+    const api = apiFalsa([guardados]);
+    const pantalla = <ContenedorFormularioBillete />;
+    const { historial } = renderizarPantalla(pantalla, { api });
+    await rellenar(peticion);
 
-    // Act
-    fireEvent.click(screen.getByText("Save"));
+    // Actuar
+    fireEvent.click(screen.getByText("Guardar"));
 
-    // Assert
-    await waitFor(() => expect(history.at(-1)).toStartWith("/billetes/"));
-    const [created] = stored.items.values();
-    expect(created).toMatchObject(request);
-    expect(history.at(-1)).toBe(`/billetes/${created?.id}`);
+    // Comprobar
+    await waitFor(() => expect(historial.at(-1)).toStartWith("/billetes/"));
+    const [creado] = guardados.elementos.values();
+    expect(creado).toMatchObject(peticion);
+    expect(historial.at(-1)).toBe(`/billetes/${creado?.id}`);
   });
 
-  test("should save the edited billete when an existing one is submitted", async () => {
-    // Arrange
-    const seeded = BilleteMother.random();
-    const stored = billeteCollection([seeded]);
-    const api = fakeApi([stored]);
-    const { history } = renderScreen(<BilleteFormContainer id={seeded.id} />, { api });
+  test("debería guardar la edición cuando se envía el formulario", async () => {
+    // Preparar
+    const sembrado = MadreBillete.aleatorio();
+    const guardados = coleccionBillete([sembrado]);
+    const api = apiFalsa([guardados]);
+    const pantalla = <ContenedorFormularioBillete id={sembrado.id} />;
+    const { historial } = renderizarPantalla(pantalla, { api });
 
-    // Act
-    fireEvent.click(await screen.findByText("Save"));
+    // Actuar
+    fireEvent.click(await screen.findByText("Guardar"));
 
-    // Assert
-    await waitFor(() => expect(history.at(-1)).toBe(`/billetes/${seeded.id}`));
-    expect(stored.items.get(seeded.id)).toEqual(seeded);
-  });
-  test("should show the code itself when the API answers one the form does not know", async () => {
-    // Arrange
-    const request = BilleteMother.request();
-    const code = "billete.validacion.invalid";
-    const failures = { "POST /billetes": code };
-    const api = fakeApi([billeteCollection()], failures);
-    renderScreen(<BilleteFormContainer />, { api });
-    await fillIn(request);
-
-    // Act
-    fireEvent.click(screen.getByText("Save"));
-
-    // Assert
-    expect((await screen.findByRole("alert")).textContent).toBe(code);
+    // Comprobar
+    await waitFor(() => expect(historial.at(-1)).toBe(`/billetes/${sembrado.id}`));
+    expect(guardados.elementos.get(sembrado.id)).toEqual(sembrado);
   });
 
-  test("should say a billete with these values exists when the API answers a duplicate", async () => {
-    // Arrange
-    const request = BilleteMother.request();
-    const failures = { "POST /billetes": "billete.duplicado" };
-    const api = fakeApi([billeteCollection()], failures);
-    renderScreen(<BilleteFormContainer />, { api });
-    await fillIn(request);
+  test("debería mostrar el propio código cuando la API responde uno que el formulario no conoce", async () => {
+    // Preparar
+    const peticion = MadreBillete.peticion();
+    const codigo = "billete.validacion.invalido";
+    const fallos = { "POST /billetes": codigo };
+    const api = apiFalsa([coleccionBillete()], fallos);
+    renderizarPantalla(<ContenedorFormularioBillete />, { api });
+    await rellenar(peticion);
 
-    // Act
-    fireEvent.click(screen.getByText("Save"));
+    // Actuar
+    fireEvent.click(screen.getByText("Guardar"));
 
-    // Assert
-    expect((await screen.findByRole("alert")).textContent).toBe(
-      "A billete with these values already exists",
-    );
+    // Comprobar
+    expect((await screen.findByRole("alert")).textContent).toBe(codigo);
   });
 
-  test("should show the message under its input when the API rejects one field", async () => {
-    // Arrange
-    const request = BilleteMother.request();
-    const failures = { "POST /billetes": "billete.state_invalido" };
-    const api = fakeApi([billeteCollection()], failures);
-    renderScreen(<BilleteFormContainer />, { api });
-    await fillIn(request);
+  test("debería decir que los valores ya están en uso cuando la API responde un duplicado", async () => {
+    // Preparar
+    const peticion = MadreBillete.peticion();
+    const fallos = { "POST /billetes": "billete.duplicado" };
+    const api = apiFalsa([coleccionBillete()], fallos);
+    renderizarPantalla(<ContenedorFormularioBillete />, { api });
+    await rellenar(peticion);
 
-    // Act
-    fireEvent.click(screen.getByText("Save"));
+    // Actuar
+    fireEvent.click(screen.getByText("Guardar"));
 
-    // Assert
-    expect(await screen.findByText("State is not valid")).toBeTruthy();
-    const input = screen.getByLabelText("State");
-    expect(input.getAttribute("aria-invalid")).toBe("true");
+    // Comprobar
+    expect((await screen.findByRole("alert")).textContent).toBe("Estos valores ya están en uso");
+  });
+
+  test("debería mostrar el mensaje bajo su input cuando la API rechaza un campo", async () => {
+    // Preparar
+    const peticion = MadreBillete.peticion();
+    const fallos = { "POST /billetes": "billete.state_invalido" };
+    const api = apiFalsa([coleccionBillete()], fallos);
+    renderizarPantalla(<ContenedorFormularioBillete />, { api });
+    await rellenar(peticion);
+
+    // Actuar
+    fireEvent.click(screen.getByText("Guardar"));
+
+    // Comprobar
+    expect(await screen.findByText("State: no válido")).toBeTruthy();
+    const campo = screen.getByLabelText("State");
+    expect(campo.getAttribute("aria-invalid")).toBe("true");
     expect(screen.queryByRole("alert")).toBeNull();
   });
 });
 
-=== web/src/features/billete/containers/billete-form-container.tsx ===
+=== web/src/contextos/billete/contenedores/formulario-billete.tsx ===
 import { useState } from "react";
 import { Link, useLocation } from "wouter";
-import type { Schemas } from "../../../api/client";
-import { unwrap } from "../../../api/http";
-import { useDependencies } from "../../../dependencies";
-import { ErrorAlert, errorCode } from "../../../shared/ui/error-alert";
-import { useAsync } from "../../../shared/use-async";
-import { toProblem } from "../messages";
-import { BilleteFormView, toBilleteForm, toBilleteRequest } from "../views/billete-form-view";
+import type { Esquemas } from "../../../api/cliente";
+import { desenvolver } from "../../../api/http";
+import { AlertaError, codigoError } from "../../../compartido/ui/alerta-error";
+import { useCarga } from "../../../compartido/use-carga";
+import { useDependencias } from "../../../dependencias";
+import { aProblema } from "../mensajes";
+import {
+  aFormularioBillete,
+  aPeticionBillete,
+  VistaFormularioBillete,
+} from "../vistas/formulario-billete";
 
-type Billete = Schemas["DtoBillete"];
+type Billete = Esquemas["DtoBillete"];
 
-/** Creates a billete, or edits the one with `id`. */
-export function BilleteFormContainer({ id }: { id?: string }) {
-  const { api } = useDependencies();
-  const existing = useAsync(
+/** Crear, o editar con `id`: el formulario de billetes. */
+export function ContenedorFormularioBillete({ id }: { id?: string }) {
+  const { api } = useDependencias();
+  const existente = useCarga(
     () =>
       id === undefined
         ? Promise.resolve(null)
-        : unwrap(api.GET("/billetes/{id}", { params: { path: { id } } })),
+        : desenvolver(api.GET("/billetes/{id}", { params: { path: { id } } })),
     [api, id],
   );
-  const title = id === undefined ? "New billete" : "Edit billete";
+  const titulo = id === undefined ? "Crear billete" : "Editar billete";
 
   return (
     <section className="space-y-4">
-      <h1 className="text-2xl font-bold">{title}</h1>
-      {existing.status === "loading" && <span className="loading loading-spinner" />}
-      {existing.status === "error" && <ErrorAlert error={existing.error} />}
-      {existing.status === "ok" && <BilleteForm existing={existing.data} />}
+      <h1 className="text-2xl font-bold">{titulo}</h1>
+      {existente.estado === "cargando" && <span className="loading loading-spinner" />}
+      {existente.estado === "error" && <AlertaError error={existente.error} />}
+      {existente.estado === "listo" && <FormularioBillete existente={existente.datos} />}
       <Link href={id === undefined ? "/billetes" : `/billetes/${id}`} className="link">
-        Cancel
+        Cancelar
       </Link>
     </section>
   );
 }
 
-function BilleteForm({ existing }: { existing: Billete | null }) {
-  const { api } = useDependencies();
-  const [, navigate] = useLocation();
-  const [values, setValues] = useState(toBilleteForm(existing));
-  const [saving, setSaving] = useState(false);
-  const [failure, setFailure] = useState<unknown>(null);
-  const problem = failure === null ? null : toProblem(errorCode(failure));
+function FormularioBillete({ existente }: { existente: Billete | null }) {
+  const { api } = useDependencias();
+  const [, navegar] = useLocation();
+  const [valores, setValores] = useState(aFormularioBillete(existente));
+  const [guardando, setGuardando] = useState(false);
+  const [fallo, setFallo] = useState<unknown>(null);
+  const problema = fallo === null ? null : aProblema(codigoError(fallo));
 
-  const save = async () => {
-    setSaving(true);
-    setFailure(null);
+  const guardar = async () => {
+    setGuardando(true);
+    setFallo(null);
     try {
-      const body = toBilleteRequest(values);
-      const saved = await unwrap(
-        existing === null
-          ? api.POST("/billetes", { body })
-          : api.PUT("/billetes/{id}", { params: { path: { id: existing.id } }, body }),
+      const cuerpo = aPeticionBillete(valores);
+      const guardado = await desenvolver(
+        existente === null
+          ? api.POST("/billetes", { body: cuerpo })
+          : api.PUT("/billetes/{id}", { params: { path: { id: existente.id } }, body: cuerpo }),
       );
-      navigate(`/billetes/${saved.id}`);
+      navegar(`/billetes/${guardado.id}`);
     } catch (error) {
-      setFailure(error);
-      setSaving(false);
+      setFallo(error);
+      setGuardando(false);
     }
   };
 
   return (
     <div className="card bg-base-100">
       <div className="card-body">
-        {problem?.field === null && <ErrorAlert error={failure} message={problem.text} />}
-        <BilleteFormView
-          values={values}
-          saving={saving}
-          problem={problem}
-          onChange={setValues}
-          onSubmit={save}
+        {problema?.campo === null && <AlertaError error={fallo} mensaje={problema.texto} />}
+        <VistaFormularioBillete
+          valores={valores}
+          guardando={guardando}
+          problema={problema}
+          alCambiar={setValores}
+          alEnviar={guardar}
         />
       </div>
     </div>
   );
 }
 
-=== web/src/features/billete/containers/billete-list-container.test.tsx ===
+=== web/src/contextos/billete/contenedores/lista-billete.test.tsx ===
 import { describe, expect, test } from "bun:test";
 import { fireEvent, screen } from "@testing-library/react";
-import { BilleteMother, billeteCollection } from "../../../test-support/billete";
-import { fakeApi } from "../../../test-support/fake-api";
-import { renderScreen } from "../../../test-support/render";
-import { BilleteListContainer } from "./billete-list-container";
+import { apiFalsa } from "../../../pruebas/api-falsa";
+import { coleccionBillete, MadreBillete } from "../../../pruebas/billete";
+import { renderizarPantalla } from "../../../pruebas/renderizar";
+import { ContenedorListaBillete } from "./lista-billete";
 
-describe("BilleteListContainer", () => {
-  test("should show a row per billete when there are some", async () => {
-    // Arrange
-    const seed = [BilleteMother.random(), BilleteMother.random()];
-    const api = fakeApi([billeteCollection(seed)]);
+describe("ContenedorListaBillete", () => {
+  test("debería mostrar una fila por cada billete", async () => {
+    // Preparar
+    const semilla = [MadreBillete.aleatorio(), MadreBillete.aleatorio()];
+    const api = apiFalsa([coleccionBillete(semilla)]);
 
-    // Act
-    renderScreen(<BilleteListContainer />, { api });
+    // Actuar
+    renderizarPantalla(<ContenedorListaBillete />, { api });
 
-    // Assert
-    expect(await screen.findAllByText("View")).toHaveLength(2);
+    // Comprobar
+    expect(await screen.findAllByText("Ver")).toHaveLength(2);
   });
 
-  test("should show the next page when Next is pressed", async () => {
-    // Arrange
-    const seed = Array.from({ length: 25 }, () => BilleteMother.random());
-    const api = fakeApi([billeteCollection(seed)]);
-    renderScreen(<BilleteListContainer />, { api });
-    expect(await screen.findAllByText("View")).toHaveLength(20);
+  test("debería mostrar la página siguiente cuando se pulsa Siguiente", async () => {
+    // Preparar
+    const semilla = Array.from({ length: 25 }, () => MadreBillete.aleatorio());
+    const api = apiFalsa([coleccionBillete(semilla)]);
+    renderizarPantalla(<ContenedorListaBillete />, { api });
+    expect(await screen.findAllByText("Ver")).toHaveLength(20);
 
-    // Act
-    fireEvent.click(screen.getByRole("button", { name: "Next" }));
+    // Actuar
+    fireEvent.click(screen.getByRole("button", { name: "Siguiente" }));
 
-    // Assert
-    expect(await screen.findByText("21–25 of 25")).toBeTruthy();
-    expect(screen.getAllByText("View")).toHaveLength(5);
+    // Comprobar
+    expect(await screen.findByText("21–25 de 25")).toBeTruthy();
+    expect(screen.getAllByText("Ver")).toHaveLength(5);
   });
 
-  test("should open the page the URL names", async () => {
-    // Arrange
-    const seed = Array.from({ length: 25 }, () => BilleteMother.random());
-    const api = fakeApi([billeteCollection(seed)]);
-    const path = "/billetes?page=2";
+  test("debería abrir la página que nombra la URL", async () => {
+    // Preparar
+    const semilla = Array.from({ length: 25 }, () => MadreBillete.aleatorio());
+    const api = apiFalsa([coleccionBillete(semilla)]);
+    const ruta = "/billetes?pagina=2";
 
-    // Act
-    renderScreen(<BilleteListContainer />, { api }, path);
+    // Actuar
+    renderizarPantalla(<ContenedorListaBillete />, { api }, ruta);
 
-    // Assert
-    expect(await screen.findByText("21–25 of 25")).toBeTruthy();
+    // Comprobar
+    expect(await screen.findByText("21–25 de 25")).toBeTruthy();
   });
 
-  test("should say so when there is no billete", async () => {
-    // Arrange
-    const api = fakeApi([billeteCollection()]);
+  test("debería decirlo cuando no hay billetes", async () => {
+    // Preparar
+    const api = apiFalsa([coleccionBillete()]);
 
-    // Act
-    renderScreen(<BilleteListContainer />, { api });
+    // Actuar
+    renderizarPantalla(<ContenedorListaBillete />, { api });
 
-    // Assert
-    expect(await screen.findByText("No billetes yet.")).toBeTruthy();
+    // Comprobar
+    expect(await screen.findByText("Todavía no hay billetes.")).toBeTruthy();
   });
 
-  test("should show the error code when the billetes cannot be listed", async () => {
-    // Arrange
-    const failures = { "GET /billetes": "billete.repositorio" };
-    const api = fakeApi([billeteCollection()], failures);
+  test("debería mostrar el código del error cuando la API no da la lista", async () => {
+    // Preparar
+    const fallos = { "GET /billetes": "billete.repositorio" };
+    const api = apiFalsa([coleccionBillete()], fallos);
 
-    // Act
-    renderScreen(<BilleteListContainer />, { api });
+    // Actuar
+    renderizarPantalla(<ContenedorListaBillete />, { api });
 
-    // Assert
+    // Comprobar
     expect((await screen.findByRole("alert")).textContent).toBe("billete.repositorio");
   });
 });
 
-=== web/src/features/billete/containers/billete-list-container.tsx ===
+=== web/src/contextos/billete/contenedores/lista-billete.tsx ===
 import { Link, useLocation, useSearch } from "wouter";
-import { PAGE_SIZE, unwrap } from "../../../api/http";
-import { useDependencies } from "../../../dependencies";
-import { EmptyState } from "../../../shared/ui/empty-state";
-import { ErrorAlert } from "../../../shared/ui/error-alert";
-import { offsetFromSearch, Pagination, pageSearch } from "../../../shared/ui/pagination";
-import { useAsync } from "../../../shared/use-async";
-import { BilleteListView } from "../views/billete-list-view";
+import { desenvolver, TAMANO_PAGINA } from "../../../api/http";
+import { AlertaError } from "../../../compartido/ui/alerta-error";
+import { busquedaPagina, desplazamientoDeUrl, Paginacion } from "../../../compartido/ui/paginacion";
+import { SinElementos } from "../../../compartido/ui/sin-elementos";
+import { useCarga } from "../../../compartido/use-carga";
+import { useDependencias } from "../../../dependencias";
+import { VistaListaBillete } from "../vistas/lista-billete";
 
-/** The list, one page at a time; the page is in the URL (`?page=2`), so reload and back keep it. */
-export function BilleteListContainer() {
-  const { api } = useDependencies();
-  const [location, navigate] = useLocation();
-  const offset = offsetFromSearch(useSearch(), PAGE_SIZE);
-  const goTo = (next: number) => navigate(location + pageSearch(next, PAGE_SIZE));
-  const query = { limite: PAGE_SIZE, desplazamiento: offset };
-  const billetes = useAsync(
-    () => unwrap(api.GET("/billetes", { params: { query } })),
-    [api, offset],
+/** La lista, página a página; la página va en la URL (`?pagina=2`): recargar y volver la mantienen. */
+export function ContenedorListaBillete() {
+  const { api } = useDependencias();
+  const [ubicacion, navegar] = useLocation();
+  const desplazamiento = desplazamientoDeUrl(useSearch(), TAMANO_PAGINA);
+  const irA = (siguiente: number) => navegar(ubicacion + busquedaPagina(siguiente, TAMANO_PAGINA));
+  const consulta = { limite: TAMANO_PAGINA, desplazamiento };
+  const billetes = useCarga(
+    () => desenvolver(api.GET("/billetes", { params: { query: consulta } })),
+    [api, desplazamiento],
   );
 
   return (
     <section className="space-y-4">
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-bold">Billetes</h1>
-        <Link href="/billetes/new" className="btn btn-primary">
-          New billete
+        <Link href="/billetes/nuevo" className="btn btn-primary">
+          Crear billete
         </Link>
       </div>
-      {billetes.status === "loading" && <span className="loading loading-spinner" />}
-      {billetes.status === "error" && <ErrorAlert error={billetes.error} />}
-      {billetes.status === "ok" &&
-        (billetes.data.total === 0 ? (
-          <EmptyState message="No billetes yet." />
+      {billetes.estado === "cargando" && <span className="loading loading-spinner" />}
+      {billetes.estado === "error" && <AlertaError error={billetes.error} />}
+      {billetes.estado === "listo" &&
+        (billetes.datos.total === 0 ? (
+          <SinElementos mensaje="Todavía no hay billetes." />
         ) : (
           <>
-            <BilleteListView billetes={billetes.data.elementos} />
-            <Pagination
-              total={billetes.data.total}
-              limit={billetes.data.limite}
-              offset={billetes.data.desplazamiento}
-              onOffsetChange={goTo}
+            <VistaListaBillete billetes={billetes.datos.elementos} />
+            <Paginacion
+              total={billetes.datos.total}
+              limite={billetes.datos.limite}
+              desplazamiento={billetes.datos.desplazamiento}
+              alCambiarDesplazamiento={irA}
             />
           </>
         ))}
@@ -9422,40 +9431,40 @@ export function BilleteListContainer() {
   );
 }
 
-=== web/src/features/billete/messages.ts ===
-/** What a screen shows for an API error: under the input it is about, or in the alert. */
-export interface BilleteProblem {
-  field: string | null;
-  text: string;
+=== web/src/contextos/billete/mensajes.ts ===
+/** Lo que una pantalla muestra de un error de la API: bajo el input del que trata, o en la alerta. */
+export interface ProblemaBillete {
+  campo: string | null;
+  texto: string;
 }
 
 /**
- * The messages for the codes of the backend's `errores.rs`, generated from the same list. English:
- * this file is the place to translate them. A code missing here shows as it is.
+ * Los mensajes de los códigos de `errores.rs` del backend, generados de la misma lista. Un código que
+ * no está aquí se muestra tal cual.
  */
-const TEXTS: Record<string, string> = {
-  "billete.state_invalido": "State is not valid",
-  "billete.duplicado": "A billete with these values already exists",
-  "billete.no_encontrado": "This billete no longer exists",
-  "billete.repositorio": "The billete could not be saved, try again later",
-  "billete.desconocido": "Something went wrong",
+const TEXTOS: Record<string, string> = {
+  "billete.state_invalido": "State: no válido",
+  "billete.duplicado": "Estos valores ya están en uso",
+  "billete.no_encontrado": "Ya no existe",
+  "billete.repositorio": "No se ha podido guardar; inténtalo más tarde",
+  "billete.desconocido": "Algo ha ido mal",
 };
 
-/** The input each field's code is about. */
-const FIELDS: Record<string, string> = {
+/** El input del que trata el código de cada campo. */
+const CAMPOS: Record<string, string> = {
   "billete.state_invalido": "state",
 };
 
-export function toProblem(code: string): BilleteProblem {
-  return { field: FIELDS[code] ?? null, text: TEXTS[code] ?? code };
+export function aProblema(codigo: string): ProblemaBillete {
+  return { campo: CAMPOS[codigo] ?? null, texto: TEXTOS[codigo] ?? codigo };
 }
 
-=== web/src/features/billete/views/billete-detail-view.tsx ===
-import type { Schemas } from "../../../api/client";
+=== web/src/contextos/billete/vistas/detalle-billete.tsx ===
+import type { Esquemas } from "../../../api/cliente";
 
-type Billete = Schemas["DtoBillete"];
+type Billete = Esquemas["DtoBillete"];
 
-export function BilleteDetailView({ billete }: { billete: Billete }) {
+export function VistaDetalleBillete({ billete }: { billete: Billete }) {
   return (
     <dl className="grid grid-cols-[max-content_1fr] gap-x-6 gap-y-2">
       <dt className="font-semibold">State</dt>
@@ -9464,21 +9473,21 @@ export function BilleteDetailView({ billete }: { billete: Billete }) {
   );
 }
 
-=== web/src/features/billete/views/billete-form-view.tsx ===
-import type { Schemas } from "../../../api/client";
-import { FieldError } from "../../../shared/ui/field-error";
-import type { BilleteProblem } from "../messages";
+=== web/src/contextos/billete/vistas/formulario-billete.tsx ===
+import type { Esquemas } from "../../../api/cliente";
+import { ErrorCampo } from "../../../compartido/ui/error-campo";
+import type { ProblemaBillete } from "../mensajes";
 
-type Billete = Schemas["DtoBillete"];
-type BilleteRequest = Schemas["PeticionCrearBillete"];
+type Billete = Esquemas["DtoBillete"];
+type PeticionBillete = Esquemas["PeticionCrearBillete"];
 
-/** What the inputs hold: the text of every input, `checked` for a checkbox. */
-export interface BilleteFormValues {
+/** Lo que guardan los inputs: el texto de cada input, `checked` en una casilla. */
+export interface ValoresFormularioBillete {
   state: string;
 }
 
-/** The inputs for `billete`, empty when there is none yet. */
-export function toBilleteForm(billete: Billete | null): BilleteFormValues {
+/** Los inputs de `billete`, vacíos cuando todavía no hay ninguno. */
+export function aFormularioBillete(billete: Billete | null): ValoresFormularioBillete {
   if (billete === null) {
     return {
       state: "",
@@ -9489,64 +9498,64 @@ export function toBilleteForm(billete: Billete | null): BilleteFormValues {
   };
 }
 
-/** What a create or an update sends: the same fields for both. */
-export function toBilleteRequest(values: BilleteFormValues): BilleteRequest {
+/** Lo que mandan crear y actualizar: los mismos campos en los dos. */
+export function aPeticionBillete(valores: ValoresFormularioBillete): PeticionBillete {
   return {
-    state: values.state,
+    state: valores.state,
   };
 }
 
-export function BilleteFormView({
-  values,
-  saving,
-  problem,
-  onChange,
-  onSubmit,
+export function VistaFormularioBillete({
+  valores,
+  guardando,
+  problema,
+  alCambiar,
+  alEnviar,
 }: {
-  values: BilleteFormValues;
-  saving: boolean;
-  /** What the API said about the last submit: shown under its input. */
-  problem: BilleteProblem | null;
-  onChange: (values: BilleteFormValues) => void;
-  onSubmit: () => void;
+  valores: ValoresFormularioBillete;
+  guardando: boolean;
+  /** Lo que dijo la API del último envío: se muestra bajo su input. */
+  problema: ProblemaBillete | null;
+  alCambiar: (valores: ValoresFormularioBillete) => void;
+  alEnviar: () => void;
 }) {
   return (
     <form
       className="space-y-2"
       onSubmit={(event) => {
         event.preventDefault();
-        onSubmit();
+        alEnviar();
       }}
     >
       <label className="fieldset">
         <span className="fieldset-legend">State</span>
         <select
           className="select w-full"
-          aria-invalid={problem?.field === "state"}
+          aria-invalid={problema?.campo === "state"}
           required
-          value={values.state}
-          onChange={(event) => onChange({ ...values, state: event.target.value })}
+          value={valores.state}
+          onChange={(event) => alCambiar({ ...valores, state: event.target.value })}
         >
-          <option value="">Choose…</option>
+          <option value="">Elige una opción</option>
           <option value="Open">Open</option>
           <option value="Closed">Closed</option>
         </select>
       </label>
-      <FieldError problem={problem} field="state" />
-      <button type="submit" className="btn btn-primary" disabled={saving}>
-        Save
+      <ErrorCampo problema={problema} campo="state" />
+      <button type="submit" className="btn btn-primary" disabled={guardando}>
+        Guardar
       </button>
     </form>
   );
 }
 
-=== web/src/features/billete/views/billete-list-view.tsx ===
+=== web/src/contextos/billete/vistas/lista-billete.tsx ===
 import { Link } from "wouter";
-import type { Schemas } from "../../../api/client";
+import type { Esquemas } from "../../../api/cliente";
 
-type Billete = Schemas["DtoBillete"];
+type Billete = Esquemas["DtoBillete"];
 
-export function BilleteListView({ billetes }: { billetes: Billete[] }) {
+export function VistaListaBillete({ billetes }: { billetes: Billete[] }) {
   return (
     <div className="overflow-x-auto rounded-box bg-base-100">
       <table className="table">
@@ -9562,7 +9571,7 @@ export function BilleteListView({ billetes }: { billetes: Billete[] }) {
               <td>{billete.state}</td>
               <td className="text-right">
                 <Link href={`/billetes/${billete.id}`} className="link">
-                  View
+                  Ver
                 </Link>
               </td>
             </tr>
@@ -9573,427 +9582,436 @@ export function BilleteListView({ billetes }: { billetes: Billete[] }) {
   );
 }
 
-=== web/src/features/cliente/containers/cliente-detail-container.test.tsx ===
+=== web/src/contextos/cliente/contenedores/detalle-cliente.test.tsx ===
 import { describe, expect, test } from "bun:test";
 import { fireEvent, screen, waitFor } from "@testing-library/react";
-import { ClienteMother, clienteCollection } from "../../../test-support/cliente";
-import { fakeApi } from "../../../test-support/fake-api";
-import { renderScreen } from "../../../test-support/render";
-import { ClienteDetailContainer } from "./cliente-detail-container";
+import { apiFalsa } from "../../../pruebas/api-falsa";
+import { coleccionCliente, MadreCliente } from "../../../pruebas/cliente";
+import { renderizarPantalla } from "../../../pruebas/renderizar";
+import { ContenedorDetalleCliente } from "./detalle-cliente";
 
-describe("ClienteDetailContainer", () => {
-  test("should show the cliente when it exists", async () => {
-    // Arrange
-    const seeded = ClienteMother.random();
-    const api = fakeApi([clienteCollection([seeded])]);
+describe("ContenedorDetalleCliente", () => {
+  test("debería mostrar el detalle cuando existe", async () => {
+    // Preparar
+    const sembrado = MadreCliente.aleatorio();
+    const api = apiFalsa([coleccionCliente([sembrado])]);
 
-    // Act
-    renderScreen(<ClienteDetailContainer id={seeded.id} />, { api });
+    const pantalla = <ContenedorDetalleCliente id={sembrado.id} />;
 
-    // Assert
-    expect(await screen.findByText("Edit")).toBeTruthy();
+    // Actuar
+    renderizarPantalla(pantalla, { api });
+
+    // Comprobar
+    expect(await screen.findByText("Editar")).toBeTruthy();
   });
 
-  test("should show the not-found code when the cliente does not exist", async () => {
-    // Arrange
-    const api = fakeApi([clienteCollection()]);
+  test("debería mostrar el código de no encontrado cuando no existe", async () => {
+    // Preparar
+    const api = apiFalsa([coleccionCliente()]);
+    const pantalla = <ContenedorDetalleCliente id={crypto.randomUUID()} />;
 
-    // Act
-    renderScreen(<ClienteDetailContainer id={crypto.randomUUID()} />, { api });
+    // Actuar
+    renderizarPantalla(pantalla, { api });
 
-    // Assert
+    // Comprobar
     expect((await screen.findByRole("alert")).textContent).toBe("cliente.no_encontrado");
   });
 
-  test("should delete the cliente only once the deletion is confirmed", async () => {
-    // Arrange
-    const seeded = ClienteMother.random();
-    const stored = clienteCollection([seeded]);
-    const api = fakeApi([stored]);
-    const { history } = renderScreen(<ClienteDetailContainer id={seeded.id} />, { api });
-    fireEvent.click(await screen.findByText("Delete", { selector: ".card-actions button" }));
-    expect(stored.items.has(seeded.id)).toBe(true);
+  test("debería borrar solo tras confirmar el borrado", async () => {
+    // Preparar
+    const sembrado = MadreCliente.aleatorio();
+    const guardados = coleccionCliente([sembrado]);
+    const api = apiFalsa([guardados]);
+    const pantalla = <ContenedorDetalleCliente id={sembrado.id} />;
+    const { historial } = renderizarPantalla(pantalla, { api });
+    fireEvent.click(await screen.findByText("Borrar", { selector: ".card-actions button" }));
+    expect(guardados.elementos.has(sembrado.id)).toBe(true);
 
-    // Act
-    fireEvent.click(screen.getByText("Delete", { selector: ".modal-action button" }));
+    // Actuar
+    fireEvent.click(screen.getByText("Borrar", { selector: ".modal-action button" }));
 
-    // Assert
-    await waitFor(() => expect(history.at(-1)).toBe("/clientes"));
-    expect(stored.items.has(seeded.id)).toBe(false);
+    // Comprobar
+    await waitFor(() => expect(historial.at(-1)).toBe("/clientes"));
+    expect(guardados.elementos.has(sembrado.id)).toBe(false);
   });
 });
 
-=== web/src/features/cliente/containers/cliente-detail-container.tsx ===
+=== web/src/contextos/cliente/contenedores/detalle-cliente.tsx ===
 import { useState } from "react";
 import { Link, useLocation } from "wouter";
-import { unwrap } from "../../../api/http";
-import { useDependencies } from "../../../dependencies";
-import { ConfirmDialog } from "../../../shared/ui/confirm-dialog";
-import { ErrorAlert } from "../../../shared/ui/error-alert";
-import { useAsync } from "../../../shared/use-async";
-import { ClienteDetailView } from "../views/cliente-detail-view";
+import { desenvolver } from "../../../api/http";
+import { AlertaError } from "../../../compartido/ui/alerta-error";
+import { DialogoConfirmar } from "../../../compartido/ui/dialogo-confirmar";
+import { useCarga } from "../../../compartido/use-carga";
+import { useDependencias } from "../../../dependencias";
+import { VistaDetalleCliente } from "../vistas/detalle-cliente";
 
-export function ClienteDetailContainer({ id }: { id: string }) {
-  const { api } = useDependencies();
-  const cliente = useAsync(
-    () => unwrap(api.GET("/clientes/{id}", { params: { path: { id } } })),
+export function ContenedorDetalleCliente({ id }: { id: string }) {
+  const { api } = useDependencias();
+  const cliente = useCarga(
+    () => desenvolver(api.GET("/clientes/{id}", { params: { path: { id } } })),
     [api, id],
   );
-  const [, navigate] = useLocation();
-  const [confirming, setConfirming] = useState(false);
-  const [failure, setFailure] = useState<unknown>(null);
+  const [, navegar] = useLocation();
+  const [confirmando, setConfirmando] = useState(false);
+  const [fallo, setFallo] = useState<unknown>(null);
 
-  const remove = async () => {
-    setConfirming(false);
+  const borrar = async () => {
+    setConfirmando(false);
     try {
-      await unwrap(api.DELETE("/clientes/{id}", { params: { path: { id } } }));
-      navigate("/clientes");
+      await desenvolver(api.DELETE("/clientes/{id}", { params: { path: { id } } }));
+      navegar("/clientes");
     } catch (error) {
-      setFailure(error);
+      setFallo(error);
     }
   };
 
   return (
     <section className="space-y-4">
       <h1 className="text-2xl font-bold">Cliente</h1>
-      {failure !== null && <ErrorAlert error={failure} />}
-      {cliente.status === "loading" && <span className="loading loading-spinner" />}
-      {cliente.status === "error" && <ErrorAlert error={cliente.error} />}
-      {cliente.status === "ok" && (
+      {fallo !== null && <AlertaError error={fallo} />}
+      {cliente.estado === "cargando" && <span className="loading loading-spinner" />}
+      {cliente.estado === "error" && <AlertaError error={cliente.error} />}
+      {cliente.estado === "listo" && (
         <div className="card bg-base-100">
           <div className="card-body">
-            <ClienteDetailView cliente={cliente.data} />
+            <VistaDetalleCliente cliente={cliente.datos} />
             <div className="card-actions justify-end">
-              <Link href={`/clientes/${id}/edit`} className="btn">
-                Edit
+              <Link href={`/clientes/${id}/editar`} className="btn">
+                Editar
               </Link>
-              <button type="button" className="btn btn-error" onClick={() => setConfirming(true)}>
-                Delete
+              <button type="button" className="btn btn-error" onClick={() => setConfirmando(true)}>
+                Borrar
               </button>
             </div>
           </div>
         </div>
       )}
       <Link href="/clientes" className="link">
-        Back to clientes
+        Volver a clientes
       </Link>
-      <ConfirmDialog
-        open={confirming}
-        message="Delete this cliente?"
-        onConfirm={remove}
-        onCancel={() => setConfirming(false)}
+      <DialogoConfirmar
+        abierto={confirmando}
+        mensaje="¿Borrar cliente?"
+        alConfirmar={borrar}
+        alCancelar={() => setConfirmando(false)}
       />
     </section>
   );
 }
 
-=== web/src/features/cliente/containers/cliente-form-container.test.tsx ===
+=== web/src/contextos/cliente/contenedores/formulario-cliente.test.tsx ===
 import { describe, expect, test } from "bun:test";
 import { fireEvent, screen, waitFor } from "@testing-library/react";
-import type { Schemas } from "../../../api/client";
-import { textOf, toDateTimeLocal } from "../../../shared/forms";
-import { ClienteMother, clienteCollection } from "../../../test-support/cliente";
-import { fakeApi } from "../../../test-support/fake-api";
-import { renderScreen } from "../../../test-support/render";
-import { ClienteFormContainer } from "./cliente-form-container";
+import type { Esquemas } from "../../../api/cliente";
+import { aFechaHoraLocal, textoDe } from "../../../compartido/formularios";
+import { apiFalsa } from "../../../pruebas/api-falsa";
+import { coleccionCliente, MadreCliente } from "../../../pruebas/cliente";
+import { renderizarPantalla } from "../../../pruebas/renderizar";
+import { ContenedorFormularioCliente } from "./formulario-cliente";
 
-function type(label: string, value: string) {
-  fireEvent.change(screen.getByLabelText(label), { target: { value } });
+function escribir(etiqueta: string, valor: string) {
+  fireEvent.change(screen.getByLabelText(etiqueta), { target: { value: valor } });
 }
 
-/** Fills the empty form with `request`, the way a user would. */
-async function fillIn(request: Schemas["PeticionCrearCliente"]) {
-  await screen.findByText("Save");
-  type("Email", request.email);
-  type("Name", request.name);
-  type("Code", request.code);
-  type("Age", String(request.age));
-  type("Joined", toDateTimeLocal(request.joined));
-  type("Middle", textOf(request.middle));
-  type("Labels", request.labels.join(", "));
-  type("Status", request.status);
+/** Rellena el formulario vacío con `peticion`, como lo haría quien lo usa. */
+async function rellenar(peticion: Esquemas["PeticionCrearCliente"]) {
+  await screen.findByText("Guardar");
+  escribir("Email", peticion.email);
+  escribir("Name", peticion.name);
+  escribir("Code", peticion.code);
+  escribir("Age", String(peticion.age));
+  escribir("Joined", aFechaHoraLocal(peticion.joined));
+  escribir("Middle", textoDe(peticion.middle));
+  escribir("Labels", peticion.labels.join(", "));
+  escribir("Status", peticion.status);
 }
 
-describe("ClienteFormContainer", () => {
-  test("should create the cliente from what was typed and show it", async () => {
-    // Arrange
-    const request = ClienteMother.request();
-    const stored = clienteCollection();
-    const api = fakeApi([stored]);
-    const { history } = renderScreen(<ClienteFormContainer />, { api });
-    await fillIn(request);
+describe("ContenedorFormularioCliente", () => {
+  test("debería crear con lo escrito e ir a su detalle", async () => {
+    // Preparar
+    const peticion = MadreCliente.peticion();
+    const guardados = coleccionCliente();
+    const api = apiFalsa([guardados]);
+    const pantalla = <ContenedorFormularioCliente />;
+    const { historial } = renderizarPantalla(pantalla, { api });
+    await rellenar(peticion);
 
-    // Act
-    fireEvent.click(screen.getByText("Save"));
+    // Actuar
+    fireEvent.click(screen.getByText("Guardar"));
 
-    // Assert
-    await waitFor(() => expect(history.at(-1)).toStartWith("/clientes/"));
-    const [created] = stored.items.values();
-    expect(created).toMatchObject(request);
-    expect(history.at(-1)).toBe(`/clientes/${created?.id}`);
+    // Comprobar
+    await waitFor(() => expect(historial.at(-1)).toStartWith("/clientes/"));
+    const [creado] = guardados.elementos.values();
+    expect(creado).toMatchObject(peticion);
+    expect(historial.at(-1)).toBe(`/clientes/${creado?.id}`);
   });
 
-  test("should save the edited cliente when an existing one is submitted", async () => {
-    // Arrange
-    const seeded = ClienteMother.random();
-    const stored = clienteCollection([seeded]);
-    const api = fakeApi([stored]);
-    const { history } = renderScreen(<ClienteFormContainer id={seeded.id} />, { api });
+  test("debería guardar la edición cuando se envía el formulario", async () => {
+    // Preparar
+    const sembrado = MadreCliente.aleatorio();
+    const guardados = coleccionCliente([sembrado]);
+    const api = apiFalsa([guardados]);
+    const pantalla = <ContenedorFormularioCliente id={sembrado.id} />;
+    const { historial } = renderizarPantalla(pantalla, { api });
 
-    // Act
-    fireEvent.click(await screen.findByText("Save"));
+    // Actuar
+    fireEvent.click(await screen.findByText("Guardar"));
 
-    // Assert
-    await waitFor(() => expect(history.at(-1)).toBe(`/clientes/${seeded.id}`));
-    expect(stored.items.get(seeded.id)).toEqual(seeded);
-  });
-  test("should show the code itself when the API answers one the form does not know", async () => {
-    // Arrange
-    const request = ClienteMother.request();
-    const code = "cliente.validacion.invalid";
-    const failures = { "POST /clientes": code };
-    const api = fakeApi([clienteCollection()], failures);
-    renderScreen(<ClienteFormContainer />, { api });
-    await fillIn(request);
-
-    // Act
-    fireEvent.click(screen.getByText("Save"));
-
-    // Assert
-    expect((await screen.findByRole("alert")).textContent).toBe(code);
+    // Comprobar
+    await waitFor(() => expect(historial.at(-1)).toBe(`/clientes/${sembrado.id}`));
+    expect(guardados.elementos.get(sembrado.id)).toEqual(sembrado);
   });
 
-  test("should say a cliente with these values exists when the API answers a duplicate", async () => {
-    // Arrange
-    const request = ClienteMother.request();
-    const failures = { "POST /clientes": "cliente.duplicado" };
-    const api = fakeApi([clienteCollection()], failures);
-    renderScreen(<ClienteFormContainer />, { api });
-    await fillIn(request);
+  test("debería mostrar el propio código cuando la API responde uno que el formulario no conoce", async () => {
+    // Preparar
+    const peticion = MadreCliente.peticion();
+    const codigo = "cliente.validacion.invalido";
+    const fallos = { "POST /clientes": codigo };
+    const api = apiFalsa([coleccionCliente()], fallos);
+    renderizarPantalla(<ContenedorFormularioCliente />, { api });
+    await rellenar(peticion);
 
-    // Act
-    fireEvent.click(screen.getByText("Save"));
+    // Actuar
+    fireEvent.click(screen.getByText("Guardar"));
 
-    // Assert
-    expect((await screen.findByRole("alert")).textContent).toBe(
-      "A cliente with these values already exists",
-    );
+    // Comprobar
+    expect((await screen.findByRole("alert")).textContent).toBe(codigo);
   });
 
-  test("should show the message under its input when the API rejects one field", async () => {
-    // Arrange
-    const request = ClienteMother.request();
-    const failures = { "POST /clientes": "cliente.email_invalido" };
-    const api = fakeApi([clienteCollection()], failures);
-    renderScreen(<ClienteFormContainer />, { api });
-    await fillIn(request);
+  test("debería decir que los valores ya están en uso cuando la API responde un duplicado", async () => {
+    // Preparar
+    const peticion = MadreCliente.peticion();
+    const fallos = { "POST /clientes": "cliente.duplicado" };
+    const api = apiFalsa([coleccionCliente()], fallos);
+    renderizarPantalla(<ContenedorFormularioCliente />, { api });
+    await rellenar(peticion);
 
-    // Act
-    fireEvent.click(screen.getByText("Save"));
+    // Actuar
+    fireEvent.click(screen.getByText("Guardar"));
 
-    // Assert
-    expect(await screen.findByText("Email is not valid")).toBeTruthy();
-    const input = screen.getByLabelText("Email");
-    expect(input.getAttribute("aria-invalid")).toBe("true");
+    // Comprobar
+    expect((await screen.findByRole("alert")).textContent).toBe("Estos valores ya están en uso");
+  });
+
+  test("debería mostrar el mensaje bajo su input cuando la API rechaza un campo", async () => {
+    // Preparar
+    const peticion = MadreCliente.peticion();
+    const fallos = { "POST /clientes": "cliente.email_invalido" };
+    const api = apiFalsa([coleccionCliente()], fallos);
+    renderizarPantalla(<ContenedorFormularioCliente />, { api });
+    await rellenar(peticion);
+
+    // Actuar
+    fireEvent.click(screen.getByText("Guardar"));
+
+    // Comprobar
+    expect(await screen.findByText("Email: no válido")).toBeTruthy();
+    const campo = screen.getByLabelText("Email");
+    expect(campo.getAttribute("aria-invalid")).toBe("true");
     expect(screen.queryByRole("alert")).toBeNull();
   });
 });
 
-=== web/src/features/cliente/containers/cliente-form-container.tsx ===
+=== web/src/contextos/cliente/contenedores/formulario-cliente.tsx ===
 import { useState } from "react";
 import { Link, useLocation } from "wouter";
-import type { Schemas } from "../../../api/client";
-import { unwrap } from "../../../api/http";
-import { useDependencies } from "../../../dependencies";
-import { ErrorAlert, errorCode } from "../../../shared/ui/error-alert";
-import { useAsync } from "../../../shared/use-async";
-import { toProblem } from "../messages";
-import { ClienteFormView, toClienteForm, toClienteRequest } from "../views/cliente-form-view";
+import type { Esquemas } from "../../../api/cliente";
+import { desenvolver } from "../../../api/http";
+import { AlertaError, codigoError } from "../../../compartido/ui/alerta-error";
+import { useCarga } from "../../../compartido/use-carga";
+import { useDependencias } from "../../../dependencias";
+import { aProblema } from "../mensajes";
+import {
+  aFormularioCliente,
+  aPeticionCliente,
+  VistaFormularioCliente,
+} from "../vistas/formulario-cliente";
 
-type Cliente = Schemas["DtoCliente"];
+type Cliente = Esquemas["DtoCliente"];
 
-/** Creates a cliente, or edits the one with `id`. */
-export function ClienteFormContainer({ id }: { id?: string }) {
-  const { api } = useDependencies();
-  const existing = useAsync(
+/** Crear, o editar con `id`: el formulario de clientes. */
+export function ContenedorFormularioCliente({ id }: { id?: string }) {
+  const { api } = useDependencias();
+  const existente = useCarga(
     () =>
       id === undefined
         ? Promise.resolve(null)
-        : unwrap(api.GET("/clientes/{id}", { params: { path: { id } } })),
+        : desenvolver(api.GET("/clientes/{id}", { params: { path: { id } } })),
     [api, id],
   );
-  const title = id === undefined ? "New cliente" : "Edit cliente";
+  const titulo = id === undefined ? "Crear cliente" : "Editar cliente";
 
   return (
     <section className="space-y-4">
-      <h1 className="text-2xl font-bold">{title}</h1>
-      {existing.status === "loading" && <span className="loading loading-spinner" />}
-      {existing.status === "error" && <ErrorAlert error={existing.error} />}
-      {existing.status === "ok" && <ClienteForm existing={existing.data} />}
+      <h1 className="text-2xl font-bold">{titulo}</h1>
+      {existente.estado === "cargando" && <span className="loading loading-spinner" />}
+      {existente.estado === "error" && <AlertaError error={existente.error} />}
+      {existente.estado === "listo" && <FormularioCliente existente={existente.datos} />}
       <Link href={id === undefined ? "/clientes" : `/clientes/${id}`} className="link">
-        Cancel
+        Cancelar
       </Link>
     </section>
   );
 }
 
-function ClienteForm({ existing }: { existing: Cliente | null }) {
-  const { api } = useDependencies();
-  const [, navigate] = useLocation();
-  const [values, setValues] = useState(toClienteForm(existing));
-  const [saving, setSaving] = useState(false);
-  const [failure, setFailure] = useState<unknown>(null);
-  const problem = failure === null ? null : toProblem(errorCode(failure));
+function FormularioCliente({ existente }: { existente: Cliente | null }) {
+  const { api } = useDependencias();
+  const [, navegar] = useLocation();
+  const [valores, setValores] = useState(aFormularioCliente(existente));
+  const [guardando, setGuardando] = useState(false);
+  const [fallo, setFallo] = useState<unknown>(null);
+  const problema = fallo === null ? null : aProblema(codigoError(fallo));
 
-  const save = async () => {
-    setSaving(true);
-    setFailure(null);
+  const guardar = async () => {
+    setGuardando(true);
+    setFallo(null);
     try {
-      const body = toClienteRequest(values);
-      const saved = await unwrap(
-        existing === null
-          ? api.POST("/clientes", { body })
-          : api.PUT("/clientes/{id}", { params: { path: { id: existing.id } }, body }),
+      const cuerpo = aPeticionCliente(valores);
+      const guardado = await desenvolver(
+        existente === null
+          ? api.POST("/clientes", { body: cuerpo })
+          : api.PUT("/clientes/{id}", { params: { path: { id: existente.id } }, body: cuerpo }),
       );
-      navigate(`/clientes/${saved.id}`);
+      navegar(`/clientes/${guardado.id}`);
     } catch (error) {
-      setFailure(error);
-      setSaving(false);
+      setFallo(error);
+      setGuardando(false);
     }
   };
 
   return (
     <div className="card bg-base-100">
       <div className="card-body">
-        {problem?.field === null && <ErrorAlert error={failure} message={problem.text} />}
-        <ClienteFormView
-          values={values}
-          saving={saving}
-          problem={problem}
-          onChange={setValues}
-          onSubmit={save}
+        {problema?.campo === null && <AlertaError error={fallo} mensaje={problema.texto} />}
+        <VistaFormularioCliente
+          valores={valores}
+          guardando={guardando}
+          problema={problema}
+          alCambiar={setValores}
+          alEnviar={guardar}
         />
       </div>
     </div>
   );
 }
 
-=== web/src/features/cliente/containers/cliente-list-container.test.tsx ===
+=== web/src/contextos/cliente/contenedores/lista-cliente.test.tsx ===
 import { describe, expect, test } from "bun:test";
 import { fireEvent, screen } from "@testing-library/react";
-import { ClienteMother, clienteCollection } from "../../../test-support/cliente";
-import { fakeApi } from "../../../test-support/fake-api";
-import { renderScreen } from "../../../test-support/render";
-import { ClienteListContainer } from "./cliente-list-container";
+import { apiFalsa } from "../../../pruebas/api-falsa";
+import { coleccionCliente, MadreCliente } from "../../../pruebas/cliente";
+import { renderizarPantalla } from "../../../pruebas/renderizar";
+import { ContenedorListaCliente } from "./lista-cliente";
 
-describe("ClienteListContainer", () => {
-  test("should show a row per cliente when there are some", async () => {
-    // Arrange
-    const seed = [ClienteMother.random(), ClienteMother.random()];
-    const api = fakeApi([clienteCollection(seed)]);
+describe("ContenedorListaCliente", () => {
+  test("debería mostrar una fila por cada cliente", async () => {
+    // Preparar
+    const semilla = [MadreCliente.aleatorio(), MadreCliente.aleatorio()];
+    const api = apiFalsa([coleccionCliente(semilla)]);
 
-    // Act
-    renderScreen(<ClienteListContainer />, { api });
+    // Actuar
+    renderizarPantalla(<ContenedorListaCliente />, { api });
 
-    // Assert
-    expect(await screen.findAllByText("View")).toHaveLength(2);
+    // Comprobar
+    expect(await screen.findAllByText("Ver")).toHaveLength(2);
   });
 
-  test("should show the next page when Next is pressed", async () => {
-    // Arrange
-    const seed = Array.from({ length: 25 }, () => ClienteMother.random());
-    const api = fakeApi([clienteCollection(seed)]);
-    renderScreen(<ClienteListContainer />, { api });
-    expect(await screen.findAllByText("View")).toHaveLength(20);
+  test("debería mostrar la página siguiente cuando se pulsa Siguiente", async () => {
+    // Preparar
+    const semilla = Array.from({ length: 25 }, () => MadreCliente.aleatorio());
+    const api = apiFalsa([coleccionCliente(semilla)]);
+    renderizarPantalla(<ContenedorListaCliente />, { api });
+    expect(await screen.findAllByText("Ver")).toHaveLength(20);
 
-    // Act
-    fireEvent.click(screen.getByRole("button", { name: "Next" }));
+    // Actuar
+    fireEvent.click(screen.getByRole("button", { name: "Siguiente" }));
 
-    // Assert
-    expect(await screen.findByText("21–25 of 25")).toBeTruthy();
-    expect(screen.getAllByText("View")).toHaveLength(5);
+    // Comprobar
+    expect(await screen.findByText("21–25 de 25")).toBeTruthy();
+    expect(screen.getAllByText("Ver")).toHaveLength(5);
   });
 
-  test("should open the page the URL names", async () => {
-    // Arrange
-    const seed = Array.from({ length: 25 }, () => ClienteMother.random());
-    const api = fakeApi([clienteCollection(seed)]);
-    const path = "/clientes?page=2";
+  test("debería abrir la página que nombra la URL", async () => {
+    // Preparar
+    const semilla = Array.from({ length: 25 }, () => MadreCliente.aleatorio());
+    const api = apiFalsa([coleccionCliente(semilla)]);
+    const ruta = "/clientes?pagina=2";
 
-    // Act
-    renderScreen(<ClienteListContainer />, { api }, path);
+    // Actuar
+    renderizarPantalla(<ContenedorListaCliente />, { api }, ruta);
 
-    // Assert
-    expect(await screen.findByText("21–25 of 25")).toBeTruthy();
+    // Comprobar
+    expect(await screen.findByText("21–25 de 25")).toBeTruthy();
   });
 
-  test("should say so when there is no cliente", async () => {
-    // Arrange
-    const api = fakeApi([clienteCollection()]);
+  test("debería decirlo cuando no hay clientes", async () => {
+    // Preparar
+    const api = apiFalsa([coleccionCliente()]);
 
-    // Act
-    renderScreen(<ClienteListContainer />, { api });
+    // Actuar
+    renderizarPantalla(<ContenedorListaCliente />, { api });
 
-    // Assert
-    expect(await screen.findByText("No clientes yet.")).toBeTruthy();
+    // Comprobar
+    expect(await screen.findByText("Todavía no hay clientes.")).toBeTruthy();
   });
 
-  test("should show the error code when the clientes cannot be listed", async () => {
-    // Arrange
-    const failures = { "GET /clientes": "cliente.repositorio" };
-    const api = fakeApi([clienteCollection()], failures);
+  test("debería mostrar el código del error cuando la API no da la lista", async () => {
+    // Preparar
+    const fallos = { "GET /clientes": "cliente.repositorio" };
+    const api = apiFalsa([coleccionCliente()], fallos);
 
-    // Act
-    renderScreen(<ClienteListContainer />, { api });
+    // Actuar
+    renderizarPantalla(<ContenedorListaCliente />, { api });
 
-    // Assert
+    // Comprobar
     expect((await screen.findByRole("alert")).textContent).toBe("cliente.repositorio");
   });
 });
 
-=== web/src/features/cliente/containers/cliente-list-container.tsx ===
+=== web/src/contextos/cliente/contenedores/lista-cliente.tsx ===
 import { Link, useLocation, useSearch } from "wouter";
-import { PAGE_SIZE, unwrap } from "../../../api/http";
-import { useDependencies } from "../../../dependencies";
-import { EmptyState } from "../../../shared/ui/empty-state";
-import { ErrorAlert } from "../../../shared/ui/error-alert";
-import { offsetFromSearch, Pagination, pageSearch } from "../../../shared/ui/pagination";
-import { useAsync } from "../../../shared/use-async";
-import { ClienteListView } from "../views/cliente-list-view";
+import { desenvolver, TAMANO_PAGINA } from "../../../api/http";
+import { AlertaError } from "../../../compartido/ui/alerta-error";
+import { busquedaPagina, desplazamientoDeUrl, Paginacion } from "../../../compartido/ui/paginacion";
+import { SinElementos } from "../../../compartido/ui/sin-elementos";
+import { useCarga } from "../../../compartido/use-carga";
+import { useDependencias } from "../../../dependencias";
+import { VistaListaCliente } from "../vistas/lista-cliente";
 
-/** The list, one page at a time; the page is in the URL (`?page=2`), so reload and back keep it. */
-export function ClienteListContainer() {
-  const { api } = useDependencies();
-  const [location, navigate] = useLocation();
-  const offset = offsetFromSearch(useSearch(), PAGE_SIZE);
-  const goTo = (next: number) => navigate(location + pageSearch(next, PAGE_SIZE));
-  const query = { limite: PAGE_SIZE, desplazamiento: offset };
-  const clientes = useAsync(
-    () => unwrap(api.GET("/clientes", { params: { query } })),
-    [api, offset],
+/** La lista, página a página; la página va en la URL (`?pagina=2`): recargar y volver la mantienen. */
+export function ContenedorListaCliente() {
+  const { api } = useDependencias();
+  const [ubicacion, navegar] = useLocation();
+  const desplazamiento = desplazamientoDeUrl(useSearch(), TAMANO_PAGINA);
+  const irA = (siguiente: number) => navegar(ubicacion + busquedaPagina(siguiente, TAMANO_PAGINA));
+  const consulta = { limite: TAMANO_PAGINA, desplazamiento };
+  const clientes = useCarga(
+    () => desenvolver(api.GET("/clientes", { params: { query: consulta } })),
+    [api, desplazamiento],
   );
 
   return (
     <section className="space-y-4">
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-bold">Clientes</h1>
-        <Link href="/clientes/new" className="btn btn-primary">
-          New cliente
+        <Link href="/clientes/nuevo" className="btn btn-primary">
+          Crear cliente
         </Link>
       </div>
-      {clientes.status === "loading" && <span className="loading loading-spinner" />}
-      {clientes.status === "error" && <ErrorAlert error={clientes.error} />}
-      {clientes.status === "ok" &&
-        (clientes.data.total === 0 ? (
-          <EmptyState message="No clientes yet." />
+      {clientes.estado === "cargando" && <span className="loading loading-spinner" />}
+      {clientes.estado === "error" && <AlertaError error={clientes.error} />}
+      {clientes.estado === "listo" &&
+        (clientes.datos.total === 0 ? (
+          <SinElementos mensaje="Todavía no hay clientes." />
         ) : (
           <>
-            <ClienteListView clientes={clientes.data.elementos} />
-            <Pagination
-              total={clientes.data.total}
-              limit={clientes.data.limite}
-              offset={clientes.data.desplazamiento}
-              onOffsetChange={goTo}
+            <VistaListaCliente clientes={clientes.datos.elementos} />
+            <Paginacion
+              total={clientes.datos.total}
+              limite={clientes.datos.limite}
+              desplazamiento={clientes.datos.desplazamiento}
+              alCambiarDesplazamiento={irA}
             />
           </>
         ))}
@@ -10001,34 +10019,34 @@ export function ClienteListContainer() {
   );
 }
 
-=== web/src/features/cliente/messages.ts ===
-/** What a screen shows for an API error: under the input it is about, or in the alert. */
-export interface ClienteProblem {
-  field: string | null;
-  text: string;
+=== web/src/contextos/cliente/mensajes.ts ===
+/** Lo que una pantalla muestra de un error de la API: bajo el input del que trata, o en la alerta. */
+export interface ProblemaCliente {
+  campo: string | null;
+  texto: string;
 }
 
 /**
- * The messages for the codes of the backend's `errores.rs`, generated from the same list. English:
- * this file is the place to translate them. A code missing here shows as it is.
+ * Los mensajes de los códigos de `errores.rs` del backend, generados de la misma lista. Un código que
+ * no está aquí se muestra tal cual.
  */
-const TEXTS: Record<string, string> = {
-  "cliente.email_invalido": "Email is not valid",
-  "cliente.name_invalido": "Name is not valid",
-  "cliente.code_invalido": "Code is not valid",
-  "cliente.age_invalido": "Age is not valid",
-  "cliente.joined_invalido": "Joined is not valid",
-  "cliente.middle_name_invalido": "Middle is not valid",
-  "cliente.label_invalido": "Labels are not valid",
-  "cliente.status_invalido": "Status is not valid",
-  "cliente.duplicado": "A cliente with these values already exists",
-  "cliente.no_encontrado": "This cliente no longer exists",
-  "cliente.repositorio": "The cliente could not be saved, try again later",
-  "cliente.desconocido": "Something went wrong",
+const TEXTOS: Record<string, string> = {
+  "cliente.email_invalido": "Email: no válido",
+  "cliente.name_invalido": "Name: no válido",
+  "cliente.code_invalido": "Code: no válido",
+  "cliente.age_invalido": "Age: no válido",
+  "cliente.joined_invalido": "Joined: no válido",
+  "cliente.middle_name_invalido": "Middle: no válido",
+  "cliente.label_invalido": "Labels: no válido",
+  "cliente.status_invalido": "Status: no válido",
+  "cliente.duplicado": "Estos valores ya están en uso",
+  "cliente.no_encontrado": "Ya no existe",
+  "cliente.repositorio": "No se ha podido guardar; inténtalo más tarde",
+  "cliente.desconocido": "Algo ha ido mal",
 };
 
-/** The input each field's code is about. */
-const FIELDS: Record<string, string> = {
+/** El input del que trata el código de cada campo. */
+const CAMPOS: Record<string, string> = {
   "cliente.email_invalido": "email",
   "cliente.name_invalido": "name",
   "cliente.code_invalido": "code",
@@ -10039,17 +10057,17 @@ const FIELDS: Record<string, string> = {
   "cliente.status_invalido": "status",
 };
 
-export function toProblem(code: string): ClienteProblem {
-  return { field: FIELDS[code] ?? null, text: TEXTS[code] ?? code };
+export function aProblema(codigo: string): ProblemaCliente {
+  return { campo: CAMPOS[codigo] ?? null, texto: TEXTOS[codigo] ?? codigo };
 }
 
-=== web/src/features/cliente/views/cliente-detail-view.tsx ===
-import type { Schemas } from "../../../api/client";
-import { formatDateTime } from "../../../shared/forms";
+=== web/src/contextos/cliente/vistas/detalle-cliente.tsx ===
+import type { Esquemas } from "../../../api/cliente";
+import { formatearFechaHora } from "../../../compartido/formularios";
 
-type Cliente = Schemas["DtoCliente"];
+type Cliente = Esquemas["DtoCliente"];
 
-export function ClienteDetailView({ cliente }: { cliente: Cliente }) {
+export function VistaDetalleCliente({ cliente }: { cliente: Cliente }) {
   return (
     <dl className="grid grid-cols-[max-content_1fr] gap-x-6 gap-y-2">
       <dt className="font-semibold">Email</dt>
@@ -10061,7 +10079,7 @@ export function ClienteDetailView({ cliente }: { cliente: Cliente }) {
       <dt className="font-semibold">Age</dt>
       <dd>{cliente.age}</dd>
       <dt className="font-semibold">Joined</dt>
-      <dd>{formatDateTime(cliente.joined)}</dd>
+      <dd>{formatearFechaHora(cliente.joined)}</dd>
       <dt className="font-semibold">Middle</dt>
       <dd>{cliente.middle ?? "—"}</dd>
       <dt className="font-semibold">Labels</dt>
@@ -10072,23 +10090,23 @@ export function ClienteDetailView({ cliente }: { cliente: Cliente }) {
   );
 }
 
-=== web/src/features/cliente/views/cliente-form-view.tsx ===
-import type { Schemas } from "../../../api/client";
+=== web/src/contextos/cliente/vistas/formulario-cliente.tsx ===
+import type { Esquemas } from "../../../api/cliente";
 import {
-  fromDateTimeLocal,
-  optionalText,
-  splitList,
-  textOf,
-  toDateTimeLocal,
-} from "../../../shared/forms";
-import { FieldError } from "../../../shared/ui/field-error";
-import type { ClienteProblem } from "../messages";
+  aFechaHoraLocal,
+  deFechaHoraLocal,
+  separarLista,
+  textoDe,
+  textoOpcional,
+} from "../../../compartido/formularios";
+import { ErrorCampo } from "../../../compartido/ui/error-campo";
+import type { ProblemaCliente } from "../mensajes";
 
-type Cliente = Schemas["DtoCliente"];
-type ClienteRequest = Schemas["PeticionCrearCliente"];
+type Cliente = Esquemas["DtoCliente"];
+type PeticionCliente = Esquemas["PeticionCrearCliente"];
 
-/** What the inputs hold: the text of every input, `checked` for a checkbox. */
-export interface ClienteFormValues {
+/** Lo que guardan los inputs: el texto de cada input, `checked` en una casilla. */
+export interface ValoresFormularioCliente {
   email: string;
   name: string;
   code: string;
@@ -10099,8 +10117,8 @@ export interface ClienteFormValues {
   status: string;
 }
 
-/** The inputs for `cliente`, empty when there is none yet. */
-export function toClienteForm(cliente: Cliente | null): ClienteFormValues {
+/** Los inputs de `cliente`, vacíos cuando todavía no hay ninguno. */
+export function aFormularioCliente(cliente: Cliente | null): ValoresFormularioCliente {
   if (cliente === null) {
     return {
       email: "",
@@ -10118,47 +10136,47 @@ export function toClienteForm(cliente: Cliente | null): ClienteFormValues {
     name: cliente.name,
     code: cliente.code,
     age: String(cliente.age),
-    joined: toDateTimeLocal(cliente.joined),
-    middle: textOf(cliente.middle),
+    joined: aFechaHoraLocal(cliente.joined),
+    middle: textoDe(cliente.middle),
     labels: cliente.labels.join(", "),
     status: cliente.status,
   };
 }
 
-/** What a create or an update sends: the same fields for both. */
-export function toClienteRequest(values: ClienteFormValues): ClienteRequest {
+/** Lo que mandan crear y actualizar: los mismos campos en los dos. */
+export function aPeticionCliente(valores: ValoresFormularioCliente): PeticionCliente {
   return {
-    email: values.email,
-    name: values.name,
-    code: values.code,
-    age: Number(values.age),
-    joined: fromDateTimeLocal(values.joined),
-    middle: optionalText(values.middle),
-    labels: splitList(values.labels),
-    status: values.status,
+    email: valores.email,
+    name: valores.name,
+    code: valores.code,
+    age: Number(valores.age),
+    joined: deFechaHoraLocal(valores.joined),
+    middle: textoOpcional(valores.middle),
+    labels: separarLista(valores.labels),
+    status: valores.status,
   };
 }
 
-export function ClienteFormView({
-  values,
-  saving,
-  problem,
-  onChange,
-  onSubmit,
+export function VistaFormularioCliente({
+  valores,
+  guardando,
+  problema,
+  alCambiar,
+  alEnviar,
 }: {
-  values: ClienteFormValues;
-  saving: boolean;
-  /** What the API said about the last submit: shown under its input. */
-  problem: ClienteProblem | null;
-  onChange: (values: ClienteFormValues) => void;
-  onSubmit: () => void;
+  valores: ValoresFormularioCliente;
+  guardando: boolean;
+  /** Lo que dijo la API del último envío: se muestra bajo su input. */
+  problema: ProblemaCliente | null;
+  alCambiar: (valores: ValoresFormularioCliente) => void;
+  alEnviar: () => void;
 }) {
   return (
     <form
       className="space-y-2"
       onSubmit={(event) => {
         event.preventDefault();
-        onSubmit();
+        alEnviar();
       }}
     >
       <label className="fieldset">
@@ -10166,113 +10184,113 @@ export function ClienteFormView({
         <input
           className="input w-full"
           type="text"
-          aria-invalid={problem?.field === "email"}
+          aria-invalid={problema?.campo === "email"}
           required
-          value={values.email}
-          onChange={(event) => onChange({ ...values, email: event.target.value })}
+          value={valores.email}
+          onChange={(event) => alCambiar({ ...valores, email: event.target.value })}
         />
       </label>
-      <FieldError problem={problem} field="email" />
+      <ErrorCampo problema={problema} campo="email" />
       <label className="fieldset">
         <span className="fieldset-legend">Name</span>
         <input
           className="input w-full"
           type="text"
-          aria-invalid={problem?.field === "name"}
+          aria-invalid={problema?.campo === "name"}
           required
-          value={values.name}
-          onChange={(event) => onChange({ ...values, name: event.target.value })}
+          value={valores.name}
+          onChange={(event) => alCambiar({ ...valores, name: event.target.value })}
         />
       </label>
-      <FieldError problem={problem} field="name" />
+      <ErrorCampo problema={problema} campo="name" />
       <label className="fieldset">
         <span className="fieldset-legend">Code</span>
         <input
           className="input w-full"
           type="text"
-          aria-invalid={problem?.field === "code"}
+          aria-invalid={problema?.campo === "code"}
           required
-          value={values.code}
-          onChange={(event) => onChange({ ...values, code: event.target.value })}
+          value={valores.code}
+          onChange={(event) => alCambiar({ ...valores, code: event.target.value })}
         />
       </label>
-      <FieldError problem={problem} field="code" />
+      <ErrorCampo problema={problema} campo="code" />
       <label className="fieldset">
         <span className="fieldset-legend">Age</span>
         <input
           className="input w-full"
           type="number"
-          aria-invalid={problem?.field === "age"}
+          aria-invalid={problema?.campo === "age"}
           required
-          value={values.age}
-          onChange={(event) => onChange({ ...values, age: event.target.value })}
+          value={valores.age}
+          onChange={(event) => alCambiar({ ...valores, age: event.target.value })}
         />
       </label>
-      <FieldError problem={problem} field="age" />
+      <ErrorCampo problema={problema} campo="age" />
       <label className="fieldset">
         <span className="fieldset-legend">Joined</span>
         <input
           className="input w-full"
           type="datetime-local"
-          aria-invalid={problem?.field === "joined"}
+          aria-invalid={problema?.campo === "joined"}
           required
-          value={values.joined}
-          onChange={(event) => onChange({ ...values, joined: event.target.value })}
+          value={valores.joined}
+          onChange={(event) => alCambiar({ ...valores, joined: event.target.value })}
         />
       </label>
-      <FieldError problem={problem} field="joined" />
+      <ErrorCampo problema={problema} campo="joined" />
       <label className="fieldset">
         <span className="fieldset-legend">Middle</span>
         <input
           className="input w-full"
           type="text"
-          aria-invalid={problem?.field === "middle"}
-          value={values.middle}
-          onChange={(event) => onChange({ ...values, middle: event.target.value })}
+          aria-invalid={problema?.campo === "middle"}
+          value={valores.middle}
+          onChange={(event) => alCambiar({ ...valores, middle: event.target.value })}
         />
       </label>
-      <FieldError problem={problem} field="middle" />
+      <ErrorCampo problema={problema} campo="middle" />
       <label className="fieldset">
         <span className="fieldset-legend">Labels</span>
         <input
           className="input w-full"
           type="text"
-          aria-invalid={problem?.field === "labels"}
-          value={values.labels}
-          onChange={(event) => onChange({ ...values, labels: event.target.value })}
+          aria-invalid={problema?.campo === "labels"}
+          value={valores.labels}
+          onChange={(event) => alCambiar({ ...valores, labels: event.target.value })}
         />
       </label>
-      <FieldError problem={problem} field="labels" />
+      <ErrorCampo problema={problema} campo="labels" />
       <label className="fieldset">
         <span className="fieldset-legend">Status</span>
         <select
           className="select w-full"
-          aria-invalid={problem?.field === "status"}
+          aria-invalid={problema?.campo === "status"}
           required
-          value={values.status}
-          onChange={(event) => onChange({ ...values, status: event.target.value })}
+          value={valores.status}
+          onChange={(event) => alCambiar({ ...valores, status: event.target.value })}
         >
-          <option value="">Choose…</option>
+          <option value="">Elige una opción</option>
           <option value="Active">Active</option>
           <option value="Inactive">Inactive</option>
         </select>
       </label>
-      <FieldError problem={problem} field="status" />
-      <button type="submit" className="btn btn-primary" disabled={saving}>
-        Save
+      <ErrorCampo problema={problema} campo="status" />
+      <button type="submit" className="btn btn-primary" disabled={guardando}>
+        Guardar
       </button>
     </form>
   );
 }
 
-=== web/src/features/cliente/views/cliente-list-view.tsx ===
+=== web/src/contextos/cliente/vistas/lista-cliente.tsx ===
 import { Link } from "wouter";
-import type { Schemas } from "../../../api/client";
-import { formatDateTime } from "../../../shared/forms";
+import type { Esquemas } from "../../../api/cliente";
+import { formatearFechaHora } from "../../../compartido/formularios";
 
-type Cliente = Schemas["DtoCliente"];
+type Cliente = Esquemas["DtoCliente"];
 
-export function ClienteListView({ clientes }: { clientes: Cliente[] }) {
+export function VistaListaCliente({ clientes }: { clientes: Cliente[] }) {
   return (
     <div className="overflow-x-auto rounded-box bg-base-100">
       <table className="table">
@@ -10296,13 +10314,13 @@ export function ClienteListView({ clientes }: { clientes: Cliente[] }) {
               <td>{cliente.name}</td>
               <td>{cliente.code}</td>
               <td>{cliente.age}</td>
-              <td>{formatDateTime(cliente.joined)}</td>
+              <td>{formatearFechaHora(cliente.joined)}</td>
               <td>{cliente.middle ?? "—"}</td>
               <td>{cliente.labels.join(", ")}</td>
               <td>{cliente.status}</td>
               <td className="text-right">
                 <Link href={`/clientes/${cliente.id}`} className="link">
-                  View
+                  Ver
                 </Link>
               </td>
             </tr>
@@ -10313,432 +10331,441 @@ export function ClienteListView({ clientes }: { clientes: Cliente[] }) {
   );
 }
 
-=== web/src/features/producto/containers/producto-detail-container.test.tsx ===
+=== web/src/contextos/producto/contenedores/detalle-producto.test.tsx ===
 import { describe, expect, test } from "bun:test";
 import { fireEvent, screen, waitFor } from "@testing-library/react";
-import { fakeApi } from "../../../test-support/fake-api";
-import { ProductoMother, productoCollection } from "../../../test-support/producto";
-import { renderScreen } from "../../../test-support/render";
-import { ProductoDetailContainer } from "./producto-detail-container";
+import { apiFalsa } from "../../../pruebas/api-falsa";
+import { coleccionProducto, MadreProducto } from "../../../pruebas/producto";
+import { renderizarPantalla } from "../../../pruebas/renderizar";
+import { ContenedorDetalleProducto } from "./detalle-producto";
 
-describe("ProductoDetailContainer", () => {
-  test("should show the producto when it exists", async () => {
-    // Arrange
-    const seeded = ProductoMother.random();
-    const api = fakeApi([productoCollection([seeded])]);
+describe("ContenedorDetalleProducto", () => {
+  test("debería mostrar el detalle cuando existe", async () => {
+    // Preparar
+    const sembrado = MadreProducto.aleatorio();
+    const api = apiFalsa([coleccionProducto([sembrado])]);
 
-    // Act
-    renderScreen(<ProductoDetailContainer id={seeded.id} />, { api });
+    const pantalla = <ContenedorDetalleProducto id={sembrado.id} />;
 
-    // Assert
-    expect(await screen.findByText("Edit")).toBeTruthy();
+    // Actuar
+    renderizarPantalla(pantalla, { api });
+
+    // Comprobar
+    expect(await screen.findByText("Editar")).toBeTruthy();
   });
 
-  test("should show the not-found code when the producto does not exist", async () => {
-    // Arrange
-    const api = fakeApi([productoCollection()]);
+  test("debería mostrar el código de no encontrado cuando no existe", async () => {
+    // Preparar
+    const api = apiFalsa([coleccionProducto()]);
+    const pantalla = <ContenedorDetalleProducto id={crypto.randomUUID()} />;
 
-    // Act
-    renderScreen(<ProductoDetailContainer id={crypto.randomUUID()} />, { api });
+    // Actuar
+    renderizarPantalla(pantalla, { api });
 
-    // Assert
+    // Comprobar
     expect((await screen.findByRole("alert")).textContent).toBe("producto.no_encontrado");
   });
 
-  test("should delete the producto only once the deletion is confirmed", async () => {
-    // Arrange
-    const seeded = ProductoMother.random();
-    const stored = productoCollection([seeded]);
-    const api = fakeApi([stored]);
-    const { history } = renderScreen(<ProductoDetailContainer id={seeded.id} />, { api });
-    fireEvent.click(await screen.findByText("Delete", { selector: ".card-actions button" }));
-    expect(stored.items.has(seeded.id)).toBe(true);
+  test("debería borrar solo tras confirmar el borrado", async () => {
+    // Preparar
+    const sembrado = MadreProducto.aleatorio();
+    const guardados = coleccionProducto([sembrado]);
+    const api = apiFalsa([guardados]);
+    const pantalla = <ContenedorDetalleProducto id={sembrado.id} />;
+    const { historial } = renderizarPantalla(pantalla, { api });
+    fireEvent.click(await screen.findByText("Borrar", { selector: ".card-actions button" }));
+    expect(guardados.elementos.has(sembrado.id)).toBe(true);
 
-    // Act
-    fireEvent.click(screen.getByText("Delete", { selector: ".modal-action button" }));
+    // Actuar
+    fireEvent.click(screen.getByText("Borrar", { selector: ".modal-action button" }));
 
-    // Assert
-    await waitFor(() => expect(history.at(-1)).toBe("/productos"));
-    expect(stored.items.has(seeded.id)).toBe(false);
+    // Comprobar
+    await waitFor(() => expect(historial.at(-1)).toBe("/productos"));
+    expect(guardados.elementos.has(sembrado.id)).toBe(false);
   });
 });
 
-=== web/src/features/producto/containers/producto-detail-container.tsx ===
+=== web/src/contextos/producto/contenedores/detalle-producto.tsx ===
 import { useState } from "react";
 import { Link, useLocation } from "wouter";
-import { unwrap } from "../../../api/http";
-import { useDependencies } from "../../../dependencies";
-import { ConfirmDialog } from "../../../shared/ui/confirm-dialog";
-import { ErrorAlert } from "../../../shared/ui/error-alert";
-import { useAsync } from "../../../shared/use-async";
-import { ProductoDetailView } from "../views/producto-detail-view";
+import { desenvolver } from "../../../api/http";
+import { AlertaError } from "../../../compartido/ui/alerta-error";
+import { DialogoConfirmar } from "../../../compartido/ui/dialogo-confirmar";
+import { useCarga } from "../../../compartido/use-carga";
+import { useDependencias } from "../../../dependencias";
+import { VistaDetalleProducto } from "../vistas/detalle-producto";
 
-export function ProductoDetailContainer({ id }: { id: string }) {
-  const { api } = useDependencies();
-  const producto = useAsync(
-    () => unwrap(api.GET("/productos/{id}", { params: { path: { id } } })),
+export function ContenedorDetalleProducto({ id }: { id: string }) {
+  const { api } = useDependencias();
+  const producto = useCarga(
+    () => desenvolver(api.GET("/productos/{id}", { params: { path: { id } } })),
     [api, id],
   );
-  const [, navigate] = useLocation();
-  const [confirming, setConfirming] = useState(false);
-  const [failure, setFailure] = useState<unknown>(null);
+  const [, navegar] = useLocation();
+  const [confirmando, setConfirmando] = useState(false);
+  const [fallo, setFallo] = useState<unknown>(null);
 
-  const remove = async () => {
-    setConfirming(false);
+  const borrar = async () => {
+    setConfirmando(false);
     try {
-      await unwrap(api.DELETE("/productos/{id}", { params: { path: { id } } }));
-      navigate("/productos");
+      await desenvolver(api.DELETE("/productos/{id}", { params: { path: { id } } }));
+      navegar("/productos");
     } catch (error) {
-      setFailure(error);
+      setFallo(error);
     }
   };
 
   return (
     <section className="space-y-4">
       <h1 className="text-2xl font-bold">Producto</h1>
-      {failure !== null && <ErrorAlert error={failure} />}
-      {producto.status === "loading" && <span className="loading loading-spinner" />}
-      {producto.status === "error" && <ErrorAlert error={producto.error} />}
-      {producto.status === "ok" && (
+      {fallo !== null && <AlertaError error={fallo} />}
+      {producto.estado === "cargando" && <span className="loading loading-spinner" />}
+      {producto.estado === "error" && <AlertaError error={producto.error} />}
+      {producto.estado === "listo" && (
         <div className="card bg-base-100">
           <div className="card-body">
-            <ProductoDetailView producto={producto.data} />
+            <VistaDetalleProducto producto={producto.datos} />
             <div className="card-actions justify-end">
-              <Link href={`/productos/${id}/edit`} className="btn">
-                Edit
+              <Link href={`/productos/${id}/editar`} className="btn">
+                Editar
               </Link>
-              <button type="button" className="btn btn-error" onClick={() => setConfirming(true)}>
-                Delete
+              <button type="button" className="btn btn-error" onClick={() => setConfirmando(true)}>
+                Borrar
               </button>
             </div>
           </div>
         </div>
       )}
       <Link href="/productos" className="link">
-        Back to productos
+        Volver a productos
       </Link>
-      <ConfirmDialog
-        open={confirming}
-        message="Delete this producto?"
-        onConfirm={remove}
-        onCancel={() => setConfirming(false)}
+      <DialogoConfirmar
+        abierto={confirmando}
+        mensaje="¿Borrar producto?"
+        alConfirmar={borrar}
+        alCancelar={() => setConfirmando(false)}
       />
     </section>
   );
 }
 
-=== web/src/features/producto/containers/producto-form-container.test.tsx ===
+=== web/src/contextos/producto/contenedores/formulario-producto.test.tsx ===
 import { describe, expect, test } from "bun:test";
 import { fireEvent, screen, waitFor } from "@testing-library/react";
-import type { Schemas } from "../../../api/client";
-import { formatEntries, textOf, toDateTimeLocal } from "../../../shared/forms";
-import { fakeApi } from "../../../test-support/fake-api";
-import { ProductoMother, productoCollection } from "../../../test-support/producto";
-import { renderScreen } from "../../../test-support/render";
-import { ProductoFormContainer } from "./producto-form-container";
+import type { Esquemas } from "../../../api/cliente";
+import { aFechaHoraLocal, formatearEntradas, textoDe } from "../../../compartido/formularios";
+import { apiFalsa } from "../../../pruebas/api-falsa";
+import { coleccionProducto, MadreProducto } from "../../../pruebas/producto";
+import { renderizarPantalla } from "../../../pruebas/renderizar";
+import { ContenedorFormularioProducto } from "./formulario-producto";
 
-function type(label: string, value: string) {
-  fireEvent.change(screen.getByLabelText(label), { target: { value } });
+function escribir(etiqueta: string, valor: string) {
+  fireEvent.change(screen.getByLabelText(etiqueta), { target: { value: valor } });
 }
 
-/** Fills the empty form with `request`, the way a user would. */
-async function fillIn(request: Schemas["PeticionCrearProducto"]) {
-  await screen.findByText("Save");
-  type("Title", request.title);
-  type("Sku", request.sku);
-  type("Price", String(request.price));
-  type("Rating", String(request.rating));
-  if (request.active) fireEvent.click(screen.getByLabelText("Active"));
-  type("Ref id", request.refId);
-  type("Published at", toDateTimeLocal(request.publishedAt));
-  type("Summary", textOf(request.summary));
-  type("Views", textOf(request.views));
-  type("Expires at", toDateTimeLocal(request.expiresAt));
-  type("Tags", request.tags.join(", "));
-  type("Scores", request.scores.join(", "));
-  type("Meta", formatEntries(request.meta));
+/** Rellena el formulario vacío con `peticion`, como lo haría quien lo usa. */
+async function rellenar(peticion: Esquemas["PeticionCrearProducto"]) {
+  await screen.findByText("Guardar");
+  escribir("Title", peticion.title);
+  escribir("Sku", peticion.sku);
+  escribir("Price", String(peticion.price));
+  escribir("Rating", String(peticion.rating));
+  if (peticion.active) fireEvent.click(screen.getByLabelText("Active"));
+  escribir("Ref id", peticion.refId);
+  escribir("Published at", aFechaHoraLocal(peticion.publishedAt));
+  escribir("Summary", textoDe(peticion.summary));
+  escribir("Views", textoDe(peticion.views));
+  escribir("Expires at", aFechaHoraLocal(peticion.expiresAt));
+  escribir("Tags", peticion.tags.join(", "));
+  escribir("Scores", peticion.scores.join(", "));
+  escribir("Meta", formatearEntradas(peticion.meta));
 }
 
-describe("ProductoFormContainer", () => {
-  test("should create the producto from what was typed and show it", async () => {
-    // Arrange
-    const request = ProductoMother.request();
-    const stored = productoCollection();
-    const api = fakeApi([stored]);
-    const { history } = renderScreen(<ProductoFormContainer />, { api });
-    await fillIn(request);
+describe("ContenedorFormularioProducto", () => {
+  test("debería crear con lo escrito e ir a su detalle", async () => {
+    // Preparar
+    const peticion = MadreProducto.peticion();
+    const guardados = coleccionProducto();
+    const api = apiFalsa([guardados]);
+    const pantalla = <ContenedorFormularioProducto />;
+    const { historial } = renderizarPantalla(pantalla, { api });
+    await rellenar(peticion);
 
-    // Act
-    fireEvent.click(screen.getByText("Save"));
+    // Actuar
+    fireEvent.click(screen.getByText("Guardar"));
 
-    // Assert
-    await waitFor(() => expect(history.at(-1)).toStartWith("/productos/"));
-    const [created] = stored.items.values();
-    expect(created).toMatchObject(request);
-    expect(history.at(-1)).toBe(`/productos/${created?.id}`);
+    // Comprobar
+    await waitFor(() => expect(historial.at(-1)).toStartWith("/productos/"));
+    const [creado] = guardados.elementos.values();
+    expect(creado).toMatchObject(peticion);
+    expect(historial.at(-1)).toBe(`/productos/${creado?.id}`);
   });
 
-  test("should save the edited producto when an existing one is submitted", async () => {
-    // Arrange
-    const seeded = ProductoMother.random();
-    const stored = productoCollection([seeded]);
-    const api = fakeApi([stored]);
-    const { history } = renderScreen(<ProductoFormContainer id={seeded.id} />, { api });
+  test("debería guardar la edición cuando se envía el formulario", async () => {
+    // Preparar
+    const sembrado = MadreProducto.aleatorio();
+    const guardados = coleccionProducto([sembrado]);
+    const api = apiFalsa([guardados]);
+    const pantalla = <ContenedorFormularioProducto id={sembrado.id} />;
+    const { historial } = renderizarPantalla(pantalla, { api });
 
-    // Act
-    fireEvent.click(await screen.findByText("Save"));
+    // Actuar
+    fireEvent.click(await screen.findByText("Guardar"));
 
-    // Assert
-    await waitFor(() => expect(history.at(-1)).toBe(`/productos/${seeded.id}`));
-    expect(stored.items.get(seeded.id)).toEqual(seeded);
-  });
-  test("should show the code itself when the API answers one the form does not know", async () => {
-    // Arrange
-    const request = ProductoMother.request();
-    const code = "producto.validacion.invalid";
-    const failures = { "POST /productos": code };
-    const api = fakeApi([productoCollection()], failures);
-    renderScreen(<ProductoFormContainer />, { api });
-    await fillIn(request);
-
-    // Act
-    fireEvent.click(screen.getByText("Save"));
-
-    // Assert
-    expect((await screen.findByRole("alert")).textContent).toBe(code);
+    // Comprobar
+    await waitFor(() => expect(historial.at(-1)).toBe(`/productos/${sembrado.id}`));
+    expect(guardados.elementos.get(sembrado.id)).toEqual(sembrado);
   });
 
-  test("should say a producto with these values exists when the API answers a duplicate", async () => {
-    // Arrange
-    const request = ProductoMother.request();
-    const failures = { "POST /productos": "producto.duplicado" };
-    const api = fakeApi([productoCollection()], failures);
-    renderScreen(<ProductoFormContainer />, { api });
-    await fillIn(request);
+  test("debería mostrar el propio código cuando la API responde uno que el formulario no conoce", async () => {
+    // Preparar
+    const peticion = MadreProducto.peticion();
+    const codigo = "producto.validacion.invalido";
+    const fallos = { "POST /productos": codigo };
+    const api = apiFalsa([coleccionProducto()], fallos);
+    renderizarPantalla(<ContenedorFormularioProducto />, { api });
+    await rellenar(peticion);
 
-    // Act
-    fireEvent.click(screen.getByText("Save"));
+    // Actuar
+    fireEvent.click(screen.getByText("Guardar"));
 
-    // Assert
-    expect((await screen.findByRole("alert")).textContent).toBe(
-      "A producto with these values already exists",
-    );
+    // Comprobar
+    expect((await screen.findByRole("alert")).textContent).toBe(codigo);
   });
 
-  test("should show the message under its input when the API rejects one field", async () => {
-    // Arrange
-    const request = ProductoMother.request();
-    const failures = { "POST /productos": "producto.validacion.title_vacio" };
-    const api = fakeApi([productoCollection()], failures);
-    renderScreen(<ProductoFormContainer />, { api });
-    await fillIn(request);
+  test("debería decir que los valores ya están en uso cuando la API responde un duplicado", async () => {
+    // Preparar
+    const peticion = MadreProducto.peticion();
+    const fallos = { "POST /productos": "producto.duplicado" };
+    const api = apiFalsa([coleccionProducto()], fallos);
+    renderizarPantalla(<ContenedorFormularioProducto />, { api });
+    await rellenar(peticion);
 
-    // Act
-    fireEvent.click(screen.getByText("Save"));
+    // Actuar
+    fireEvent.click(screen.getByText("Guardar"));
 
-    // Assert
-    expect(await screen.findByText("Title is required")).toBeTruthy();
-    const input = screen.getByLabelText("Title");
-    expect(input.getAttribute("aria-invalid")).toBe("true");
+    // Comprobar
+    expect((await screen.findByRole("alert")).textContent).toBe("Estos valores ya están en uso");
+  });
+
+  test("debería mostrar el mensaje bajo su input cuando la API rechaza un campo", async () => {
+    // Preparar
+    const peticion = MadreProducto.peticion();
+    const fallos = { "POST /productos": "producto.validacion.title_vacio" };
+    const api = apiFalsa([coleccionProducto()], fallos);
+    renderizarPantalla(<ContenedorFormularioProducto />, { api });
+    await rellenar(peticion);
+
+    // Actuar
+    fireEvent.click(screen.getByText("Guardar"));
+
+    // Comprobar
+    expect(await screen.findByText("Title: obligatorio")).toBeTruthy();
+    const campo = screen.getByLabelText("Title");
+    expect(campo.getAttribute("aria-invalid")).toBe("true");
     expect(screen.queryByRole("alert")).toBeNull();
   });
 });
 
-=== web/src/features/producto/containers/producto-form-container.tsx ===
+=== web/src/contextos/producto/contenedores/formulario-producto.tsx ===
 import { useState } from "react";
 import { Link, useLocation } from "wouter";
-import type { Schemas } from "../../../api/client";
-import { unwrap } from "../../../api/http";
-import { useDependencies } from "../../../dependencies";
-import { ErrorAlert, errorCode } from "../../../shared/ui/error-alert";
-import { useAsync } from "../../../shared/use-async";
-import { toProblem } from "../messages";
-import { ProductoFormView, toProductoForm, toProductoRequest } from "../views/producto-form-view";
+import type { Esquemas } from "../../../api/cliente";
+import { desenvolver } from "../../../api/http";
+import { AlertaError, codigoError } from "../../../compartido/ui/alerta-error";
+import { useCarga } from "../../../compartido/use-carga";
+import { useDependencias } from "../../../dependencias";
+import { aProblema } from "../mensajes";
+import {
+  aFormularioProducto,
+  aPeticionProducto,
+  VistaFormularioProducto,
+} from "../vistas/formulario-producto";
 
-type Producto = Schemas["DtoProducto"];
+type Producto = Esquemas["DtoProducto"];
 
-/** Creates a producto, or edits the one with `id`. */
-export function ProductoFormContainer({ id }: { id?: string }) {
-  const { api } = useDependencies();
-  const existing = useAsync(
+/** Crear, o editar con `id`: el formulario de productos. */
+export function ContenedorFormularioProducto({ id }: { id?: string }) {
+  const { api } = useDependencias();
+  const existente = useCarga(
     () =>
       id === undefined
         ? Promise.resolve(null)
-        : unwrap(api.GET("/productos/{id}", { params: { path: { id } } })),
+        : desenvolver(api.GET("/productos/{id}", { params: { path: { id } } })),
     [api, id],
   );
-  const title = id === undefined ? "New producto" : "Edit producto";
+  const titulo = id === undefined ? "Crear producto" : "Editar producto";
 
   return (
     <section className="space-y-4">
-      <h1 className="text-2xl font-bold">{title}</h1>
-      {existing.status === "loading" && <span className="loading loading-spinner" />}
-      {existing.status === "error" && <ErrorAlert error={existing.error} />}
-      {existing.status === "ok" && <ProductoForm existing={existing.data} />}
+      <h1 className="text-2xl font-bold">{titulo}</h1>
+      {existente.estado === "cargando" && <span className="loading loading-spinner" />}
+      {existente.estado === "error" && <AlertaError error={existente.error} />}
+      {existente.estado === "listo" && <FormularioProducto existente={existente.datos} />}
       <Link href={id === undefined ? "/productos" : `/productos/${id}`} className="link">
-        Cancel
+        Cancelar
       </Link>
     </section>
   );
 }
 
-function ProductoForm({ existing }: { existing: Producto | null }) {
-  const { api } = useDependencies();
-  const [, navigate] = useLocation();
-  const [values, setValues] = useState(toProductoForm(existing));
-  const [saving, setSaving] = useState(false);
-  const [failure, setFailure] = useState<unknown>(null);
-  const problem = failure === null ? null : toProblem(errorCode(failure));
+function FormularioProducto({ existente }: { existente: Producto | null }) {
+  const { api } = useDependencias();
+  const [, navegar] = useLocation();
+  const [valores, setValores] = useState(aFormularioProducto(existente));
+  const [guardando, setGuardando] = useState(false);
+  const [fallo, setFallo] = useState<unknown>(null);
+  const problema = fallo === null ? null : aProblema(codigoError(fallo));
 
-  const save = async () => {
-    setSaving(true);
-    setFailure(null);
+  const guardar = async () => {
+    setGuardando(true);
+    setFallo(null);
     try {
-      const body = toProductoRequest(values);
-      const saved = await unwrap(
-        existing === null
-          ? api.POST("/productos", { body })
-          : api.PUT("/productos/{id}", { params: { path: { id: existing.id } }, body }),
+      const cuerpo = aPeticionProducto(valores);
+      const guardado = await desenvolver(
+        existente === null
+          ? api.POST("/productos", { body: cuerpo })
+          : api.PUT("/productos/{id}", { params: { path: { id: existente.id } }, body: cuerpo }),
       );
-      navigate(`/productos/${saved.id}`);
+      navegar(`/productos/${guardado.id}`);
     } catch (error) {
-      setFailure(error);
-      setSaving(false);
+      setFallo(error);
+      setGuardando(false);
     }
   };
 
   return (
     <div className="card bg-base-100">
       <div className="card-body">
-        {problem?.field === null && <ErrorAlert error={failure} message={problem.text} />}
-        <ProductoFormView
-          values={values}
-          saving={saving}
-          problem={problem}
-          onChange={setValues}
-          onSubmit={save}
+        {problema?.campo === null && <AlertaError error={fallo} mensaje={problema.texto} />}
+        <VistaFormularioProducto
+          valores={valores}
+          guardando={guardando}
+          problema={problema}
+          alCambiar={setValores}
+          alEnviar={guardar}
         />
       </div>
     </div>
   );
 }
 
-=== web/src/features/producto/containers/producto-list-container.test.tsx ===
+=== web/src/contextos/producto/contenedores/lista-producto.test.tsx ===
 import { describe, expect, test } from "bun:test";
 import { fireEvent, screen } from "@testing-library/react";
-import { fakeApi } from "../../../test-support/fake-api";
-import { ProductoMother, productoCollection } from "../../../test-support/producto";
-import { renderScreen } from "../../../test-support/render";
-import { ProductoListContainer } from "./producto-list-container";
+import { apiFalsa } from "../../../pruebas/api-falsa";
+import { coleccionProducto, MadreProducto } from "../../../pruebas/producto";
+import { renderizarPantalla } from "../../../pruebas/renderizar";
+import { ContenedorListaProducto } from "./lista-producto";
 
-describe("ProductoListContainer", () => {
-  test("should show a row per producto when there are some", async () => {
-    // Arrange
-    const seed = [ProductoMother.random(), ProductoMother.random()];
-    const api = fakeApi([productoCollection(seed)]);
+describe("ContenedorListaProducto", () => {
+  test("debería mostrar una fila por cada producto", async () => {
+    // Preparar
+    const semilla = [MadreProducto.aleatorio(), MadreProducto.aleatorio()];
+    const api = apiFalsa([coleccionProducto(semilla)]);
 
-    // Act
-    renderScreen(<ProductoListContainer />, { api });
+    // Actuar
+    renderizarPantalla(<ContenedorListaProducto />, { api });
 
-    // Assert
-    expect(await screen.findAllByText("View")).toHaveLength(2);
+    // Comprobar
+    expect(await screen.findAllByText("Ver")).toHaveLength(2);
   });
 
-  test("should show the next page when Next is pressed", async () => {
-    // Arrange
-    const seed = Array.from({ length: 25 }, () => ProductoMother.random());
-    const api = fakeApi([productoCollection(seed)]);
-    renderScreen(<ProductoListContainer />, { api });
-    expect(await screen.findAllByText("View")).toHaveLength(20);
+  test("debería mostrar la página siguiente cuando se pulsa Siguiente", async () => {
+    // Preparar
+    const semilla = Array.from({ length: 25 }, () => MadreProducto.aleatorio());
+    const api = apiFalsa([coleccionProducto(semilla)]);
+    renderizarPantalla(<ContenedorListaProducto />, { api });
+    expect(await screen.findAllByText("Ver")).toHaveLength(20);
 
-    // Act
-    fireEvent.click(screen.getByRole("button", { name: "Next" }));
+    // Actuar
+    fireEvent.click(screen.getByRole("button", { name: "Siguiente" }));
 
-    // Assert
-    expect(await screen.findByText("21–25 of 25")).toBeTruthy();
-    expect(screen.getAllByText("View")).toHaveLength(5);
+    // Comprobar
+    expect(await screen.findByText("21–25 de 25")).toBeTruthy();
+    expect(screen.getAllByText("Ver")).toHaveLength(5);
   });
 
-  test("should open the page the URL names", async () => {
-    // Arrange
-    const seed = Array.from({ length: 25 }, () => ProductoMother.random());
-    const api = fakeApi([productoCollection(seed)]);
-    const path = "/productos?page=2";
+  test("debería abrir la página que nombra la URL", async () => {
+    // Preparar
+    const semilla = Array.from({ length: 25 }, () => MadreProducto.aleatorio());
+    const api = apiFalsa([coleccionProducto(semilla)]);
+    const ruta = "/productos?pagina=2";
 
-    // Act
-    renderScreen(<ProductoListContainer />, { api }, path);
+    // Actuar
+    renderizarPantalla(<ContenedorListaProducto />, { api }, ruta);
 
-    // Assert
-    expect(await screen.findByText("21–25 of 25")).toBeTruthy();
+    // Comprobar
+    expect(await screen.findByText("21–25 de 25")).toBeTruthy();
   });
 
-  test("should say so when there is no producto", async () => {
-    // Arrange
-    const api = fakeApi([productoCollection()]);
+  test("debería decirlo cuando no hay productos", async () => {
+    // Preparar
+    const api = apiFalsa([coleccionProducto()]);
 
-    // Act
-    renderScreen(<ProductoListContainer />, { api });
+    // Actuar
+    renderizarPantalla(<ContenedorListaProducto />, { api });
 
-    // Assert
-    expect(await screen.findByText("No productos yet.")).toBeTruthy();
+    // Comprobar
+    expect(await screen.findByText("Todavía no hay productos.")).toBeTruthy();
   });
 
-  test("should show the error code when the productos cannot be listed", async () => {
-    // Arrange
-    const failures = { "GET /productos": "producto.repositorio" };
-    const api = fakeApi([productoCollection()], failures);
+  test("debería mostrar el código del error cuando la API no da la lista", async () => {
+    // Preparar
+    const fallos = { "GET /productos": "producto.repositorio" };
+    const api = apiFalsa([coleccionProducto()], fallos);
 
-    // Act
-    renderScreen(<ProductoListContainer />, { api });
+    // Actuar
+    renderizarPantalla(<ContenedorListaProducto />, { api });
 
-    // Assert
+    // Comprobar
     expect((await screen.findByRole("alert")).textContent).toBe("producto.repositorio");
   });
 });
 
-=== web/src/features/producto/containers/producto-list-container.tsx ===
+=== web/src/contextos/producto/contenedores/lista-producto.tsx ===
 import { Link, useLocation, useSearch } from "wouter";
-import { PAGE_SIZE, unwrap } from "../../../api/http";
-import { useDependencies } from "../../../dependencies";
-import { EmptyState } from "../../../shared/ui/empty-state";
-import { ErrorAlert } from "../../../shared/ui/error-alert";
-import { offsetFromSearch, Pagination, pageSearch } from "../../../shared/ui/pagination";
-import { useAsync } from "../../../shared/use-async";
-import { ProductoListView } from "../views/producto-list-view";
+import { desenvolver, TAMANO_PAGINA } from "../../../api/http";
+import { AlertaError } from "../../../compartido/ui/alerta-error";
+import { busquedaPagina, desplazamientoDeUrl, Paginacion } from "../../../compartido/ui/paginacion";
+import { SinElementos } from "../../../compartido/ui/sin-elementos";
+import { useCarga } from "../../../compartido/use-carga";
+import { useDependencias } from "../../../dependencias";
+import { VistaListaProducto } from "../vistas/lista-producto";
 
-/** The list, one page at a time; the page is in the URL (`?page=2`), so reload and back keep it. */
-export function ProductoListContainer() {
-  const { api } = useDependencies();
-  const [location, navigate] = useLocation();
-  const offset = offsetFromSearch(useSearch(), PAGE_SIZE);
-  const goTo = (next: number) => navigate(location + pageSearch(next, PAGE_SIZE));
-  const query = { limite: PAGE_SIZE, desplazamiento: offset };
-  const productos = useAsync(
-    () => unwrap(api.GET("/productos", { params: { query } })),
-    [api, offset],
+/** La lista, página a página; la página va en la URL (`?pagina=2`): recargar y volver la mantienen. */
+export function ContenedorListaProducto() {
+  const { api } = useDependencias();
+  const [ubicacion, navegar] = useLocation();
+  const desplazamiento = desplazamientoDeUrl(useSearch(), TAMANO_PAGINA);
+  const irA = (siguiente: number) => navegar(ubicacion + busquedaPagina(siguiente, TAMANO_PAGINA));
+  const consulta = { limite: TAMANO_PAGINA, desplazamiento };
+  const productos = useCarga(
+    () => desenvolver(api.GET("/productos", { params: { query: consulta } })),
+    [api, desplazamiento],
   );
 
   return (
     <section className="space-y-4">
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-bold">Productos</h1>
-        <Link href="/productos/new" className="btn btn-primary">
-          New producto
+        <Link href="/productos/nuevo" className="btn btn-primary">
+          Crear producto
         </Link>
       </div>
-      {productos.status === "loading" && <span className="loading loading-spinner" />}
-      {productos.status === "error" && <ErrorAlert error={productos.error} />}
-      {productos.status === "ok" &&
-        (productos.data.total === 0 ? (
-          <EmptyState message="No productos yet." />
+      {productos.estado === "cargando" && <span className="loading loading-spinner" />}
+      {productos.estado === "error" && <AlertaError error={productos.error} />}
+      {productos.estado === "listo" &&
+        (productos.datos.total === 0 ? (
+          <SinElementos mensaje="Todavía no hay productos." />
         ) : (
           <>
-            <ProductoListView productos={productos.data.elementos} />
-            <Pagination
-              total={productos.data.total}
-              limit={productos.data.limite}
-              offset={productos.data.desplazamiento}
-              onOffsetChange={goTo}
+            <VistaListaProducto productos={productos.datos.elementos} />
+            <Paginacion
+              total={productos.datos.total}
+              limite={productos.datos.limite}
+              desplazamiento={productos.datos.desplazamiento}
+              alCambiarDesplazamiento={irA}
             />
           </>
         ))}
@@ -10746,43 +10773,43 @@ export function ProductoListContainer() {
   );
 }
 
-=== web/src/features/producto/messages.ts ===
-/** What a screen shows for an API error: under the input it is about, or in the alert. */
-export interface ProductoProblem {
-  field: string | null;
-  text: string;
+=== web/src/contextos/producto/mensajes.ts ===
+/** Lo que una pantalla muestra de un error de la API: bajo el input del que trata, o en la alerta. */
+export interface ProblemaProducto {
+  campo: string | null;
+  texto: string;
 }
 
 /**
- * The messages for the codes of the backend's `errores.rs`, generated from the same list. English:
- * this file is the place to translate them. A code missing here shows as it is.
+ * Los mensajes de los códigos de `errores.rs` del backend, generados de la misma lista. Un código que
+ * no está aquí se muestra tal cual.
  */
-const TEXTS: Record<string, string> = {
-  "producto.validacion.title_vacio": "Title is required",
-  "producto.validacion.sku_vacio": "Sku is required",
-  "producto.duplicado": "A producto with these values already exists",
-  "producto.no_encontrado": "This producto no longer exists",
-  "producto.repositorio": "The producto could not be saved, try again later",
-  "producto.desconocido": "Something went wrong",
+const TEXTOS: Record<string, string> = {
+  "producto.validacion.title_vacio": "Title: obligatorio",
+  "producto.validacion.sku_vacio": "Sku: obligatorio",
+  "producto.duplicado": "Estos valores ya están en uso",
+  "producto.no_encontrado": "Ya no existe",
+  "producto.repositorio": "No se ha podido guardar; inténtalo más tarde",
+  "producto.desconocido": "Algo ha ido mal",
 };
 
-/** The input each field's code is about. */
-const FIELDS: Record<string, string> = {
+/** El input del que trata el código de cada campo. */
+const CAMPOS: Record<string, string> = {
   "producto.validacion.title_vacio": "title",
   "producto.validacion.sku_vacio": "sku",
 };
 
-export function toProblem(code: string): ProductoProblem {
-  return { field: FIELDS[code] ?? null, text: TEXTS[code] ?? code };
+export function aProblema(codigo: string): ProblemaProducto {
+  return { campo: CAMPOS[codigo] ?? null, texto: TEXTOS[codigo] ?? codigo };
 }
 
-=== web/src/features/producto/views/producto-detail-view.tsx ===
-import type { Schemas } from "../../../api/client";
-import { formatDateTime, formatEntries } from "../../../shared/forms";
+=== web/src/contextos/producto/vistas/detalle-producto.tsx ===
+import type { Esquemas } from "../../../api/cliente";
+import { formatearEntradas, formatearFechaHora } from "../../../compartido/formularios";
 
-type Producto = Schemas["DtoProducto"];
+type Producto = Esquemas["DtoProducto"];
 
-export function ProductoDetailView({ producto }: { producto: Producto }) {
+export function VistaDetalleProducto({ producto }: { producto: Producto }) {
   return (
     <dl className="grid grid-cols-[max-content_1fr] gap-x-6 gap-y-2">
       <dt className="font-semibold">Title</dt>
@@ -10794,49 +10821,49 @@ export function ProductoDetailView({ producto }: { producto: Producto }) {
       <dt className="font-semibold">Rating</dt>
       <dd>{producto.rating}</dd>
       <dt className="font-semibold">Active</dt>
-      <dd>{producto.active ? "Yes" : "No"}</dd>
+      <dd>{producto.active ? "Sí" : "No"}</dd>
       <dt className="font-semibold">Ref id</dt>
       <dd>{producto.refId}</dd>
       <dt className="font-semibold">Published at</dt>
-      <dd>{formatDateTime(producto.publishedAt)}</dd>
+      <dd>{formatearFechaHora(producto.publishedAt)}</dd>
       <dt className="font-semibold">Summary</dt>
       <dd>{producto.summary ?? "—"}</dd>
       <dt className="font-semibold">Views</dt>
       <dd>{producto.views ?? "—"}</dd>
       <dt className="font-semibold">Expires at</dt>
-      <dd>{producto.expiresAt == null ? "—" : formatDateTime(producto.expiresAt)}</dd>
+      <dd>{producto.expiresAt == null ? "—" : formatearFechaHora(producto.expiresAt)}</dd>
       <dt className="font-semibold">Tags</dt>
       <dd>{producto.tags.join(", ")}</dd>
       <dt className="font-semibold">Scores</dt>
       <dd>{producto.scores.join(", ")}</dd>
       <dt className="font-semibold">Meta</dt>
-      <dd>{formatEntries(producto.meta, ", ")}</dd>
+      <dd>{formatearEntradas(producto.meta, ", ")}</dd>
     </dl>
   );
 }
 
-=== web/src/features/producto/views/producto-form-view.tsx ===
-import type { Schemas } from "../../../api/client";
+=== web/src/contextos/producto/vistas/formulario-producto.tsx ===
+import type { Esquemas } from "../../../api/cliente";
 import {
-  formatEntries,
-  fromDateTimeLocal,
-  optionalDateTime,
-  optionalNumber,
-  optionalText,
-  parseEntries,
-  splitList,
-  splitNumbers,
-  textOf,
-  toDateTimeLocal,
-} from "../../../shared/forms";
-import { FieldError } from "../../../shared/ui/field-error";
-import type { ProductoProblem } from "../messages";
+  aFechaHoraLocal,
+  deFechaHoraLocal,
+  fechaHoraOpcional,
+  formatearEntradas,
+  leerEntradas,
+  numeroOpcional,
+  separarLista,
+  separarNumeros,
+  textoDe,
+  textoOpcional,
+} from "../../../compartido/formularios";
+import { ErrorCampo } from "../../../compartido/ui/error-campo";
+import type { ProblemaProducto } from "../mensajes";
 
-type Producto = Schemas["DtoProducto"];
-type ProductoRequest = Schemas["PeticionCrearProducto"];
+type Producto = Esquemas["DtoProducto"];
+type PeticionProducto = Esquemas["PeticionCrearProducto"];
 
-/** What the inputs hold: the text of every input, `checked` for a checkbox. */
-export interface ProductoFormValues {
+/** Lo que guardan los inputs: el texto de cada input, `checked` en una casilla. */
+export interface ValoresFormularioProducto {
   title: string;
   sku: string;
   price: string;
@@ -10852,8 +10879,8 @@ export interface ProductoFormValues {
   meta: string;
 }
 
-/** The inputs for `producto`, empty when there is none yet. */
-export function toProductoForm(producto: Producto | null): ProductoFormValues {
+/** Los inputs de `producto`, vacíos cuando todavía no hay ninguno. */
+export function aFormularioProducto(producto: Producto | null): ValoresFormularioProducto {
   if (producto === null) {
     return {
       title: "",
@@ -10878,55 +10905,55 @@ export function toProductoForm(producto: Producto | null): ProductoFormValues {
     rating: String(producto.rating),
     active: producto.active,
     refId: producto.refId,
-    publishedAt: toDateTimeLocal(producto.publishedAt),
-    summary: textOf(producto.summary),
-    views: textOf(producto.views),
-    expiresAt: toDateTimeLocal(producto.expiresAt),
+    publishedAt: aFechaHoraLocal(producto.publishedAt),
+    summary: textoDe(producto.summary),
+    views: textoDe(producto.views),
+    expiresAt: aFechaHoraLocal(producto.expiresAt),
     tags: producto.tags.join(", "),
     scores: producto.scores.join(", "),
-    meta: formatEntries(producto.meta),
+    meta: formatearEntradas(producto.meta),
   };
 }
 
-/** What a create or an update sends: the same fields for both. */
-export function toProductoRequest(values: ProductoFormValues): ProductoRequest {
+/** Lo que mandan crear y actualizar: los mismos campos en los dos. */
+export function aPeticionProducto(valores: ValoresFormularioProducto): PeticionProducto {
   return {
-    title: values.title,
-    sku: values.sku,
-    price: Number(values.price),
-    rating: Number(values.rating),
-    active: values.active,
-    refId: values.refId,
-    publishedAt: fromDateTimeLocal(values.publishedAt),
-    summary: optionalText(values.summary),
-    views: optionalNumber(values.views),
-    expiresAt: optionalDateTime(values.expiresAt),
-    tags: splitList(values.tags),
-    scores: splitNumbers(values.scores),
-    meta: parseEntries(values.meta),
+    title: valores.title,
+    sku: valores.sku,
+    price: Number(valores.price),
+    rating: Number(valores.rating),
+    active: valores.active,
+    refId: valores.refId,
+    publishedAt: deFechaHoraLocal(valores.publishedAt),
+    summary: textoOpcional(valores.summary),
+    views: numeroOpcional(valores.views),
+    expiresAt: fechaHoraOpcional(valores.expiresAt),
+    tags: separarLista(valores.tags),
+    scores: separarNumeros(valores.scores),
+    meta: leerEntradas(valores.meta),
   };
 }
 
-export function ProductoFormView({
-  values,
-  saving,
-  problem,
-  onChange,
-  onSubmit,
+export function VistaFormularioProducto({
+  valores,
+  guardando,
+  problema,
+  alCambiar,
+  alEnviar,
 }: {
-  values: ProductoFormValues;
-  saving: boolean;
-  /** What the API said about the last submit: shown under its input. */
-  problem: ProductoProblem | null;
-  onChange: (values: ProductoFormValues) => void;
-  onSubmit: () => void;
+  valores: ValoresFormularioProducto;
+  guardando: boolean;
+  /** Lo que dijo la API del último envío: se muestra bajo su input. */
+  problema: ProblemaProducto | null;
+  alCambiar: (valores: ValoresFormularioProducto) => void;
+  alEnviar: () => void;
 }) {
   return (
     <form
       className="space-y-2"
       onSubmit={(event) => {
         event.preventDefault();
-        onSubmit();
+        alEnviar();
       }}
     >
       <label className="fieldset">
@@ -10934,56 +10961,56 @@ export function ProductoFormView({
         <input
           className="input w-full"
           type="text"
-          aria-invalid={problem?.field === "title"}
+          aria-invalid={problema?.campo === "title"}
           required
-          value={values.title}
-          onChange={(event) => onChange({ ...values, title: event.target.value })}
+          value={valores.title}
+          onChange={(event) => alCambiar({ ...valores, title: event.target.value })}
         />
       </label>
-      <FieldError problem={problem} field="title" />
+      <ErrorCampo problema={problema} campo="title" />
       <label className="fieldset">
         <span className="fieldset-legend">Sku</span>
         <input
           className="input w-full"
           type="text"
-          aria-invalid={problem?.field === "sku"}
+          aria-invalid={problema?.campo === "sku"}
           required
-          value={values.sku}
-          onChange={(event) => onChange({ ...values, sku: event.target.value })}
+          value={valores.sku}
+          onChange={(event) => alCambiar({ ...valores, sku: event.target.value })}
         />
       </label>
-      <FieldError problem={problem} field="sku" />
+      <ErrorCampo problema={problema} campo="sku" />
       <label className="fieldset">
         <span className="fieldset-legend">Price</span>
         <input
           className="input w-full"
           type="number"
-          aria-invalid={problem?.field === "price"}
+          aria-invalid={problema?.campo === "price"}
           required
-          value={values.price}
-          onChange={(event) => onChange({ ...values, price: event.target.value })}
+          value={valores.price}
+          onChange={(event) => alCambiar({ ...valores, price: event.target.value })}
         />
       </label>
-      <FieldError problem={problem} field="price" />
+      <ErrorCampo problema={problema} campo="price" />
       <label className="fieldset">
         <span className="fieldset-legend">Rating</span>
         <input
           className="input w-full"
           type="number"
-          aria-invalid={problem?.field === "rating"}
+          aria-invalid={problema?.campo === "rating"}
           step="any"
           required
-          value={values.rating}
-          onChange={(event) => onChange({ ...values, rating: event.target.value })}
+          value={valores.rating}
+          onChange={(event) => alCambiar({ ...valores, rating: event.target.value })}
         />
       </label>
-      <FieldError problem={problem} field="rating" />
+      <ErrorCampo problema={problema} campo="rating" />
       <label className="label">
         <input
           className="checkbox"
           type="checkbox"
-          checked={values.active}
-          onChange={(event) => onChange({ ...values, active: event.target.checked })}
+          checked={valores.active}
+          onChange={(event) => alCambiar({ ...valores, active: event.target.checked })}
         />
         Active
       </label>
@@ -10992,106 +11019,106 @@ export function ProductoFormView({
         <input
           className="input w-full"
           type="text"
-          aria-invalid={problem?.field === "refId"}
+          aria-invalid={problema?.campo === "refId"}
           required
-          value={values.refId}
-          onChange={(event) => onChange({ ...values, refId: event.target.value })}
+          value={valores.refId}
+          onChange={(event) => alCambiar({ ...valores, refId: event.target.value })}
         />
       </label>
-      <FieldError problem={problem} field="refId" />
+      <ErrorCampo problema={problema} campo="refId" />
       <label className="fieldset">
         <span className="fieldset-legend">Published at</span>
         <input
           className="input w-full"
           type="datetime-local"
-          aria-invalid={problem?.field === "publishedAt"}
+          aria-invalid={problema?.campo === "publishedAt"}
           required
-          value={values.publishedAt}
-          onChange={(event) => onChange({ ...values, publishedAt: event.target.value })}
+          value={valores.publishedAt}
+          onChange={(event) => alCambiar({ ...valores, publishedAt: event.target.value })}
         />
       </label>
-      <FieldError problem={problem} field="publishedAt" />
+      <ErrorCampo problema={problema} campo="publishedAt" />
       <label className="fieldset">
         <span className="fieldset-legend">Summary</span>
         <input
           className="input w-full"
           type="text"
-          aria-invalid={problem?.field === "summary"}
-          value={values.summary}
-          onChange={(event) => onChange({ ...values, summary: event.target.value })}
+          aria-invalid={problema?.campo === "summary"}
+          value={valores.summary}
+          onChange={(event) => alCambiar({ ...valores, summary: event.target.value })}
         />
       </label>
-      <FieldError problem={problem} field="summary" />
+      <ErrorCampo problema={problema} campo="summary" />
       <label className="fieldset">
         <span className="fieldset-legend">Views</span>
         <input
           className="input w-full"
           type="number"
-          aria-invalid={problem?.field === "views"}
-          value={values.views}
-          onChange={(event) => onChange({ ...values, views: event.target.value })}
+          aria-invalid={problema?.campo === "views"}
+          value={valores.views}
+          onChange={(event) => alCambiar({ ...valores, views: event.target.value })}
         />
       </label>
-      <FieldError problem={problem} field="views" />
+      <ErrorCampo problema={problema} campo="views" />
       <label className="fieldset">
         <span className="fieldset-legend">Expires at</span>
         <input
           className="input w-full"
           type="datetime-local"
-          aria-invalid={problem?.field === "expiresAt"}
-          value={values.expiresAt}
-          onChange={(event) => onChange({ ...values, expiresAt: event.target.value })}
+          aria-invalid={problema?.campo === "expiresAt"}
+          value={valores.expiresAt}
+          onChange={(event) => alCambiar({ ...valores, expiresAt: event.target.value })}
         />
       </label>
-      <FieldError problem={problem} field="expiresAt" />
+      <ErrorCampo problema={problema} campo="expiresAt" />
       <label className="fieldset">
         <span className="fieldset-legend">Tags</span>
         <input
           className="input w-full"
           type="text"
-          aria-invalid={problem?.field === "tags"}
-          value={values.tags}
-          onChange={(event) => onChange({ ...values, tags: event.target.value })}
+          aria-invalid={problema?.campo === "tags"}
+          value={valores.tags}
+          onChange={(event) => alCambiar({ ...valores, tags: event.target.value })}
         />
       </label>
-      <FieldError problem={problem} field="tags" />
+      <ErrorCampo problema={problema} campo="tags" />
       <label className="fieldset">
         <span className="fieldset-legend">Scores</span>
         <input
           className="input w-full"
           type="text"
-          aria-invalid={problem?.field === "scores"}
-          value={values.scores}
-          onChange={(event) => onChange({ ...values, scores: event.target.value })}
+          aria-invalid={problema?.campo === "scores"}
+          value={valores.scores}
+          onChange={(event) => alCambiar({ ...valores, scores: event.target.value })}
         />
       </label>
-      <FieldError problem={problem} field="scores" />
+      <ErrorCampo problema={problema} campo="scores" />
       <label className="fieldset">
         <span className="fieldset-legend">Meta</span>
         <textarea
           className="textarea w-full"
-          aria-invalid={problem?.field === "meta"}
-          placeholder="key=value, one per line"
-          value={values.meta}
-          onChange={(event) => onChange({ ...values, meta: event.target.value })}
+          aria-invalid={problema?.campo === "meta"}
+          placeholder="clave=valor, una por línea"
+          value={valores.meta}
+          onChange={(event) => alCambiar({ ...valores, meta: event.target.value })}
         />
       </label>
-      <FieldError problem={problem} field="meta" />
-      <button type="submit" className="btn btn-primary" disabled={saving}>
-        Save
+      <ErrorCampo problema={problema} campo="meta" />
+      <button type="submit" className="btn btn-primary" disabled={guardando}>
+        Guardar
       </button>
     </form>
   );
 }
 
-=== web/src/features/producto/views/producto-list-view.tsx ===
+=== web/src/contextos/producto/vistas/lista-producto.tsx ===
 import { Link } from "wouter";
-import type { Schemas } from "../../../api/client";
-import { formatDateTime, formatEntries } from "../../../shared/forms";
+import type { Esquemas } from "../../../api/cliente";
+import { formatearEntradas, formatearFechaHora } from "../../../compartido/formularios";
 
-type Producto = Schemas["DtoProducto"];
+type Producto = Esquemas["DtoProducto"];
 
-export function ProductoListView({ productos }: { productos: Producto[] }) {
+export function VistaListaProducto({ productos }: { productos: Producto[] }) {
   return (
     <div className="overflow-x-auto rounded-box bg-base-100">
       <table className="table">
@@ -11120,18 +11147,18 @@ export function ProductoListView({ productos }: { productos: Producto[] }) {
               <td>{producto.sku}</td>
               <td>{producto.price}</td>
               <td>{producto.rating}</td>
-              <td>{producto.active ? "Yes" : "No"}</td>
+              <td>{producto.active ? "Sí" : "No"}</td>
               <td>{producto.refId}</td>
-              <td>{formatDateTime(producto.publishedAt)}</td>
+              <td>{formatearFechaHora(producto.publishedAt)}</td>
               <td>{producto.summary ?? "—"}</td>
               <td>{producto.views ?? "—"}</td>
-              <td>{producto.expiresAt == null ? "—" : formatDateTime(producto.expiresAt)}</td>
+              <td>{producto.expiresAt == null ? "—" : formatearFechaHora(producto.expiresAt)}</td>
               <td>{producto.tags.join(", ")}</td>
               <td>{producto.scores.join(", ")}</td>
-              <td>{formatEntries(producto.meta, ", ")}</td>
+              <td>{formatearEntradas(producto.meta, ", ")}</td>
               <td className="text-right">
                 <Link href={`/productos/${producto.id}`} className="link">
-                  View
+                  Ver
                 </Link>
               </td>
             </tr>
@@ -11142,123 +11169,210 @@ export function ProductoListView({ productos }: { productos: Producto[] }) {
   );
 }
 
-=== web/src/generated/dependencies.ts ===
-// AUTO-GENERATED by puerto. Edit puerto.toml, then run `puerto generar bootstrap`.
+=== web/src/generado/dependencias.ts ===
+// GENERADO por puerto. Edita puerto.toml y después ejecuta `puerto generar bootstrap`.
 //
-// The composition root: the only module that builds the API client. Screens reach it through
-// `useDependencies()`, so a test hands them a fake instead.
+// La raíz de composición: el único módulo que construye el cliente de la API. Las pantallas llegan
+// a él con `useDependencias()`, así un test les da un falso.
 
-import { type ApiClient, createApiClient } from "../api/client";
+import { type ClienteApi, crearClienteApi } from "../api/cliente";
 
-export interface Dependencies {
-  api: ApiClient;
+export interface Dependencias {
+  api: ClienteApi;
 }
 
-export function createDependencies(): Dependencies {
-  const api = createApiClient();
+export function crearDependencias(): Dependencias {
+  const api = crearClienteApi();
   return { api };
 }
 
-=== web/src/generated/routes.tsx ===
-// AUTO-GENERATED by puerto. Edit puerto.toml, then run `puerto generar bootstrap`.
+=== web/src/generado/rutas.tsx ===
+// GENERADO por puerto. Edita puerto.toml y después ejecuta `puerto generar bootstrap`.
 
 import { Route, Switch } from "wouter";
-import { BilleteDetailContainer } from "../features/billete/containers/billete-detail-container";
-import { BilleteFormContainer } from "../features/billete/containers/billete-form-container";
-import { BilleteListContainer } from "../features/billete/containers/billete-list-container";
-import { ClienteDetailContainer } from "../features/cliente/containers/cliente-detail-container";
-import { ClienteFormContainer } from "../features/cliente/containers/cliente-form-container";
-import { ClienteListContainer } from "../features/cliente/containers/cliente-list-container";
-import { ProductoDetailContainer } from "../features/producto/containers/producto-detail-container";
-import { ProductoFormContainer } from "../features/producto/containers/producto-form-container";
-import { ProductoListContainer } from "../features/producto/containers/producto-list-container";
-import { HomePage } from "../pages/home";
-import { NotFoundPage } from "../pages/not-found";
-import { customRoutes } from "../routes";
-import type { NavEntry } from "../shared/ui/layout";
+import type { EntradaMenu } from "../compartido/ui/marco";
+import { ContenedorDetalleBillete } from "../contextos/billete/contenedores/detalle-billete";
+import { ContenedorFormularioBillete } from "../contextos/billete/contenedores/formulario-billete";
+import { ContenedorListaBillete } from "../contextos/billete/contenedores/lista-billete";
+import { ContenedorDetalleCliente } from "../contextos/cliente/contenedores/detalle-cliente";
+import { ContenedorFormularioCliente } from "../contextos/cliente/contenedores/formulario-cliente";
+import { ContenedorListaCliente } from "../contextos/cliente/contenedores/lista-cliente";
+import { ContenedorDetalleProducto } from "../contextos/producto/contenedores/detalle-producto";
+import { ContenedorFormularioProducto } from "../contextos/producto/contenedores/formulario-producto";
+import { ContenedorListaProducto } from "../contextos/producto/contenedores/lista-producto";
+import { PaginaInicio } from "../paginas/inicio";
+import { PaginaNoEncontrada } from "../paginas/no-encontrada";
+import { rutasPropias } from "../rutas";
 
-export const navEntries: NavEntry[] = [
-  { label: "Billetes", href: "/billetes" },
-  { label: "Clientes", href: "/clientes" },
-  { label: "Productos", href: "/productos" },
+export const entradasMenu: EntradaMenu[] = [
+  { etiqueta: "Billetes", href: "/billetes" },
+  { etiqueta: "Clientes", href: "/clientes" },
+  { etiqueta: "Productos", href: "/productos" },
 ];
 
-export function AppRoutes() {
+export function RutasApp() {
   return (
     <Switch>
       <Route path="/">
-        <HomePage entries={navEntries} />
+        <PaginaInicio entradas={entradasMenu} />
       </Route>
-      {customRoutes}
+      {rutasPropias}
       <Route path="/billetes">
-        <BilleteListContainer />
+        <ContenedorListaBillete />
       </Route>
-      <Route path="/billetes/new">
-        <BilleteFormContainer />
+      <Route path="/billetes/nuevo">
+        <ContenedorFormularioBillete />
       </Route>
-      <Route path="/billetes/:id/edit">{(params) => <BilleteFormContainer id={params.id} />}</Route>
-      <Route path="/billetes/:id">{(params) => <BilleteDetailContainer id={params.id} />}</Route>
+      <Route path="/billetes/:id/editar">
+        {(params) => <ContenedorFormularioBillete id={params.id} />}
+      </Route>
+      <Route path="/billetes/:id">{(params) => <ContenedorDetalleBillete id={params.id} />}</Route>
       <Route path="/clientes">
-        <ClienteListContainer />
+        <ContenedorListaCliente />
       </Route>
-      <Route path="/clientes/new">
-        <ClienteFormContainer />
+      <Route path="/clientes/nuevo">
+        <ContenedorFormularioCliente />
       </Route>
-      <Route path="/clientes/:id/edit">{(params) => <ClienteFormContainer id={params.id} />}</Route>
-      <Route path="/clientes/:id">{(params) => <ClienteDetailContainer id={params.id} />}</Route>
+      <Route path="/clientes/:id/editar">
+        {(params) => <ContenedorFormularioCliente id={params.id} />}
+      </Route>
+      <Route path="/clientes/:id">{(params) => <ContenedorDetalleCliente id={params.id} />}</Route>
       <Route path="/productos">
-        <ProductoListContainer />
+        <ContenedorListaProducto />
       </Route>
-      <Route path="/productos/new">
-        <ProductoFormContainer />
+      <Route path="/productos/nuevo">
+        <ContenedorFormularioProducto />
       </Route>
-      <Route path="/productos/:id/edit">
-        {(params) => <ProductoFormContainer id={params.id} />}
+      <Route path="/productos/:id/editar">
+        {(params) => <ContenedorFormularioProducto id={params.id} />}
       </Route>
-      <Route path="/productos/:id">{(params) => <ProductoDetailContainer id={params.id} />}</Route>
+      <Route path="/productos/:id">
+        {(params) => <ContenedorDetalleProducto id={params.id} />}
+      </Route>
       <Route>
-        <NotFoundPage />
+        <PaginaNoEncontrada />
       </Route>
     </Switch>
   );
 }
 
-=== web/src/test-support/billete.ts ===
-import type { Schemas } from "../api/client";
-import { collection } from "./fake-api";
+=== web/src/pruebas/api-falsa.ts ===
+import { type ClienteApi, crearClienteApi } from "../api/cliente";
 
-type Billete = Schemas["DtoBillete"];
-type BilleteRequest = Schemas["PeticionCrearBillete"];
+/** Lo que guarda la API falsa bajo `ruta`: los DTO de la API, por id. */
+export interface Coleccion<T extends { id: string }> {
+  ruta: string;
+  /** El código que responde un elemento que no está: `producto.no_encontrado`. */
+  noEncontrado: string;
+  elementos: Map<string, T>;
+}
 
-/** Valid billetes for tests; pass `overrides` for the fields a test is about. */
-export const BilleteMother = {
-  request(overrides: Partial<BilleteRequest> = {}): BilleteRequest {
+/** Los elementos bajo `ruta` (`/productos`) de `entidad` (`producto`), empezando por `semilla`. */
+export function coleccion<T extends { id: string }>(
+  ruta: string,
+  entidad: string,
+  semilla: T[] = [],
+): Coleccion<T> {
+  const elementos = new Map(semilla.map((elemento) => [elemento.id, elemento]));
+  return { ruta, noEncontrado: `${entidad}.no_encontrado`, elementos };
+}
+
+/**
+ * Un `ClienteApi` que responde como la API generada, sobre colecciones en memoria: una página por
+ * `limite` / `desplazamiento`, un `404` con `<entidad>.no_encontrado`, `201`, `200` y `204`. Cada
+ * uno de `fallos` (`{ "POST /productos": "producto.duplicado" }`) responde su código en su lugar.
+ */
+export function apiFalsa(
+  colecciones: Coleccion<{ id: string }>[],
+  fallos: Record<string, string> = {},
+): ClienteApi {
+  return crearClienteApi({
+    baseUrl: "http://localhost/api",
+    fetch: async (peticion) => {
+      const url = new URL(peticion.url);
+      const ruta = url.pathname.replace(/^\/api/, "");
+      const objetivo = colecciones.find((c) => ruta === c.ruta || ruta.startsWith(`${c.ruta}/`));
+      if (objetivo === undefined) return responderError(404, "http.404");
+      const fallo = fallos[`${peticion.method} ${objetivo.ruta}`];
+      if (fallo !== undefined) return responderError(400, fallo);
+      const id = ruta.slice(objetivo.ruta.length + 1);
+      return id === ""
+        ? servirLista(objetivo, peticion, url)
+        : servirElemento(objetivo, peticion, id);
+    },
+  });
+}
+
+async function servirLista(objetivo: Coleccion<{ id: string }>, peticion: Request, url: URL) {
+  if (peticion.method === "POST") {
+    const creado = { ...(await peticion.json()), id: crypto.randomUUID() };
+    objetivo.elementos.set(creado.id, creado);
+    return Response.json(creado, { status: 201 });
+  }
+  const limite = Number(url.searchParams.get("limite") ?? 20);
+  const desplazamiento = Number(url.searchParams.get("desplazamiento") ?? 0);
+  const todos = [...objetivo.elementos.values()];
+  const elementos = todos.slice(desplazamiento, desplazamiento + limite);
+  return Response.json({ elementos, total: todos.length, limite, desplazamiento });
+}
+
+async function servirElemento(objetivo: Coleccion<{ id: string }>, peticion: Request, id: string) {
+  const encontrado = objetivo.elementos.get(id);
+  if (encontrado === undefined) return responderError(404, objetivo.noEncontrado);
+  if (peticion.method === "DELETE") {
+    objetivo.elementos.delete(id);
+    return new Response(null, { status: 204 });
+  }
+  if (peticion.method === "PUT") {
+    // Como la API, actualizar reemplaza todos los campos: el que no se manda queda vacío.
+    const actualizado = { ...(await peticion.json()), id };
+    objetivo.elementos.set(id, actualizado);
+    return Response.json(actualizado);
+  }
+  return Response.json(encontrado);
+}
+
+/** Un `RespuestaError` como lo responde la API. */
+function responderError(estado: number, codigo: string) {
+  return Response.json({ codigo, mensaje: codigo }, { status: estado });
+}
+
+=== web/src/pruebas/billete.ts ===
+import type { Esquemas } from "../api/cliente";
+import { coleccion } from "./api-falsa";
+
+type Billete = Esquemas["DtoBillete"];
+type PeticionBillete = Esquemas["PeticionCrearBillete"];
+
+/** Datos válidos de billetes; en `cambios`, los campos de los que trata el test. */
+export const MadreBillete = {
+  peticion(cambios: Partial<PeticionBillete> = {}): PeticionBillete {
     return {
       state: "Open",
-      ...overrides,
+      ...cambios,
     };
   },
 
-  random(overrides: Partial<Billete> = {}): Billete {
-    return { id: crypto.randomUUID(), ...BilleteMother.request(), ...overrides };
+  aleatorio(cambios: Partial<Billete> = {}): Billete {
+    return { id: crypto.randomUUID(), ...MadreBillete.peticion(), ...cambios };
   },
 };
 
-/** The fake API's `/billetes`, holding `seed`. */
-export function billeteCollection(seed: Billete[] = []) {
-  return collection("/billetes", "billete", seed);
+/** El `/billetes` de la API falsa, con `semilla`. */
+export function coleccionBillete(semilla: Billete[] = []) {
+  return coleccion("/billetes", "billete", semilla);
 }
 
-=== web/src/test-support/cliente.ts ===
-import type { Schemas } from "../api/client";
-import { collection } from "./fake-api";
+=== web/src/pruebas/cliente.ts ===
+import type { Esquemas } from "../api/cliente";
+import { coleccion } from "./api-falsa";
 
-type Cliente = Schemas["DtoCliente"];
-type ClienteRequest = Schemas["PeticionCrearCliente"];
+type Cliente = Esquemas["DtoCliente"];
+type PeticionCliente = Esquemas["PeticionCrearCliente"];
 
-/** Valid clientes for tests; pass `overrides` for the fields a test is about. */
-export const ClienteMother = {
-  request(overrides: Partial<ClienteRequest> = {}): ClienteRequest {
+/** Datos válidos de clientes; en `cambios`, los campos de los que trata el test. */
+export const MadreCliente = {
+  peticion(cambios: Partial<PeticionCliente> = {}): PeticionCliente {
     return {
       email: "example",
       name: "example",
@@ -11268,109 +11382,30 @@ export const ClienteMother = {
       middle: "example",
       labels: ["example"],
       status: "Active",
-      ...overrides,
+      ...cambios,
     };
   },
 
-  random(overrides: Partial<Cliente> = {}): Cliente {
-    return { id: crypto.randomUUID(), ...ClienteMother.request(), ...overrides };
+  aleatorio(cambios: Partial<Cliente> = {}): Cliente {
+    return { id: crypto.randomUUID(), ...MadreCliente.peticion(), ...cambios };
   },
 };
 
-/** The fake API's `/clientes`, holding `seed`. */
-export function clienteCollection(seed: Cliente[] = []) {
-  return collection("/clientes", "cliente", seed);
+/** El `/clientes` de la API falsa, con `semilla`. */
+export function coleccionCliente(semilla: Cliente[] = []) {
+  return coleccion("/clientes", "cliente", semilla);
 }
 
-=== web/src/test-support/fake-api.ts ===
-import { type ApiClient, createApiClient } from "../api/client";
+=== web/src/pruebas/producto.ts ===
+import type { Esquemas } from "../api/cliente";
+import { coleccion } from "./api-falsa";
 
-/** What the fake API holds under `path`: the API's DTOs, by id. */
-export interface Collection<T extends { id: string }> {
-  path: string;
-  /** The code a missing item answers: `producto.no_encontrado`. */
-  notFound: string;
-  items: Map<string, T>;
-}
+type Producto = Esquemas["DtoProducto"];
+type PeticionProducto = Esquemas["PeticionCrearProducto"];
 
-/** The items under `path` (`/productos`) of `entity` (`producto`), starting with `seed`. */
-export function collection<T extends { id: string }>(
-  path: string,
-  entity: string,
-  seed: T[] = [],
-): Collection<T> {
-  const items = new Map(seed.map((item) => [item.id, item]));
-  return { path, notFound: `${entity}.no_encontrado`, items };
-}
-
-/**
- * An `ApiClient` that answers the way the generated API does, over in-memory collections: a page
- * per `limite` / `desplazamiento`, a `404` with `<entity>.no_encontrado`, `201`, `200` and `204`.
- * Each of `failures` (`{ "POST /productos": "producto.duplicado" }`) answers its code instead.
- */
-export function fakeApi(
-  collections: Collection<{ id: string }>[],
-  failures: Record<string, string> = {},
-): ApiClient {
-  return createApiClient({
-    baseUrl: "http://localhost/api",
-    fetch: async (request) => {
-      const url = new URL(request.url);
-      const path = url.pathname.replace(/^\/api/, "");
-      const target = collections.find((c) => path === c.path || path.startsWith(`${c.path}/`));
-      if (target === undefined) return answer(404, "http.404");
-      const failure = failures[`${request.method} ${target.path}`];
-      if (failure !== undefined) return answer(400, failure);
-      const id = path.slice(target.path.length + 1);
-      return id === "" ? serveList(target, request, url) : serveItem(target, request, id);
-    },
-  });
-}
-
-async function serveList(target: Collection<{ id: string }>, request: Request, url: URL) {
-  if (request.method === "POST") {
-    const created = { ...(await request.json()), id: crypto.randomUUID() };
-    target.items.set(created.id, created);
-    return Response.json(created, { status: 201 });
-  }
-  const limite = Number(url.searchParams.get("limite") ?? 20);
-  const desplazamiento = Number(url.searchParams.get("desplazamiento") ?? 0);
-  const all = [...target.items.values()];
-  const elementos = all.slice(desplazamiento, desplazamiento + limite);
-  return Response.json({ elementos, total: all.length, limite, desplazamiento });
-}
-
-async function serveItem(target: Collection<{ id: string }>, request: Request, id: string) {
-  const found = target.items.get(id);
-  if (found === undefined) return answer(404, target.notFound);
-  if (request.method === "DELETE") {
-    target.items.delete(id);
-    return new Response(null, { status: 204 });
-  }
-  if (request.method === "PUT") {
-    // Like the API, an update replaces every field: one left out is cleared.
-    const updated = { ...(await request.json()), id };
-    target.items.set(id, updated);
-    return Response.json(updated);
-  }
-  return Response.json(found);
-}
-
-/** A `RespuestaError` the way the API answers one. */
-function answer(status: number, codigo: string) {
-  return Response.json({ codigo, mensaje: codigo }, { status });
-}
-
-=== web/src/test-support/producto.ts ===
-import type { Schemas } from "../api/client";
-import { collection } from "./fake-api";
-
-type Producto = Schemas["DtoProducto"];
-type ProductoRequest = Schemas["PeticionCrearProducto"];
-
-/** Valid productos for tests; pass `overrides` for the fields a test is about. */
-export const ProductoMother = {
-  request(overrides: Partial<ProductoRequest> = {}): ProductoRequest {
+/** Datos válidos de productos; en `cambios`, los campos de los que trata el test. */
+export const MadreProducto = {
+  peticion(cambios: Partial<PeticionProducto> = {}): PeticionProducto {
     return {
       title: "example",
       sku: "example",
@@ -11385,16 +11420,16 @@ export const ProductoMother = {
       tags: ["example"],
       scores: [42],
       meta: { key: "value" },
-      ...overrides,
+      ...cambios,
     };
   },
 
-  random(overrides: Partial<Producto> = {}): Producto {
-    return { id: crypto.randomUUID(), ...ProductoMother.request(), ...overrides };
+  aleatorio(cambios: Partial<Producto> = {}): Producto {
+    return { id: crypto.randomUUID(), ...MadreProducto.peticion(), ...cambios };
   },
 };
 
-/** The fake API's `/productos`, holding `seed`. */
-export function productoCollection(seed: Producto[] = []) {
-  return collection("/productos", "producto", seed);
+/** El `/productos` de la API falsa, con `semilla`. */
+export function coleccionProducto(semilla: Producto[] = []) {
+  return coleccion("/productos", "producto", semilla);
 }

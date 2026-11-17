@@ -1,99 +1,105 @@
 import { describe, expect, test } from "bun:test";
 import { fireEvent, screen, waitFor } from "@testing-library/react";
+import { apiFalsa } from "../../../pruebas/api-falsa";
 {% if access.update_roles or access.delete_roles -%}
-import { CurrentUserMother } from "../../../test-support/auth";
+import { MadreUsuarioActual } from "../../../pruebas/auth";
 {% endif -%}
-import { fakeApi } from "../../../test-support/fake-api";
 {% for t in targets -%}
-import { {{ t.camel }}Collection, {{ t.pascal }}Mother } from "../../../test-support/{{ t.kebab }}";
+import { coleccion{{ t.pascal }}, Madre{{ t.pascal }} } from "../../../pruebas/{{ t.kebab }}";
 {% endfor -%}
-import { {{ camel }}Collection, {{ pascal }}Mother } from "../../../test-support/{{ kebab }}";
-import { renderScreen } from "../../../test-support/render";
-import { {{ pascal }}DetailContainer } from "./{{ kebab }}-detail-container";
+import { coleccion{{ pascal }}, Madre{{ pascal }} } from "../../../pruebas/{{ kebab }}";
+import { renderizarPantalla } from "../../../pruebas/renderizar";
+import { ContenedorDetalle{{ pascal }} } from "./detalle-{{ kebab }}";
 
-describe("{{ pascal }}DetailContainer", () => {
-  test("should show the {{ words }} when it exists", async () => {
-    // Arrange
-    const seeded = {{ pascal }}Mother.random();
-    const api = fakeApi([{{ camel }}Collection([seeded])]);
+describe("ContenedorDetalle{{ pascal }}", () => {
+  test("debería mostrar el detalle cuando existe", async () => {
+    // Preparar
+    const sembrado = Madre{{ pascal }}.aleatorio();
+    const api = apiFalsa([coleccion{{ pascal }}([sembrado])]);
 
-    // Act
-    renderScreen(<{{ pascal }}DetailContainer id={seeded.id} />, { api });
+    const pantalla = <ContenedorDetalle{{ pascal }} id={sembrado.id} />;
 
-    // Assert
-    expect(await screen.findByText("Edit")).toBeTruthy();
+    // Actuar
+    renderizarPantalla(pantalla, { api });
+
+    // Comprobar
+    expect(await screen.findByText("Editar")).toBeTruthy();
   });
 {%- for r in references %}
 
-  test("should link the {{ r.label | lower }} to its page, named by its label", async () => {
-    // Arrange
-    const seeded = {{ pascal }}Mother.random();
+  test("debería enlazar {{ r.label }} con su página y su etiqueta", async () => {
+    // Preparar
+    const sembrado = Madre{{ pascal }}.aleatorio();
 {%- if r.target_inline %}
-    const target = {{ r.target_pascal }}Mother.random({ id: seeded.{{ r.camel }}{% if not r.required %} ?? crypto.randomUUID(){% endif %} });
+    const objetivo = Madre{{ r.target_pascal }}.aleatorio({ id: sembrado.{{ r.camel }}{% if not r.required %} ?? crypto.randomUUID(){% endif %} });
 {%- else %}
-    const target = {{ r.target_pascal }}Mother.random({
-      id: seeded.{{ r.camel }}{% if not r.required %} ?? crypto.randomUUID(){% endif %},
+    const objetivo = Madre{{ r.target_pascal }}.aleatorio({
+      id: sembrado.{{ r.camel }}{% if not r.required %} ?? crypto.randomUUID(){% endif %},
     });
 {%- endif %}
 {%- if r.api_inline %}
-    const api = fakeApi([{{ camel }}Collection([seeded]), {{ r.target_camel }}Collection([target])]);
+    const api = apiFalsa([coleccion{{ pascal }}([sembrado]), coleccion{{ r.target_pascal }}([objetivo])]);
 {%- else %}
-    const api = fakeApi([
-      {{ camel }}Collection([seeded]),
-      {{ r.target_camel }}Collection([target]),
+    const api = apiFalsa([
+      coleccion{{ pascal }}([sembrado]),
+      coleccion{{ r.target_pascal }}([objetivo]),
     ]);
 {%- endif %}
+    const pantalla = <ContenedorDetalle{{ pascal }} id={sembrado.id} />;
 
-    // Act
-    renderScreen(<{{ pascal }}DetailContainer id={seeded.id} />, { api });
+    // Actuar
+    renderizarPantalla(pantalla, { api });
 
-    // Assert: by its href — two references to one target may share a label.
-    const selector = `a[href="{{ r.ref_path }}/${seeded.{{ r.camel }}}"]`;
-    expect(await screen.findByText(target.{{ r.target_label }}, { selector })).toBeTruthy();
+    // Comprobar: por su href; dos referencias al mismo objetivo pueden tener la misma etiqueta.
+    const selector = `a[href="{{ r.ref_path }}/${sembrado.{{ r.camel }}}"]`;
+    expect(await screen.findByText(objetivo.{{ r.target_label }}, { selector })).toBeTruthy();
   });
 {%- endfor %}
 
-  test("should show the not-found code when the {{ words }} does not exist", async () => {
-    // Arrange
-    const api = fakeApi([{{ camel }}Collection()]);
+  test("debería mostrar el código de no encontrado cuando no existe", async () => {
+    // Preparar
+    const api = apiFalsa([coleccion{{ pascal }}()]);
+    const pantalla = <ContenedorDetalle{{ pascal }} id={crypto.randomUUID()} />;
 
-    // Act
-    renderScreen(<{{ pascal }}DetailContainer id={crypto.randomUUID()} />, { api });
+    // Actuar
+    renderizarPantalla(pantalla, { api });
 
-    // Assert
+    // Comprobar
     expect((await screen.findByRole("alert")).textContent).toBe("{{ snake }}.no_encontrado");
   });
 
-  test("should delete the {{ words }} only once the deletion is confirmed", async () => {
-    // Arrange
-    const seeded = {{ pascal }}Mother.random();
-    const stored = {{ camel }}Collection([seeded]);
-    const api = fakeApi([stored]);
-    const { history } = renderScreen(<{{ pascal }}DetailContainer id={seeded.id} />, { api });
-    fireEvent.click(await screen.findByText("Delete", { selector: ".card-actions button" }));
-    expect(stored.items.has(seeded.id)).toBe(true);
+  test("debería borrar solo tras confirmar el borrado", async () => {
+    // Preparar
+    const sembrado = Madre{{ pascal }}.aleatorio();
+    const guardados = coleccion{{ pascal }}([sembrado]);
+    const api = apiFalsa([guardados]);
+    const pantalla = <ContenedorDetalle{{ pascal }} id={sembrado.id} />;
+    const { historial } = renderizarPantalla(pantalla, { api });
+    fireEvent.click(await screen.findByText("Borrar", { selector: ".card-actions button" }));
+    expect(guardados.elementos.has(sembrado.id)).toBe(true);
 
-    // Act
-    fireEvent.click(screen.getByText("Delete", { selector: ".modal-action button" }));
+    // Actuar
+    fireEvent.click(screen.getByText("Borrar", { selector: ".modal-action button" }));
 
-    // Assert
-    await waitFor(() => expect(history.at(-1)).toBe("/{{ plural }}"));
-    expect(stored.items.has(seeded.id)).toBe(false);
+    // Comprobar
+    await waitFor(() => expect(historial.at(-1)).toBe("/{{ plural }}"));
+    expect(guardados.elementos.has(sembrado.id)).toBe(false);
   });
-{%- for action in ["Edit", "Delete"] %}
-{%- if action == "Edit" %}{% set guard = access.update_roles %}{% else %}{% set guard = access.delete_roles %}{% endif %}
+{%- for action in ["Editar", "Borrar"] %}
+{%- if action == "Editar" %}{% set guard = access.update_roles %}{% else %}{% set guard = access.delete_roles %}{% endif %}
 {%- if guard %}
 
-  test("should not offer {{ action }} to a user without its role", async () => {
-    // Arrange
-    const seeded = {{ pascal }}Mother.random();
-    const api = fakeApi([{{ camel }}Collection([seeded])]);
-    const user = CurrentUserMother.random();
+  test("no debería ofrecer {{ action }} a quien no tiene su rol", async () => {
+    // Preparar
+    const sembrado = Madre{{ pascal }}.aleatorio();
+    const api = apiFalsa([coleccion{{ pascal }}([sembrado])]);
+    const usuario = MadreUsuarioActual.aleatorio();
+    const pantalla = <ContenedorDetalle{{ pascal }} id={sembrado.id} />;
 
-    // Act
-    renderScreen(<{{ pascal }}DetailContainer id={seeded.id} />, { api }, "/", { user });
+    // Actuar
+    renderizarPantalla(pantalla, { api }, "/", { usuario });
 
-    // Assert
+    // Comprobar
     expect(await screen.findByText("{{ fields[0].label }}", { selector: "dt" })).toBeTruthy();
     expect(screen.queryByText("{{ action }}", { selector: ".card-actions *" })).toBeNull();
   });
@@ -101,18 +107,19 @@ describe("{{ pascal }}DetailContainer", () => {
 {%- endfor %}
 {%- if access.delete_protected %}
 
-  test("should show auth.prohibido when the API refuses the deletion", async () => {
-    // Arrange
-    const seeded = {{ pascal }}Mother.random();
-    const failures = { "DELETE /{{ plural }}": "auth.prohibido" };
-    const api = fakeApi([{{ camel }}Collection([seeded])], failures);
-    renderScreen(<{{ pascal }}DetailContainer id={seeded.id} />, { api });
-    fireEvent.click(await screen.findByText("Delete", { selector: ".card-actions button" }));
+  test("debería mostrar auth.prohibido cuando la API rechaza el borrado", async () => {
+    // Preparar
+    const sembrado = Madre{{ pascal }}.aleatorio();
+    const fallos = { "DELETE /{{ plural }}": "auth.prohibido" };
+    const api = apiFalsa([coleccion{{ pascal }}([sembrado])], fallos);
+    const pantalla = <ContenedorDetalle{{ pascal }} id={sembrado.id} />;
+    renderizarPantalla(pantalla, { api });
+    fireEvent.click(await screen.findByText("Borrar", { selector: ".card-actions button" }));
 
-    // Act
-    fireEvent.click(screen.getByText("Delete", { selector: ".modal-action button" }));
+    // Actuar
+    fireEvent.click(screen.getByText("Borrar", { selector: ".modal-action button" }));
 
-    // Assert
+    // Comprobar
     expect((await screen.findByRole("alert")).textContent).toBe("auth.prohibido");
   });
 {%- endif %}

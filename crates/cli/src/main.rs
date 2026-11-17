@@ -219,7 +219,7 @@ enum GenerateAction {
         name: String,
     },
     /// Scaffold only the frontend slice of an existing CRUD entity (web projects; regenerates
-    /// web/src/generated/)
+    /// web/src/generado/)
     Web {
         /// Entity name in PascalCase (e.g. Producto)
         name: String,

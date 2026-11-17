@@ -1,0 +1,35 @@
+/** Quien tiene la sesión iniciada, tal como lo resolvió la API (`GET /me`): nunca los claims del proveedor. */
+export interface UsuarioActual {
+  id: string;
+  email: string | null;
+  nombre: string | null;
+  /** Lo que la API comprueba con `#[requiere_rol]`. */
+  roles: string[];
+}
+
+/**
+ * Quién tiene la sesión iniciada, y cómo iniciarla y cerrarla. La pasarela habla con el proveedor
+ * (OIDC) o con la API (local); las pantallas llegan a ella con `useAuth()`.
+ */
+export interface PasarelaAuth {
+  /** Quien tiene la sesión iniciada, o `null` si no la tiene nadie. */
+  usuarioActual(): Promise<UsuarioActual | null>;
+  /** El token bearer para la API, o `null` si no hay sesión. */
+  tokenAcceso(): Promise<string | null>;
+  /** Inicia sesión y después vuelve a `volverA` (una ruta de esta app). */
+  login(volverA: string): Promise<void>;
+  /** Termina un inicio de sesión en `/auth/callback`; responde la ruta que se le dio a `login`. */
+  completarLogin(): Promise<string>;
+  logout(): Promise<void>;
+}
+
+/** Un inicio de sesión que rechazó el proveedor o la API, o un `GET /me` que falló. */
+export class ErrorAuth extends Error {
+  readonly codigo: string;
+
+  constructor(codigo: string) {
+    super(codigo);
+    this.name = "ErrorAuth";
+    this.codigo = codigo;
+  }
+}

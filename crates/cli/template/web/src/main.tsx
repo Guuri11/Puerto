@@ -2,22 +2,22 @@ import "./index.css";
 
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
-import { DependenciesProvider } from "./dependencies";
-import { createDependencies } from "./generated/dependencies";
-import { AppRoutes, navEntries } from "./generated/routes";
-import { Layout } from "./shared/ui/layout";
+import { Marco } from "./compartido/ui/marco";
+import { ProveedorDependencias } from "./dependencias";
+import { crearDependencias } from "./generado/dependencias";
+import { entradasMenu, RutasApp } from "./generado/rutas";
 
-const root = document.getElementById("root");
-if (root === null) {
-  throw new Error("index.html has no #root element");
+const raiz = document.getElementById("root");
+if (raiz === null) {
+  throw new Error("index.html no tiene el elemento #root");
 }
 
-createRoot(root).render(
+createRoot(raiz).render(
   <StrictMode>
-    <DependenciesProvider value={createDependencies()}>
-      <Layout title={document.title} nav={navEntries}>
-        <AppRoutes />
-      </Layout>
-    </DependenciesProvider>
+    <ProveedorDependencias valor={crearDependencias()}>
+      <Marco titulo={document.title} menu={entradasMenu}>
+        <RutasApp />
+      </Marco>
+    </ProveedorDependencias>
   </StrictMode>,
 );

@@ -154,9 +154,9 @@ apuntándole. La lista filtra por cada referencia: `GET /pedidos?clienteId=…` 
 | **Parcheados**: se añade una línea y se conserva el resto | el `Cargo.toml` raíz (miembros, `[workspace.dependencies]`), `presentacion/api/Cargo.toml` y `presentacion/worker/Cargo.toml` (el crate de un contexto), el `lib.rs` del crate de aplicación, `rutas.rs` (los campos de `Api<Entidad>`), `presentacion/worker/src/consumidores.rs`, `puerto.toml` | editándolos libremente; conserva las líneas que añadió Puerto |
 | **Se escriben una vez**: tuyos desde el principio | `presentacion/api/src/app.rs` (tus middleware y rutas), la impl de un `generar caso-de-uso`, los consumidores, los correos y sus plantillas, las migraciones, los ficheros de auth | editándolos |
 
-Con `web/`: `web/src/generated/*`, `web/src/api/schema.d.ts` y `docs/api/openapi.json` también se
+Con `web/`: `web/src/generado/*`, `web/src/api/esquema.d.ts` y `docs/api/openapi.json` también se
 reescriben (`generar bootstrap`, `make web/sync`); las pantallas de una entidad son ficheros suyos
-como los demás; `web/src/routes.tsx` (tus propias pantallas) es tuyo. El detalle, en
+como los demás; `web/src/rutas.tsx` (tus propias pantallas) es tuyo. El detalle, en
 `web/AGENTS.md`.
 
 ### Cambiar los campos de una entidad
@@ -446,7 +446,7 @@ web/lint: web/require-install ## Comprueba tipos, lint y la regla de dependencia
 web/sync: web/require-install ## Tras un scaffold o un cambio de DTO: exporta la spec OpenAPI y regenera los tipos del frontend
 	@echo "${CYAN}Exportando docs/api/openapi.json...${NC}"
 	UPDATE_OPENAPI=1 $(CARGO) test -p api openapi
-	@echo "${CYAN}Generando web/src/api/schema.d.ts...${NC}"
+	@echo "${CYAN}Generando web/src/api/esquema.d.ts...${NC}"
 	cd web && $(BUN) run openapi:types
 	@echo "${CYAN}Formateando web/ (Biome, sin arreglos de lint)...${NC}"
 	cd web && $(BUN) run format
@@ -8401,435 +8401,444 @@ referencia = "Cliente"
 nombre = "carrier"
 tipo = "String"
 
-=== web/src/api/client.ts ===
+=== web/src/api/cliente.ts ===
 import createClient, { type Client, type ClientOptions } from "openapi-fetch";
-import type { components, paths } from "./schema";
+import type { components, paths } from "./esquema";
 
-/** The typed API client. `paths` is generated from the backend's spec (`make web/sync`). */
-export type ApiClient = Client<paths>;
+/** El cliente tipado de la API. `paths` sale de la especificación del backend (`make web/sync`). */
+export type ClienteApi = Client<paths>;
 
-/** The API's DTOs by name: `Schemas["DtoProducto"]`, `Schemas["PeticionCrearProducto"]`. */
-export type Schemas = components["schemas"];
+/** Los DTO de la API por nombre: `Esquemas["DtoProducto"]`, `Esquemas["PeticionCrearProducto"]`. */
+export type Esquemas = components["schemas"];
 
-/** `/api` is the backend: proxied to `:8080` by Vite in development. */
-export function createApiClient(options: ClientOptions = {}): ApiClient {
-  return createClient<paths>({ baseUrl: "/api", ...options });
+/** `/api` es el backend: en desarrollo, Vite lo pasa a `:8080`. */
+export function crearClienteApi(opciones: ClientOptions = {}): ClienteApi {
+  return createClient<paths>({ baseUrl: "/api", ...opciones });
 }
 
-=== web/src/features/cliente/containers/cliente-detail-container.test.tsx ===
+=== web/src/contextos/cliente/contenedores/detalle-cliente.test.tsx ===
 import { describe, expect, test } from "bun:test";
 import { fireEvent, screen, waitFor } from "@testing-library/react";
-import { ClienteMother, clienteCollection } from "../../../test-support/cliente";
-import { fakeApi } from "../../../test-support/fake-api";
-import { renderScreen } from "../../../test-support/render";
-import { ClienteDetailContainer } from "./cliente-detail-container";
+import { apiFalsa } from "../../../pruebas/api-falsa";
+import { coleccionCliente, MadreCliente } from "../../../pruebas/cliente";
+import { renderizarPantalla } from "../../../pruebas/renderizar";
+import { ContenedorDetalleCliente } from "./detalle-cliente";
 
-describe("ClienteDetailContainer", () => {
-  test("should show the cliente when it exists", async () => {
-    // Arrange
-    const seeded = ClienteMother.random();
-    const api = fakeApi([clienteCollection([seeded])]);
+describe("ContenedorDetalleCliente", () => {
+  test("debería mostrar el detalle cuando existe", async () => {
+    // Preparar
+    const sembrado = MadreCliente.aleatorio();
+    const api = apiFalsa([coleccionCliente([sembrado])]);
 
-    // Act
-    renderScreen(<ClienteDetailContainer id={seeded.id} />, { api });
+    const pantalla = <ContenedorDetalleCliente id={sembrado.id} />;
 
-    // Assert
-    expect(await screen.findByText("Edit")).toBeTruthy();
+    // Actuar
+    renderizarPantalla(pantalla, { api });
+
+    // Comprobar
+    expect(await screen.findByText("Editar")).toBeTruthy();
   });
 
-  test("should show the not-found code when the cliente does not exist", async () => {
-    // Arrange
-    const api = fakeApi([clienteCollection()]);
+  test("debería mostrar el código de no encontrado cuando no existe", async () => {
+    // Preparar
+    const api = apiFalsa([coleccionCliente()]);
+    const pantalla = <ContenedorDetalleCliente id={crypto.randomUUID()} />;
 
-    // Act
-    renderScreen(<ClienteDetailContainer id={crypto.randomUUID()} />, { api });
+    // Actuar
+    renderizarPantalla(pantalla, { api });
 
-    // Assert
+    // Comprobar
     expect((await screen.findByRole("alert")).textContent).toBe("cliente.no_encontrado");
   });
 
-  test("should delete the cliente only once the deletion is confirmed", async () => {
-    // Arrange
-    const seeded = ClienteMother.random();
-    const stored = clienteCollection([seeded]);
-    const api = fakeApi([stored]);
-    const { history } = renderScreen(<ClienteDetailContainer id={seeded.id} />, { api });
-    fireEvent.click(await screen.findByText("Delete", { selector: ".card-actions button" }));
-    expect(stored.items.has(seeded.id)).toBe(true);
+  test("debería borrar solo tras confirmar el borrado", async () => {
+    // Preparar
+    const sembrado = MadreCliente.aleatorio();
+    const guardados = coleccionCliente([sembrado]);
+    const api = apiFalsa([guardados]);
+    const pantalla = <ContenedorDetalleCliente id={sembrado.id} />;
+    const { historial } = renderizarPantalla(pantalla, { api });
+    fireEvent.click(await screen.findByText("Borrar", { selector: ".card-actions button" }));
+    expect(guardados.elementos.has(sembrado.id)).toBe(true);
 
-    // Act
-    fireEvent.click(screen.getByText("Delete", { selector: ".modal-action button" }));
+    // Actuar
+    fireEvent.click(screen.getByText("Borrar", { selector: ".modal-action button" }));
 
-    // Assert
-    await waitFor(() => expect(history.at(-1)).toBe("/clientes"));
-    expect(stored.items.has(seeded.id)).toBe(false);
+    // Comprobar
+    await waitFor(() => expect(historial.at(-1)).toBe("/clientes"));
+    expect(guardados.elementos.has(sembrado.id)).toBe(false);
   });
 });
 
-=== web/src/features/cliente/containers/cliente-detail-container.tsx ===
+=== web/src/contextos/cliente/contenedores/detalle-cliente.tsx ===
 import { useState } from "react";
 import { Link, useLocation } from "wouter";
-import { unwrap } from "../../../api/http";
-import { useDependencies } from "../../../dependencies";
-import { ConfirmDialog } from "../../../shared/ui/confirm-dialog";
-import { ErrorAlert } from "../../../shared/ui/error-alert";
-import { useAsync } from "../../../shared/use-async";
-import { ClienteDetailView } from "../views/cliente-detail-view";
+import { desenvolver } from "../../../api/http";
+import { AlertaError } from "../../../compartido/ui/alerta-error";
+import { DialogoConfirmar } from "../../../compartido/ui/dialogo-confirmar";
+import { useCarga } from "../../../compartido/use-carga";
+import { useDependencias } from "../../../dependencias";
+import { VistaDetalleCliente } from "../vistas/detalle-cliente";
 
-export function ClienteDetailContainer({ id }: { id: string }) {
-  const { api } = useDependencies();
-  const cliente = useAsync(
-    () => unwrap(api.GET("/clientes/{id}", { params: { path: { id } } })),
+export function ContenedorDetalleCliente({ id }: { id: string }) {
+  const { api } = useDependencias();
+  const cliente = useCarga(
+    () => desenvolver(api.GET("/clientes/{id}", { params: { path: { id } } })),
     [api, id],
   );
-  const [, navigate] = useLocation();
-  const [confirming, setConfirming] = useState(false);
-  const [failure, setFailure] = useState<unknown>(null);
+  const [, navegar] = useLocation();
+  const [confirmando, setConfirmando] = useState(false);
+  const [fallo, setFallo] = useState<unknown>(null);
 
-  const remove = async () => {
-    setConfirming(false);
+  const borrar = async () => {
+    setConfirmando(false);
     try {
-      await unwrap(api.DELETE("/clientes/{id}", { params: { path: { id } } }));
-      navigate("/clientes");
+      await desenvolver(api.DELETE("/clientes/{id}", { params: { path: { id } } }));
+      navegar("/clientes");
     } catch (error) {
-      setFailure(error);
+      setFallo(error);
     }
   };
 
   return (
     <section className="space-y-4">
       <h1 className="text-2xl font-bold">Cliente</h1>
-      {failure !== null && <ErrorAlert error={failure} />}
-      {cliente.status === "loading" && <span className="loading loading-spinner" />}
-      {cliente.status === "error" && <ErrorAlert error={cliente.error} />}
-      {cliente.status === "ok" && (
+      {fallo !== null && <AlertaError error={fallo} />}
+      {cliente.estado === "cargando" && <span className="loading loading-spinner" />}
+      {cliente.estado === "error" && <AlertaError error={cliente.error} />}
+      {cliente.estado === "listo" && (
         <div className="card bg-base-100">
           <div className="card-body">
-            <ClienteDetailView cliente={cliente.data} />
+            <VistaDetalleCliente cliente={cliente.datos} />
             <div className="card-actions justify-end">
-              <Link href={`/clientes/${id}/edit`} className="btn">
-                Edit
+              <Link href={`/clientes/${id}/editar`} className="btn">
+                Editar
               </Link>
-              <button type="button" className="btn btn-error" onClick={() => setConfirming(true)}>
-                Delete
+              <button type="button" className="btn btn-error" onClick={() => setConfirmando(true)}>
+                Borrar
               </button>
             </div>
           </div>
         </div>
       )}
       <Link href="/clientes" className="link">
-        Back to clientes
+        Volver a clientes
       </Link>
-      <ConfirmDialog
-        open={confirming}
-        message="Delete this cliente?"
-        onConfirm={remove}
-        onCancel={() => setConfirming(false)}
+      <DialogoConfirmar
+        abierto={confirmando}
+        mensaje="¿Borrar cliente?"
+        alConfirmar={borrar}
+        alCancelar={() => setConfirmando(false)}
       />
     </section>
   );
 }
 
-=== web/src/features/cliente/containers/cliente-form-container.test.tsx ===
+=== web/src/contextos/cliente/contenedores/formulario-cliente.test.tsx ===
 import { describe, expect, test } from "bun:test";
 import { fireEvent, screen, waitFor } from "@testing-library/react";
-import type { Schemas } from "../../../api/client";
-import { ClienteMother, clienteCollection } from "../../../test-support/cliente";
-import { fakeApi } from "../../../test-support/fake-api";
-import { renderScreen } from "../../../test-support/render";
-import { ClienteFormContainer } from "./cliente-form-container";
+import type { Esquemas } from "../../../api/cliente";
+import { apiFalsa } from "../../../pruebas/api-falsa";
+import { coleccionCliente, MadreCliente } from "../../../pruebas/cliente";
+import { renderizarPantalla } from "../../../pruebas/renderizar";
+import { ContenedorFormularioCliente } from "./formulario-cliente";
 
-function type(label: string, value: string) {
-  fireEvent.change(screen.getByLabelText(label), { target: { value } });
+function escribir(etiqueta: string, valor: string) {
+  fireEvent.change(screen.getByLabelText(etiqueta), { target: { value: valor } });
 }
 
-/** Fills the empty form with `request`, the way a user would. */
-async function fillIn(request: Schemas["PeticionCrearCliente"]) {
-  await screen.findByText("Save");
-  type("Name", request.name);
-  type("Email", request.email);
+/** Rellena el formulario vacío con `peticion`, como lo haría quien lo usa. */
+async function rellenar(peticion: Esquemas["PeticionCrearCliente"]) {
+  await screen.findByText("Guardar");
+  escribir("Name", peticion.name);
+  escribir("Email", peticion.email);
 }
 
-describe("ClienteFormContainer", () => {
-  test("should create the cliente from what was typed and show it", async () => {
-    // Arrange
-    const request = ClienteMother.request();
-    const stored = clienteCollection();
-    const api = fakeApi([stored]);
-    const { history } = renderScreen(<ClienteFormContainer />, { api });
-    await fillIn(request);
+describe("ContenedorFormularioCliente", () => {
+  test("debería crear con lo escrito e ir a su detalle", async () => {
+    // Preparar
+    const peticion = MadreCliente.peticion();
+    const guardados = coleccionCliente();
+    const api = apiFalsa([guardados]);
+    const pantalla = <ContenedorFormularioCliente />;
+    const { historial } = renderizarPantalla(pantalla, { api });
+    await rellenar(peticion);
 
-    // Act
-    fireEvent.click(screen.getByText("Save"));
+    // Actuar
+    fireEvent.click(screen.getByText("Guardar"));
 
-    // Assert
-    await waitFor(() => expect(history.at(-1)).toStartWith("/clientes/"));
-    const [created] = stored.items.values();
-    expect(created).toMatchObject(request);
-    expect(history.at(-1)).toBe(`/clientes/${created?.id}`);
+    // Comprobar
+    await waitFor(() => expect(historial.at(-1)).toStartWith("/clientes/"));
+    const [creado] = guardados.elementos.values();
+    expect(creado).toMatchObject(peticion);
+    expect(historial.at(-1)).toBe(`/clientes/${creado?.id}`);
   });
 
-  test("should save the edited cliente when an existing one is submitted", async () => {
-    // Arrange
-    const seeded = ClienteMother.random();
-    const stored = clienteCollection([seeded]);
-    const api = fakeApi([stored]);
-    const { history } = renderScreen(<ClienteFormContainer id={seeded.id} />, { api });
+  test("debería guardar la edición cuando se envía el formulario", async () => {
+    // Preparar
+    const sembrado = MadreCliente.aleatorio();
+    const guardados = coleccionCliente([sembrado]);
+    const api = apiFalsa([guardados]);
+    const pantalla = <ContenedorFormularioCliente id={sembrado.id} />;
+    const { historial } = renderizarPantalla(pantalla, { api });
 
-    // Act
-    fireEvent.click(await screen.findByText("Save"));
+    // Actuar
+    fireEvent.click(await screen.findByText("Guardar"));
 
-    // Assert
-    await waitFor(() => expect(history.at(-1)).toBe(`/clientes/${seeded.id}`));
-    expect(stored.items.get(seeded.id)).toEqual(seeded);
-  });
-  test("should show the code itself when the API answers one the form does not know", async () => {
-    // Arrange
-    const request = ClienteMother.request();
-    const code = "cliente.validacion.invalid";
-    const failures = { "POST /clientes": code };
-    const api = fakeApi([clienteCollection()], failures);
-    renderScreen(<ClienteFormContainer />, { api });
-    await fillIn(request);
-
-    // Act
-    fireEvent.click(screen.getByText("Save"));
-
-    // Assert
-    expect((await screen.findByRole("alert")).textContent).toBe(code);
+    // Comprobar
+    await waitFor(() => expect(historial.at(-1)).toBe(`/clientes/${sembrado.id}`));
+    expect(guardados.elementos.get(sembrado.id)).toEqual(sembrado);
   });
 
-  test("should say a cliente with these values exists when the API answers a duplicate", async () => {
-    // Arrange
-    const request = ClienteMother.request();
-    const failures = { "POST /clientes": "cliente.duplicado" };
-    const api = fakeApi([clienteCollection()], failures);
-    renderScreen(<ClienteFormContainer />, { api });
-    await fillIn(request);
+  test("debería mostrar el propio código cuando la API responde uno que el formulario no conoce", async () => {
+    // Preparar
+    const peticion = MadreCliente.peticion();
+    const codigo = "cliente.validacion.invalido";
+    const fallos = { "POST /clientes": codigo };
+    const api = apiFalsa([coleccionCliente()], fallos);
+    renderizarPantalla(<ContenedorFormularioCliente />, { api });
+    await rellenar(peticion);
 
-    // Act
-    fireEvent.click(screen.getByText("Save"));
+    // Actuar
+    fireEvent.click(screen.getByText("Guardar"));
 
-    // Assert
-    expect((await screen.findByRole("alert")).textContent).toBe(
-      "A cliente with these values already exists",
-    );
+    // Comprobar
+    expect((await screen.findByRole("alert")).textContent).toBe(codigo);
   });
 
-  test("should show the message under its input when the API rejects one field", async () => {
-    // Arrange
-    const request = ClienteMother.request();
-    const failures = { "POST /clientes": "cliente.name_invalido" };
-    const api = fakeApi([clienteCollection()], failures);
-    renderScreen(<ClienteFormContainer />, { api });
-    await fillIn(request);
+  test("debería decir que los valores ya están en uso cuando la API responde un duplicado", async () => {
+    // Preparar
+    const peticion = MadreCliente.peticion();
+    const fallos = { "POST /clientes": "cliente.duplicado" };
+    const api = apiFalsa([coleccionCliente()], fallos);
+    renderizarPantalla(<ContenedorFormularioCliente />, { api });
+    await rellenar(peticion);
 
-    // Act
-    fireEvent.click(screen.getByText("Save"));
+    // Actuar
+    fireEvent.click(screen.getByText("Guardar"));
 
-    // Assert
-    expect(await screen.findByText("Name is not valid")).toBeTruthy();
-    const input = screen.getByLabelText("Name");
-    expect(input.getAttribute("aria-invalid")).toBe("true");
+    // Comprobar
+    expect((await screen.findByRole("alert")).textContent).toBe("Estos valores ya están en uso");
+  });
+
+  test("debería mostrar el mensaje bajo su input cuando la API rechaza un campo", async () => {
+    // Preparar
+    const peticion = MadreCliente.peticion();
+    const fallos = { "POST /clientes": "cliente.name_invalido" };
+    const api = apiFalsa([coleccionCliente()], fallos);
+    renderizarPantalla(<ContenedorFormularioCliente />, { api });
+    await rellenar(peticion);
+
+    // Actuar
+    fireEvent.click(screen.getByText("Guardar"));
+
+    // Comprobar
+    expect(await screen.findByText("Name: no válido")).toBeTruthy();
+    const campo = screen.getByLabelText("Name");
+    expect(campo.getAttribute("aria-invalid")).toBe("true");
     expect(screen.queryByRole("alert")).toBeNull();
   });
 });
 
-=== web/src/features/cliente/containers/cliente-form-container.tsx ===
+=== web/src/contextos/cliente/contenedores/formulario-cliente.tsx ===
 import { useState } from "react";
 import { Link, useLocation } from "wouter";
-import type { Schemas } from "../../../api/client";
-import { unwrap } from "../../../api/http";
-import { useDependencies } from "../../../dependencies";
-import { ErrorAlert, errorCode } from "../../../shared/ui/error-alert";
-import { useAsync } from "../../../shared/use-async";
-import { toProblem } from "../messages";
-import { ClienteFormView, toClienteForm, toClienteRequest } from "../views/cliente-form-view";
+import type { Esquemas } from "../../../api/cliente";
+import { desenvolver } from "../../../api/http";
+import { AlertaError, codigoError } from "../../../compartido/ui/alerta-error";
+import { useCarga } from "../../../compartido/use-carga";
+import { useDependencias } from "../../../dependencias";
+import { aProblema } from "../mensajes";
+import {
+  aFormularioCliente,
+  aPeticionCliente,
+  VistaFormularioCliente,
+} from "../vistas/formulario-cliente";
 
-type Cliente = Schemas["DtoCliente"];
+type Cliente = Esquemas["DtoCliente"];
 
-/** Creates a cliente, or edits the one with `id`. */
-export function ClienteFormContainer({ id }: { id?: string }) {
-  const { api } = useDependencies();
-  const existing = useAsync(
+/** Crear, o editar con `id`: el formulario de clientes. */
+export function ContenedorFormularioCliente({ id }: { id?: string }) {
+  const { api } = useDependencias();
+  const existente = useCarga(
     () =>
       id === undefined
         ? Promise.resolve(null)
-        : unwrap(api.GET("/clientes/{id}", { params: { path: { id } } })),
+        : desenvolver(api.GET("/clientes/{id}", { params: { path: { id } } })),
     [api, id],
   );
-  const title = id === undefined ? "New cliente" : "Edit cliente";
+  const titulo = id === undefined ? "Crear cliente" : "Editar cliente";
 
   return (
     <section className="space-y-4">
-      <h1 className="text-2xl font-bold">{title}</h1>
-      {existing.status === "loading" && <span className="loading loading-spinner" />}
-      {existing.status === "error" && <ErrorAlert error={existing.error} />}
-      {existing.status === "ok" && <ClienteForm existing={existing.data} />}
+      <h1 className="text-2xl font-bold">{titulo}</h1>
+      {existente.estado === "cargando" && <span className="loading loading-spinner" />}
+      {existente.estado === "error" && <AlertaError error={existente.error} />}
+      {existente.estado === "listo" && <FormularioCliente existente={existente.datos} />}
       <Link href={id === undefined ? "/clientes" : `/clientes/${id}`} className="link">
-        Cancel
+        Cancelar
       </Link>
     </section>
   );
 }
 
-function ClienteForm({ existing }: { existing: Cliente | null }) {
-  const { api } = useDependencies();
-  const [, navigate] = useLocation();
-  const [values, setValues] = useState(toClienteForm(existing));
-  const [saving, setSaving] = useState(false);
-  const [failure, setFailure] = useState<unknown>(null);
-  const problem = failure === null ? null : toProblem(errorCode(failure));
+function FormularioCliente({ existente }: { existente: Cliente | null }) {
+  const { api } = useDependencias();
+  const [, navegar] = useLocation();
+  const [valores, setValores] = useState(aFormularioCliente(existente));
+  const [guardando, setGuardando] = useState(false);
+  const [fallo, setFallo] = useState<unknown>(null);
+  const problema = fallo === null ? null : aProblema(codigoError(fallo));
 
-  const save = async () => {
-    setSaving(true);
-    setFailure(null);
+  const guardar = async () => {
+    setGuardando(true);
+    setFallo(null);
     try {
-      const body = toClienteRequest(values);
-      const saved = await unwrap(
-        existing === null
-          ? api.POST("/clientes", { body })
-          : api.PUT("/clientes/{id}", { params: { path: { id: existing.id } }, body }),
+      const cuerpo = aPeticionCliente(valores);
+      const guardado = await desenvolver(
+        existente === null
+          ? api.POST("/clientes", { body: cuerpo })
+          : api.PUT("/clientes/{id}", { params: { path: { id: existente.id } }, body: cuerpo }),
       );
-      navigate(`/clientes/${saved.id}`);
+      navegar(`/clientes/${guardado.id}`);
     } catch (error) {
-      setFailure(error);
-      setSaving(false);
+      setFallo(error);
+      setGuardando(false);
     }
   };
 
   return (
     <div className="card bg-base-100">
       <div className="card-body">
-        {problem?.field === null && <ErrorAlert error={failure} message={problem.text} />}
-        <ClienteFormView
-          values={values}
-          saving={saving}
-          problem={problem}
-          onChange={setValues}
-          onSubmit={save}
+        {problema?.campo === null && <AlertaError error={fallo} mensaje={problema.texto} />}
+        <VistaFormularioCliente
+          valores={valores}
+          guardando={guardando}
+          problema={problema}
+          alCambiar={setValores}
+          alEnviar={guardar}
         />
       </div>
     </div>
   );
 }
 
-=== web/src/features/cliente/containers/cliente-list-container.test.tsx ===
+=== web/src/contextos/cliente/contenedores/lista-cliente.test.tsx ===
 import { describe, expect, test } from "bun:test";
 import { fireEvent, screen } from "@testing-library/react";
-import { ClienteMother, clienteCollection } from "../../../test-support/cliente";
-import { fakeApi } from "../../../test-support/fake-api";
-import { renderScreen } from "../../../test-support/render";
-import { ClienteListContainer } from "./cliente-list-container";
+import { apiFalsa } from "../../../pruebas/api-falsa";
+import { coleccionCliente, MadreCliente } from "../../../pruebas/cliente";
+import { renderizarPantalla } from "../../../pruebas/renderizar";
+import { ContenedorListaCliente } from "./lista-cliente";
 
-describe("ClienteListContainer", () => {
-  test("should show a row per cliente when there are some", async () => {
-    // Arrange
-    const seed = [ClienteMother.random(), ClienteMother.random()];
-    const api = fakeApi([clienteCollection(seed)]);
+describe("ContenedorListaCliente", () => {
+  test("debería mostrar una fila por cada cliente", async () => {
+    // Preparar
+    const semilla = [MadreCliente.aleatorio(), MadreCliente.aleatorio()];
+    const api = apiFalsa([coleccionCliente(semilla)]);
 
-    // Act
-    renderScreen(<ClienteListContainer />, { api });
+    // Actuar
+    renderizarPantalla(<ContenedorListaCliente />, { api });
 
-    // Assert
-    expect(await screen.findAllByText("View")).toHaveLength(2);
+    // Comprobar
+    expect(await screen.findAllByText("Ver")).toHaveLength(2);
   });
 
-  test("should show the next page when Next is pressed", async () => {
-    // Arrange
-    const seed = Array.from({ length: 25 }, () => ClienteMother.random());
-    const api = fakeApi([clienteCollection(seed)]);
-    renderScreen(<ClienteListContainer />, { api });
-    expect(await screen.findAllByText("View")).toHaveLength(20);
+  test("debería mostrar la página siguiente cuando se pulsa Siguiente", async () => {
+    // Preparar
+    const semilla = Array.from({ length: 25 }, () => MadreCliente.aleatorio());
+    const api = apiFalsa([coleccionCliente(semilla)]);
+    renderizarPantalla(<ContenedorListaCliente />, { api });
+    expect(await screen.findAllByText("Ver")).toHaveLength(20);
 
-    // Act
-    fireEvent.click(screen.getByRole("button", { name: "Next" }));
+    // Actuar
+    fireEvent.click(screen.getByRole("button", { name: "Siguiente" }));
 
-    // Assert
-    expect(await screen.findByText("21–25 of 25")).toBeTruthy();
-    expect(screen.getAllByText("View")).toHaveLength(5);
+    // Comprobar
+    expect(await screen.findByText("21–25 de 25")).toBeTruthy();
+    expect(screen.getAllByText("Ver")).toHaveLength(5);
   });
 
-  test("should open the page the URL names", async () => {
-    // Arrange
-    const seed = Array.from({ length: 25 }, () => ClienteMother.random());
-    const api = fakeApi([clienteCollection(seed)]);
-    const path = "/clientes?page=2";
+  test("debería abrir la página que nombra la URL", async () => {
+    // Preparar
+    const semilla = Array.from({ length: 25 }, () => MadreCliente.aleatorio());
+    const api = apiFalsa([coleccionCliente(semilla)]);
+    const ruta = "/clientes?pagina=2";
 
-    // Act
-    renderScreen(<ClienteListContainer />, { api }, path);
+    // Actuar
+    renderizarPantalla(<ContenedorListaCliente />, { api }, ruta);
 
-    // Assert
-    expect(await screen.findByText("21–25 of 25")).toBeTruthy();
+    // Comprobar
+    expect(await screen.findByText("21–25 de 25")).toBeTruthy();
   });
 
-  test("should say so when there is no cliente", async () => {
-    // Arrange
-    const api = fakeApi([clienteCollection()]);
+  test("debería decirlo cuando no hay clientes", async () => {
+    // Preparar
+    const api = apiFalsa([coleccionCliente()]);
 
-    // Act
-    renderScreen(<ClienteListContainer />, { api });
+    // Actuar
+    renderizarPantalla(<ContenedorListaCliente />, { api });
 
-    // Assert
-    expect(await screen.findByText("No clientes yet.")).toBeTruthy();
+    // Comprobar
+    expect(await screen.findByText("Todavía no hay clientes.")).toBeTruthy();
   });
 
-  test("should show the error code when the clientes cannot be listed", async () => {
-    // Arrange
-    const failures = { "GET /clientes": "cliente.repositorio" };
-    const api = fakeApi([clienteCollection()], failures);
+  test("debería mostrar el código del error cuando la API no da la lista", async () => {
+    // Preparar
+    const fallos = { "GET /clientes": "cliente.repositorio" };
+    const api = apiFalsa([coleccionCliente()], fallos);
 
-    // Act
-    renderScreen(<ClienteListContainer />, { api });
+    // Actuar
+    renderizarPantalla(<ContenedorListaCliente />, { api });
 
-    // Assert
+    // Comprobar
     expect((await screen.findByRole("alert")).textContent).toBe("cliente.repositorio");
   });
 });
 
-=== web/src/features/cliente/containers/cliente-list-container.tsx ===
+=== web/src/contextos/cliente/contenedores/lista-cliente.tsx ===
 import { Link, useLocation, useSearch } from "wouter";
-import { PAGE_SIZE, unwrap } from "../../../api/http";
-import { useDependencies } from "../../../dependencies";
-import { EmptyState } from "../../../shared/ui/empty-state";
-import { ErrorAlert } from "../../../shared/ui/error-alert";
-import { offsetFromSearch, Pagination, pageSearch } from "../../../shared/ui/pagination";
-import { useAsync } from "../../../shared/use-async";
-import { ClienteListView } from "../views/cliente-list-view";
+import { desenvolver, TAMANO_PAGINA } from "../../../api/http";
+import { AlertaError } from "../../../compartido/ui/alerta-error";
+import { busquedaPagina, desplazamientoDeUrl, Paginacion } from "../../../compartido/ui/paginacion";
+import { SinElementos } from "../../../compartido/ui/sin-elementos";
+import { useCarga } from "../../../compartido/use-carga";
+import { useDependencias } from "../../../dependencias";
+import { VistaListaCliente } from "../vistas/lista-cliente";
 
-/** The list, one page at a time; the page is in the URL (`?page=2`), so reload and back keep it. */
-export function ClienteListContainer() {
-  const { api } = useDependencies();
-  const [location, navigate] = useLocation();
-  const offset = offsetFromSearch(useSearch(), PAGE_SIZE);
-  const goTo = (next: number) => navigate(location + pageSearch(next, PAGE_SIZE));
-  const query = { limite: PAGE_SIZE, desplazamiento: offset };
-  const clientes = useAsync(
-    () => unwrap(api.GET("/clientes", { params: { query } })),
-    [api, offset],
+/** La lista, página a página; la página va en la URL (`?pagina=2`): recargar y volver la mantienen. */
+export function ContenedorListaCliente() {
+  const { api } = useDependencias();
+  const [ubicacion, navegar] = useLocation();
+  const desplazamiento = desplazamientoDeUrl(useSearch(), TAMANO_PAGINA);
+  const irA = (siguiente: number) => navegar(ubicacion + busquedaPagina(siguiente, TAMANO_PAGINA));
+  const consulta = { limite: TAMANO_PAGINA, desplazamiento };
+  const clientes = useCarga(
+    () => desenvolver(api.GET("/clientes", { params: { query: consulta } })),
+    [api, desplazamiento],
   );
 
   return (
     <section className="space-y-4">
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-bold">Clientes</h1>
-        <Link href="/clientes/new" className="btn btn-primary">
-          New cliente
+        <Link href="/clientes/nuevo" className="btn btn-primary">
+          Crear cliente
         </Link>
       </div>
-      {clientes.status === "loading" && <span className="loading loading-spinner" />}
-      {clientes.status === "error" && <ErrorAlert error={clientes.error} />}
-      {clientes.status === "ok" &&
-        (clientes.data.total === 0 ? (
-          <EmptyState message="No clientes yet." />
+      {clientes.estado === "cargando" && <span className="loading loading-spinner" />}
+      {clientes.estado === "error" && <AlertaError error={clientes.error} />}
+      {clientes.estado === "listo" &&
+        (clientes.datos.total === 0 ? (
+          <SinElementos mensaje="Todavía no hay clientes." />
         ) : (
           <>
-            <ClienteListView clientes={clientes.data.elementos} />
-            <Pagination
-              total={clientes.data.total}
-              limit={clientes.data.limite}
-              offset={clientes.data.desplazamiento}
-              onOffsetChange={goTo}
+            <VistaListaCliente clientes={clientes.datos.elementos} />
+            <Paginacion
+              total={clientes.datos.total}
+              limite={clientes.datos.limite}
+              desplazamiento={clientes.datos.desplazamiento}
+              alCambiarDesplazamiento={irA}
             />
           </>
         ))}
@@ -8837,42 +8846,42 @@ export function ClienteListContainer() {
   );
 }
 
-=== web/src/features/cliente/messages.ts ===
-/** What a screen shows for an API error: under the input it is about, or in the alert. */
-export interface ClienteProblem {
-  field: string | null;
-  text: string;
+=== web/src/contextos/cliente/mensajes.ts ===
+/** Lo que una pantalla muestra de un error de la API: bajo el input del que trata, o en la alerta. */
+export interface ProblemaCliente {
+  campo: string | null;
+  texto: string;
 }
 
 /**
- * The messages for the codes of the backend's `errores.rs`, generated from the same list. English:
- * this file is the place to translate them. A code missing here shows as it is.
+ * Los mensajes de los códigos de `errores.rs` del backend, generados de la misma lista. Un código que
+ * no está aquí se muestra tal cual.
  */
-const TEXTS: Record<string, string> = {
-  "cliente.name_invalido": "Name is not valid",
-  "cliente.validacion.email_vacio": "Email is required",
-  "cliente.duplicado": "A cliente with these values already exists",
-  "cliente.no_encontrado": "This cliente no longer exists",
-  "cliente.repositorio": "The cliente could not be saved, try again later",
-  "cliente.desconocido": "Something went wrong",
+const TEXTOS: Record<string, string> = {
+  "cliente.name_invalido": "Name: no válido",
+  "cliente.validacion.email_vacio": "Email: obligatorio",
+  "cliente.duplicado": "Estos valores ya están en uso",
+  "cliente.no_encontrado": "Ya no existe",
+  "cliente.repositorio": "No se ha podido guardar; inténtalo más tarde",
+  "cliente.desconocido": "Algo ha ido mal",
 };
 
-/** The input each field's code is about. */
-const FIELDS: Record<string, string> = {
+/** El input del que trata el código de cada campo. */
+const CAMPOS: Record<string, string> = {
   "cliente.name_invalido": "name",
   "cliente.validacion.email_vacio": "email",
 };
 
-export function toProblem(code: string): ClienteProblem {
-  return { field: FIELDS[code] ?? null, text: TEXTS[code] ?? code };
+export function aProblema(codigo: string): ProblemaCliente {
+  return { campo: CAMPOS[codigo] ?? null, texto: TEXTOS[codigo] ?? codigo };
 }
 
-=== web/src/features/cliente/views/cliente-detail-view.tsx ===
-import type { Schemas } from "../../../api/client";
+=== web/src/contextos/cliente/vistas/detalle-cliente.tsx ===
+import type { Esquemas } from "../../../api/cliente";
 
-type Cliente = Schemas["DtoCliente"];
+type Cliente = Esquemas["DtoCliente"];
 
-export function ClienteDetailView({ cliente }: { cliente: Cliente }) {
+export function VistaDetalleCliente({ cliente }: { cliente: Cliente }) {
   return (
     <dl className="grid grid-cols-[max-content_1fr] gap-x-6 gap-y-2">
       <dt className="font-semibold">Name</dt>
@@ -8883,22 +8892,22 @@ export function ClienteDetailView({ cliente }: { cliente: Cliente }) {
   );
 }
 
-=== web/src/features/cliente/views/cliente-form-view.tsx ===
-import type { Schemas } from "../../../api/client";
-import { FieldError } from "../../../shared/ui/field-error";
-import type { ClienteProblem } from "../messages";
+=== web/src/contextos/cliente/vistas/formulario-cliente.tsx ===
+import type { Esquemas } from "../../../api/cliente";
+import { ErrorCampo } from "../../../compartido/ui/error-campo";
+import type { ProblemaCliente } from "../mensajes";
 
-type Cliente = Schemas["DtoCliente"];
-type ClienteRequest = Schemas["PeticionCrearCliente"];
+type Cliente = Esquemas["DtoCliente"];
+type PeticionCliente = Esquemas["PeticionCrearCliente"];
 
-/** What the inputs hold: the text of every input, `checked` for a checkbox. */
-export interface ClienteFormValues {
+/** Lo que guardan los inputs: el texto de cada input, `checked` en una casilla. */
+export interface ValoresFormularioCliente {
   name: string;
   email: string;
 }
 
-/** The inputs for `cliente`, empty when there is none yet. */
-export function toClienteForm(cliente: Cliente | null): ClienteFormValues {
+/** Los inputs de `cliente`, vacíos cuando todavía no hay ninguno. */
+export function aFormularioCliente(cliente: Cliente | null): ValoresFormularioCliente {
   if (cliente === null) {
     return {
       name: "",
@@ -8911,34 +8920,34 @@ export function toClienteForm(cliente: Cliente | null): ClienteFormValues {
   };
 }
 
-/** What a create or an update sends: the same fields for both. */
-export function toClienteRequest(values: ClienteFormValues): ClienteRequest {
+/** Lo que mandan crear y actualizar: los mismos campos en los dos. */
+export function aPeticionCliente(valores: ValoresFormularioCliente): PeticionCliente {
   return {
-    name: values.name,
-    email: values.email,
+    name: valores.name,
+    email: valores.email,
   };
 }
 
-export function ClienteFormView({
-  values,
-  saving,
-  problem,
-  onChange,
-  onSubmit,
+export function VistaFormularioCliente({
+  valores,
+  guardando,
+  problema,
+  alCambiar,
+  alEnviar,
 }: {
-  values: ClienteFormValues;
-  saving: boolean;
-  /** What the API said about the last submit: shown under its input. */
-  problem: ClienteProblem | null;
-  onChange: (values: ClienteFormValues) => void;
-  onSubmit: () => void;
+  valores: ValoresFormularioCliente;
+  guardando: boolean;
+  /** Lo que dijo la API del último envío: se muestra bajo su input. */
+  problema: ProblemaCliente | null;
+  alCambiar: (valores: ValoresFormularioCliente) => void;
+  alEnviar: () => void;
 }) {
   return (
     <form
       className="space-y-2"
       onSubmit={(event) => {
         event.preventDefault();
-        onSubmit();
+        alEnviar();
       }}
     >
       <label className="fieldset">
@@ -8946,39 +8955,39 @@ export function ClienteFormView({
         <input
           className="input w-full"
           type="text"
-          aria-invalid={problem?.field === "name"}
+          aria-invalid={problema?.campo === "name"}
           required
-          value={values.name}
-          onChange={(event) => onChange({ ...values, name: event.target.value })}
+          value={valores.name}
+          onChange={(event) => alCambiar({ ...valores, name: event.target.value })}
         />
       </label>
-      <FieldError problem={problem} field="name" />
+      <ErrorCampo problema={problema} campo="name" />
       <label className="fieldset">
         <span className="fieldset-legend">Email</span>
         <input
           className="input w-full"
           type="text"
-          aria-invalid={problem?.field === "email"}
+          aria-invalid={problema?.campo === "email"}
           required
-          value={values.email}
-          onChange={(event) => onChange({ ...values, email: event.target.value })}
+          value={valores.email}
+          onChange={(event) => alCambiar({ ...valores, email: event.target.value })}
         />
       </label>
-      <FieldError problem={problem} field="email" />
-      <button type="submit" className="btn btn-primary" disabled={saving}>
-        Save
+      <ErrorCampo problema={problema} campo="email" />
+      <button type="submit" className="btn btn-primary" disabled={guardando}>
+        Guardar
       </button>
     </form>
   );
 }
 
-=== web/src/features/cliente/views/cliente-list-view.tsx ===
+=== web/src/contextos/cliente/vistas/lista-cliente.tsx ===
 import { Link } from "wouter";
-import type { Schemas } from "../../../api/client";
+import type { Esquemas } from "../../../api/cliente";
 
-type Cliente = Schemas["DtoCliente"];
+type Cliente = Esquemas["DtoCliente"];
 
-export function ClienteListView({ clientes }: { clientes: Cliente[] }) {
+export function VistaListaCliente({ clientes }: { clientes: Cliente[] }) {
   return (
     <div className="overflow-x-auto rounded-box bg-base-100">
       <table className="table">
@@ -8996,7 +9005,7 @@ export function ClienteListView({ clientes }: { clientes: Cliente[] }) {
               <td>{cliente.email}</td>
               <td className="text-right">
                 <Link href={`/clientes/${cliente.id}`} className="link">
-                  View
+                  Ver
                 </Link>
               </td>
             </tr>
@@ -9007,518 +9016,528 @@ export function ClienteListView({ clientes }: { clientes: Cliente[] }) {
   );
 }
 
-=== web/src/features/envio/containers/envio-detail-container.test.tsx ===
+=== web/src/contextos/envio/contenedores/detalle-envio.test.tsx ===
 import { describe, expect, test } from "bun:test";
 import { fireEvent, screen, waitFor } from "@testing-library/react";
-import { ClienteMother, clienteCollection } from "../../../test-support/cliente";
-import { EnvioMother, envioCollection } from "../../../test-support/envio";
-import { fakeApi } from "../../../test-support/fake-api";
-import { PedidoMother, pedidoCollection } from "../../../test-support/pedido";
-import { renderScreen } from "../../../test-support/render";
-import { EnvioDetailContainer } from "./envio-detail-container";
+import { apiFalsa } from "../../../pruebas/api-falsa";
+import { coleccionCliente, MadreCliente } from "../../../pruebas/cliente";
+import { coleccionEnvio, MadreEnvio } from "../../../pruebas/envio";
+import { coleccionPedido, MadrePedido } from "../../../pruebas/pedido";
+import { renderizarPantalla } from "../../../pruebas/renderizar";
+import { ContenedorDetalleEnvio } from "./detalle-envio";
 
-describe("EnvioDetailContainer", () => {
-  test("should show the envio when it exists", async () => {
-    // Arrange
-    const seeded = EnvioMother.random();
-    const api = fakeApi([envioCollection([seeded])]);
+describe("ContenedorDetalleEnvio", () => {
+  test("debería mostrar el detalle cuando existe", async () => {
+    // Preparar
+    const sembrado = MadreEnvio.aleatorio();
+    const api = apiFalsa([coleccionEnvio([sembrado])]);
 
-    // Act
-    renderScreen(<EnvioDetailContainer id={seeded.id} />, { api });
+    const pantalla = <ContenedorDetalleEnvio id={sembrado.id} />;
 
-    // Assert
-    expect(await screen.findByText("Edit")).toBeTruthy();
+    // Actuar
+    renderizarPantalla(pantalla, { api });
+
+    // Comprobar
+    expect(await screen.findByText("Editar")).toBeTruthy();
   });
 
-  test("should link the pedido to its page, named by its label", async () => {
-    // Arrange
-    const seeded = EnvioMother.random();
-    const target = PedidoMother.random({ id: seeded.pedidoId });
-    const api = fakeApi([envioCollection([seeded]), pedidoCollection([target])]);
+  test("debería enlazar Pedido con su página y su etiqueta", async () => {
+    // Preparar
+    const sembrado = MadreEnvio.aleatorio();
+    const objetivo = MadrePedido.aleatorio({ id: sembrado.pedidoId });
+    const api = apiFalsa([coleccionEnvio([sembrado]), coleccionPedido([objetivo])]);
+    const pantalla = <ContenedorDetalleEnvio id={sembrado.id} />;
 
-    // Act
-    renderScreen(<EnvioDetailContainer id={seeded.id} />, { api });
+    // Actuar
+    renderizarPantalla(pantalla, { api });
 
-    // Assert: by its href — two references to one target may share a label.
-    const selector = `a[href="/pedidos/${seeded.pedidoId}"]`;
-    expect(await screen.findByText(target.id, { selector })).toBeTruthy();
+    // Comprobar: por su href; dos referencias al mismo objetivo pueden tener la misma etiqueta.
+    const selector = `a[href="/pedidos/${sembrado.pedidoId}"]`;
+    expect(await screen.findByText(objetivo.id, { selector })).toBeTruthy();
   });
 
-  test("should link the destinatario to its page, named by its label", async () => {
-    // Arrange
-    const seeded = EnvioMother.random();
-    const target = ClienteMother.random({ id: seeded.destinatarioId ?? crypto.randomUUID() });
-    const api = fakeApi([envioCollection([seeded]), clienteCollection([target])]);
+  test("debería enlazar Destinatario con su página y su etiqueta", async () => {
+    // Preparar
+    const sembrado = MadreEnvio.aleatorio();
+    const objetivo = MadreCliente.aleatorio({ id: sembrado.destinatarioId ?? crypto.randomUUID() });
+    const api = apiFalsa([coleccionEnvio([sembrado]), coleccionCliente([objetivo])]);
+    const pantalla = <ContenedorDetalleEnvio id={sembrado.id} />;
 
-    // Act
-    renderScreen(<EnvioDetailContainer id={seeded.id} />, { api });
+    // Actuar
+    renderizarPantalla(pantalla, { api });
 
-    // Assert: by its href — two references to one target may share a label.
-    const selector = `a[href="/clientes/${seeded.destinatarioId}"]`;
-    expect(await screen.findByText(target.name, { selector })).toBeTruthy();
+    // Comprobar: por su href; dos referencias al mismo objetivo pueden tener la misma etiqueta.
+    const selector = `a[href="/clientes/${sembrado.destinatarioId}"]`;
+    expect(await screen.findByText(objetivo.name, { selector })).toBeTruthy();
   });
 
-  test("should show the not-found code when the envio does not exist", async () => {
-    // Arrange
-    const api = fakeApi([envioCollection()]);
+  test("debería mostrar el código de no encontrado cuando no existe", async () => {
+    // Preparar
+    const api = apiFalsa([coleccionEnvio()]);
+    const pantalla = <ContenedorDetalleEnvio id={crypto.randomUUID()} />;
 
-    // Act
-    renderScreen(<EnvioDetailContainer id={crypto.randomUUID()} />, { api });
+    // Actuar
+    renderizarPantalla(pantalla, { api });
 
-    // Assert
+    // Comprobar
     expect((await screen.findByRole("alert")).textContent).toBe("envio.no_encontrado");
   });
 
-  test("should delete the envio only once the deletion is confirmed", async () => {
-    // Arrange
-    const seeded = EnvioMother.random();
-    const stored = envioCollection([seeded]);
-    const api = fakeApi([stored]);
-    const { history } = renderScreen(<EnvioDetailContainer id={seeded.id} />, { api });
-    fireEvent.click(await screen.findByText("Delete", { selector: ".card-actions button" }));
-    expect(stored.items.has(seeded.id)).toBe(true);
+  test("debería borrar solo tras confirmar el borrado", async () => {
+    // Preparar
+    const sembrado = MadreEnvio.aleatorio();
+    const guardados = coleccionEnvio([sembrado]);
+    const api = apiFalsa([guardados]);
+    const pantalla = <ContenedorDetalleEnvio id={sembrado.id} />;
+    const { historial } = renderizarPantalla(pantalla, { api });
+    fireEvent.click(await screen.findByText("Borrar", { selector: ".card-actions button" }));
+    expect(guardados.elementos.has(sembrado.id)).toBe(true);
 
-    // Act
-    fireEvent.click(screen.getByText("Delete", { selector: ".modal-action button" }));
+    // Actuar
+    fireEvent.click(screen.getByText("Borrar", { selector: ".modal-action button" }));
 
-    // Assert
-    await waitFor(() => expect(history.at(-1)).toBe("/envios"));
-    expect(stored.items.has(seeded.id)).toBe(false);
+    // Comprobar
+    await waitFor(() => expect(historial.at(-1)).toBe("/envios"));
+    expect(guardados.elementos.has(sembrado.id)).toBe(false);
   });
 });
 
-=== web/src/features/envio/containers/envio-detail-container.tsx ===
+=== web/src/contextos/envio/contenedores/detalle-envio.tsx ===
 import { useState } from "react";
 import { Link, useLocation } from "wouter";
-import { unwrap } from "../../../api/http";
-import { useDependencies } from "../../../dependencies";
-import { ConfirmDialog } from "../../../shared/ui/confirm-dialog";
-import { ErrorAlert } from "../../../shared/ui/error-alert";
-import { useAsync } from "../../../shared/use-async";
-import { EnvioDetailView } from "../views/envio-detail-view";
+import { desenvolver } from "../../../api/http";
+import { AlertaError } from "../../../compartido/ui/alerta-error";
+import { DialogoConfirmar } from "../../../compartido/ui/dialogo-confirmar";
+import { useCarga } from "../../../compartido/use-carga";
+import { useDependencias } from "../../../dependencias";
+import { VistaDetalleEnvio } from "../vistas/detalle-envio";
 
-export function EnvioDetailContainer({ id }: { id: string }) {
-  const { api } = useDependencies();
-  const envio = useAsync(
-    () => unwrap(api.GET("/envios/{id}", { params: { path: { id } } })),
+export function ContenedorDetalleEnvio({ id }: { id: string }) {
+  const { api } = useDependencias();
+  const envio = useCarga(
+    () => desenvolver(api.GET("/envios/{id}", { params: { path: { id } } })),
     [api, id],
   );
-  const [, navigate] = useLocation();
-  const [confirming, setConfirming] = useState(false);
-  const [failure, setFailure] = useState<unknown>(null);
+  const [, navegar] = useLocation();
+  const [confirmando, setConfirmando] = useState(false);
+  const [fallo, setFallo] = useState<unknown>(null);
 
-  const remove = async () => {
-    setConfirming(false);
+  const borrar = async () => {
+    setConfirmando(false);
     try {
-      await unwrap(api.DELETE("/envios/{id}", { params: { path: { id } } }));
-      navigate("/envios");
+      await desenvolver(api.DELETE("/envios/{id}", { params: { path: { id } } }));
+      navegar("/envios");
     } catch (error) {
-      setFailure(error);
+      setFallo(error);
     }
   };
-  const pedidoLabel = async (target: string) => {
-    const params = { path: { id: target } };
-    const found = await unwrap(api.GET("/pedidos/{id}", { params }));
-    return found.id;
+  const etiquetaPedido = async (objetivo: string) => {
+    const params = { path: { id: objetivo } };
+    const encontrado = await desenvolver(api.GET("/pedidos/{id}", { params }));
+    return encontrado.id;
   };
-  const clienteLabel = async (target: string) => {
-    const params = { path: { id: target } };
-    const found = await unwrap(api.GET("/clientes/{id}", { params }));
-    return found.name;
+  const etiquetaCliente = async (objetivo: string) => {
+    const params = { path: { id: objetivo } };
+    const encontrado = await desenvolver(api.GET("/clientes/{id}", { params }));
+    return encontrado.name;
   };
 
   return (
     <section className="space-y-4">
       <h1 className="text-2xl font-bold">Envio</h1>
-      {failure !== null && <ErrorAlert error={failure} />}
-      {envio.status === "loading" && <span className="loading loading-spinner" />}
-      {envio.status === "error" && <ErrorAlert error={envio.error} />}
-      {envio.status === "ok" && (
+      {fallo !== null && <AlertaError error={fallo} />}
+      {envio.estado === "cargando" && <span className="loading loading-spinner" />}
+      {envio.estado === "error" && <AlertaError error={envio.error} />}
+      {envio.estado === "listo" && (
         <div className="card bg-base-100">
           <div className="card-body">
-            <EnvioDetailView
-              envio={envio.data}
-              pedidoLabel={pedidoLabel}
-              clienteLabel={clienteLabel}
+            <VistaDetalleEnvio
+              envio={envio.datos}
+              etiquetaPedido={etiquetaPedido}
+              etiquetaCliente={etiquetaCliente}
             />
             <div className="card-actions justify-end">
-              <Link href={`/envios/${id}/edit`} className="btn">
-                Edit
+              <Link href={`/envios/${id}/editar`} className="btn">
+                Editar
               </Link>
-              <button type="button" className="btn btn-error" onClick={() => setConfirming(true)}>
-                Delete
+              <button type="button" className="btn btn-error" onClick={() => setConfirmando(true)}>
+                Borrar
               </button>
             </div>
           </div>
         </div>
       )}
       <Link href="/envios" className="link">
-        Back to envios
+        Volver a envios
       </Link>
-      <ConfirmDialog
-        open={confirming}
-        message="Delete this envio?"
-        onConfirm={remove}
-        onCancel={() => setConfirming(false)}
+      <DialogoConfirmar
+        abierto={confirmando}
+        mensaje="¿Borrar envio?"
+        alConfirmar={borrar}
+        alCancelar={() => setConfirmando(false)}
       />
     </section>
   );
 }
 
-=== web/src/features/envio/containers/envio-form-container.test.tsx ===
+=== web/src/contextos/envio/contenedores/formulario-envio.test.tsx ===
 import { describe, expect, test } from "bun:test";
 import { fireEvent, screen, waitFor } from "@testing-library/react";
-import type { Schemas } from "../../../api/client";
-import { textOf } from "../../../shared/forms";
-import { ClienteMother, clienteCollection } from "../../../test-support/cliente";
-import { EnvioMother, envioCollection } from "../../../test-support/envio";
-import { fakeApi } from "../../../test-support/fake-api";
-import { PedidoMother, pedidoCollection } from "../../../test-support/pedido";
-import { renderScreen } from "../../../test-support/render";
-import { EnvioFormContainer } from "./envio-form-container";
+import type { Esquemas } from "../../../api/cliente";
+import { textoDe } from "../../../compartido/formularios";
+import { apiFalsa } from "../../../pruebas/api-falsa";
+import { coleccionCliente, MadreCliente } from "../../../pruebas/cliente";
+import { coleccionEnvio, MadreEnvio } from "../../../pruebas/envio";
+import { coleccionPedido, MadrePedido } from "../../../pruebas/pedido";
+import { renderizarPantalla } from "../../../pruebas/renderizar";
+import { ContenedorFormularioEnvio } from "./formulario-envio";
 
-function type(label: string, value: string) {
-  fireEvent.change(screen.getByLabelText(label), { target: { value } });
+function escribir(etiqueta: string, valor: string) {
+  fireEvent.change(screen.getByLabelText(etiqueta), { target: { value: valor } });
 }
 
-/** Picks `id` in a reference's select, once its targets have loaded. */
-async function choose(label: string, id: string) {
-  const select = screen.getByLabelText(label);
+/** Elige `id` en el select de una referencia, en cuanto se cargan sus objetivos. */
+async function elegir(etiqueta: string, id: string) {
+  const select = screen.getByLabelText(etiqueta);
   await waitFor(() => expect(select.querySelector(`option[value="${id}"]`)).not.toBeNull());
   fireEvent.change(select, { target: { value: id } });
 }
 
-/** The collections the selects read, holding what `owner` references. */
-function referencedBy(owner: Partial<Schemas["DtoEnvio"]>) {
+/** Las colecciones que leen los selects, con lo que referencia `dueno`. */
+function referenciadosPor(dueno: Partial<Esquemas["DtoEnvio"]>) {
   return [
-    pedidoCollection([PedidoMother.random({ id: owner.pedidoId ?? crypto.randomUUID() })]),
-    clienteCollection([ClienteMother.random({ id: owner.destinatarioId ?? crypto.randomUUID() })]),
+    coleccionPedido([MadrePedido.aleatorio({ id: dueno.pedidoId ?? crypto.randomUUID() })]),
+    coleccionCliente([MadreCliente.aleatorio({ id: dueno.destinatarioId ?? crypto.randomUUID() })]),
   ];
 }
 
-/** Fills the empty form with `request`, the way a user would. */
-async function fillIn(request: Schemas["PeticionCrearEnvio"]) {
-  await screen.findByText("Save");
-  await choose("Pedido", request.pedidoId);
-  await choose("Destinatario", textOf(request.destinatarioId));
-  type("Carrier", request.carrier);
+/** Rellena el formulario vacío con `peticion`, como lo haría quien lo usa. */
+async function rellenar(peticion: Esquemas["PeticionCrearEnvio"]) {
+  await screen.findByText("Guardar");
+  await elegir("Pedido", peticion.pedidoId);
+  await elegir("Destinatario", textoDe(peticion.destinatarioId));
+  escribir("Carrier", peticion.carrier);
 }
 
-describe("EnvioFormContainer", () => {
-  test("should create the envio from what was typed and show it", async () => {
-    // Arrange
-    const request = EnvioMother.request();
-    const stored = envioCollection();
-    const api = fakeApi([stored, ...referencedBy(request)]);
-    const { history } = renderScreen(<EnvioFormContainer />, { api });
-    await fillIn(request);
+describe("ContenedorFormularioEnvio", () => {
+  test("debería crear con lo escrito e ir a su detalle", async () => {
+    // Preparar
+    const peticion = MadreEnvio.peticion();
+    const guardados = coleccionEnvio();
+    const api = apiFalsa([guardados, ...referenciadosPor(peticion)]);
+    const pantalla = <ContenedorFormularioEnvio />;
+    const { historial } = renderizarPantalla(pantalla, { api });
+    await rellenar(peticion);
 
-    // Act
-    fireEvent.click(screen.getByText("Save"));
+    // Actuar
+    fireEvent.click(screen.getByText("Guardar"));
 
-    // Assert
-    await waitFor(() => expect(history.at(-1)).toStartWith("/envios/"));
-    const [created] = stored.items.values();
-    expect(created).toMatchObject(request);
-    expect(history.at(-1)).toBe(`/envios/${created?.id}`);
+    // Comprobar
+    await waitFor(() => expect(historial.at(-1)).toStartWith("/envios/"));
+    const [creado] = guardados.elementos.values();
+    expect(creado).toMatchObject(peticion);
+    expect(historial.at(-1)).toBe(`/envios/${creado?.id}`);
   });
 
-  test("should save the edited envio when an existing one is submitted", async () => {
-    // Arrange
-    const seeded = EnvioMother.random();
-    const stored = envioCollection([seeded]);
-    const api = fakeApi([stored, ...referencedBy(seeded)]);
-    const { history } = renderScreen(<EnvioFormContainer id={seeded.id} />, { api });
+  test("debería guardar la edición cuando se envía el formulario", async () => {
+    // Preparar
+    const sembrado = MadreEnvio.aleatorio();
+    const guardados = coleccionEnvio([sembrado]);
+    const api = apiFalsa([guardados, ...referenciadosPor(sembrado)]);
+    const pantalla = <ContenedorFormularioEnvio id={sembrado.id} />;
+    const { historial } = renderizarPantalla(pantalla, { api });
 
-    // Act
-    fireEvent.click(await screen.findByText("Save"));
+    // Actuar
+    fireEvent.click(await screen.findByText("Guardar"));
 
-    // Assert
-    await waitFor(() => expect(history.at(-1)).toBe(`/envios/${seeded.id}`));
-    expect(stored.items.get(seeded.id)).toEqual(seeded);
-  });
-  test("should show the code itself when the API answers one the form does not know", async () => {
-    // Arrange
-    const request = EnvioMother.request();
-    const code = "envio.validacion.invalid";
-    const failures = { "POST /envios": code };
-    const api = fakeApi([envioCollection(), ...referencedBy(request)], failures);
-    renderScreen(<EnvioFormContainer />, { api });
-    await fillIn(request);
-
-    // Act
-    fireEvent.click(screen.getByText("Save"));
-
-    // Assert
-    expect((await screen.findByRole("alert")).textContent).toBe(code);
+    // Comprobar
+    await waitFor(() => expect(historial.at(-1)).toBe(`/envios/${sembrado.id}`));
+    expect(guardados.elementos.get(sembrado.id)).toEqual(sembrado);
   });
 
-  test("should say a envio with these values exists when the API answers a duplicate", async () => {
-    // Arrange
-    const request = EnvioMother.request();
-    const failures = { "POST /envios": "envio.duplicado" };
-    const api = fakeApi([envioCollection(), ...referencedBy(request)], failures);
-    renderScreen(<EnvioFormContainer />, { api });
-    await fillIn(request);
+  test("debería mostrar el propio código cuando la API responde uno que el formulario no conoce", async () => {
+    // Preparar
+    const peticion = MadreEnvio.peticion();
+    const codigo = "envio.validacion.invalido";
+    const fallos = { "POST /envios": codigo };
+    const api = apiFalsa([coleccionEnvio(), ...referenciadosPor(peticion)], fallos);
+    renderizarPantalla(<ContenedorFormularioEnvio />, { api });
+    await rellenar(peticion);
 
-    // Act
-    fireEvent.click(screen.getByText("Save"));
+    // Actuar
+    fireEvent.click(screen.getByText("Guardar"));
 
-    // Assert
-    expect((await screen.findByRole("alert")).textContent).toBe(
-      "An envio with these values already exists",
-    );
+    // Comprobar
+    expect((await screen.findByRole("alert")).textContent).toBe(codigo);
   });
 
-  test("should offer every pedido in the selects that reference one", async () => {
-    // Arrange
-    const pedido = PedidoMother.random();
-    const api = fakeApi([pedidoCollection([pedido])]);
+  test("debería decir que los valores ya están en uso cuando la API responde un duplicado", async () => {
+    // Preparar
+    const peticion = MadreEnvio.peticion();
+    const fallos = { "POST /envios": "envio.duplicado" };
+    const api = apiFalsa([coleccionEnvio(), ...referenciadosPor(peticion)], fallos);
+    renderizarPantalla(<ContenedorFormularioEnvio />, { api });
+    await rellenar(peticion);
 
-    // Act
-    renderScreen(<EnvioFormContainer />, { api });
+    // Actuar
+    fireEvent.click(screen.getByText("Guardar"));
 
-    // Assert
-    const options = await screen.findAllByRole("option", { name: pedido.id });
-    expect(options).toHaveLength(1);
+    // Comprobar
+    expect((await screen.findByRole("alert")).textContent).toBe("Estos valores ya están en uso");
   });
 
-  test("should offer every cliente in the selects that reference one", async () => {
-    // Arrange
-    const cliente = ClienteMother.random();
-    const api = fakeApi([clienteCollection([cliente])]);
+  test("debería ofrecer cada pedido en sus selects", async () => {
+    // Preparar
+    const pedido = MadrePedido.aleatorio();
+    const api = apiFalsa([coleccionPedido([pedido])]);
 
-    // Act
-    renderScreen(<EnvioFormContainer />, { api });
+    // Actuar
+    renderizarPantalla(<ContenedorFormularioEnvio />, { api });
 
-    // Assert
-    const options = await screen.findAllByRole("option", { name: cliente.name });
-    expect(options).toHaveLength(1);
+    // Comprobar
+    const opciones = await screen.findAllByRole("option", { name: pedido.id });
+    expect(opciones).toHaveLength(1);
   });
 
-  test("should show the message under its input when the API rejects one field", async () => {
-    // Arrange
-    const request = EnvioMother.request();
-    const failures = { "POST /envios": "envio.validacion.pedido_id_no_encontrado" };
-    const api = fakeApi([envioCollection(), ...referencedBy(request)], failures);
-    renderScreen(<EnvioFormContainer />, { api });
-    await fillIn(request);
+  test("debería ofrecer cada cliente en sus selects", async () => {
+    // Preparar
+    const cliente = MadreCliente.aleatorio();
+    const api = apiFalsa([coleccionCliente([cliente])]);
 
-    // Act
-    fireEvent.click(screen.getByText("Save"));
+    // Actuar
+    renderizarPantalla(<ContenedorFormularioEnvio />, { api });
 
-    // Assert
-    expect(await screen.findByText("Pedido does not exist")).toBeTruthy();
-    const input = screen.getByLabelText("Pedido");
-    expect(input.getAttribute("aria-invalid")).toBe("true");
+    // Comprobar
+    const opciones = await screen.findAllByRole("option", { name: cliente.name });
+    expect(opciones).toHaveLength(1);
+  });
+
+  test("debería mostrar el mensaje bajo su input cuando la API rechaza un campo", async () => {
+    // Preparar
+    const peticion = MadreEnvio.peticion();
+    const fallos = { "POST /envios": "envio.validacion.pedido_id_no_encontrado" };
+    const api = apiFalsa([coleccionEnvio(), ...referenciadosPor(peticion)], fallos);
+    renderizarPantalla(<ContenedorFormularioEnvio />, { api });
+    await rellenar(peticion);
+
+    // Actuar
+    fireEvent.click(screen.getByText("Guardar"));
+
+    // Comprobar
+    expect(await screen.findByText("Pedido: no existe")).toBeTruthy();
+    const campo = screen.getByLabelText("Pedido");
+    expect(campo.getAttribute("aria-invalid")).toBe("true");
     expect(screen.queryByRole("alert")).toBeNull();
   });
 });
 
-=== web/src/features/envio/containers/envio-form-container.tsx ===
+=== web/src/contextos/envio/contenedores/formulario-envio.tsx ===
 import { useState } from "react";
 import { Link, useLocation } from "wouter";
-import type { Schemas } from "../../../api/client";
-import { MAX_PAGE_LIMIT, unwrap } from "../../../api/http";
-import { useDependencies } from "../../../dependencies";
-import { referenceOptions } from "../../../shared/forms";
-import { ErrorAlert, errorCode } from "../../../shared/ui/error-alert";
-import { useAsync } from "../../../shared/use-async";
-import { toProblem } from "../messages";
-import { EnvioFormView, toEnvioForm, toEnvioRequest } from "../views/envio-form-view";
+import type { Esquemas } from "../../../api/cliente";
+import { desenvolver, LIMITE_PAGINA_MAXIMO } from "../../../api/http";
+import { opcionesReferencia } from "../../../compartido/formularios";
+import { AlertaError, codigoError } from "../../../compartido/ui/alerta-error";
+import { useCarga } from "../../../compartido/use-carga";
+import { useDependencias } from "../../../dependencias";
+import { aProblema } from "../mensajes";
+import { aFormularioEnvio, aPeticionEnvio, VistaFormularioEnvio } from "../vistas/formulario-envio";
 
-type Envio = Schemas["DtoEnvio"];
+type Envio = Esquemas["DtoEnvio"];
 
-/** The first page of each referenced entity: what its selects offer. */
-const OPTIONS = { params: { query: { limite: MAX_PAGE_LIMIT } } };
+/** La primera página de cada entidad referenciada: lo que ofrecen sus selects. */
+const PRIMERA_PAGINA = { params: { query: { limite: LIMITE_PAGINA_MAXIMO } } };
 
-/** Creates an envio, or edits the one with `id`. */
-export function EnvioFormContainer({ id }: { id?: string }) {
-  const { api } = useDependencies();
-  const existing = useAsync(
+/** Crear, o editar con `id`: el formulario de envios. */
+export function ContenedorFormularioEnvio({ id }: { id?: string }) {
+  const { api } = useDependencias();
+  const existente = useCarga(
     () =>
       id === undefined
         ? Promise.resolve(null)
-        : unwrap(api.GET("/envios/{id}", { params: { path: { id } } })),
+        : desenvolver(api.GET("/envios/{id}", { params: { path: { id } } })),
     [api, id],
   );
-  const title = id === undefined ? "New envio" : "Edit envio";
+  const titulo = id === undefined ? "Crear envio" : "Editar envio";
 
   return (
     <section className="space-y-4">
-      <h1 className="text-2xl font-bold">{title}</h1>
-      {existing.status === "loading" && <span className="loading loading-spinner" />}
-      {existing.status === "error" && <ErrorAlert error={existing.error} />}
-      {existing.status === "ok" && <EnvioForm existing={existing.data} />}
+      <h1 className="text-2xl font-bold">{titulo}</h1>
+      {existente.estado === "cargando" && <span className="loading loading-spinner" />}
+      {existente.estado === "error" && <AlertaError error={existente.error} />}
+      {existente.estado === "listo" && <FormularioEnvio existente={existente.datos} />}
       <Link href={id === undefined ? "/envios" : `/envios/${id}`} className="link">
-        Cancel
+        Cancelar
       </Link>
     </section>
   );
 }
 
-function EnvioForm({ existing }: { existing: Envio | null }) {
-  const { api } = useDependencies();
-  const pedidos = useAsync(() => unwrap(api.GET("/pedidos", OPTIONS)), [api]);
-  const clientes = useAsync(() => unwrap(api.GET("/clientes", OPTIONS)), [api]);
-  const [, navigate] = useLocation();
-  const [values, setValues] = useState(toEnvioForm(existing));
-  const [saving, setSaving] = useState(false);
-  const [failure, setFailure] = useState<unknown>(null);
-  const problem = failure === null ? null : toProblem(errorCode(failure));
+function FormularioEnvio({ existente }: { existente: Envio | null }) {
+  const { api } = useDependencias();
+  const pedidos = useCarga(() => desenvolver(api.GET("/pedidos", PRIMERA_PAGINA)), [api]);
+  const clientes = useCarga(() => desenvolver(api.GET("/clientes", PRIMERA_PAGINA)), [api]);
+  const [, navegar] = useLocation();
+  const [valores, setValores] = useState(aFormularioEnvio(existente));
+  const [guardando, setGuardando] = useState(false);
+  const [fallo, setFallo] = useState<unknown>(null);
+  const problema = fallo === null ? null : aProblema(codigoError(fallo));
 
-  const save = async () => {
-    setSaving(true);
-    setFailure(null);
+  const guardar = async () => {
+    setGuardando(true);
+    setFallo(null);
     try {
-      const body = toEnvioRequest(values);
-      const saved = await unwrap(
-        existing === null
-          ? api.POST("/envios", { body })
-          : api.PUT("/envios/{id}", { params: { path: { id: existing.id } }, body }),
+      const cuerpo = aPeticionEnvio(valores);
+      const guardado = await desenvolver(
+        existente === null
+          ? api.POST("/envios", { body: cuerpo })
+          : api.PUT("/envios/{id}", { params: { path: { id: existente.id } }, body: cuerpo }),
       );
-      navigate(`/envios/${saved.id}`);
+      navegar(`/envios/${guardado.id}`);
     } catch (error) {
-      setFailure(error);
-      setSaving(false);
+      setFallo(error);
+      setGuardando(false);
     }
   };
 
   return (
     <div className="card bg-base-100">
       <div className="card-body">
-        {problem?.field === null && <ErrorAlert error={failure} message={problem.text} />}
-        {pedidos.status === "error" && <ErrorAlert error={pedidos.error} />}
-        {clientes.status === "error" && <ErrorAlert error={clientes.error} />}
-        <EnvioFormView
-          values={values}
-          options={{
-            pedidoId: referenceOptions(pedidos, (pedido) => pedido.id),
-            destinatarioId: referenceOptions(clientes, (cliente) => cliente.name),
+        {problema?.campo === null && <AlertaError error={fallo} mensaje={problema.texto} />}
+        {pedidos.estado === "error" && <AlertaError error={pedidos.error} />}
+        {clientes.estado === "error" && <AlertaError error={clientes.error} />}
+        <VistaFormularioEnvio
+          valores={valores}
+          opciones={{
+            pedidoId: opcionesReferencia(pedidos, (pedido) => pedido.id),
+            destinatarioId: opcionesReferencia(clientes, (cliente) => cliente.name),
           }}
-          saving={saving}
-          problem={problem}
-          onChange={setValues}
-          onSubmit={save}
+          guardando={guardando}
+          problema={problema}
+          alCambiar={setValores}
+          alEnviar={guardar}
         />
       </div>
     </div>
   );
 }
 
-=== web/src/features/envio/containers/envio-list-container.test.tsx ===
+=== web/src/contextos/envio/contenedores/lista-envio.test.tsx ===
 import { describe, expect, test } from "bun:test";
 import { fireEvent, screen } from "@testing-library/react";
-import { EnvioMother, envioCollection } from "../../../test-support/envio";
-import { fakeApi } from "../../../test-support/fake-api";
-import { renderScreen } from "../../../test-support/render";
-import { EnvioListContainer } from "./envio-list-container";
+import { apiFalsa } from "../../../pruebas/api-falsa";
+import { coleccionEnvio, MadreEnvio } from "../../../pruebas/envio";
+import { renderizarPantalla } from "../../../pruebas/renderizar";
+import { ContenedorListaEnvio } from "./lista-envio";
 
-describe("EnvioListContainer", () => {
-  test("should show a row per envio when there are some", async () => {
-    // Arrange
-    const seed = [EnvioMother.random(), EnvioMother.random()];
-    const api = fakeApi([envioCollection(seed)]);
+describe("ContenedorListaEnvio", () => {
+  test("debería mostrar una fila por cada envio", async () => {
+    // Preparar
+    const semilla = [MadreEnvio.aleatorio(), MadreEnvio.aleatorio()];
+    const api = apiFalsa([coleccionEnvio(semilla)]);
 
-    // Act
-    renderScreen(<EnvioListContainer />, { api });
+    // Actuar
+    renderizarPantalla(<ContenedorListaEnvio />, { api });
 
-    // Assert
-    expect(await screen.findAllByText("View")).toHaveLength(2);
+    // Comprobar
+    expect(await screen.findAllByText("Ver")).toHaveLength(2);
   });
 
-  test("should show the next page when Next is pressed", async () => {
-    // Arrange
-    const seed = Array.from({ length: 25 }, () => EnvioMother.random());
-    const api = fakeApi([envioCollection(seed)]);
-    renderScreen(<EnvioListContainer />, { api });
-    expect(await screen.findAllByText("View")).toHaveLength(20);
+  test("debería mostrar la página siguiente cuando se pulsa Siguiente", async () => {
+    // Preparar
+    const semilla = Array.from({ length: 25 }, () => MadreEnvio.aleatorio());
+    const api = apiFalsa([coleccionEnvio(semilla)]);
+    renderizarPantalla(<ContenedorListaEnvio />, { api });
+    expect(await screen.findAllByText("Ver")).toHaveLength(20);
 
-    // Act
-    fireEvent.click(screen.getByRole("button", { name: "Next" }));
+    // Actuar
+    fireEvent.click(screen.getByRole("button", { name: "Siguiente" }));
 
-    // Assert
-    expect(await screen.findByText("21–25 of 25")).toBeTruthy();
-    expect(screen.getAllByText("View")).toHaveLength(5);
+    // Comprobar
+    expect(await screen.findByText("21–25 de 25")).toBeTruthy();
+    expect(screen.getAllByText("Ver")).toHaveLength(5);
   });
 
-  test("should open the page the URL names", async () => {
-    // Arrange
-    const seed = Array.from({ length: 25 }, () => EnvioMother.random());
-    const api = fakeApi([envioCollection(seed)]);
-    const path = "/envios?page=2";
+  test("debería abrir la página que nombra la URL", async () => {
+    // Preparar
+    const semilla = Array.from({ length: 25 }, () => MadreEnvio.aleatorio());
+    const api = apiFalsa([coleccionEnvio(semilla)]);
+    const ruta = "/envios?pagina=2";
 
-    // Act
-    renderScreen(<EnvioListContainer />, { api }, path);
+    // Actuar
+    renderizarPantalla(<ContenedorListaEnvio />, { api }, ruta);
 
-    // Assert
-    expect(await screen.findByText("21–25 of 25")).toBeTruthy();
+    // Comprobar
+    expect(await screen.findByText("21–25 de 25")).toBeTruthy();
   });
 
-  test("should say so when there is no envio", async () => {
-    // Arrange
-    const api = fakeApi([envioCollection()]);
+  test("debería decirlo cuando no hay envios", async () => {
+    // Preparar
+    const api = apiFalsa([coleccionEnvio()]);
 
-    // Act
-    renderScreen(<EnvioListContainer />, { api });
+    // Actuar
+    renderizarPantalla(<ContenedorListaEnvio />, { api });
 
-    // Assert
-    expect(await screen.findByText("No envios yet.")).toBeTruthy();
+    // Comprobar
+    expect(await screen.findByText("Todavía no hay envios.")).toBeTruthy();
   });
 
-  test("should show the error code when the envios cannot be listed", async () => {
-    // Arrange
-    const failures = { "GET /envios": "envio.repositorio" };
-    const api = fakeApi([envioCollection()], failures);
+  test("debería mostrar el código del error cuando la API no da la lista", async () => {
+    // Preparar
+    const fallos = { "GET /envios": "envio.repositorio" };
+    const api = apiFalsa([coleccionEnvio()], fallos);
 
-    // Act
-    renderScreen(<EnvioListContainer />, { api });
+    // Actuar
+    renderizarPantalla(<ContenedorListaEnvio />, { api });
 
-    // Assert
+    // Comprobar
     expect((await screen.findByRole("alert")).textContent).toBe("envio.repositorio");
   });
 });
 
-=== web/src/features/envio/containers/envio-list-container.tsx ===
+=== web/src/contextos/envio/contenedores/lista-envio.tsx ===
 import { Link, useLocation, useSearch } from "wouter";
-import { PAGE_SIZE, unwrap } from "../../../api/http";
-import { useDependencies } from "../../../dependencies";
-import { EmptyState } from "../../../shared/ui/empty-state";
-import { ErrorAlert } from "../../../shared/ui/error-alert";
-import { offsetFromSearch, Pagination, pageSearch } from "../../../shared/ui/pagination";
-import { useAsync } from "../../../shared/use-async";
-import { EnvioListView } from "../views/envio-list-view";
+import { desenvolver, TAMANO_PAGINA } from "../../../api/http";
+import { AlertaError } from "../../../compartido/ui/alerta-error";
+import { busquedaPagina, desplazamientoDeUrl, Paginacion } from "../../../compartido/ui/paginacion";
+import { SinElementos } from "../../../compartido/ui/sin-elementos";
+import { useCarga } from "../../../compartido/use-carga";
+import { useDependencias } from "../../../dependencias";
+import { VistaListaEnvio } from "../vistas/lista-envio";
 
-/** The list, one page at a time; the page is in the URL (`?page=2`), so reload and back keep it. */
-export function EnvioListContainer() {
-  const { api } = useDependencies();
-  const [location, navigate] = useLocation();
-  const offset = offsetFromSearch(useSearch(), PAGE_SIZE);
-  const goTo = (next: number) => navigate(location + pageSearch(next, PAGE_SIZE));
-  const query = { limite: PAGE_SIZE, desplazamiento: offset };
-  const envios = useAsync(() => unwrap(api.GET("/envios", { params: { query } })), [api, offset]);
+/** La lista, página a página; la página va en la URL (`?pagina=2`): recargar y volver la mantienen. */
+export function ContenedorListaEnvio() {
+  const { api } = useDependencias();
+  const [ubicacion, navegar] = useLocation();
+  const desplazamiento = desplazamientoDeUrl(useSearch(), TAMANO_PAGINA);
+  const irA = (siguiente: number) => navegar(ubicacion + busquedaPagina(siguiente, TAMANO_PAGINA));
+  const consulta = { limite: TAMANO_PAGINA, desplazamiento };
+  const envios = useCarga(
+    () => desenvolver(api.GET("/envios", { params: { query: consulta } })),
+    [api, desplazamiento],
+  );
 
   return (
     <section className="space-y-4">
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-bold">Envios</h1>
-        <Link href="/envios/new" className="btn btn-primary">
-          New envio
+        <Link href="/envios/nuevo" className="btn btn-primary">
+          Crear envio
         </Link>
       </div>
-      {envios.status === "loading" && <span className="loading loading-spinner" />}
-      {envios.status === "error" && <ErrorAlert error={envios.error} />}
-      {envios.status === "ok" &&
-        (envios.data.total === 0 ? (
-          <EmptyState message="No envios yet." />
+      {envios.estado === "cargando" && <span className="loading loading-spinner" />}
+      {envios.estado === "error" && <AlertaError error={envios.error} />}
+      {envios.estado === "listo" &&
+        (envios.datos.total === 0 ? (
+          <SinElementos mensaje="Todavía no hay envios." />
         ) : (
           <>
-            <EnvioListView envios={envios.data.elementos} />
-            <Pagination
-              total={envios.data.total}
-              limit={envios.data.limite}
-              offset={envios.data.desplazamiento}
-              onOffsetChange={goTo}
+            <VistaListaEnvio envios={envios.datos.elementos} />
+            <Paginacion
+              total={envios.datos.total}
+              limite={envios.datos.limite}
+              desplazamiento={envios.datos.desplazamiento}
+              alCambiarDesplazamiento={irA}
             />
           </>
         ))}
@@ -9526,63 +9545,63 @@ export function EnvioListContainer() {
   );
 }
 
-=== web/src/features/envio/messages.ts ===
-/** What a screen shows for an API error: under the input it is about, or in the alert. */
-export interface EnvioProblem {
-  field: string | null;
-  text: string;
+=== web/src/contextos/envio/mensajes.ts ===
+/** Lo que una pantalla muestra de un error de la API: bajo el input del que trata, o en la alerta. */
+export interface ProblemaEnvio {
+  campo: string | null;
+  texto: string;
 }
 
 /**
- * The messages for the codes of the backend's `errores.rs`, generated from the same list. English:
- * this file is the place to translate them. A code missing here shows as it is.
+ * Los mensajes de los códigos de `errores.rs` del backend, generados de la misma lista. Un código que
+ * no está aquí se muestra tal cual.
  */
-const TEXTS: Record<string, string> = {
-  "envio.validacion.pedido_id_no_encontrado": "Pedido does not exist",
-  "envio.validacion.destinatario_id_no_encontrado": "Destinatario does not exist",
-  "envio.validacion.carrier_vacio": "Carrier is required",
-  "envio.duplicado": "An envio with these values already exists",
-  "envio.no_encontrado": "This envio no longer exists",
-  "envio.repositorio": "The envio could not be saved, try again later",
-  "envio.desconocido": "Something went wrong",
+const TEXTOS: Record<string, string> = {
+  "envio.validacion.pedido_id_no_encontrado": "Pedido: no existe",
+  "envio.validacion.destinatario_id_no_encontrado": "Destinatario: no existe",
+  "envio.validacion.carrier_vacio": "Carrier: obligatorio",
+  "envio.duplicado": "Estos valores ya están en uso",
+  "envio.no_encontrado": "Ya no existe",
+  "envio.repositorio": "No se ha podido guardar; inténtalo más tarde",
+  "envio.desconocido": "Algo ha ido mal",
 };
 
-/** The input each field's code is about. */
-const FIELDS: Record<string, string> = {
+/** El input del que trata el código de cada campo. */
+const CAMPOS: Record<string, string> = {
   "envio.validacion.pedido_id_no_encontrado": "pedidoId",
   "envio.validacion.destinatario_id_no_encontrado": "destinatarioId",
   "envio.validacion.carrier_vacio": "carrier",
 };
 
-export function toProblem(code: string): EnvioProblem {
-  return { field: FIELDS[code] ?? null, text: TEXTS[code] ?? code };
+export function aProblema(codigo: string): ProblemaEnvio {
+  return { campo: CAMPOS[codigo] ?? null, texto: TEXTOS[codigo] ?? codigo };
 }
 
-=== web/src/features/envio/views/envio-detail-view.tsx ===
-import type { Schemas } from "../../../api/client";
-import { ReferenceLink } from "../../../shared/ui/reference-link";
+=== web/src/contextos/envio/vistas/detalle-envio.tsx ===
+import type { Esquemas } from "../../../api/cliente";
+import { EnlaceReferencia } from "../../../compartido/ui/enlace-referencia";
 
-type Envio = Schemas["DtoEnvio"];
+type Envio = Esquemas["DtoEnvio"];
 
-/** `envio`, and the label of each pedido and cliente it references, for its links. */
-export function EnvioDetailView({
+/** `envio`, y cómo se cargan las etiquetas de lo que referencia, para sus enlaces. */
+export function VistaDetalleEnvio({
   envio,
-  pedidoLabel,
-  clienteLabel,
+  etiquetaPedido,
+  etiquetaCliente,
 }: {
   envio: Envio;
-  pedidoLabel: (id: string) => Promise<string>;
-  clienteLabel: (id: string) => Promise<string>;
+  etiquetaPedido: (id: string) => Promise<string>;
+  etiquetaCliente: (id: string) => Promise<string>;
 }) {
   return (
     <dl className="grid grid-cols-[max-content_1fr] gap-x-6 gap-y-2">
       <dt className="font-semibold">Pedido</dt>
       <dd>
-        <ReferenceLink path="/pedidos" id={envio.pedidoId} load={pedidoLabel} />
+        <EnlaceReferencia ruta="/pedidos" id={envio.pedidoId} cargar={etiquetaPedido} />
       </dd>
       <dt className="font-semibold">Destinatario</dt>
       <dd>
-        <ReferenceLink path="/clientes" id={envio.destinatarioId} load={clienteLabel} />
+        <EnlaceReferencia ruta="/clientes" id={envio.destinatarioId} cargar={etiquetaCliente} />
       </dd>
       <dt className="font-semibold">Carrier</dt>
       <dd>{envio.carrier}</dd>
@@ -9590,24 +9609,24 @@ export function EnvioDetailView({
   );
 }
 
-=== web/src/features/envio/views/envio-form-view.tsx ===
-import type { Schemas } from "../../../api/client";
-import { optionalText, type ReferenceOption, textOf } from "../../../shared/forms";
-import { FieldError } from "../../../shared/ui/field-error";
-import type { EnvioProblem } from "../messages";
+=== web/src/contextos/envio/vistas/formulario-envio.tsx ===
+import type { Esquemas } from "../../../api/cliente";
+import { type OpcionReferencia, textoDe, textoOpcional } from "../../../compartido/formularios";
+import { ErrorCampo } from "../../../compartido/ui/error-campo";
+import type { ProblemaEnvio } from "../mensajes";
 
-type Envio = Schemas["DtoEnvio"];
-type EnvioRequest = Schemas["PeticionCrearEnvio"];
+type Envio = Esquemas["DtoEnvio"];
+type PeticionEnvio = Esquemas["PeticionCrearEnvio"];
 
-/** What the inputs hold: the text of every input, `checked` for a checkbox. */
-export interface EnvioFormValues {
+/** Lo que guardan los inputs: el texto de cada input, `checked` en una casilla. */
+export interface ValoresFormularioEnvio {
   pedidoId: string;
   destinatarioId: string;
   carrier: string;
 }
 
-/** The inputs for `envio`, empty when there is none yet. */
-export function toEnvioForm(envio: Envio | null): EnvioFormValues {
+/** Los inputs de `envio`, vacíos cuando todavía no hay ninguno. */
+export function aFormularioEnvio(envio: Envio | null): ValoresFormularioEnvio {
   if (envio === null) {
     return {
       pedidoId: "",
@@ -9617,111 +9636,111 @@ export function toEnvioForm(envio: Envio | null): EnvioFormValues {
   }
   return {
     pedidoId: envio.pedidoId,
-    destinatarioId: textOf(envio.destinatarioId),
+    destinatarioId: textoDe(envio.destinatarioId),
     carrier: envio.carrier,
   };
 }
 
-/** What each reference's select offers. */
-export interface EnvioFormOptions {
-  pedidoId: ReferenceOption[];
-  destinatarioId: ReferenceOption[];
+/** Lo que ofrece el select de cada referencia. */
+export interface OpcionesFormularioEnvio {
+  pedidoId: OpcionReferencia[];
+  destinatarioId: OpcionReferencia[];
 }
 
-/** What a create or an update sends: the same fields for both. */
-export function toEnvioRequest(values: EnvioFormValues): EnvioRequest {
+/** Lo que mandan crear y actualizar: los mismos campos en los dos. */
+export function aPeticionEnvio(valores: ValoresFormularioEnvio): PeticionEnvio {
   return {
-    pedidoId: values.pedidoId,
-    destinatarioId: optionalText(values.destinatarioId),
-    carrier: values.carrier,
+    pedidoId: valores.pedidoId,
+    destinatarioId: textoOpcional(valores.destinatarioId),
+    carrier: valores.carrier,
   };
 }
 
-export function EnvioFormView({
-  values,
-  options,
-  saving,
-  problem,
-  onChange,
-  onSubmit,
+export function VistaFormularioEnvio({
+  valores,
+  opciones,
+  guardando,
+  problema,
+  alCambiar,
+  alEnviar,
 }: {
-  values: EnvioFormValues;
-  options: EnvioFormOptions;
-  saving: boolean;
-  /** What the API said about the last submit: shown under its input. */
-  problem: EnvioProblem | null;
-  onChange: (values: EnvioFormValues) => void;
-  onSubmit: () => void;
+  valores: ValoresFormularioEnvio;
+  opciones: OpcionesFormularioEnvio;
+  guardando: boolean;
+  /** Lo que dijo la API del último envío: se muestra bajo su input. */
+  problema: ProblemaEnvio | null;
+  alCambiar: (valores: ValoresFormularioEnvio) => void;
+  alEnviar: () => void;
 }) {
   return (
     <form
       className="space-y-2"
       onSubmit={(event) => {
         event.preventDefault();
-        onSubmit();
+        alEnviar();
       }}
     >
       <label className="fieldset">
         <span className="fieldset-legend">Pedido</span>
         <select
           className="select w-full"
-          aria-invalid={problem?.field === "pedidoId"}
+          aria-invalid={problema?.campo === "pedidoId"}
           required
-          value={values.pedidoId}
-          onChange={(event) => onChange({ ...values, pedidoId: event.target.value })}
+          value={valores.pedidoId}
+          onChange={(event) => alCambiar({ ...valores, pedidoId: event.target.value })}
         >
-          <option value="">Choose a pedido</option>
-          {options.pedidoId.map((option) => (
-            <option key={option.id} value={option.id}>
-              {option.label}
+          <option value="">Elige una opción</option>
+          {opciones.pedidoId.map((opcion) => (
+            <option key={opcion.id} value={opcion.id}>
+              {opcion.etiqueta}
             </option>
           ))}
         </select>
       </label>
-      <FieldError problem={problem} field="pedidoId" />
+      <ErrorCampo problema={problema} campo="pedidoId" />
       <label className="fieldset">
         <span className="fieldset-legend">Destinatario</span>
         <select
           className="select w-full"
-          aria-invalid={problem?.field === "destinatarioId"}
-          value={values.destinatarioId}
-          onChange={(event) => onChange({ ...values, destinatarioId: event.target.value })}
+          aria-invalid={problema?.campo === "destinatarioId"}
+          value={valores.destinatarioId}
+          onChange={(event) => alCambiar({ ...valores, destinatarioId: event.target.value })}
         >
-          <option value="">None</option>
-          {options.destinatarioId.map((option) => (
-            <option key={option.id} value={option.id}>
-              {option.label}
+          <option value="">—</option>
+          {opciones.destinatarioId.map((opcion) => (
+            <option key={opcion.id} value={opcion.id}>
+              {opcion.etiqueta}
             </option>
           ))}
         </select>
       </label>
-      <FieldError problem={problem} field="destinatarioId" />
+      <ErrorCampo problema={problema} campo="destinatarioId" />
       <label className="fieldset">
         <span className="fieldset-legend">Carrier</span>
         <input
           className="input w-full"
           type="text"
-          aria-invalid={problem?.field === "carrier"}
+          aria-invalid={problema?.campo === "carrier"}
           required
-          value={values.carrier}
-          onChange={(event) => onChange({ ...values, carrier: event.target.value })}
+          value={valores.carrier}
+          onChange={(event) => alCambiar({ ...valores, carrier: event.target.value })}
         />
       </label>
-      <FieldError problem={problem} field="carrier" />
-      <button type="submit" className="btn btn-primary" disabled={saving}>
-        Save
+      <ErrorCampo problema={problema} campo="carrier" />
+      <button type="submit" className="btn btn-primary" disabled={guardando}>
+        Guardar
       </button>
     </form>
   );
 }
 
-=== web/src/features/envio/views/envio-list-view.tsx ===
+=== web/src/contextos/envio/vistas/lista-envio.tsx ===
 import { Link } from "wouter";
-import type { Schemas } from "../../../api/client";
+import type { Esquemas } from "../../../api/cliente";
 
-type Envio = Schemas["DtoEnvio"];
+type Envio = Esquemas["DtoEnvio"];
 
-export function EnvioListView({ envios }: { envios: Envio[] }) {
+export function VistaListaEnvio({ envios }: { envios: Envio[] }) {
   return (
     <div className="overflow-x-auto rounded-box bg-base-100">
       <table className="table">
@@ -9741,7 +9760,7 @@ export function EnvioListView({ envios }: { envios: Envio[] }) {
               <td>{envio.carrier}</td>
               <td className="text-right">
                 <Link href={`/envios/${envio.id}`} className="link">
-                  View
+                  Ver
                 </Link>
               </td>
             </tr>
@@ -9752,494 +9771,508 @@ export function EnvioListView({ envios }: { envios: Envio[] }) {
   );
 }
 
-=== web/src/features/pedido/containers/pedido-detail-container.test.tsx ===
+=== web/src/contextos/pedido/contenedores/detalle-pedido.test.tsx ===
 import { describe, expect, test } from "bun:test";
 import { fireEvent, screen, waitFor } from "@testing-library/react";
-import { ClienteMother, clienteCollection } from "../../../test-support/cliente";
-import { fakeApi } from "../../../test-support/fake-api";
-import { PedidoMother, pedidoCollection } from "../../../test-support/pedido";
-import { renderScreen } from "../../../test-support/render";
-import { PedidoDetailContainer } from "./pedido-detail-container";
+import { apiFalsa } from "../../../pruebas/api-falsa";
+import { coleccionCliente, MadreCliente } from "../../../pruebas/cliente";
+import { coleccionPedido, MadrePedido } from "../../../pruebas/pedido";
+import { renderizarPantalla } from "../../../pruebas/renderizar";
+import { ContenedorDetallePedido } from "./detalle-pedido";
 
-describe("PedidoDetailContainer", () => {
-  test("should show the pedido when it exists", async () => {
-    // Arrange
-    const seeded = PedidoMother.random();
-    const api = fakeApi([pedidoCollection([seeded])]);
+describe("ContenedorDetallePedido", () => {
+  test("debería mostrar el detalle cuando existe", async () => {
+    // Preparar
+    const sembrado = MadrePedido.aleatorio();
+    const api = apiFalsa([coleccionPedido([sembrado])]);
 
-    // Act
-    renderScreen(<PedidoDetailContainer id={seeded.id} />, { api });
+    const pantalla = <ContenedorDetallePedido id={sembrado.id} />;
 
-    // Assert
-    expect(await screen.findByText("Edit")).toBeTruthy();
+    // Actuar
+    renderizarPantalla(pantalla, { api });
+
+    // Comprobar
+    expect(await screen.findByText("Editar")).toBeTruthy();
   });
 
-  test("should link the cliente to its page, named by its label", async () => {
-    // Arrange
-    const seeded = PedidoMother.random();
-    const target = ClienteMother.random({ id: seeded.clienteId });
-    const api = fakeApi([pedidoCollection([seeded]), clienteCollection([target])]);
+  test("debería enlazar Cliente con su página y su etiqueta", async () => {
+    // Preparar
+    const sembrado = MadrePedido.aleatorio();
+    const objetivo = MadreCliente.aleatorio({ id: sembrado.clienteId });
+    const api = apiFalsa([coleccionPedido([sembrado]), coleccionCliente([objetivo])]);
+    const pantalla = <ContenedorDetallePedido id={sembrado.id} />;
 
-    // Act
-    renderScreen(<PedidoDetailContainer id={seeded.id} />, { api });
+    // Actuar
+    renderizarPantalla(pantalla, { api });
 
-    // Assert: by its href — two references to one target may share a label.
-    const selector = `a[href="/clientes/${seeded.clienteId}"]`;
-    expect(await screen.findByText(target.name, { selector })).toBeTruthy();
+    // Comprobar: por su href; dos referencias al mismo objetivo pueden tener la misma etiqueta.
+    const selector = `a[href="/clientes/${sembrado.clienteId}"]`;
+    expect(await screen.findByText(objetivo.name, { selector })).toBeTruthy();
   });
 
-  test("should link the reviewer to its page, named by its label", async () => {
-    // Arrange
-    const seeded = PedidoMother.random();
-    const target = ClienteMother.random({ id: seeded.reviewerId ?? crypto.randomUUID() });
-    const api = fakeApi([pedidoCollection([seeded]), clienteCollection([target])]);
+  test("debería enlazar Reviewer con su página y su etiqueta", async () => {
+    // Preparar
+    const sembrado = MadrePedido.aleatorio();
+    const objetivo = MadreCliente.aleatorio({ id: sembrado.reviewerId ?? crypto.randomUUID() });
+    const api = apiFalsa([coleccionPedido([sembrado]), coleccionCliente([objetivo])]);
+    const pantalla = <ContenedorDetallePedido id={sembrado.id} />;
 
-    // Act
-    renderScreen(<PedidoDetailContainer id={seeded.id} />, { api });
+    // Actuar
+    renderizarPantalla(pantalla, { api });
 
-    // Assert: by its href — two references to one target may share a label.
-    const selector = `a[href="/clientes/${seeded.reviewerId}"]`;
-    expect(await screen.findByText(target.name, { selector })).toBeTruthy();
+    // Comprobar: por su href; dos referencias al mismo objetivo pueden tener la misma etiqueta.
+    const selector = `a[href="/clientes/${sembrado.reviewerId}"]`;
+    expect(await screen.findByText(objetivo.name, { selector })).toBeTruthy();
   });
 
-  test("should show the not-found code when the pedido does not exist", async () => {
-    // Arrange
-    const api = fakeApi([pedidoCollection()]);
+  test("debería mostrar el código de no encontrado cuando no existe", async () => {
+    // Preparar
+    const api = apiFalsa([coleccionPedido()]);
+    const pantalla = <ContenedorDetallePedido id={crypto.randomUUID()} />;
 
-    // Act
-    renderScreen(<PedidoDetailContainer id={crypto.randomUUID()} />, { api });
+    // Actuar
+    renderizarPantalla(pantalla, { api });
 
-    // Assert
+    // Comprobar
     expect((await screen.findByRole("alert")).textContent).toBe("pedido.no_encontrado");
   });
 
-  test("should delete the pedido only once the deletion is confirmed", async () => {
-    // Arrange
-    const seeded = PedidoMother.random();
-    const stored = pedidoCollection([seeded]);
-    const api = fakeApi([stored]);
-    const { history } = renderScreen(<PedidoDetailContainer id={seeded.id} />, { api });
-    fireEvent.click(await screen.findByText("Delete", { selector: ".card-actions button" }));
-    expect(stored.items.has(seeded.id)).toBe(true);
+  test("debería borrar solo tras confirmar el borrado", async () => {
+    // Preparar
+    const sembrado = MadrePedido.aleatorio();
+    const guardados = coleccionPedido([sembrado]);
+    const api = apiFalsa([guardados]);
+    const pantalla = <ContenedorDetallePedido id={sembrado.id} />;
+    const { historial } = renderizarPantalla(pantalla, { api });
+    fireEvent.click(await screen.findByText("Borrar", { selector: ".card-actions button" }));
+    expect(guardados.elementos.has(sembrado.id)).toBe(true);
 
-    // Act
-    fireEvent.click(screen.getByText("Delete", { selector: ".modal-action button" }));
+    // Actuar
+    fireEvent.click(screen.getByText("Borrar", { selector: ".modal-action button" }));
 
-    // Assert
-    await waitFor(() => expect(history.at(-1)).toBe("/pedidos"));
-    expect(stored.items.has(seeded.id)).toBe(false);
+    // Comprobar
+    await waitFor(() => expect(historial.at(-1)).toBe("/pedidos"));
+    expect(guardados.elementos.has(sembrado.id)).toBe(false);
   });
 });
 
-=== web/src/features/pedido/containers/pedido-detail-container.tsx ===
+=== web/src/contextos/pedido/contenedores/detalle-pedido.tsx ===
 import { useState } from "react";
 import { Link, useLocation } from "wouter";
-import { unwrap } from "../../../api/http";
-import { useDependencies } from "../../../dependencies";
-import { ConfirmDialog } from "../../../shared/ui/confirm-dialog";
-import { ErrorAlert } from "../../../shared/ui/error-alert";
-import { useAsync } from "../../../shared/use-async";
-import { PedidoDetailView } from "../views/pedido-detail-view";
+import { desenvolver } from "../../../api/http";
+import { AlertaError } from "../../../compartido/ui/alerta-error";
+import { DialogoConfirmar } from "../../../compartido/ui/dialogo-confirmar";
+import { useCarga } from "../../../compartido/use-carga";
+import { useDependencias } from "../../../dependencias";
+import { VistaDetallePedido } from "../vistas/detalle-pedido";
 
-export function PedidoDetailContainer({ id }: { id: string }) {
-  const { api } = useDependencies();
-  const pedido = useAsync(
-    () => unwrap(api.GET("/pedidos/{id}", { params: { path: { id } } })),
+export function ContenedorDetallePedido({ id }: { id: string }) {
+  const { api } = useDependencias();
+  const pedido = useCarga(
+    () => desenvolver(api.GET("/pedidos/{id}", { params: { path: { id } } })),
     [api, id],
   );
-  const [, navigate] = useLocation();
-  const [confirming, setConfirming] = useState(false);
-  const [failure, setFailure] = useState<unknown>(null);
+  const [, navegar] = useLocation();
+  const [confirmando, setConfirmando] = useState(false);
+  const [fallo, setFallo] = useState<unknown>(null);
 
-  const remove = async () => {
-    setConfirming(false);
+  const borrar = async () => {
+    setConfirmando(false);
     try {
-      await unwrap(api.DELETE("/pedidos/{id}", { params: { path: { id } } }));
-      navigate("/pedidos");
+      await desenvolver(api.DELETE("/pedidos/{id}", { params: { path: { id } } }));
+      navegar("/pedidos");
     } catch (error) {
-      setFailure(error);
+      setFallo(error);
     }
   };
-  const clienteLabel = async (target: string) => {
-    const params = { path: { id: target } };
-    const found = await unwrap(api.GET("/clientes/{id}", { params }));
-    return found.name;
+  const etiquetaCliente = async (objetivo: string) => {
+    const params = { path: { id: objetivo } };
+    const encontrado = await desenvolver(api.GET("/clientes/{id}", { params }));
+    return encontrado.name;
   };
 
   return (
     <section className="space-y-4">
       <h1 className="text-2xl font-bold">Pedido</h1>
-      {failure !== null && <ErrorAlert error={failure} />}
-      {pedido.status === "loading" && <span className="loading loading-spinner" />}
-      {pedido.status === "error" && <ErrorAlert error={pedido.error} />}
-      {pedido.status === "ok" && (
+      {fallo !== null && <AlertaError error={fallo} />}
+      {pedido.estado === "cargando" && <span className="loading loading-spinner" />}
+      {pedido.estado === "error" && <AlertaError error={pedido.error} />}
+      {pedido.estado === "listo" && (
         <div className="card bg-base-100">
           <div className="card-body">
-            <PedidoDetailView pedido={pedido.data} clienteLabel={clienteLabel} />
+            <VistaDetallePedido pedido={pedido.datos} etiquetaCliente={etiquetaCliente} />
             <div className="card-actions justify-end">
-              <Link href={`/pedidos/${id}/edit`} className="btn">
-                Edit
+              <Link href={`/pedidos/${id}/editar`} className="btn">
+                Editar
               </Link>
-              <button type="button" className="btn btn-error" onClick={() => setConfirming(true)}>
-                Delete
+              <button type="button" className="btn btn-error" onClick={() => setConfirmando(true)}>
+                Borrar
               </button>
             </div>
           </div>
         </div>
       )}
       <Link href="/pedidos" className="link">
-        Back to pedidos
+        Volver a pedidos
       </Link>
-      <ConfirmDialog
-        open={confirming}
-        message="Delete this pedido?"
-        onConfirm={remove}
-        onCancel={() => setConfirming(false)}
+      <DialogoConfirmar
+        abierto={confirmando}
+        mensaje="¿Borrar pedido?"
+        alConfirmar={borrar}
+        alCancelar={() => setConfirmando(false)}
       />
     </section>
   );
 }
 
-=== web/src/features/pedido/containers/pedido-form-container.test.tsx ===
+=== web/src/contextos/pedido/contenedores/formulario-pedido.test.tsx ===
 import { describe, expect, test } from "bun:test";
 import { fireEvent, screen, waitFor } from "@testing-library/react";
-import type { Schemas } from "../../../api/client";
-import { textOf } from "../../../shared/forms";
-import { ClienteMother, clienteCollection } from "../../../test-support/cliente";
-import { fakeApi } from "../../../test-support/fake-api";
-import { PedidoMother, pedidoCollection } from "../../../test-support/pedido";
-import { renderScreen } from "../../../test-support/render";
-import { PedidoFormContainer } from "./pedido-form-container";
+import type { Esquemas } from "../../../api/cliente";
+import { textoDe } from "../../../compartido/formularios";
+import { apiFalsa } from "../../../pruebas/api-falsa";
+import { coleccionCliente, MadreCliente } from "../../../pruebas/cliente";
+import { coleccionPedido, MadrePedido } from "../../../pruebas/pedido";
+import { renderizarPantalla } from "../../../pruebas/renderizar";
+import { ContenedorFormularioPedido } from "./formulario-pedido";
 
-function type(label: string, value: string) {
-  fireEvent.change(screen.getByLabelText(label), { target: { value } });
+function escribir(etiqueta: string, valor: string) {
+  fireEvent.change(screen.getByLabelText(etiqueta), { target: { value: valor } });
 }
 
-/** Picks `id` in a reference's select, once its targets have loaded. */
-async function choose(label: string, id: string) {
-  const select = screen.getByLabelText(label);
+/** Elige `id` en el select de una referencia, en cuanto se cargan sus objetivos. */
+async function elegir(etiqueta: string, id: string) {
+  const select = screen.getByLabelText(etiqueta);
   await waitFor(() => expect(select.querySelector(`option[value="${id}"]`)).not.toBeNull());
   fireEvent.change(select, { target: { value: id } });
 }
 
-/** The collections the selects read, holding what `owner` references. */
-function referencedBy(owner: Partial<Schemas["DtoPedido"]>) {
+/** Las colecciones que leen los selects, con lo que referencia `dueno`. */
+function referenciadosPor(dueno: Partial<Esquemas["DtoPedido"]>) {
   return [
-    clienteCollection([
-      ClienteMother.random({ id: owner.clienteId ?? crypto.randomUUID() }),
-      ClienteMother.random({ id: owner.reviewerId ?? crypto.randomUUID() }),
+    coleccionCliente([
+      MadreCliente.aleatorio({ id: dueno.clienteId ?? crypto.randomUUID() }),
+      MadreCliente.aleatorio({ id: dueno.reviewerId ?? crypto.randomUUID() }),
     ]),
   ];
 }
 
-/** Fills the empty form with `request`, the way a user would. */
-async function fillIn(request: Schemas["PeticionCrearPedido"]) {
-  await screen.findByText("Save");
-  await choose("Cliente", request.clienteId);
-  await choose("Reviewer", textOf(request.reviewerId));
-  type("Total", String(request.total));
+/** Rellena el formulario vacío con `peticion`, como lo haría quien lo usa. */
+async function rellenar(peticion: Esquemas["PeticionCrearPedido"]) {
+  await screen.findByText("Guardar");
+  await elegir("Cliente", peticion.clienteId);
+  await elegir("Reviewer", textoDe(peticion.reviewerId));
+  escribir("Total", String(peticion.total));
 }
 
-describe("PedidoFormContainer", () => {
-  test("should create the pedido from what was typed and show it", async () => {
-    // Arrange
-    const request = PedidoMother.request();
-    const stored = pedidoCollection();
-    const api = fakeApi([stored, ...referencedBy(request)]);
-    const { history } = renderScreen(<PedidoFormContainer />, { api });
-    await fillIn(request);
+describe("ContenedorFormularioPedido", () => {
+  test("debería crear con lo escrito e ir a su detalle", async () => {
+    // Preparar
+    const peticion = MadrePedido.peticion();
+    const guardados = coleccionPedido();
+    const api = apiFalsa([guardados, ...referenciadosPor(peticion)]);
+    const pantalla = <ContenedorFormularioPedido />;
+    const { historial } = renderizarPantalla(pantalla, { api });
+    await rellenar(peticion);
 
-    // Act
-    fireEvent.click(screen.getByText("Save"));
+    // Actuar
+    fireEvent.click(screen.getByText("Guardar"));
 
-    // Assert
-    await waitFor(() => expect(history.at(-1)).toStartWith("/pedidos/"));
-    const [created] = stored.items.values();
-    expect(created).toMatchObject(request);
-    expect(history.at(-1)).toBe(`/pedidos/${created?.id}`);
+    // Comprobar
+    await waitFor(() => expect(historial.at(-1)).toStartWith("/pedidos/"));
+    const [creado] = guardados.elementos.values();
+    expect(creado).toMatchObject(peticion);
+    expect(historial.at(-1)).toBe(`/pedidos/${creado?.id}`);
   });
 
-  test("should save the edited pedido when an existing one is submitted", async () => {
-    // Arrange
-    const seeded = PedidoMother.random();
-    const stored = pedidoCollection([seeded]);
-    const api = fakeApi([stored, ...referencedBy(seeded)]);
-    const { history } = renderScreen(<PedidoFormContainer id={seeded.id} />, { api });
+  test("debería guardar la edición cuando se envía el formulario", async () => {
+    // Preparar
+    const sembrado = MadrePedido.aleatorio();
+    const guardados = coleccionPedido([sembrado]);
+    const api = apiFalsa([guardados, ...referenciadosPor(sembrado)]);
+    const pantalla = <ContenedorFormularioPedido id={sembrado.id} />;
+    const { historial } = renderizarPantalla(pantalla, { api });
 
-    // Act
-    fireEvent.click(await screen.findByText("Save"));
+    // Actuar
+    fireEvent.click(await screen.findByText("Guardar"));
 
-    // Assert
-    await waitFor(() => expect(history.at(-1)).toBe(`/pedidos/${seeded.id}`));
-    expect(stored.items.get(seeded.id)).toEqual(seeded);
-  });
-  test("should show the code itself when the API answers one the form does not know", async () => {
-    // Arrange
-    const request = PedidoMother.request();
-    const code = "pedido.validacion.invalid";
-    const failures = { "POST /pedidos": code };
-    const api = fakeApi([pedidoCollection(), ...referencedBy(request)], failures);
-    renderScreen(<PedidoFormContainer />, { api });
-    await fillIn(request);
-
-    // Act
-    fireEvent.click(screen.getByText("Save"));
-
-    // Assert
-    expect((await screen.findByRole("alert")).textContent).toBe(code);
+    // Comprobar
+    await waitFor(() => expect(historial.at(-1)).toBe(`/pedidos/${sembrado.id}`));
+    expect(guardados.elementos.get(sembrado.id)).toEqual(sembrado);
   });
 
-  test("should say a pedido with these values exists when the API answers a duplicate", async () => {
-    // Arrange
-    const request = PedidoMother.request();
-    const failures = { "POST /pedidos": "pedido.duplicado" };
-    const api = fakeApi([pedidoCollection(), ...referencedBy(request)], failures);
-    renderScreen(<PedidoFormContainer />, { api });
-    await fillIn(request);
+  test("debería mostrar el propio código cuando la API responde uno que el formulario no conoce", async () => {
+    // Preparar
+    const peticion = MadrePedido.peticion();
+    const codigo = "pedido.validacion.invalido";
+    const fallos = { "POST /pedidos": codigo };
+    const api = apiFalsa([coleccionPedido(), ...referenciadosPor(peticion)], fallos);
+    renderizarPantalla(<ContenedorFormularioPedido />, { api });
+    await rellenar(peticion);
 
-    // Act
-    fireEvent.click(screen.getByText("Save"));
+    // Actuar
+    fireEvent.click(screen.getByText("Guardar"));
 
-    // Assert
-    expect((await screen.findByRole("alert")).textContent).toBe(
-      "A pedido with these values already exists",
-    );
+    // Comprobar
+    expect((await screen.findByRole("alert")).textContent).toBe(codigo);
   });
 
-  test("should offer every cliente in the selects that reference one", async () => {
-    // Arrange
-    const cliente = ClienteMother.random();
-    const api = fakeApi([clienteCollection([cliente])]);
+  test("debería decir que los valores ya están en uso cuando la API responde un duplicado", async () => {
+    // Preparar
+    const peticion = MadrePedido.peticion();
+    const fallos = { "POST /pedidos": "pedido.duplicado" };
+    const api = apiFalsa([coleccionPedido(), ...referenciadosPor(peticion)], fallos);
+    renderizarPantalla(<ContenedorFormularioPedido />, { api });
+    await rellenar(peticion);
 
-    // Act
-    renderScreen(<PedidoFormContainer />, { api });
+    // Actuar
+    fireEvent.click(screen.getByText("Guardar"));
 
-    // Assert
-    const options = await screen.findAllByRole("option", { name: cliente.name });
-    expect(options).toHaveLength(2);
+    // Comprobar
+    expect((await screen.findByRole("alert")).textContent).toBe("Estos valores ya están en uso");
   });
 
-  test("should show the message under its input when the API rejects one field", async () => {
-    // Arrange
-    const request = PedidoMother.request();
-    const failures = { "POST /pedidos": "pedido.validacion.cliente_id_no_encontrado" };
-    const api = fakeApi([pedidoCollection(), ...referencedBy(request)], failures);
-    renderScreen(<PedidoFormContainer />, { api });
-    await fillIn(request);
+  test("debería ofrecer cada cliente en sus selects", async () => {
+    // Preparar
+    const cliente = MadreCliente.aleatorio();
+    const api = apiFalsa([coleccionCliente([cliente])]);
 
-    // Act
-    fireEvent.click(screen.getByText("Save"));
+    // Actuar
+    renderizarPantalla(<ContenedorFormularioPedido />, { api });
 
-    // Assert
-    expect(await screen.findByText("Cliente does not exist")).toBeTruthy();
-    const input = screen.getByLabelText("Cliente");
-    expect(input.getAttribute("aria-invalid")).toBe("true");
+    // Comprobar
+    const opciones = await screen.findAllByRole("option", { name: cliente.name });
+    expect(opciones).toHaveLength(2);
+  });
+
+  test("debería mostrar el mensaje bajo su input cuando la API rechaza un campo", async () => {
+    // Preparar
+    const peticion = MadrePedido.peticion();
+    const fallos = { "POST /pedidos": "pedido.validacion.cliente_id_no_encontrado" };
+    const api = apiFalsa([coleccionPedido(), ...referenciadosPor(peticion)], fallos);
+    renderizarPantalla(<ContenedorFormularioPedido />, { api });
+    await rellenar(peticion);
+
+    // Actuar
+    fireEvent.click(screen.getByText("Guardar"));
+
+    // Comprobar
+    expect(await screen.findByText("Cliente: no existe")).toBeTruthy();
+    const campo = screen.getByLabelText("Cliente");
+    expect(campo.getAttribute("aria-invalid")).toBe("true");
     expect(screen.queryByRole("alert")).toBeNull();
   });
 });
 
-=== web/src/features/pedido/containers/pedido-form-container.tsx ===
+=== web/src/contextos/pedido/contenedores/formulario-pedido.tsx ===
 import { useState } from "react";
 import { Link, useLocation } from "wouter";
-import type { Schemas } from "../../../api/client";
-import { MAX_PAGE_LIMIT, unwrap } from "../../../api/http";
-import { useDependencies } from "../../../dependencies";
-import { referenceOptions } from "../../../shared/forms";
-import { ErrorAlert, errorCode } from "../../../shared/ui/error-alert";
-import { useAsync } from "../../../shared/use-async";
-import { toProblem } from "../messages";
-import { PedidoFormView, toPedidoForm, toPedidoRequest } from "../views/pedido-form-view";
+import type { Esquemas } from "../../../api/cliente";
+import { desenvolver, LIMITE_PAGINA_MAXIMO } from "../../../api/http";
+import { opcionesReferencia } from "../../../compartido/formularios";
+import { AlertaError, codigoError } from "../../../compartido/ui/alerta-error";
+import { useCarga } from "../../../compartido/use-carga";
+import { useDependencias } from "../../../dependencias";
+import { aProblema } from "../mensajes";
+import {
+  aFormularioPedido,
+  aPeticionPedido,
+  VistaFormularioPedido,
+} from "../vistas/formulario-pedido";
 
-type Pedido = Schemas["DtoPedido"];
+type Pedido = Esquemas["DtoPedido"];
 
-/** The first page of each referenced entity: what its selects offer. */
-const OPTIONS = { params: { query: { limite: MAX_PAGE_LIMIT } } };
+/** La primera página de cada entidad referenciada: lo que ofrecen sus selects. */
+const PRIMERA_PAGINA = { params: { query: { limite: LIMITE_PAGINA_MAXIMO } } };
 
-/** Creates a pedido, or edits the one with `id`. */
-export function PedidoFormContainer({ id }: { id?: string }) {
-  const { api } = useDependencies();
-  const existing = useAsync(
+/** Crear, o editar con `id`: el formulario de pedidos. */
+export function ContenedorFormularioPedido({ id }: { id?: string }) {
+  const { api } = useDependencias();
+  const existente = useCarga(
     () =>
       id === undefined
         ? Promise.resolve(null)
-        : unwrap(api.GET("/pedidos/{id}", { params: { path: { id } } })),
+        : desenvolver(api.GET("/pedidos/{id}", { params: { path: { id } } })),
     [api, id],
   );
-  const title = id === undefined ? "New pedido" : "Edit pedido";
+  const titulo = id === undefined ? "Crear pedido" : "Editar pedido";
 
   return (
     <section className="space-y-4">
-      <h1 className="text-2xl font-bold">{title}</h1>
-      {existing.status === "loading" && <span className="loading loading-spinner" />}
-      {existing.status === "error" && <ErrorAlert error={existing.error} />}
-      {existing.status === "ok" && <PedidoForm existing={existing.data} />}
+      <h1 className="text-2xl font-bold">{titulo}</h1>
+      {existente.estado === "cargando" && <span className="loading loading-spinner" />}
+      {existente.estado === "error" && <AlertaError error={existente.error} />}
+      {existente.estado === "listo" && <FormularioPedido existente={existente.datos} />}
       <Link href={id === undefined ? "/pedidos" : `/pedidos/${id}`} className="link">
-        Cancel
+        Cancelar
       </Link>
     </section>
   );
 }
 
-function PedidoForm({ existing }: { existing: Pedido | null }) {
-  const { api } = useDependencies();
-  const clientes = useAsync(() => unwrap(api.GET("/clientes", OPTIONS)), [api]);
-  const [, navigate] = useLocation();
-  const [values, setValues] = useState(toPedidoForm(existing));
-  const [saving, setSaving] = useState(false);
-  const [failure, setFailure] = useState<unknown>(null);
-  const problem = failure === null ? null : toProblem(errorCode(failure));
+function FormularioPedido({ existente }: { existente: Pedido | null }) {
+  const { api } = useDependencias();
+  const clientes = useCarga(() => desenvolver(api.GET("/clientes", PRIMERA_PAGINA)), [api]);
+  const [, navegar] = useLocation();
+  const [valores, setValores] = useState(aFormularioPedido(existente));
+  const [guardando, setGuardando] = useState(false);
+  const [fallo, setFallo] = useState<unknown>(null);
+  const problema = fallo === null ? null : aProblema(codigoError(fallo));
 
-  const save = async () => {
-    setSaving(true);
-    setFailure(null);
+  const guardar = async () => {
+    setGuardando(true);
+    setFallo(null);
     try {
-      const body = toPedidoRequest(values);
-      const saved = await unwrap(
-        existing === null
-          ? api.POST("/pedidos", { body })
-          : api.PUT("/pedidos/{id}", { params: { path: { id: existing.id } }, body }),
+      const cuerpo = aPeticionPedido(valores);
+      const guardado = await desenvolver(
+        existente === null
+          ? api.POST("/pedidos", { body: cuerpo })
+          : api.PUT("/pedidos/{id}", { params: { path: { id: existente.id } }, body: cuerpo }),
       );
-      navigate(`/pedidos/${saved.id}`);
+      navegar(`/pedidos/${guardado.id}`);
     } catch (error) {
-      setFailure(error);
-      setSaving(false);
+      setFallo(error);
+      setGuardando(false);
     }
   };
 
   return (
     <div className="card bg-base-100">
       <div className="card-body">
-        {problem?.field === null && <ErrorAlert error={failure} message={problem.text} />}
-        {clientes.status === "error" && <ErrorAlert error={clientes.error} />}
-        <PedidoFormView
-          values={values}
-          options={{
-            clienteId: referenceOptions(clientes, (cliente) => cliente.name),
-            reviewerId: referenceOptions(clientes, (cliente) => cliente.name),
+        {problema?.campo === null && <AlertaError error={fallo} mensaje={problema.texto} />}
+        {clientes.estado === "error" && <AlertaError error={clientes.error} />}
+        <VistaFormularioPedido
+          valores={valores}
+          opciones={{
+            clienteId: opcionesReferencia(clientes, (cliente) => cliente.name),
+            reviewerId: opcionesReferencia(clientes, (cliente) => cliente.name),
           }}
-          saving={saving}
-          problem={problem}
-          onChange={setValues}
-          onSubmit={save}
+          guardando={guardando}
+          problema={problema}
+          alCambiar={setValores}
+          alEnviar={guardar}
         />
       </div>
     </div>
   );
 }
 
-=== web/src/features/pedido/containers/pedido-list-container.test.tsx ===
+=== web/src/contextos/pedido/contenedores/lista-pedido.test.tsx ===
 import { describe, expect, test } from "bun:test";
 import { fireEvent, screen } from "@testing-library/react";
-import { fakeApi } from "../../../test-support/fake-api";
-import { PedidoMother, pedidoCollection } from "../../../test-support/pedido";
-import { renderScreen } from "../../../test-support/render";
-import { PedidoListContainer } from "./pedido-list-container";
+import { apiFalsa } from "../../../pruebas/api-falsa";
+import { coleccionPedido, MadrePedido } from "../../../pruebas/pedido";
+import { renderizarPantalla } from "../../../pruebas/renderizar";
+import { ContenedorListaPedido } from "./lista-pedido";
 
-describe("PedidoListContainer", () => {
-  test("should show a row per pedido when there are some", async () => {
-    // Arrange
-    const seed = [PedidoMother.random(), PedidoMother.random()];
-    const api = fakeApi([pedidoCollection(seed)]);
+describe("ContenedorListaPedido", () => {
+  test("debería mostrar una fila por cada pedido", async () => {
+    // Preparar
+    const semilla = [MadrePedido.aleatorio(), MadrePedido.aleatorio()];
+    const api = apiFalsa([coleccionPedido(semilla)]);
 
-    // Act
-    renderScreen(<PedidoListContainer />, { api });
+    // Actuar
+    renderizarPantalla(<ContenedorListaPedido />, { api });
 
-    // Assert
-    expect(await screen.findAllByText("View")).toHaveLength(2);
+    // Comprobar
+    expect(await screen.findAllByText("Ver")).toHaveLength(2);
   });
 
-  test("should show the next page when Next is pressed", async () => {
-    // Arrange
-    const seed = Array.from({ length: 25 }, () => PedidoMother.random());
-    const api = fakeApi([pedidoCollection(seed)]);
-    renderScreen(<PedidoListContainer />, { api });
-    expect(await screen.findAllByText("View")).toHaveLength(20);
+  test("debería mostrar la página siguiente cuando se pulsa Siguiente", async () => {
+    // Preparar
+    const semilla = Array.from({ length: 25 }, () => MadrePedido.aleatorio());
+    const api = apiFalsa([coleccionPedido(semilla)]);
+    renderizarPantalla(<ContenedorListaPedido />, { api });
+    expect(await screen.findAllByText("Ver")).toHaveLength(20);
 
-    // Act
-    fireEvent.click(screen.getByRole("button", { name: "Next" }));
+    // Actuar
+    fireEvent.click(screen.getByRole("button", { name: "Siguiente" }));
 
-    // Assert
-    expect(await screen.findByText("21–25 of 25")).toBeTruthy();
-    expect(screen.getAllByText("View")).toHaveLength(5);
+    // Comprobar
+    expect(await screen.findByText("21–25 de 25")).toBeTruthy();
+    expect(screen.getAllByText("Ver")).toHaveLength(5);
   });
 
-  test("should open the page the URL names", async () => {
-    // Arrange
-    const seed = Array.from({ length: 25 }, () => PedidoMother.random());
-    const api = fakeApi([pedidoCollection(seed)]);
-    const path = "/pedidos?page=2";
+  test("debería abrir la página que nombra la URL", async () => {
+    // Preparar
+    const semilla = Array.from({ length: 25 }, () => MadrePedido.aleatorio());
+    const api = apiFalsa([coleccionPedido(semilla)]);
+    const ruta = "/pedidos?pagina=2";
 
-    // Act
-    renderScreen(<PedidoListContainer />, { api }, path);
+    // Actuar
+    renderizarPantalla(<ContenedorListaPedido />, { api }, ruta);
 
-    // Assert
-    expect(await screen.findByText("21–25 of 25")).toBeTruthy();
+    // Comprobar
+    expect(await screen.findByText("21–25 de 25")).toBeTruthy();
   });
 
-  test("should say so when there is no pedido", async () => {
-    // Arrange
-    const api = fakeApi([pedidoCollection()]);
+  test("debería decirlo cuando no hay pedidos", async () => {
+    // Preparar
+    const api = apiFalsa([coleccionPedido()]);
 
-    // Act
-    renderScreen(<PedidoListContainer />, { api });
+    // Actuar
+    renderizarPantalla(<ContenedorListaPedido />, { api });
 
-    // Assert
-    expect(await screen.findByText("No pedidos yet.")).toBeTruthy();
+    // Comprobar
+    expect(await screen.findByText("Todavía no hay pedidos.")).toBeTruthy();
   });
 
-  test("should show the error code when the pedidos cannot be listed", async () => {
-    // Arrange
-    const failures = { "GET /pedidos": "pedido.repositorio" };
-    const api = fakeApi([pedidoCollection()], failures);
+  test("debería mostrar el código del error cuando la API no da la lista", async () => {
+    // Preparar
+    const fallos = { "GET /pedidos": "pedido.repositorio" };
+    const api = apiFalsa([coleccionPedido()], fallos);
 
-    // Act
-    renderScreen(<PedidoListContainer />, { api });
+    // Actuar
+    renderizarPantalla(<ContenedorListaPedido />, { api });
 
-    // Assert
+    // Comprobar
     expect((await screen.findByRole("alert")).textContent).toBe("pedido.repositorio");
   });
 });
 
-=== web/src/features/pedido/containers/pedido-list-container.tsx ===
+=== web/src/contextos/pedido/contenedores/lista-pedido.tsx ===
 import { Link, useLocation, useSearch } from "wouter";
-import { PAGE_SIZE, unwrap } from "../../../api/http";
-import { useDependencies } from "../../../dependencies";
-import { EmptyState } from "../../../shared/ui/empty-state";
-import { ErrorAlert } from "../../../shared/ui/error-alert";
-import { offsetFromSearch, Pagination, pageSearch } from "../../../shared/ui/pagination";
-import { useAsync } from "../../../shared/use-async";
-import { PedidoListView } from "../views/pedido-list-view";
+import { desenvolver, TAMANO_PAGINA } from "../../../api/http";
+import { AlertaError } from "../../../compartido/ui/alerta-error";
+import { busquedaPagina, desplazamientoDeUrl, Paginacion } from "../../../compartido/ui/paginacion";
+import { SinElementos } from "../../../compartido/ui/sin-elementos";
+import { useCarga } from "../../../compartido/use-carga";
+import { useDependencias } from "../../../dependencias";
+import { VistaListaPedido } from "../vistas/lista-pedido";
 
-/** The list, one page at a time; the page is in the URL (`?page=2`), so reload and back keep it. */
-export function PedidoListContainer() {
-  const { api } = useDependencies();
-  const [location, navigate] = useLocation();
-  const offset = offsetFromSearch(useSearch(), PAGE_SIZE);
-  const goTo = (next: number) => navigate(location + pageSearch(next, PAGE_SIZE));
-  const query = { limite: PAGE_SIZE, desplazamiento: offset };
-  const pedidos = useAsync(() => unwrap(api.GET("/pedidos", { params: { query } })), [api, offset]);
+/** La lista, página a página; la página va en la URL (`?pagina=2`): recargar y volver la mantienen. */
+export function ContenedorListaPedido() {
+  const { api } = useDependencias();
+  const [ubicacion, navegar] = useLocation();
+  const desplazamiento = desplazamientoDeUrl(useSearch(), TAMANO_PAGINA);
+  const irA = (siguiente: number) => navegar(ubicacion + busquedaPagina(siguiente, TAMANO_PAGINA));
+  const consulta = { limite: TAMANO_PAGINA, desplazamiento };
+  const pedidos = useCarga(
+    () => desenvolver(api.GET("/pedidos", { params: { query: consulta } })),
+    [api, desplazamiento],
+  );
 
   return (
     <section className="space-y-4">
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-bold">Pedidos</h1>
-        <Link href="/pedidos/new" className="btn btn-primary">
-          New pedido
+        <Link href="/pedidos/nuevo" className="btn btn-primary">
+          Crear pedido
         </Link>
       </div>
-      {pedidos.status === "loading" && <span className="loading loading-spinner" />}
-      {pedidos.status === "error" && <ErrorAlert error={pedidos.error} />}
-      {pedidos.status === "ok" &&
-        (pedidos.data.total === 0 ? (
-          <EmptyState message="No pedidos yet." />
+      {pedidos.estado === "cargando" && <span className="loading loading-spinner" />}
+      {pedidos.estado === "error" && <AlertaError error={pedidos.error} />}
+      {pedidos.estado === "listo" &&
+        (pedidos.datos.total === 0 ? (
+          <SinElementos mensaje="Todavía no hay pedidos." />
         ) : (
           <>
-            <PedidoListView pedidos={pedidos.data.elementos} />
-            <Pagination
-              total={pedidos.data.total}
-              limit={pedidos.data.limite}
-              offset={pedidos.data.desplazamiento}
-              onOffsetChange={goTo}
+            <VistaListaPedido pedidos={pedidos.datos.elementos} />
+            <Paginacion
+              total={pedidos.datos.total}
+              limite={pedidos.datos.limite}
+              desplazamiento={pedidos.datos.desplazamiento}
+              alCambiarDesplazamiento={irA}
             />
           </>
         ))}
@@ -10247,59 +10280,59 @@ export function PedidoListContainer() {
   );
 }
 
-=== web/src/features/pedido/messages.ts ===
-/** What a screen shows for an API error: under the input it is about, or in the alert. */
-export interface PedidoProblem {
-  field: string | null;
-  text: string;
+=== web/src/contextos/pedido/mensajes.ts ===
+/** Lo que una pantalla muestra de un error de la API: bajo el input del que trata, o en la alerta. */
+export interface ProblemaPedido {
+  campo: string | null;
+  texto: string;
 }
 
 /**
- * The messages for the codes of the backend's `errores.rs`, generated from the same list. English:
- * this file is the place to translate them. A code missing here shows as it is.
+ * Los mensajes de los códigos de `errores.rs` del backend, generados de la misma lista. Un código que
+ * no está aquí se muestra tal cual.
  */
-const TEXTS: Record<string, string> = {
-  "pedido.validacion.cliente_id_no_encontrado": "Cliente does not exist",
-  "pedido.validacion.reviewer_id_no_encontrado": "Reviewer does not exist",
-  "pedido.duplicado": "A pedido with these values already exists",
-  "pedido.no_encontrado": "This pedido no longer exists",
-  "pedido.repositorio": "The pedido could not be saved, try again later",
-  "pedido.desconocido": "Something went wrong",
+const TEXTOS: Record<string, string> = {
+  "pedido.validacion.cliente_id_no_encontrado": "Cliente: no existe",
+  "pedido.validacion.reviewer_id_no_encontrado": "Reviewer: no existe",
+  "pedido.duplicado": "Estos valores ya están en uso",
+  "pedido.no_encontrado": "Ya no existe",
+  "pedido.repositorio": "No se ha podido guardar; inténtalo más tarde",
+  "pedido.desconocido": "Algo ha ido mal",
 };
 
-/** The input each field's code is about. */
-const FIELDS: Record<string, string> = {
+/** El input del que trata el código de cada campo. */
+const CAMPOS: Record<string, string> = {
   "pedido.validacion.cliente_id_no_encontrado": "clienteId",
   "pedido.validacion.reviewer_id_no_encontrado": "reviewerId",
 };
 
-export function toProblem(code: string): PedidoProblem {
-  return { field: FIELDS[code] ?? null, text: TEXTS[code] ?? code };
+export function aProblema(codigo: string): ProblemaPedido {
+  return { campo: CAMPOS[codigo] ?? null, texto: TEXTOS[codigo] ?? codigo };
 }
 
-=== web/src/features/pedido/views/pedido-detail-view.tsx ===
-import type { Schemas } from "../../../api/client";
-import { ReferenceLink } from "../../../shared/ui/reference-link";
+=== web/src/contextos/pedido/vistas/detalle-pedido.tsx ===
+import type { Esquemas } from "../../../api/cliente";
+import { EnlaceReferencia } from "../../../compartido/ui/enlace-referencia";
 
-type Pedido = Schemas["DtoPedido"];
+type Pedido = Esquemas["DtoPedido"];
 
-/** `pedido`, and the label of each cliente it references, for its links. */
-export function PedidoDetailView({
+/** `pedido`, y cómo se cargan las etiquetas de lo que referencia, para sus enlaces. */
+export function VistaDetallePedido({
   pedido,
-  clienteLabel,
+  etiquetaCliente,
 }: {
   pedido: Pedido;
-  clienteLabel: (id: string) => Promise<string>;
+  etiquetaCliente: (id: string) => Promise<string>;
 }) {
   return (
     <dl className="grid grid-cols-[max-content_1fr] gap-x-6 gap-y-2">
       <dt className="font-semibold">Cliente</dt>
       <dd>
-        <ReferenceLink path="/clientes" id={pedido.clienteId} load={clienteLabel} />
+        <EnlaceReferencia ruta="/clientes" id={pedido.clienteId} cargar={etiquetaCliente} />
       </dd>
       <dt className="font-semibold">Reviewer</dt>
       <dd>
-        <ReferenceLink path="/clientes" id={pedido.reviewerId} load={clienteLabel} />
+        <EnlaceReferencia ruta="/clientes" id={pedido.reviewerId} cargar={etiquetaCliente} />
       </dd>
       <dt className="font-semibold">Total</dt>
       <dd>{pedido.total}</dd>
@@ -10307,24 +10340,24 @@ export function PedidoDetailView({
   );
 }
 
-=== web/src/features/pedido/views/pedido-form-view.tsx ===
-import type { Schemas } from "../../../api/client";
-import { optionalText, type ReferenceOption, textOf } from "../../../shared/forms";
-import { FieldError } from "../../../shared/ui/field-error";
-import type { PedidoProblem } from "../messages";
+=== web/src/contextos/pedido/vistas/formulario-pedido.tsx ===
+import type { Esquemas } from "../../../api/cliente";
+import { type OpcionReferencia, textoDe, textoOpcional } from "../../../compartido/formularios";
+import { ErrorCampo } from "../../../compartido/ui/error-campo";
+import type { ProblemaPedido } from "../mensajes";
 
-type Pedido = Schemas["DtoPedido"];
-type PedidoRequest = Schemas["PeticionCrearPedido"];
+type Pedido = Esquemas["DtoPedido"];
+type PeticionPedido = Esquemas["PeticionCrearPedido"];
 
-/** What the inputs hold: the text of every input, `checked` for a checkbox. */
-export interface PedidoFormValues {
+/** Lo que guardan los inputs: el texto de cada input, `checked` en una casilla. */
+export interface ValoresFormularioPedido {
   clienteId: string;
   reviewerId: string;
   total: string;
 }
 
-/** The inputs for `pedido`, empty when there is none yet. */
-export function toPedidoForm(pedido: Pedido | null): PedidoFormValues {
+/** Los inputs de `pedido`, vacíos cuando todavía no hay ninguno. */
+export function aFormularioPedido(pedido: Pedido | null): ValoresFormularioPedido {
   if (pedido === null) {
     return {
       clienteId: "",
@@ -10334,111 +10367,111 @@ export function toPedidoForm(pedido: Pedido | null): PedidoFormValues {
   }
   return {
     clienteId: pedido.clienteId,
-    reviewerId: textOf(pedido.reviewerId),
+    reviewerId: textoDe(pedido.reviewerId),
     total: String(pedido.total),
   };
 }
 
-/** What each reference's select offers. */
-export interface PedidoFormOptions {
-  clienteId: ReferenceOption[];
-  reviewerId: ReferenceOption[];
+/** Lo que ofrece el select de cada referencia. */
+export interface OpcionesFormularioPedido {
+  clienteId: OpcionReferencia[];
+  reviewerId: OpcionReferencia[];
 }
 
-/** What a create or an update sends: the same fields for both. */
-export function toPedidoRequest(values: PedidoFormValues): PedidoRequest {
+/** Lo que mandan crear y actualizar: los mismos campos en los dos. */
+export function aPeticionPedido(valores: ValoresFormularioPedido): PeticionPedido {
   return {
-    clienteId: values.clienteId,
-    reviewerId: optionalText(values.reviewerId),
-    total: Number(values.total),
+    clienteId: valores.clienteId,
+    reviewerId: textoOpcional(valores.reviewerId),
+    total: Number(valores.total),
   };
 }
 
-export function PedidoFormView({
-  values,
-  options,
-  saving,
-  problem,
-  onChange,
-  onSubmit,
+export function VistaFormularioPedido({
+  valores,
+  opciones,
+  guardando,
+  problema,
+  alCambiar,
+  alEnviar,
 }: {
-  values: PedidoFormValues;
-  options: PedidoFormOptions;
-  saving: boolean;
-  /** What the API said about the last submit: shown under its input. */
-  problem: PedidoProblem | null;
-  onChange: (values: PedidoFormValues) => void;
-  onSubmit: () => void;
+  valores: ValoresFormularioPedido;
+  opciones: OpcionesFormularioPedido;
+  guardando: boolean;
+  /** Lo que dijo la API del último envío: se muestra bajo su input. */
+  problema: ProblemaPedido | null;
+  alCambiar: (valores: ValoresFormularioPedido) => void;
+  alEnviar: () => void;
 }) {
   return (
     <form
       className="space-y-2"
       onSubmit={(event) => {
         event.preventDefault();
-        onSubmit();
+        alEnviar();
       }}
     >
       <label className="fieldset">
         <span className="fieldset-legend">Cliente</span>
         <select
           className="select w-full"
-          aria-invalid={problem?.field === "clienteId"}
+          aria-invalid={problema?.campo === "clienteId"}
           required
-          value={values.clienteId}
-          onChange={(event) => onChange({ ...values, clienteId: event.target.value })}
+          value={valores.clienteId}
+          onChange={(event) => alCambiar({ ...valores, clienteId: event.target.value })}
         >
-          <option value="">Choose a cliente</option>
-          {options.clienteId.map((option) => (
-            <option key={option.id} value={option.id}>
-              {option.label}
+          <option value="">Elige una opción</option>
+          {opciones.clienteId.map((opcion) => (
+            <option key={opcion.id} value={opcion.id}>
+              {opcion.etiqueta}
             </option>
           ))}
         </select>
       </label>
-      <FieldError problem={problem} field="clienteId" />
+      <ErrorCampo problema={problema} campo="clienteId" />
       <label className="fieldset">
         <span className="fieldset-legend">Reviewer</span>
         <select
           className="select w-full"
-          aria-invalid={problem?.field === "reviewerId"}
-          value={values.reviewerId}
-          onChange={(event) => onChange({ ...values, reviewerId: event.target.value })}
+          aria-invalid={problema?.campo === "reviewerId"}
+          value={valores.reviewerId}
+          onChange={(event) => alCambiar({ ...valores, reviewerId: event.target.value })}
         >
-          <option value="">None</option>
-          {options.reviewerId.map((option) => (
-            <option key={option.id} value={option.id}>
-              {option.label}
+          <option value="">—</option>
+          {opciones.reviewerId.map((opcion) => (
+            <option key={opcion.id} value={opcion.id}>
+              {opcion.etiqueta}
             </option>
           ))}
         </select>
       </label>
-      <FieldError problem={problem} field="reviewerId" />
+      <ErrorCampo problema={problema} campo="reviewerId" />
       <label className="fieldset">
         <span className="fieldset-legend">Total</span>
         <input
           className="input w-full"
           type="number"
-          aria-invalid={problem?.field === "total"}
+          aria-invalid={problema?.campo === "total"}
           required
-          value={values.total}
-          onChange={(event) => onChange({ ...values, total: event.target.value })}
+          value={valores.total}
+          onChange={(event) => alCambiar({ ...valores, total: event.target.value })}
         />
       </label>
-      <FieldError problem={problem} field="total" />
-      <button type="submit" className="btn btn-primary" disabled={saving}>
-        Save
+      <ErrorCampo problema={problema} campo="total" />
+      <button type="submit" className="btn btn-primary" disabled={guardando}>
+        Guardar
       </button>
     </form>
   );
 }
 
-=== web/src/features/pedido/views/pedido-list-view.tsx ===
+=== web/src/contextos/pedido/vistas/lista-pedido.tsx ===
 import { Link } from "wouter";
-import type { Schemas } from "../../../api/client";
+import type { Esquemas } from "../../../api/cliente";
 
-type Pedido = Schemas["DtoPedido"];
+type Pedido = Esquemas["DtoPedido"];
 
-export function PedidoListView({ pedidos }: { pedidos: Pedido[] }) {
+export function VistaListaPedido({ pedidos }: { pedidos: Pedido[] }) {
   return (
     <div className="overflow-x-auto rounded-box bg-base-100">
       <table className="table">
@@ -10458,7 +10491,7 @@ export function PedidoListView({ pedidos }: { pedidos: Pedido[] }) {
               <td>{pedido.total}</td>
               <td className="text-right">
                 <Link href={`/pedidos/${pedido.id}`} className="link">
-                  View
+                  Ver
                 </Link>
               </td>
             </tr>
@@ -10469,243 +10502,251 @@ export function PedidoListView({ pedidos }: { pedidos: Pedido[] }) {
   );
 }
 
-=== web/src/generated/dependencies.ts ===
-// AUTO-GENERATED by puerto. Edit puerto.toml, then run `puerto generar bootstrap`.
+=== web/src/generado/dependencias.ts ===
+// GENERADO por puerto. Edita puerto.toml y después ejecuta `puerto generar bootstrap`.
 //
-// The composition root: the only module that builds the API client. Screens reach it through
-// `useDependencies()`, so a test hands them a fake instead.
+// La raíz de composición: el único módulo que construye el cliente de la API. Las pantallas llegan
+// a él con `useDependencias()`, así un test les da un falso.
 
-import { type ApiClient, createApiClient } from "../api/client";
+import { type ClienteApi, crearClienteApi } from "../api/cliente";
 
-export interface Dependencies {
-  api: ApiClient;
+export interface Dependencias {
+  api: ClienteApi;
 }
 
-export function createDependencies(): Dependencies {
-  const api = createApiClient();
+export function crearDependencias(): Dependencias {
+  const api = crearClienteApi();
   return { api };
 }
 
-=== web/src/generated/routes.tsx ===
-// AUTO-GENERATED by puerto. Edit puerto.toml, then run `puerto generar bootstrap`.
+=== web/src/generado/rutas.tsx ===
+// GENERADO por puerto. Edita puerto.toml y después ejecuta `puerto generar bootstrap`.
 
 import { Route, Switch } from "wouter";
-import { ClienteDetailContainer } from "../features/cliente/containers/cliente-detail-container";
-import { ClienteFormContainer } from "../features/cliente/containers/cliente-form-container";
-import { ClienteListContainer } from "../features/cliente/containers/cliente-list-container";
-import { EnvioDetailContainer } from "../features/envio/containers/envio-detail-container";
-import { EnvioFormContainer } from "../features/envio/containers/envio-form-container";
-import { EnvioListContainer } from "../features/envio/containers/envio-list-container";
-import { PedidoDetailContainer } from "../features/pedido/containers/pedido-detail-container";
-import { PedidoFormContainer } from "../features/pedido/containers/pedido-form-container";
-import { PedidoListContainer } from "../features/pedido/containers/pedido-list-container";
-import { HomePage } from "../pages/home";
-import { NotFoundPage } from "../pages/not-found";
-import { customRoutes } from "../routes";
-import type { NavEntry } from "../shared/ui/layout";
+import type { EntradaMenu } from "../compartido/ui/marco";
+import { ContenedorDetalleCliente } from "../contextos/cliente/contenedores/detalle-cliente";
+import { ContenedorFormularioCliente } from "../contextos/cliente/contenedores/formulario-cliente";
+import { ContenedorListaCliente } from "../contextos/cliente/contenedores/lista-cliente";
+import { ContenedorDetalleEnvio } from "../contextos/envio/contenedores/detalle-envio";
+import { ContenedorFormularioEnvio } from "../contextos/envio/contenedores/formulario-envio";
+import { ContenedorListaEnvio } from "../contextos/envio/contenedores/lista-envio";
+import { ContenedorDetallePedido } from "../contextos/pedido/contenedores/detalle-pedido";
+import { ContenedorFormularioPedido } from "../contextos/pedido/contenedores/formulario-pedido";
+import { ContenedorListaPedido } from "../contextos/pedido/contenedores/lista-pedido";
+import { PaginaInicio } from "../paginas/inicio";
+import { PaginaNoEncontrada } from "../paginas/no-encontrada";
+import { rutasPropias } from "../rutas";
 
-export const navEntries: NavEntry[] = [
-  { label: "Clientes", href: "/clientes" },
-  { label: "Envios", href: "/envios" },
-  { label: "Pedidos", href: "/pedidos" },
+export const entradasMenu: EntradaMenu[] = [
+  { etiqueta: "Clientes", href: "/clientes" },
+  { etiqueta: "Envios", href: "/envios" },
+  { etiqueta: "Pedidos", href: "/pedidos" },
 ];
 
-export function AppRoutes() {
+export function RutasApp() {
   return (
     <Switch>
       <Route path="/">
-        <HomePage entries={navEntries} />
+        <PaginaInicio entradas={entradasMenu} />
       </Route>
-      {customRoutes}
+      {rutasPropias}
       <Route path="/clientes">
-        <ClienteListContainer />
+        <ContenedorListaCliente />
       </Route>
-      <Route path="/clientes/new">
-        <ClienteFormContainer />
+      <Route path="/clientes/nuevo">
+        <ContenedorFormularioCliente />
       </Route>
-      <Route path="/clientes/:id/edit">{(params) => <ClienteFormContainer id={params.id} />}</Route>
-      <Route path="/clientes/:id">{(params) => <ClienteDetailContainer id={params.id} />}</Route>
+      <Route path="/clientes/:id/editar">
+        {(params) => <ContenedorFormularioCliente id={params.id} />}
+      </Route>
+      <Route path="/clientes/:id">{(params) => <ContenedorDetalleCliente id={params.id} />}</Route>
       <Route path="/envios">
-        <EnvioListContainer />
+        <ContenedorListaEnvio />
       </Route>
-      <Route path="/envios/new">
-        <EnvioFormContainer />
+      <Route path="/envios/nuevo">
+        <ContenedorFormularioEnvio />
       </Route>
-      <Route path="/envios/:id/edit">{(params) => <EnvioFormContainer id={params.id} />}</Route>
-      <Route path="/envios/:id">{(params) => <EnvioDetailContainer id={params.id} />}</Route>
+      <Route path="/envios/:id/editar">
+        {(params) => <ContenedorFormularioEnvio id={params.id} />}
+      </Route>
+      <Route path="/envios/:id">{(params) => <ContenedorDetalleEnvio id={params.id} />}</Route>
       <Route path="/pedidos">
-        <PedidoListContainer />
+        <ContenedorListaPedido />
       </Route>
-      <Route path="/pedidos/new">
-        <PedidoFormContainer />
+      <Route path="/pedidos/nuevo">
+        <ContenedorFormularioPedido />
       </Route>
-      <Route path="/pedidos/:id/edit">{(params) => <PedidoFormContainer id={params.id} />}</Route>
-      <Route path="/pedidos/:id">{(params) => <PedidoDetailContainer id={params.id} />}</Route>
+      <Route path="/pedidos/:id/editar">
+        {(params) => <ContenedorFormularioPedido id={params.id} />}
+      </Route>
+      <Route path="/pedidos/:id">{(params) => <ContenedorDetallePedido id={params.id} />}</Route>
       <Route>
-        <NotFoundPage />
+        <PaginaNoEncontrada />
       </Route>
     </Switch>
   );
 }
 
-=== web/src/test-support/cliente.ts ===
-import type { Schemas } from "../api/client";
-import { collection } from "./fake-api";
+=== web/src/pruebas/api-falsa.ts ===
+import { type ClienteApi, crearClienteApi } from "../api/cliente";
 
-type Cliente = Schemas["DtoCliente"];
-type ClienteRequest = Schemas["PeticionCrearCliente"];
-
-/** Valid clientes for tests; pass `overrides` for the fields a test is about. */
-export const ClienteMother = {
-  request(overrides: Partial<ClienteRequest> = {}): ClienteRequest {
-    return {
-      name: "example",
-      email: "example",
-      ...overrides,
-    };
-  },
-
-  random(overrides: Partial<Cliente> = {}): Cliente {
-    return { id: crypto.randomUUID(), ...ClienteMother.request(), ...overrides };
-  },
-};
-
-/** The fake API's `/clientes`, holding `seed`. */
-export function clienteCollection(seed: Cliente[] = []) {
-  return collection("/clientes", "cliente", seed);
+/** Lo que guarda la API falsa bajo `ruta`: los DTO de la API, por id. */
+export interface Coleccion<T extends { id: string }> {
+  ruta: string;
+  /** El código que responde un elemento que no está: `producto.no_encontrado`. */
+  noEncontrado: string;
+  elementos: Map<string, T>;
 }
 
-=== web/src/test-support/envio.ts ===
-import type { Schemas } from "../api/client";
-import { collection } from "./fake-api";
-
-type Envio = Schemas["DtoEnvio"];
-type EnvioRequest = Schemas["PeticionCrearEnvio"];
-
-/** Valid envios for tests; pass `overrides` for the fields a test is about. */
-export const EnvioMother = {
-  request(overrides: Partial<EnvioRequest> = {}): EnvioRequest {
-    return {
-      pedidoId: crypto.randomUUID(),
-      destinatarioId: crypto.randomUUID(),
-      carrier: "example",
-      ...overrides,
-    };
-  },
-
-  random(overrides: Partial<Envio> = {}): Envio {
-    return { id: crypto.randomUUID(), ...EnvioMother.request(), ...overrides };
-  },
-};
-
-/** The fake API's `/envios`, holding `seed`. */
-export function envioCollection(seed: Envio[] = []) {
-  return collection("/envios", "envio", seed);
-}
-
-=== web/src/test-support/fake-api.ts ===
-import { type ApiClient, createApiClient } from "../api/client";
-
-/** What the fake API holds under `path`: the API's DTOs, by id. */
-export interface Collection<T extends { id: string }> {
-  path: string;
-  /** The code a missing item answers: `producto.no_encontrado`. */
-  notFound: string;
-  items: Map<string, T>;
-}
-
-/** The items under `path` (`/productos`) of `entity` (`producto`), starting with `seed`. */
-export function collection<T extends { id: string }>(
-  path: string,
-  entity: string,
-  seed: T[] = [],
-): Collection<T> {
-  const items = new Map(seed.map((item) => [item.id, item]));
-  return { path, notFound: `${entity}.no_encontrado`, items };
+/** Los elementos bajo `ruta` (`/productos`) de `entidad` (`producto`), empezando por `semilla`. */
+export function coleccion<T extends { id: string }>(
+  ruta: string,
+  entidad: string,
+  semilla: T[] = [],
+): Coleccion<T> {
+  const elementos = new Map(semilla.map((elemento) => [elemento.id, elemento]));
+  return { ruta, noEncontrado: `${entidad}.no_encontrado`, elementos };
 }
 
 /**
- * An `ApiClient` that answers the way the generated API does, over in-memory collections: a page
- * per `limite` / `desplazamiento`, a `404` with `<entity>.no_encontrado`, `201`, `200` and `204`.
- * Each of `failures` (`{ "POST /productos": "producto.duplicado" }`) answers its code instead.
+ * Un `ClienteApi` que responde como la API generada, sobre colecciones en memoria: una página por
+ * `limite` / `desplazamiento`, un `404` con `<entidad>.no_encontrado`, `201`, `200` y `204`. Cada
+ * uno de `fallos` (`{ "POST /productos": "producto.duplicado" }`) responde su código en su lugar.
  */
-export function fakeApi(
-  collections: Collection<{ id: string }>[],
-  failures: Record<string, string> = {},
-): ApiClient {
-  return createApiClient({
+export function apiFalsa(
+  colecciones: Coleccion<{ id: string }>[],
+  fallos: Record<string, string> = {},
+): ClienteApi {
+  return crearClienteApi({
     baseUrl: "http://localhost/api",
-    fetch: async (request) => {
-      const url = new URL(request.url);
-      const path = url.pathname.replace(/^\/api/, "");
-      const target = collections.find((c) => path === c.path || path.startsWith(`${c.path}/`));
-      if (target === undefined) return answer(404, "http.404");
-      const failure = failures[`${request.method} ${target.path}`];
-      if (failure !== undefined) return answer(400, failure);
-      const id = path.slice(target.path.length + 1);
-      return id === "" ? serveList(target, request, url) : serveItem(target, request, id);
+    fetch: async (peticion) => {
+      const url = new URL(peticion.url);
+      const ruta = url.pathname.replace(/^\/api/, "");
+      const objetivo = colecciones.find((c) => ruta === c.ruta || ruta.startsWith(`${c.ruta}/`));
+      if (objetivo === undefined) return responderError(404, "http.404");
+      const fallo = fallos[`${peticion.method} ${objetivo.ruta}`];
+      if (fallo !== undefined) return responderError(400, fallo);
+      const id = ruta.slice(objetivo.ruta.length + 1);
+      return id === ""
+        ? servirLista(objetivo, peticion, url)
+        : servirElemento(objetivo, peticion, id);
     },
   });
 }
 
-async function serveList(target: Collection<{ id: string }>, request: Request, url: URL) {
-  if (request.method === "POST") {
-    const created = { ...(await request.json()), id: crypto.randomUUID() };
-    target.items.set(created.id, created);
-    return Response.json(created, { status: 201 });
+async function servirLista(objetivo: Coleccion<{ id: string }>, peticion: Request, url: URL) {
+  if (peticion.method === "POST") {
+    const creado = { ...(await peticion.json()), id: crypto.randomUUID() };
+    objetivo.elementos.set(creado.id, creado);
+    return Response.json(creado, { status: 201 });
   }
   const limite = Number(url.searchParams.get("limite") ?? 20);
   const desplazamiento = Number(url.searchParams.get("desplazamiento") ?? 0);
-  const all = [...target.items.values()];
-  const elementos = all.slice(desplazamiento, desplazamiento + limite);
-  return Response.json({ elementos, total: all.length, limite, desplazamiento });
+  const todos = [...objetivo.elementos.values()];
+  const elementos = todos.slice(desplazamiento, desplazamiento + limite);
+  return Response.json({ elementos, total: todos.length, limite, desplazamiento });
 }
 
-async function serveItem(target: Collection<{ id: string }>, request: Request, id: string) {
-  const found = target.items.get(id);
-  if (found === undefined) return answer(404, target.notFound);
-  if (request.method === "DELETE") {
-    target.items.delete(id);
+async function servirElemento(objetivo: Coleccion<{ id: string }>, peticion: Request, id: string) {
+  const encontrado = objetivo.elementos.get(id);
+  if (encontrado === undefined) return responderError(404, objetivo.noEncontrado);
+  if (peticion.method === "DELETE") {
+    objetivo.elementos.delete(id);
     return new Response(null, { status: 204 });
   }
-  if (request.method === "PUT") {
-    // Like the API, an update replaces every field: one left out is cleared.
-    const updated = { ...(await request.json()), id };
-    target.items.set(id, updated);
-    return Response.json(updated);
+  if (peticion.method === "PUT") {
+    // Como la API, actualizar reemplaza todos los campos: el que no se manda queda vacío.
+    const actualizado = { ...(await peticion.json()), id };
+    objetivo.elementos.set(id, actualizado);
+    return Response.json(actualizado);
   }
-  return Response.json(found);
+  return Response.json(encontrado);
 }
 
-/** A `RespuestaError` the way the API answers one. */
-function answer(status: number, codigo: string) {
-  return Response.json({ codigo, mensaje: codigo }, { status });
+/** Un `RespuestaError` como lo responde la API. */
+function responderError(estado: number, codigo: string) {
+  return Response.json({ codigo, mensaje: codigo }, { status: estado });
 }
 
-=== web/src/test-support/pedido.ts ===
-import type { Schemas } from "../api/client";
-import { collection } from "./fake-api";
+=== web/src/pruebas/cliente.ts ===
+import type { Esquemas } from "../api/cliente";
+import { coleccion } from "./api-falsa";
 
-type Pedido = Schemas["DtoPedido"];
-type PedidoRequest = Schemas["PeticionCrearPedido"];
+type Cliente = Esquemas["DtoCliente"];
+type PeticionCliente = Esquemas["PeticionCrearCliente"];
 
-/** Valid pedidos for tests; pass `overrides` for the fields a test is about. */
-export const PedidoMother = {
-  request(overrides: Partial<PedidoRequest> = {}): PedidoRequest {
+/** Datos válidos de clientes; en `cambios`, los campos de los que trata el test. */
+export const MadreCliente = {
+  peticion(cambios: Partial<PeticionCliente> = {}): PeticionCliente {
+    return {
+      name: "example",
+      email: "example",
+      ...cambios,
+    };
+  },
+
+  aleatorio(cambios: Partial<Cliente> = {}): Cliente {
+    return { id: crypto.randomUUID(), ...MadreCliente.peticion(), ...cambios };
+  },
+};
+
+/** El `/clientes` de la API falsa, con `semilla`. */
+export function coleccionCliente(semilla: Cliente[] = []) {
+  return coleccion("/clientes", "cliente", semilla);
+}
+
+=== web/src/pruebas/envio.ts ===
+import type { Esquemas } from "../api/cliente";
+import { coleccion } from "./api-falsa";
+
+type Envio = Esquemas["DtoEnvio"];
+type PeticionEnvio = Esquemas["PeticionCrearEnvio"];
+
+/** Datos válidos de envios; en `cambios`, los campos de los que trata el test. */
+export const MadreEnvio = {
+  peticion(cambios: Partial<PeticionEnvio> = {}): PeticionEnvio {
+    return {
+      pedidoId: crypto.randomUUID(),
+      destinatarioId: crypto.randomUUID(),
+      carrier: "example",
+      ...cambios,
+    };
+  },
+
+  aleatorio(cambios: Partial<Envio> = {}): Envio {
+    return { id: crypto.randomUUID(), ...MadreEnvio.peticion(), ...cambios };
+  },
+};
+
+/** El `/envios` de la API falsa, con `semilla`. */
+export function coleccionEnvio(semilla: Envio[] = []) {
+  return coleccion("/envios", "envio", semilla);
+}
+
+=== web/src/pruebas/pedido.ts ===
+import type { Esquemas } from "../api/cliente";
+import { coleccion } from "./api-falsa";
+
+type Pedido = Esquemas["DtoPedido"];
+type PeticionPedido = Esquemas["PeticionCrearPedido"];
+
+/** Datos válidos de pedidos; en `cambios`, los campos de los que trata el test. */
+export const MadrePedido = {
+  peticion(cambios: Partial<PeticionPedido> = {}): PeticionPedido {
     return {
       clienteId: crypto.randomUUID(),
       reviewerId: crypto.randomUUID(),
       total: 42,
-      ...overrides,
+      ...cambios,
     };
   },
 
-  random(overrides: Partial<Pedido> = {}): Pedido {
-    return { id: crypto.randomUUID(), ...PedidoMother.request(), ...overrides };
+  aleatorio(cambios: Partial<Pedido> = {}): Pedido {
+    return { id: crypto.randomUUID(), ...MadrePedido.peticion(), ...cambios };
   },
 };
 
-/** The fake API's `/pedidos`, holding `seed`. */
-export function pedidoCollection(seed: Pedido[] = []) {
-  return collection("/pedidos", "pedido", seed);
+/** El `/pedidos` de la API falsa, con `semilla`. */
+export function coleccionPedido(semilla: Pedido[] = []) {
+  return coleccion("/pedidos", "pedido", semilla);
 }

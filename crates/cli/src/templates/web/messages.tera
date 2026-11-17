@@ -1,27 +1,27 @@
-/** What a screen shows for an API error: under the input it is about, or in the alert. */
-export interface {{ pascal }}Problem {
-  field: string | null;
-  text: string;
+/** Lo que una pantalla muestra de un error de la API: bajo el input del que trata, o en la alerta. */
+export interface Problema{{ pascal }} {
+  campo: string | null;
+  texto: string;
 }
 
 /**
- * The messages for the codes of the backend's `errores.rs`, generated from the same list. English:
- * this file is the place to translate them. A code missing here shows as it is.
+ * Los mensajes de los códigos de `errores.rs` del backend, generados de la misma lista. Un código que
+ * no está aquí se muestra tal cual.
  */
-const TEXTS: Record<string, string> = {
+const TEXTOS: Record<string, string> = {
 {%- for p in problems %}
   "{{ p.code }}": "{{ p.text }}",
 {%- endfor %}
 };
 
-/** The input each field's code is about. */
-const FIELDS: Record<string, string> = {
+/** El input del que trata el código de cada campo. */
+const CAMPOS: Record<string, string> = {
 {%- if field_problem %}
 {%- for p in problems %}{% if p.field %}
   "{{ p.code }}": "{{ p.field }}",
 {%- endif %}{% endfor %}
 {% endif %}};
 
-export function toProblem(code: string): {{ pascal }}Problem {
-  return { field: FIELDS[code] ?? null, text: TEXTS[code] ?? code };
+export function aProblema(codigo: string): Problema{{ pascal }} {
+  return { campo: CAMPOS[codigo] ?? null, texto: TEXTOS[codigo] ?? codigo };
 }

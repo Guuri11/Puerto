@@ -124,12 +124,12 @@ fn web_template_ships_the_page_size_and_the_pagination_control() {
     let output = generate_project("paged-web-template", &dir).unwrap();
 
     let http = read(&output, "web/src/api/http.ts");
-    assert!(http.contains("export const PAGE_SIZE = 20;"));
-    assert!(http.contains("export const MAX_PAGE_LIMIT = 100;"));
-    assert!(output.join("web/src/shared/ui/pagination.tsx").exists());
+    assert!(http.contains("export const TAMANO_PAGINA = 20;"));
+    assert!(http.contains("export const LIMITE_PAGINA_MAXIMO = 100;"));
+    assert!(output.join("web/src/compartido/ui/paginacion.tsx").exists());
     assert!(
         output
-            .join("web/src/shared/ui/pagination.test.tsx")
+            .join("web/src/compartido/ui/paginacion.test.tsx")
             .exists()
     );
 
@@ -142,23 +142,25 @@ fn web_slice_lists_a_page_at_a_time() {
 
     let list = read(
         &output,
-        "web/src/features/producto/containers/producto-list-container.tsx",
+        "web/src/contextos/producto/contenedores/lista-producto.tsx",
     );
-    assert!(list.contains("const query = { limite: PAGE_SIZE, desplazamiento: offset };"));
+    assert!(list.contains("const consulta = { limite: TAMANO_PAGINA, desplazamiento };"));
     assert!(
-        list.contains(r#"api.GET("/productos", { params: { query } })"#),
+        list.contains(r#"api.GET("/productos", { params: { query: consulta } })"#),
         "{list}"
     );
-    assert!(list.contains("<ProductoListView productos={productos.data.elementos} />"));
-    assert!(list.contains("offset={productos.data.desplazamiento}"));
+    assert!(list.contains("<VistaListaProducto productos={productos.datos.elementos} />"));
+    assert!(list.contains("desplazamiento={productos.datos.desplazamiento}"));
     // The fake API pages the way the generated one does.
-    let fake = read(&output, "web/src/test-support/fake-api.ts");
-    assert!(fake.contains("const elementos = all.slice(desplazamiento, desplazamiento + limite);"));
+    let fake = read(&output, "web/src/pruebas/api-falsa.ts");
+    assert!(
+        fake.contains("const elementos = todos.slice(desplazamiento, desplazamiento + limite);")
+    );
     let list_test = read(
         &output,
-        "web/src/features/producto/containers/producto-list-container.test.tsx",
+        "web/src/contextos/producto/contenedores/lista-producto.test.tsx",
     );
-    assert!(list_test.contains("should show the next page when Next is pressed"));
+    assert!(list_test.contains("debería mostrar la página siguiente cuando se pulsa Siguiente"));
 
     cleanup(&dir);
 }

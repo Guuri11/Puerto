@@ -137,7 +137,7 @@ fn web_project_syncs_the_spec_into_typescript_types() {
     let json: serde_json::Value = serde_json::from_str(&package).unwrap();
     let script = json["scripts"]["openapi:types"].as_str().unwrap();
     assert!(script.contains("../docs/api/openapi.json"), "{script}");
-    assert!(script.contains("src/api/schema.d.ts"), "{script}");
+    assert!(script.contains("src/api/esquema.d.ts"), "{script}");
     assert!(json["dependencies"]["openapi-fetch"].is_string());
     assert!(json["devDependencies"]["openapi-typescript"].is_string());
     cleanup(&dir);

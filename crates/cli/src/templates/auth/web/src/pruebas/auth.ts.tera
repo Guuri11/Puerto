@@ -1,0 +1,45 @@
+{% if local %}import type { Cuentas } from "../auth/cuentas";
+{% endif %}import type { PasarelaAuth, UsuarioActual } from "../auth/sesion";
+import { ROLES } from "../generado/roles";
+
+/** Usuarios con la sesión iniciada para los tests; en `cambios`, aquello de lo que trata el test. */
+export const MadreUsuarioActual = {
+  aleatorio(cambios: Partial<UsuarioActual> = {}): UsuarioActual {
+    const id = crypto.randomUUID();
+    return { id, email: `ana-${id.slice(0, 8)}@example.com`, nombre: "Ana", roles: [], ...cambios };
+  },
+
+  /** Tiene todos los roles que comprueba una pantalla generada: con él inicia sesión `renderizarPantalla`. */
+  llamante(): UsuarioActual {
+    return MadreUsuarioActual.aleatorio({ roles: [...ROLES] });
+  },
+};
+
+/** Una `PasarelaAuth` con `usuario` en sesión (`null`: nadie). `logins` guarda cada llamada a `login`. */
+export function pasarelaAuthFalsa({ usuario = null }: { usuario?: UsuarioActual | null } = {}) {
+  const logins: string[] = [];
+  const pasarela: PasarelaAuth = {
+    usuarioActual: async () => usuario,
+    tokenAcceso: async () => (usuario === null ? null : `token-de-${usuario.id}`),
+    login: async (volverA) => {
+      logins.push(volverA);
+    },
+    completarLogin: async () => "/",
+    logout: async () => {},
+  };
+  return { ...pasarela, logins };
+}
+{%- if local %}
+
+/** Unas `Cuentas` que aceptan cualquier registro e inicio de sesión. `inicios` guarda cada uno. */
+export function cuentasFalsas() {
+  const inicios: { email: string; contrasena: string }[] = [];
+  const cuentas: Cuentas = {
+    registrar: async ({ email, nombre }) => MadreUsuarioActual.aleatorio({ email, nombre }),
+    iniciarSesion: async (email, contrasena) => {
+      inicios.push({ email, contrasena });
+    },
+  };
+  return { ...cuentas, inicios };
+}
+{%- endif %}

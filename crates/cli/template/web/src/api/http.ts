@@ -1,43 +1,46 @@
-/** A call the API refused. `code` is its `RespuestaError.codigo`: `producto.no_encontrado`. */
-export class ApiError extends Error {
-  readonly code: string;
+/** Una llamada que la API rechazó. `codigo` es su `RespuestaError.codigo`: `producto.no_encontrado`. */
+export class ErrorApi extends Error {
+  readonly codigo: string;
 
-  constructor(code: string) {
-    super(code);
-    this.name = "ApiError";
-    this.code = code;
+  constructor(codigo: string) {
+    super(codigo);
+    this.name = "ErrorApi";
+    this.codigo = codigo;
   }
 }
 
 /**
- * The machine-readable code of a failed call: the `RespuestaError.codigo` the API answered, or
- * `http.<status>` for a body that is not one (a proxy error, poem's own `400`).
+ * El código legible por máquina de una llamada que falló: el `RespuestaError.codigo` que respondió
+ * la API, o `http.<estado>` si la respuesta no es uno (un error del proxy, el `400` del propio poem).
  */
-export function apiErrorCode(error: unknown, response: Response): string {
+export function codigoErrorApi(error: unknown, respuesta: Response): string {
   if (typeof error === "object" && error !== null && "codigo" in error) {
     const { codigo } = error;
     if (typeof codigo === "string") return codigo;
   }
-  return `http.${response.status}`;
+  return `http.${respuesta.status}`;
 }
 
-/** What an openapi-fetch call resolves to. */
-interface Answer<T> {
+/** Lo que resuelve una llamada de openapi-fetch. */
+interface Respuesta<T> {
   data?: T;
   error?: unknown;
   response: Response;
 }
 
-/** The data of a call that succeeded; else rejects with its `ApiError`. */
-export async function unwrap<T>(call: Promise<Answer<T>>): Promise<T> {
-  const { data, error, response } = await call;
-  if (!response.ok) throw new ApiError(apiErrorCode(error, response));
-  // A `204` has no body: `data` is only absent where the call's type says there is none.
+/** Los datos de una llamada que salió bien; si no, rechaza con su `ErrorApi`. */
+export async function desenvolver<T>(llamada: Promise<Respuesta<T>>): Promise<T> {
+  const { data, error, response } = await llamada;
+  if (!response.ok) throw new ErrorApi(codigoErrorApi(error, response));
+  // Un `204` no tiene cuerpo: `data` solo falta donde el tipo de la llamada dice que no lo hay.
   return data as T;
 }
 
-/** The page size the list screens ask for. */
-export const PAGE_SIZE = 20;
+/** El tamaño de página que piden las pantallas de lista. */
+export const TAMANO_PAGINA = 20;
 
-/** The largest page the API answers (the domain caps `limite`): what a reference's select offers. */
-export const MAX_PAGE_LIMIT = 100;
+/**
+ * La página más grande que responde la API (el dominio acota `limite`): lo que ofrece el select de
+ * una referencia.
+ */
+export const LIMITE_PAGINA_MAXIMO = 100;

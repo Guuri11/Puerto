@@ -513,43 +513,43 @@ fn new_with_auth_and_web_writes_the_gateway_the_provider_and_the_callback() {
     let (dir, output) = auth_web_project("auth_web_files");
 
     for file in [
-        "web/src/auth/session.ts",
-        "web/src/auth/oidc-auth-gateway.ts",
-        "web/src/auth/oidc-auth-gateway.test.ts",
-        "web/src/auth/bearer-middleware.ts",
-        "web/src/auth/bearer-middleware.test.ts",
+        "web/src/auth/sesion.ts",
+        "web/src/auth/pasarela-oidc.ts",
+        "web/src/auth/pasarela-oidc.test.ts",
+        "web/src/auth/middleware-bearer.ts",
+        "web/src/auth/middleware-bearer.test.ts",
         "web/src/auth/auth.tsx",
         "web/src/auth/auth.test.tsx",
-        "web/src/pages/auth-callback.tsx",
-        "web/src/pages/auth-callback.test.tsx",
-        "web/src/shared/ui/user-menu.tsx",
-        "web/src/shared/ui/user-menu.test.tsx",
-        "web/src/test-support/auth.ts",
+        "web/src/paginas/auth-callback.tsx",
+        "web/src/paginas/auth-callback.test.tsx",
+        "web/src/compartido/ui/menu-usuario.tsx",
+        "web/src/compartido/ui/menu-usuario.test.tsx",
+        "web/src/pruebas/auth.ts",
     ] {
         assert!(output.join(file).exists(), "{file} missing");
     }
     // The app runs inside the provider, the layout shows who is signed in, tests sign a caller in.
-    assert!(read(&output, "web/src/main.tsx").contains("<AuthProvider>"));
-    assert!(read(&output, "web/src/shared/ui/layout.tsx").contains("<UserMenu />"));
-    let render = read(&output, "web/src/test-support/render.tsx");
-    assert!(render.contains("CurrentUserMother.caller()"), "{render}");
+    assert!(read(&output, "web/src/main.tsx").contains("<ProveedorAuth>"));
+    assert!(read(&output, "web/src/compartido/ui/marco.tsx").contains("<MenuUsuario />"));
+    let render = read(&output, "web/src/pruebas/renderizar.tsx");
+    assert!(render.contains("MadreUsuarioActual.llamante()"), "{render}");
     assert!(!render.contains("{% raw %}"), "{render}");
     // The composition root builds the gateway and signs every call; the callback has its route.
-    let dependencies = read(&output, "web/src/generated/dependencies.ts");
+    let dependencies = read(&output, "web/src/generado/dependencias.ts");
     assert!(
-        dependencies.contains("auth: AuthGateway;"),
+        dependencies.contains("auth: PasarelaAuth;"),
         "{dependencies}"
     );
     assert!(
-        dependencies.contains("oidcAuthGateway(oidcSettingsFromEnv())"),
+        dependencies.contains("pasarelaOidc(ajustesOidcDeEntorno())"),
         "{dependencies}"
     );
-    let routes = read(&output, "web/src/generated/routes.tsx");
+    let routes = read(&output, "web/src/generado/rutas.tsx");
     assert!(
         routes.contains("<Route path=\"/auth/callback\">"),
         "{routes}"
     );
-    assert!(output.join("web/src/generated/roles.ts").exists());
+    assert!(output.join("web/src/generado/roles.ts").exists());
     cleanup(&dir);
 }
 
@@ -569,7 +569,7 @@ fn new_with_auth_and_web_pins_the_client_and_keeps_it_in_the_adapter() {
     assert!(package.find("oidc-client-ts").unwrap() < package.find("openapi-fetch").unwrap());
     let cruiser = read(&output, "web/.dependency-cruiser.cjs");
     assert!(
-        cruiser.contains("only-the-auth-adapter-imports-oidc-client-ts"),
+        cruiser.contains("solo-la-pasarela-importa-oidc-client-ts"),
         "{cruiser}"
     );
     for file in ["web/.env", "web/.env.example"] {
@@ -617,27 +617,29 @@ fn scaffold_in_an_auth_web_project_guards_every_screen_but_the_public_ones() {
         ),
     );
 
-    let routes = read(&output, "web/src/generated/routes.tsx");
+    let routes = read(&output, "web/src/generado/rutas.tsx");
     // List and detail are public; new and edit (create, update) are not.
     assert!(
-        routes.contains("<Route path=\"/productos\">\n        <ProductoListContainer />"),
+        routes.contains("<Route path=\"/productos\">\n        <ContenedorListaProducto />"),
         "{routes}"
     );
     assert!(
-        routes.contains("<Route path=\"/productos/new\">\n        <RequireAuth>\n          <ProductoFormContainer />"),
+        routes.contains("<Route path=\"/productos/nuevo\">\n        <RequiereAuth>\n          <ContenedorFormularioProducto />"),
         "{routes}"
     );
     assert!(
         routes.contains(
-            "<Route path=\"/productos/:id/edit\">\n        {(params) => (\n          <RequireAuth>"
+            "<Route path=\"/productos/:id/editar\">\n        {(params) => (\n          <RequiereAuth>"
         ),
         "{routes}"
     );
     assert!(
-        routes.contains("<Route path=\"/productos/:id\">{(params) => <ProductoDetailContainer"),
+        routes.contains(
+            "<Route path=\"/productos/:id\">\n        {(params) => <ContenedorDetalleProducto"
+        ),
         "{routes}"
     );
-    let roles = read(&output, "web/src/generated/roles.ts");
+    let roles = read(&output, "web/src/generado/roles.ts");
     assert!(roles.contains("[\"admin\"]"), "{roles}");
     cleanup(&dir);
 }
@@ -658,43 +660,31 @@ fn scaffold_in_an_auth_web_project_hides_the_actions_a_role_guards() {
         ),
     );
 
-    let containers = "web/src/features/producto/containers";
-    let list = read(
-        &output,
-        &format!("{containers}/producto-list-container.tsx"),
-    );
-    assert!(list.contains("{can(\"admin\") && ("), "{list}");
-    let detail = read(
-        &output,
-        &format!("{containers}/producto-detail-container.tsx"),
-    );
+    let containers = "web/src/contextos/producto/contenedores";
+    let list = read(&output, &format!("{containers}/lista-producto.tsx"));
+    assert!(list.contains("{puede(\"admin\") && ("), "{list}");
+    let detail = read(&output, &format!("{containers}/detalle-producto.tsx"));
     assert!(
-        detail.contains("{can(\"admin\") && can(\"owner\") && ("),
+        detail.contains("{puede(\"admin\") && puede(\"owner\") && ("),
         "{detail}"
     );
     // Updating needs no role: Edit is always offered.
     assert!(
-        !detail.contains("can(\"admin\") && (\n                <Link"),
+        !detail.contains("puede(\"admin\") && (\n                <Link"),
         "{detail}"
     );
-    let detail_test = read(
-        &output,
-        &format!("{containers}/producto-detail-container.test.tsx"),
-    );
+    let detail_test = read(&output, &format!("{containers}/detalle-producto.test.tsx"));
     assert!(
-        detail_test.contains("should not offer Delete to a user without its role"),
+        detail_test.contains("no debería ofrecer Borrar a quien no tiene su rol"),
         "{detail_test}"
     );
     assert!(
-        detail_test.contains("should show auth.prohibido when the API refuses the deletion"),
+        detail_test.contains("debería mostrar auth.prohibido cuando la API rechaza el borrado"),
         "{detail_test}"
     );
-    let list_test = read(
-        &output,
-        &format!("{containers}/producto-list-container.test.tsx"),
-    );
+    let list_test = read(&output, &format!("{containers}/lista-producto.test.tsx"));
     assert!(
-        list_test.contains("should not offer New to a user without its role"),
+        list_test.contains("no debería ofrecer Crear a quien no tiene su rol"),
         "{list_test}"
     );
     cleanup(&dir);
@@ -706,19 +696,13 @@ fn scaffold_in_an_auth_web_project_without_roles_checks_none() {
 
     scaffold_web_producto(&output, &access(&[], &[]));
 
-    let containers = "web/src/features/producto/containers";
-    for file in [
-        "producto-list-container.tsx",
-        "producto-detail-container.tsx",
-    ] {
+    let containers = "web/src/contextos/producto/contenedores";
+    for file in ["lista-producto.tsx", "detalle-producto.tsx"] {
         let src = read(&output, &format!("{containers}/{file}"));
         assert!(!src.contains("useAuth"), "{file}: {src}");
     }
     // A protected deletion can still be refused by the use case itself.
-    let detail_test = read(
-        &output,
-        &format!("{containers}/producto-detail-container.test.tsx"),
-    );
+    let detail_test = read(&output, &format!("{containers}/detalle-producto.test.tsx"));
     assert!(detail_test.contains("auth.prohibido"), "{detail_test}");
     cleanup(&dir);
 }
@@ -867,36 +851,30 @@ fn new_with_local_auth_and_web_signs_in_with_a_password_not_a_provider() {
     .unwrap();
 
     for file in [
-        "web/src/auth/accounts.ts",
-        "web/src/auth/messages.ts",
-        "web/src/auth/local-auth-gateway.ts",
-        "web/src/auth/local-auth-gateway.test.ts",
-        "web/src/pages/login.tsx",
-        "web/src/pages/register.tsx",
+        "web/src/auth/cuentas.ts",
+        "web/src/auth/mensajes.ts",
+        "web/src/auth/pasarela-local.ts",
+        "web/src/auth/pasarela-local.test.ts",
+        "web/src/paginas/login.tsx",
+        "web/src/paginas/registro.tsx",
         "web/src/auth/auth.tsx",
-        "web/src/auth/bearer-middleware.ts",
+        "web/src/auth/middleware-bearer.ts",
     ] {
         assert!(output.join(file).exists(), "{file} missing");
     }
     // No provider: no OIDC client, callback, settings or dependency.
-    assert!(!output.join("web/src/auth/oidc-auth-gateway.ts").exists());
-    assert!(!output.join("web/src/pages/auth-callback.tsx").exists());
+    assert!(!output.join("web/src/auth/pasarela-oidc.ts").exists());
+    assert!(!output.join("web/src/paginas/auth-callback.tsx").exists());
     assert!(!output.join("web/.env").exists());
     assert!(!read(&output, "web/package.json").contains("oidc-client-ts"));
-    let dependencies = read(&output, "web/src/generated/dependencies.ts");
-    assert!(
-        dependencies.contains("accounts: Accounts;"),
-        "{dependencies}"
-    );
-    assert!(
-        dependencies.contains("localAuthGateway()"),
-        "{dependencies}"
-    );
-    let routes = read(&output, "web/src/generated/routes.tsx");
+    let dependencies = read(&output, "web/src/generado/dependencias.ts");
+    assert!(dependencies.contains("cuentas: Cuentas;"), "{dependencies}");
+    assert!(dependencies.contains("pasarelaLocal()"), "{dependencies}");
+    let routes = read(&output, "web/src/generado/rutas.tsx");
     assert!(routes.contains("<Route path=\"/login\">"), "{routes}");
-    assert!(routes.contains("<Route path=\"/register\">"), "{routes}");
+    assert!(routes.contains("<Route path=\"/registro\">"), "{routes}");
     assert!(!routes.contains("/auth/callback"), "{routes}");
-    assert!(read(&output, "web/src/test-support/auth.ts").contains("export function fakeAccounts"));
+    assert!(read(&output, "web/src/pruebas/auth.ts").contains("export function cuentasFalsas"));
     assert!(
         read(&output, "AGENTS.md").contains(crate::generators::auth::AGENTS_AUTH_LOCAL_WEB_SECTION)
     );

@@ -1,38 +1,38 @@
-// The frontend is the presentation layer (ADR-0025 of Puerto): containers call the API, views
-// take props. `bun run lint:arch` fails on any import that breaks it.
+// El frontend es la capa de presentación (ADR-0025 de Puerto): los contenedores llaman a la API y
+// las vistas reciben props. `bun run lint:arch` falla con cualquier import que lo rompa.
 module.exports = {
   forbidden: [
     {
-      name: "views-take-props",
+      name: "vistas-solo-props",
       comment:
-        "A view renders what its container hands it: no API client, no dependencies, no data hooks (types are fine).",
+        "Una vista pinta lo que le da su contenedor: ni el cliente de la API, ni las dependencias, ni hooks de datos (los tipos sí).",
       severity: "error",
-      from: { path: "^src/features/[^/]+/views/" },
+      from: { path: "^src/contextos/[^/]+/vistas/" },
       to: {
-        path: "^src/(api/|dependencies\\.tsx$|generated/|shared/use-async\\.ts$)",
+        path: "^src/(api/|dependencias\\.tsx$|generado/|compartido/use-carga\\.ts$)",
         dependencyTypesNot: ["type-only"],
       },
     },
     {
-      name: "only-the-composition-root-builds-the-client",
+      name: "solo-generado-construye-el-cliente",
       comment:
-        "Screens reach the API through useDependencies(), so a test hands them a fake: only generated/dependencies.ts and test-support/ build it.",
+        "Las pantallas llegan a la API con useDependencias(), así un test les da un falso: solo generado/dependencias.ts y pruebas/ la construyen.",
       severity: "error",
       from: {
         path: "^src/",
-        pathNot: ["^src/generated/dependencies\\.ts$", "^src/test-support/"],
+        pathNot: ["^src/generado/dependencias\\.ts$", "^src/pruebas/"],
       },
-      to: { path: "^src/api/client\\.ts$", dependencyTypesNot: ["type-only"] },
+      to: { path: "^src/api/cliente\\.ts$", dependencyTypesNot: ["type-only"] },
     },
     {
-      name: "only-tests-import-test-support",
-      comment: "Fakes and mothers are for tests; the app never ships them.",
+      name: "solo-los-tests-importan-pruebas",
+      comment: "Los falsos y las madres son de los tests; la app nunca los lleva.",
       severity: "error",
-      from: { path: "^src/", pathNot: ["^src/test-support/", "\\.test\\.tsx?$"] },
-      to: { path: "^src/test-support/" },
+      from: { path: "^src/", pathNot: ["^src/pruebas/", "\\.test\\.tsx?$"] },
+      to: { path: "^src/pruebas/" },
     },
     {
-      name: "no-circular",
+      name: "sin-ciclos",
       severity: "error",
       from: {},
       to: { circular: true },

@@ -1,0 +1,112 @@
+import type { Cuentas, Registro } from "./cuentas";
+import { ErrorAuth, type PasarelaAuth, type UsuarioActual } from "./sesion";
+
+/**
+ * Dónde se guarda el token de sesión: en `localStorage`, para que recargar mantenga la sesión — no
+ * hay sesión del proveedor en la que apoyarse. Un token que se filtra se revoca en el servidor
+ * (`POST /auth/logout`).
+ */
+export const CLAVE_TOKEN = "auth.token";
+
+export interface OpcionesAuthLocal {
+  almacen?: Storage;
+  fetch?: (url: string, init: RequestInit) => Promise<Response>;
+  /** Sale a otra página de la app: la de login, en `login`. */
+  irA?: (url: string) => void;
+}
+
+/** `GET /me` como lo responde la API (`DtoMe`). */
+interface CuerpoMe {
+  id: string;
+  email?: string | null;
+  nombre?: string | null;
+  roles: string[];
+}
+
+function aUsuarioActual(me: CuerpoMe): UsuarioActual {
+  return { id: me.id, email: me.email ?? null, nombre: me.nombre ?? null, roles: me.roles };
+}
+
+/** El `RespuestaError.codigo` de una llamada que falló, o `http.<estado>` si la respuesta no es uno. */
+async function codigoDeError(respuesta: Response): Promise<string> {
+  const cuerpo: unknown = await respuesta.json().catch(() => null);
+  if (typeof cuerpo === "object" && cuerpo !== null && "codigo" in cuerpo) {
+    const { codigo } = cuerpo;
+    if (typeof codigo === "string") return codigo;
+  }
+  return `http.${respuesta.status}`;
+}
+
+const CUERPO_JSON = { "Content-Type": "application/json" };
+
+/** `PasarelaAuth` y `Cuentas` sobre el `/auth/*` de la propia API (`--auth local`). */
+export function pasarelaLocal({
+  almacen = window.localStorage,
+  fetch: enviar = (url, init) => fetch(url, init),
+  irA = (url) => window.location.assign(url),
+}: OpcionesAuthLocal = {}): PasarelaAuth & Cuentas {
+  const token = () => almacen.getItem(CLAVE_TOKEN);
+  const bearer = (valor: string) => ({ Authorization: `Bearer ${valor}` });
+
+  return {
+    tokenAcceso: async () => token(),
+
+    async usuarioActual() {
+      const actual = token();
+      if (actual === null) return null;
+      const respuesta = await enviar("/api/me", { headers: bearer(actual) });
+      // Una sesión caducada o revocada: sin sesión, no un error.
+      if (respuesta.status === 401) {
+        almacen.removeItem(CLAVE_TOKEN);
+        return null;
+      }
+      if (!respuesta.ok) throw new ErrorAuth(await codigoDeError(respuesta));
+      return aUsuarioActual((await respuesta.json()) as CuerpoMe);
+    },
+
+    /** La sesión ya no está, o nunca estuvo: se tira lo que quede de ella y se pide la contraseña. */
+    async login(volverA) {
+      almacen.removeItem(CLAVE_TOKEN);
+      irA(`/login?siguiente=${encodeURIComponent(volverA)}`);
+    },
+
+    completarLogin: async () => "/",
+
+    async logout() {
+      const actual = token();
+      if (actual !== null) {
+        // Aquí se cierra la sesión diga lo que diga la API: una que no pudo revocar caduca.
+        await enviar("/api/auth/logout", { method: "POST", headers: bearer(actual) }).catch(
+          () => undefined,
+        );
+      }
+      almacen.removeItem(CLAVE_TOKEN);
+    },
+
+    async registrar(registro: Registro) {
+      const respuesta = await enviar("/api/auth/registro", {
+        method: "POST",
+        headers: CUERPO_JSON,
+        // `PeticionRegistro`: los nombres de los campos en la API.
+        body: JSON.stringify({
+          email: registro.email,
+          contrasena: registro.contrasena,
+          nombre: registro.nombre,
+        }),
+      });
+      if (!respuesta.ok) throw new ErrorAuth(await codigoDeError(respuesta));
+      return aUsuarioActual((await respuesta.json()) as CuerpoMe);
+    },
+
+    async iniciarSesion(email, contrasena) {
+      const respuesta = await enviar("/api/auth/login", {
+        method: "POST",
+        headers: CUERPO_JSON,
+        body: JSON.stringify({ email, contrasena }),
+      });
+      if (!respuesta.ok) throw new ErrorAuth(await codigoDeError(respuesta));
+      const sesion = (await respuesta.json()) as { token: string };
+      almacen.setItem(CLAVE_TOKEN, sesion.token);
+    },
+  };
+}

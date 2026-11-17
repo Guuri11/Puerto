@@ -732,78 +732,82 @@ fn web_snippets_compose_a_screen_that_passes_the_frontend_checks() {
     scaffold::run_scaffold("Producto", &output, &[], OverwritePolicy::Ask).unwrap();
     let tsx = snippet_bodies(crate::snippets::WEB_TSX_SNIPPETS_JSON);
     let producto = &[
-        ("Entity", "Producto"),
-        ("entity", "producto"),
-        ("entity-name", "producto"),
-        ("Summary", "Summary"),
-        ("summary", "summary"),
-        ("entity label", "producto"),
-        ("entities", "productos"),
-        ("/entities/:id/summary", "/productos/:id/summary"),
+        ("Entidad", "Producto"),
+        ("entidad", "producto"),
+        ("nombre-entidad", "producto"),
+        ("Resumen", "Resumen"),
+        ("resumen", "resumen"),
+        ("qué", "el resumen"),
+        ("entidades", "productos"),
+        ("/entidades/:id/resumen", "/productos/:id/resumen"),
     ];
     let web = "web/src";
 
     // A screen, its test, and its route.
-    let containers = format!("{web}/features/producto/containers");
+    let containers = format!("{web}/contextos/producto/contenedores");
     fs::write(
-        output.join(format!("{containers}/producto-summary-container.tsx")),
+        output.join(format!("{containers}/resumen-producto.tsx")),
         expand_snippet(&tsx["web-container"], producto),
     )
     .unwrap();
     fs::write(
-        output.join(format!("{containers}/producto-summary-container.test.tsx")),
+        output.join(format!("{containers}/resumen-producto.test.tsx")),
         expand_snippet(&tsx["web-container-test"], producto),
     )
     .unwrap();
     let route = expand_snippet(&tsx["web-route"], producto);
-    let routes = format!("{web}/routes.tsx");
+    let routes = format!("{web}/rutas.tsx");
     replace_in(
         &output,
         &routes,
-        "export const customRoutes: ReactElement[] = [];",
-        &format!("export const customRoutes: ReactElement[] = [\n{route}];"),
+        "export const rutasPropias: ReactElement[] = [];",
+        &format!("export const rutasPropias: ReactElement[] = [\n{route}];"),
     );
     replace_in(
         &output,
         &routes,
         "import type { ReactElement } from \"react\";\n",
-        "import type { ReactElement } from \"react\";\nimport { Route } from \"wouter\";\nimport { ProductoSummaryContainer } from \"./features/producto/containers/producto-summary-container\";\n",
+        "import type { ReactElement } from \"react\";\nimport { Route } from \"wouter\";\nimport { ContenedorResumenProducto } from \"./contextos/producto/contenedores/resumen-producto\";\n",
     );
 
     // The route is reached through the generated table: `{customRoutes}` inside its `<Switch>`.
     fs::write(
-        output.join(format!("{web}/routes.test.tsx")),
+        output.join(format!("{web}/rutas.test.tsx")),
         r#"import { expect, test } from "bun:test";
 import { screen } from "@testing-library/react";
-import { AppRoutes } from "./generated/routes";
-import { fakeApi } from "./test-support/fake-api";
-import { ProductoMother, productoCollection } from "./test-support/producto";
-import { renderScreen } from "./test-support/render";
+import { RutasApp } from "./generado/rutas";
+import { apiFalsa } from "./pruebas/api-falsa";
+import { coleccionProducto, MadreProducto } from "./pruebas/producto";
+import { renderizarPantalla } from "./pruebas/renderizar";
 
-test("should reach a custom route through the generated route table", async () => {
-  // Arrange
-  const seeded = ProductoMother.random();
-  const api = fakeApi([productoCollection([seeded])]);
+test("debería llegar a una ruta propia por la tabla de rutas generada", async () => {
+  // Preparar
+  const sembrado = MadreProducto.aleatorio();
+  const api = apiFalsa([coleccionProducto([sembrado])]);
 
-  // Act
-  renderScreen(<AppRoutes />, { api }, `/productos/${seeded.id}/summary`);
+  // Actuar
+  renderizarPantalla(<RutasApp />, { api }, `/productos/${sembrado.id}/resumen`);
 
-  // Assert
-  expect(await screen.findByText(seeded.id)).toBeTruthy();
+  // Comprobar
+  expect(await screen.findByText(sembrado.id)).toBeTruthy();
 });
 "#,
     )
     .unwrap();
 
     // The form's `nombre` input, rewritten from `web-form-field`.
-    let form = format!("{web}/features/producto/views/producto-form-view.tsx");
+    let form = format!("{web}/contextos/producto/vistas/formulario-producto.tsx");
     let src = fs::read_to_string(output.join(&form)).unwrap();
     let start = src.find("      <label className=\"fieldset\">\n        <span className=\"fieldset-legend\">Nombre</span>").unwrap();
-    let field_error = "<FieldError problem={problem} field=\"nombre\" />\n";
+    let field_error = "<ErrorCampo problema={problema} campo=\"nombre\" />\n";
     let end = start + src[start..].find(field_error).unwrap() + field_error.len();
     let field = expand_snippet(
         &tsx["web-form-field"],
-        &[("Label", "Nombre"), ("text", "text"), ("field", "nombre")],
+        &[
+            ("Etiqueta", "Nombre"),
+            ("text", "text"),
+            ("campo", "nombre"),
+        ],
     );
     fs::write(
         output.join(&form),

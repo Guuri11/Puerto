@@ -293,13 +293,14 @@ los nombres de los tests son frases: con tildes.
 | `ProductoMother.request()`, `.random()`, `productoCollection` | `MadreProducto.peticion()`, `.aleatorio()`, `coleccionProducto` |
 | `fakeApi`, `collection`, `Collection { path, notFound, items }` | `apiFalsa`, `coleccion`, `Coleccion { ruta, noEncontrado, elementos }` |
 | `renderScreen`, `referencedBy`, `fillIn`, `choose`, `type` | `renderizarPantalla`, `referenciadosPor`, `rellenar`, `elegir`, `escribir` |
-| el sufijo de una variable que choca con una palabra reservada o un local (`caseItem`, `seriesList`) | `casoElemento`, `seriesLista` |
+| el sufijo de una variable que choca con una palabra reservada o un local (`caseItem`, `seriesList`) | `caseElemento`, `seriesLista` |
 | locales: `seeded`, `stored`, `failures`, `request`, `values`, `saving`, `failure`, `problem`, `existing`, `navigate`, `location`, `goTo`, `offset`, `query`, `confirming`, `remove`, `save`, `saved`, `found`, `target`, `owner`, `options`, `history`, `user`, `code`, `created`, `input` | `sembrado`, `guardados`, `fallos`, `peticion`, `valores`, `guardando`, `fallo`, `problema`, `existente`, `navegar`, `ubicacion`, `irA`, `desplazamiento`, `consulta`, `confirmando`, `borrar`, `guardar`, `guardado`, `encontrado`, `objetivo`, `dueno`, `opciones`, `historial`, `usuario`, `codigo`, `creado`, `campo` |
 | auth: `AuthGateway`, `CurrentUser`, `Accounts`, `Registration`, `AuthError`, `AuthProvider`, `RequireAuth`, `useAuth` | `PasarelaAuth`, `UsuarioActual`, `Cuentas`, `Registro`, `ErrorAuth`, `ProveedorAuth`, `RequiereAuth`, `useAuth` |
 | auth: `currentUser`, `accessToken`, `login`, `completeLogin`, `logout`, `refresh`, `can(role)`, `register`, `signIn` | `usuarioActual`, `tokenAcceso`, `login`, `completarLogin`, `logout`, `refrescar`, `puede(rol)`, `registrar`, `iniciarSesion` |
 | auth: `oidcAuthGateway`, `localAuthGateway`, `bearerMiddleware`, `OidcSettings`, `oidcSettingsFromEnv`, `TOKEN_KEY` | `pasarelaOidc`, `pasarelaLocal`, `middlewareBearer`, `AjustesOidc`, `ajustesOidcDeEntorno`, `CLAVE_TOKEN` |
 | auth: `CurrentUserMother`, `fakeAuthGateway`, `fakeAccounts`, `UserMenu`, `LoginPage`, `RegisterPage`, `AuthCallbackPage`, `nextPath`, `AccountProblem`, `toAccountProblem` | `MadreUsuarioActual`, `pasarelaAuthFalsa`, `cuentasFalsas`, `MenuUsuario`, `PaginaLogin`, `PaginaRegistro`, `PaginaAuthCallback`, `rutaSiguiente`, `ProblemaCuenta`, `aProblemaCuenta` |
 | reglas de dependency-cruiser | `vistas-solo-props`, `solo-generado-construye-el-cliente`, `solo-los-tests-importan-pruebas`, `sin-ciclos`, `solo-la-pasarela-importa-oidc-client-ts` |
+| decididos por el camino: la primera página de las entidades referenciadas, los cambios de una madre, la carga de la etiqueta de un objetivo | `PRIMERA_PAGINA`, `cambios`, `etiquetaCliente` (`objetivo`, `encontrado`) |
 
 ### Rutas y textos
 

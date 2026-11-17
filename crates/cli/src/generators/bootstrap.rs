@@ -169,14 +169,14 @@ pub fn run_bootstrap_command(
     regenerate_bootstrap(base)?;
     println!("✓ bootstrap.rs regenerated.");
     if crate::puerto_toml::read(base).is_ok_and(|c| c.project.web) {
-        println!("✓ web/src/generated/ regenerated.");
+        println!("✓ web/src/generado/ regenerated.");
     }
     Ok(())
 }
 
 /// Read puerto.toml and overwrite the generated wiring: `presentacion/cableado` (its `Cargo.toml`
 /// too), `presentacion/api/src/generado/bootstrap.rs` and, in a web project,
-/// `web/src/generated/*`. The `api` crate gains the REST crate of every context.
+/// `web/src/generado/*`. The `api` crate gains the REST crate of every context.
 ///
 /// Warns — rather than refuses — on manifest/filesystem drift: this runs inside `scaffold`, where
 /// the entity being generated is fine and it is some *other* declared entity that is missing.

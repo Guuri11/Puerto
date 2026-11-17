@@ -1,0 +1,98 @@
+import { useState } from "react";
+import { Link, useLocation, useSearch } from "wouter";
+import { useAuth } from "../auth/auth";
+import { aProblemaCuenta } from "../auth/mensajes";
+import { textoOpcional } from "../compartido/formularios";
+import { AlertaError, codigoError } from "../compartido/ui/alerta-error";
+import { ErrorCampo } from "../compartido/ui/error-campo";
+import { useDependencias } from "../dependencias";
+import { rutaSiguiente } from "./login";
+
+/** Crea una cuenta, inicia sesión con ella y vuelve adonde se pidió el inicio de sesión. */
+export function PaginaRegistro() {
+  const { cuentas } = useDependencias();
+  const { refrescar } = useAuth();
+  const [, navegar] = useLocation();
+  const busqueda = useSearch();
+  const [valores, setValores] = useState({ email: "", contrasena: "", nombre: "" });
+  const [guardando, setGuardando] = useState(false);
+  const [fallo, setFallo] = useState<unknown>(null);
+  const problema = fallo === null ? null : aProblemaCuenta(codigoError(fallo));
+
+  const enviar = async () => {
+    setGuardando(true);
+    setFallo(null);
+    try {
+      await cuentas.registrar({
+        email: valores.email,
+        contrasena: valores.contrasena,
+        nombre: textoOpcional(valores.nombre),
+      });
+      await cuentas.iniciarSesion(valores.email, valores.contrasena);
+      await refrescar();
+      navegar(rutaSiguiente(busqueda), { replace: true });
+    } catch (error) {
+      setFallo(error);
+      setGuardando(false);
+    }
+  };
+
+  return (
+    <section className="mx-auto max-w-sm space-y-4">
+      <h1 className="text-2xl font-bold">Crea una cuenta</h1>
+      {problema?.campo === null && <AlertaError error={fallo} mensaje={problema.texto} />}
+      <form
+        className="space-y-2"
+        onSubmit={(event) => {
+          event.preventDefault();
+          void enviar();
+        }}
+      >
+        <label className="fieldset">
+          <span className="fieldset-legend">Email</span>
+          <input
+            className="input w-full"
+            type="email"
+            autoComplete="email"
+            aria-invalid={problema?.campo === "email"}
+            required
+            value={valores.email}
+            onChange={(event) => setValores({ ...valores, email: event.target.value })}
+          />
+        </label>
+        <ErrorCampo problema={problema} campo="email" />
+        <label className="fieldset">
+          <span className="fieldset-legend">Contraseña</span>
+          <input
+            className="input w-full"
+            type="password"
+            autoComplete="new-password"
+            aria-invalid={problema?.campo === "contrasena"}
+            required
+            minLength={12}
+            value={valores.contrasena}
+            onChange={(event) => setValores({ ...valores, contrasena: event.target.value })}
+          />
+        </label>
+        <ErrorCampo problema={problema} campo="contrasena" />
+        <label className="fieldset">
+          <span className="fieldset-legend">Nombre</span>
+          <input
+            className="input w-full"
+            type="text"
+            autoComplete="name"
+            value={valores.nombre}
+            onChange={(event) => setValores({ ...valores, nombre: event.target.value })}
+          />
+        </label>
+        <ErrorCampo problema={problema} campo="nombre" />
+        <button type="submit" className="btn btn-primary" disabled={guardando}>
+          Crear cuenta
+        </button>
+      </form>
+      <Link href={`/login${busqueda === "" ? "" : `?${busqueda}`}`} className="link">
+        Ya tengo una cuenta
+      </Link>
+    </section>
+  );
+}

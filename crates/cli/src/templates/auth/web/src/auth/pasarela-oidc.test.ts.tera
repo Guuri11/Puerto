@@ -1,0 +1,109 @@
+import { describe, expect, test } from "bun:test";
+import type { User } from "oidc-client-ts";
+import { ajustesOidcDeEntorno, type ClienteOidc, pasarelaOidcSobre } from "./pasarela-oidc";
+import { ErrorAuth } from "./sesion";
+
+/** Un cliente con `usuario` en sesión (`null`: nadie); `redirecciones` guarda cada redirección. */
+function cliente(usuario: Partial<User> | null) {
+  const redirecciones: unknown[] = [];
+  const falso: ClienteOidc = {
+    getUser: async () => usuario as User | null,
+    signinRedirect: async (args) => {
+      redirecciones.push(args);
+    },
+    signinRedirectCallback: async () => ({ state: "/pedidos" }) as User,
+    signoutRedirect: async () => {},
+  };
+  return { falso, redirecciones };
+}
+
+/** Un `/me` que responde `estado` y `cuerpo`; `peticiones` guarda lo que se le pidió. */
+function me(estado: number, cuerpo: unknown) {
+  const peticiones: { url: string; init: RequestInit }[] = [];
+  const pedirMe = async (url: string, init: RequestInit) => {
+    peticiones.push({ url, init });
+    return Response.json(cuerpo, { status: estado });
+  };
+  return { pedirMe, peticiones };
+}
+
+describe("pasarelaOidc", () => {
+  test("debería preguntar a la API de quién es el token cuando hay sesión", async () => {
+    // Preparar
+    const { falso } = cliente({ access_token: "abc", expired: false });
+    const id = crypto.randomUUID();
+    const { pedirMe, peticiones } = me(200, { id, email: "ana@example.com", roles: ["admin"] });
+
+    // Actuar
+    const usuario = await pasarelaOidcSobre(falso, pedirMe).usuarioActual();
+
+    // Comprobar
+    expect(peticiones[0]?.url).toBe("/api/me");
+    expect(peticiones[0]?.init.headers).toEqual({ Authorization: "Bearer abc" });
+    expect(usuario).toEqual({ id, email: "ana@example.com", nombre: null, roles: ["admin"] });
+  });
+
+  test("no debería haber usuario ni token cuando la sesión caducó", async () => {
+    // Preparar
+    const { falso } = cliente({ access_token: "abc", expired: true });
+    const { pedirMe, peticiones } = me(200, {});
+    const pasarela = pasarelaOidcSobre(falso, pedirMe);
+
+    // Actuar
+    const usuario = await pasarela.usuarioActual();
+
+    // Comprobar
+    expect(usuario).toBeNull();
+    expect(await pasarela.tokenAcceso()).toBeNull();
+    expect(peticiones).toHaveLength(0);
+  });
+
+  test("debería fallar con el código de la API cuando rechaza el token", async () => {
+    // Preparar
+    const { falso } = cliente({ access_token: "abc", expired: false });
+    const codigo = "auth.no_autenticado";
+    const { pedirMe } = me(401, { codigo, mensaje: codigo });
+
+    // Actuar
+    const resultado = pasarelaOidcSobre(falso, pedirMe).usuarioActual();
+
+    // Comprobar
+    await expect(resultado).rejects.toBeInstanceOf(ErrorAuth);
+    await expect(resultado).rejects.toMatchObject({ codigo });
+  });
+
+  test("debería volver a la página en la que empezó el inicio de sesión", async () => {
+    // Preparar
+    const { falso, redirecciones } = cliente(null);
+    const pasarela = pasarelaOidcSobre(falso, me(200, {}).pedirMe);
+
+    // Actuar
+    await pasarela.login("/pedidos");
+    const vuelta = await pasarela.completarLogin();
+
+    // Comprobar
+    expect(redirecciones).toEqual([{ state: "/pedidos" }]);
+    expect(vuelta).toBe("/pedidos");
+  });
+});
+
+describe("ajustesOidcDeEntorno", () => {
+  test("debería nombrar la variable que falta cuando web/.env no tiene emisor", () => {
+    // Actuar
+    const leer = () => ajustesOidcDeEntorno({ VITE_AUTH_CLIENT_ID: "web" });
+
+    // Comprobar
+    expect(leer).toThrow("VITE_AUTH_ISSUER no está definida");
+  });
+
+  test("debería dejar vacía la audiencia cuando no está definida", () => {
+    // Actuar
+    const ajustes = ajustesOidcDeEntorno({
+      VITE_AUTH_ISSUER: "http://localhost:8180/realms/tienda",
+      VITE_AUTH_CLIENT_ID: "web",
+    });
+
+    // Comprobar
+    expect(ajustes.audiencia).toBe("");
+  });
+});
