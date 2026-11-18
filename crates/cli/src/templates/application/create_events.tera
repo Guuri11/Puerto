@@ -1,7 +1,6 @@
 {% import "application/macros.tera" as macros %}{% set required = fields | filter(attribute="required_string", value=true) %}{% set string_vos = fields | filter(attribute="string_vo", value=true) %}use std::sync::Arc;
 
 use async_trait::async_trait;
-use puerto_nucleo::ErrorRepositorio;
 {% for import in vo_imports %}use {{ import }};
 {% endfor %}
 use dominio_{{ snake }}::{
@@ -17,18 +16,16 @@ pub struct Crear{{ pascal }}Impl {
 
 #[async_trait]
 impl Crear{{ pascal }} for Crear{{ pascal }}Impl {
+    #[tracing::instrument(name = "crear_{{ snake }}", skip_all, err(level = "warn"))]
     async fn ejecutar(&self, params: ParamsCrear{{ pascal }}) -> Result<{{ pascal }}, Error{{ pascal }}> {
-        tracing::info!("crear_{{ snake }}: inicio");
-        let fallido = |e: &ErrorRepositorio| tracing::error!(error = %e, "crear_{{ snake }}: fallo del repositorio");
 {% for f in fields | filter(attribute="is_vo", value=true) %}let {{ f.name }}{% if f.is_vec_vo %}: Vec<{{ f.vo }}>{% endif %} = {{ f.from_params }};
 {% endfor %}        let entidad = {{ pascal }}::new(Props{{ pascal }} {
 {% for f in fields %}            {{ f.name }}{% if not f.is_vo %}: params.{{ f.name }}{% endif %},
-{% endfor %}        }).inspect_err(|e| tracing::warn!(error = %e, "crear_{{ snake }}: rechazado"))?;
-        let mut uow = self.uow_factory.begin().await.inspect_err(fallido)?;
-        uow.guardar(&entidad).await.inspect_err(fallido)?;
-        uow.registrar(Evento{{ pascal }}::Creado(Snapshot{{ pascal }}::from_entidad(&entidad))).await.inspect_err(fallido)?;
-        uow.commit().await.inspect_err(fallido)?;
-        tracing::info!(id = %entidad.id, "crear_{{ snake }}: fin");
+{% endfor %}        })?;
+        let mut uow = self.uow_factory.begin().await?;
+        uow.guardar(&entidad).await?;
+        uow.registrar(Evento{{ pascal }}::Creado(Snapshot{{ pascal }}::from_entidad(&entidad))).await?;
+        uow.commit().await?;
         Ok(entidad)
     }
 }
@@ -38,6 +35,7 @@ mod tests {
     use super::*;
 {% if actor %}    use puerto_nucleo::auth::dobles::MadrePrincipal;
 {% endif %}    use dominio_{{ snake }}::unit_of_work::dobles::{FallarEn, UnitOfWorkFactoryGrabadora};
+    use puerto_nucleo::ErrorRepositorio;
     use puerto_nucleo::EventoDominio;
     use dominio_{{ snake }}::pruebas::madres::Madre{{ pascal }};
 

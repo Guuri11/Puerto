@@ -1,6 +1,6 @@
 # 0006 — Logging through `tracing`, not a `Logger` port
 
-**Status:** Accepted (2026-10-10). Supersedes the `LoggerTrait` port of Phase 5 (`PLAN.md`).
+**Status:** Accepted (2026-10-10). Supersedes the `LoggerTrait` port of Phase 5 (`PLAN.md`). La regla «Use cases log `<use_case>: start` / `done`» la sustituye la ADR-0026 (2026-11-18).
 
 ## Context
 

@@ -20,8 +20,8 @@ pub struct LoginImpl {
 
 #[async_trait]
 impl Login for LoginImpl {
+    #[tracing::instrument(name = "login", skip_all, err(level = "warn"))]
     async fn ejecutar(&self, params: ParamsLogin) -> Result<Sesion, ErrorUsuario> {
-        tracing::info!("login: inicio");
         let sujeto = Usuario::sujeto_local(&params.email);
         let usuario = self.usuarios.buscar_por_sujeto(EMISOR_LOCAL, &sujeto).await?;
         let hash = match &usuario {
@@ -32,11 +32,9 @@ impl Login for LoginImpl {
         // mismo, así que el tiempo de respuesta no delata qué emails tienen cuenta.
         let valido = self.hasher.verificar(&params.contrasena, hash).await;
         let Some(usuario) = usuario.filter(|_| valido) else {
-            tracing::warn!("login: rechazado");
             return Err(ErrorUsuario::CredencialesInvalidas);
         };
         let sesion = self.sesiones.abrir(usuario.id.valor()).await?;
-        tracing::info!(id = %usuario.id, "login: fin");
         Ok(sesion)
     }
 }

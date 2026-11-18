@@ -3451,7 +3451,7 @@ span lleva el nombre y el `id`; `err` registra el código en `warn`); `entidad.a
 `#[must_use]` en el evento da `unused_must_use`; un método por defecto de un trait
 `#[async_trait]` se llama sobre un `Arc<dyn …>`.
 
-### 24.1 — Los logs, con `#[tracing::instrument]`
+### 24.1 — Los logs, con `#[tracing::instrument]` ✅
 
 - Todo `ejecutar` generado lleva
   `#[tracing::instrument(name = "<caso>", skip_all, err(level = "warn"))]`, con

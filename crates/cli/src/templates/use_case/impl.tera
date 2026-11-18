@@ -18,9 +18,10 @@ pub struct {{ uc_pascal }}Impl {
 
 #[async_trait]
 impl {{ uc_pascal }} for {{ uc_pascal }}Impl {
+    // El span da nombre a los logs de lo que llama y registra el error que devuelve; `skip_all`:
+    // los parámetros son datos del usuario y no van al log.
+    #[tracing::instrument(name = "{{ uc }}", skip_all, err(level = "warn"))]
     async fn ejecutar(&self, _params: Params{{ uc_pascal }}) -> Result<{{ pascal }}, Error{{ pascal }}> {
-        // Al log va lo que identifica el trabajo, nunca los parámetros: son datos del usuario.
-        tracing::info!("{{ uc }}: inicio");
         todo!()
     }
 }

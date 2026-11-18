@@ -1,7 +1,6 @@
 {% import "application/macros.tera" as macros %}{% set required = fields | filter(attribute="required_string", value=true) %}{% set string_vos = fields | filter(attribute="string_vo", value=true) %}use std::sync::Arc;
 
 use async_trait::async_trait;
-use puerto_nucleo::ErrorRepositorio;
 {% for import in vo_imports %}use {{ import }};
 {% endfor %}
 use dominio_{{ snake }}::{
@@ -19,29 +18,18 @@ pub struct Actualizar{{ pascal }}Impl {
 
 #[async_trait]
 impl Actualizar{{ pascal }} for Actualizar{{ pascal }}Impl {
+    #[tracing::instrument(name = "actualizar_{{ snake }}", skip_all, fields(id = %params.id), err(level = "warn"))]
     async fn ejecutar(&self, params: ParamsActualizar{{ pascal }}) -> Result<{{ pascal }}, Error{{ pascal }}> {
-        tracing::info!(id = %params.id, "actualizar_{{ snake }}: inicio");
-        let fallido = |e: &ErrorRepositorio| tracing::error!(error = %e, "actualizar_{{ snake }}: fallo del repositorio");
-        let mut entidad = self
-            .repositorio
-            .buscar_por_id(params.id)
-            .await
-            .inspect_err(fallido)?
-            .ok_or_else(|| {
-                let err = Error{{ pascal }}::NoEncontrado;
-                tracing::warn!(error = %err, "actualizar_{{ snake }}: rechazado");
-                err
-            })?;
+        let mut entidad = self.repositorio.buscar_por_id(params.id).await?.ok_or(Error{{ pascal }}::NoEncontrado)?;
 {% for f in fields | filter(attribute="is_vo", value=true) %}let {{ f.name }}{% if f.is_vec_vo %}: Vec<{{ f.vo }}>{% endif %} = {{ f.from_params }};
 {% endfor %}        entidad
             .actualizar(Props{{ pascal }} {
 {% for f in fields %}                {{ f.name }}{% if not f.is_vo %}: params.{{ f.name }}{% endif %},
-{% endfor %}            })
-            .inspect_err(|e| tracing::warn!(error = %e, "actualizar_{{ snake }}: rechazado"))?;
-        let mut uow = self.uow_factory.begin().await.inspect_err(fallido)?;
-        uow.guardar(&entidad).await.inspect_err(fallido)?;
-        uow.registrar(Evento{{ pascal }}::Actualizado(Snapshot{{ pascal }}::from_entidad(&entidad))).await.inspect_err(fallido)?;
-        uow.commit().await.inspect_err(fallido)?;
+{% endfor %}            })?;
+        let mut uow = self.uow_factory.begin().await?;
+        uow.guardar(&entidad).await?;
+        uow.registrar(Evento{{ pascal }}::Actualizado(Snapshot{{ pascal }}::from_entidad(&entidad))).await?;
+        uow.commit().await?;
         Ok(entidad)
     }
 }

@@ -587,7 +587,9 @@ fn generate_create_use_case_impl_with_custom_fields() {
     assert!(result.contains("title: params.title,"));
     assert!(result.contains("price: params.price,"));
     assert!(result.contains("Producto::new(PropsProducto"));
-    assert!(result.contains("tracing::info!(\"crear_producto: inicio\");"));
+    assert!(result.contains(
+        "#[tracing::instrument(name = \"crear_producto\", skip_all, err(level = \"warn\"))]"
+    ));
 }
 
 #[test]
@@ -1453,7 +1455,7 @@ fn write_presentation_files_with_fields_generates_dynamic_dto_and_routes() {
 // ── T-13: review fixes — generated content ────────────────────────────────
 
 #[test]
-fn create_impl_logs_start_and_done_without_the_payload() {
+fn create_impl_logs_through_its_span_without_the_payload() {
     let fields = [scaffold_test_field("title", "String")];
 
     let content = crate::generators::application::generate_create_use_case_impl(
@@ -1464,11 +1466,14 @@ fn create_impl_logs_start_and_done_without_the_payload() {
     )
     .unwrap();
 
+    // `skip_all`: the span records no argument; `err` logs the error code once.
     assert!(
-        content.contains("tracing::info!(\"crear_producto: inicio\");"),
+        content.contains(
+            "#[tracing::instrument(name = \"crear_producto\", skip_all, err(level = \"warn\"))]"
+        ),
         "{content}"
     );
-    assert!(content.contains("tracing::info!(id = %entidad.id, \"crear_producto: fin\");"));
+    assert!(!content.contains("crear_producto: inicio"), "{content}");
     // The payload is not logged: a field value is user data (and often personal data).
     assert!(!content.contains("Creating producto"), "{content}");
 }

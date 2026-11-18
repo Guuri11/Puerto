@@ -586,12 +586,9 @@ fn compose_publish_from_snippets(output: &Path) {
     let update = "contextos/producto/aplicacion/src/actualizar_producto.rs";
     let src = fs::read_to_string(output.join(update)).unwrap();
     let start = src.find("        let mut uow = ").unwrap();
-    let end_marker = "uow.commit().await.inspect_err(fallido)?;\n";
+    let end_marker = "uow.commit().await?;\n";
     let end = start + src[start..].find(end_marker).unwrap() + end_marker.len();
-    let write = expand_snippet(
-        &s["uow-write"],
-        &[("accion", "actualizar_producto"), ("Entidad", "Producto")],
-    );
+    let write = expand_snippet(&s["uow-write"], &[("Entidad", "Producto")]);
     fs::write(
         output.join(update),
         format!("{}{}{}", &src[..start], indent(&write, 2), &src[end..]),

@@ -202,9 +202,10 @@ CRUD; `puerto generar web <Nombre>` las escribe solas.
 - **Los errores son códigos legibles por máquina** (`producto.no_encontrado`,
   `producto.validacion.titulo_vacio`), nunca frases. La API los devuelve en
   `RespuestaError.codigo`; los fallos de validación del dominio son `422`.
-- **Logs:** `tracing::info!` / `warn!` / `error!` directamente, sin logger inyectado. Un caso de uso
-  registra `<caso_de_uso>: inicio` y `<caso_de_uso>: fin`; nunca registres el contenido de una
-  petición (son datos del usuario).
+- **Logs:** `tracing` directamente, sin logger inyectado. El `ejecutar` de un caso de uso lleva
+  `#[tracing::instrument(name = "<caso_de_uso>", skip_all, err(level = "warn"))]`: el span da
+  nombre a los logs de lo que llama y registra su error una vez. No escribas líneas de inicio ni de
+  fin, y nunca registres el contenido de una petición (son datos del usuario: por eso `skip_all`).
 - **Nada de `unwrap()` / `expect()`** fuera de los tests.
 - **API primero:** cambia `rutas.rs` + `dto.rs` (el contrato) antes que la implementación.
 

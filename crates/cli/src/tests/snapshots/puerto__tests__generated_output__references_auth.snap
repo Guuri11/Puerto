@@ -268,9 +268,10 @@ producción.
 - **Los errores son códigos legibles por máquina** (`producto.no_encontrado`,
   `producto.validacion.titulo_vacio`), nunca frases. La API los devuelve en
   `RespuestaError.codigo`; los fallos de validación del dominio son `422`.
-- **Logs:** `tracing::info!` / `warn!` / `error!` directamente, sin logger inyectado. Un caso de uso
-  registra `<caso_de_uso>: inicio` y `<caso_de_uso>: fin`; nunca registres el contenido de una
-  petición (son datos del usuario).
+- **Logs:** `tracing` directamente, sin logger inyectado. El `ejecutar` de un caso de uso lleva
+  `#[tracing::instrument(name = "<caso_de_uso>", skip_all, err(level = "warn"))]`: el span da
+  nombre a los logs de lo que llama y registra su error una vez. No escribas líneas de inicio ni de
+  fin, y nunca registres el contenido de una petición (son datos del usuario: por eso `skip_all`).
 - **Nada de `unwrap()` / `expect()`** fuera de los tests.
 - **API primero:** cambia `rutas.rs` + `dto.rs` (el contrato) antes que la implementación.
 
@@ -594,28 +595,17 @@ pub struct ActualizarEquipoImpl {
 
 #[async_trait]
 impl ActualizarEquipo for ActualizarEquipoImpl {
+    #[tracing::instrument(name = "actualizar_equipo", skip_all, fields(id = %params.id), err(level = "warn"))]
     async fn ejecutar(&self, params: ParamsActualizarEquipo) -> Result<Equipo, ErrorEquipo> {
-        tracing::info!(id = %params.id, "actualizar_equipo: inicio");
         let mut entidad = self
             .repositorio
             .buscar_por_id(params.id)
-            .await
-            .inspect_err(
-                |e| tracing::error!(error = %e, "actualizar_equipo: fallo del repositorio"),
-            )?
-            .ok_or_else(|| {
-                let err = ErrorEquipo::NoEncontrado;
-                tracing::warn!(error = %err, "actualizar_equipo: rechazado");
-                err
-            })?;
-        entidad
-            .actualizar(PropsEquipo {
-                nombre: params.nombre,
-            })
-            .inspect_err(|e| tracing::warn!(error = %e, "actualizar_equipo: rechazado"))?;
-        self.repositorio.guardar(&entidad).await.inspect_err(
-            |e| tracing::error!(error = %e, "actualizar_equipo: fallo del repositorio"),
-        )?;
+            .await?
+            .ok_or(ErrorEquipo::NoEncontrado)?;
+        entidad.actualizar(PropsEquipo {
+            nombre: params.nombre,
+        })?;
+        self.repositorio.guardar(&entidad).await?;
         Ok(entidad)
     }
 }
@@ -761,26 +751,18 @@ pub struct BorrarEquipoImpl {
 
 #[async_trait]
 impl BorrarEquipo for BorrarEquipoImpl {
+    #[tracing::instrument(name = "borrar_equipo", skip_all, fields(id = %params.id), err(level = "warn"))]
     async fn ejecutar(&self, params: ParamsBorrarEquipo) -> Result<(), ErrorEquipo> {
-        tracing::info!(id = %params.id, "borrar_equipo: inicio");
         let mut entidad = self
             .repositorio
             .buscar_por_id(params.id)
-            .await
-            .inspect_err(|e| tracing::error!(error = %e, "borrar_equipo: fallo del repositorio"))?
-            .ok_or_else(|| {
-                let err = ErrorEquipo::NoEncontrado;
-                tracing::warn!(error = %err, "borrar_equipo: rechazado");
-                err
-            })?;
+            .await?
+            .ok_or(ErrorEquipo::NoEncontrado)?;
         let ahora = chrono::Utc::now();
         entidad.borrado = true;
         entidad.borrado_en = Some(ahora);
         entidad.actualizado_en = ahora;
-        self.repositorio
-            .guardar(&entidad)
-            .await
-            .inspect_err(|e| tracing::error!(error = %e, "borrar_equipo: fallo del repositorio"))?;
+        self.repositorio.guardar(&entidad).await?;
         Ok(())
     }
 }
@@ -881,17 +863,12 @@ pub struct CrearEquipoImpl {
 
 #[async_trait]
 impl CrearEquipo for CrearEquipoImpl {
+    #[tracing::instrument(name = "crear_equipo", skip_all, err(level = "warn"))]
     async fn ejecutar(&self, params: ParamsCrearEquipo) -> Result<Equipo, ErrorEquipo> {
-        tracing::info!("crear_equipo: inicio");
         let entidad = Equipo::new(PropsEquipo {
             nombre: params.nombre,
-        })
-        .inspect_err(|e| tracing::warn!(error = %e, "crear_equipo: rechazado"))?;
-        self.repositorio
-            .guardar(&entidad)
-            .await
-            .inspect_err(|e| tracing::error!(error = %e, "crear_equipo: fallo del repositorio"))?;
-        tracing::info!(id = %entidad.id, "crear_equipo: fin");
+        })?;
+        self.repositorio.guardar(&entidad).await?;
         Ok(entidad)
     }
 }
@@ -1031,16 +1008,11 @@ pub struct ListarEquiposImpl {
 
 #[async_trait]
 impl ListarEquipos for ListarEquiposImpl {
+    #[tracing::instrument(name = "listar_equipos", skip_all, err(level = "warn"))]
     async fn ejecutar(&self, params: ParamsListarEquipos) -> Result<Pagina<Equipo>, ErrorEquipo> {
-        tracing::info!(
-            limite = params.pagina.limite(),
-            desplazamiento = params.pagina.desplazamiento(),
-            "listar_equipos: inicio"
-        );
         self.repositorio
             .buscar_todos(params.pagina)
             .await
-            .inspect_err(|e| tracing::error!(error = %e, "listar_equipos: fallo del repositorio"))
             .map_err(ErrorEquipo::from)
     }
 }
@@ -1164,20 +1136,12 @@ pub struct ObtenerEquipoImpl {
 
 #[async_trait]
 impl ObtenerEquipo for ObtenerEquipoImpl {
+    #[tracing::instrument(name = "obtener_equipo", skip_all, fields(id = %params.id), err(level = "warn"))]
     async fn ejecutar(&self, params: ParamsObtenerEquipo) -> Result<Equipo, ErrorEquipo> {
-        tracing::info!(id = %params.id, "obtener_equipo: inicio");
-        let resultado = self
-            .repositorio
+        self.repositorio
             .buscar_por_id(params.id)
-            .await
-            .inspect_err(
-                |e| tracing::error!(error = %e, "obtener_equipo: fallo del repositorio"),
-            )?;
-        resultado.ok_or_else(|| {
-            let err = ErrorEquipo::NoEncontrado;
-            tracing::warn!(error = %err, "obtener_equipo: rechazado");
-            err
-        })
+            .await?
+            .ok_or(ErrorEquipo::NoEncontrado)
     }
 }
 
@@ -2679,30 +2643,19 @@ pub struct ActualizarJugadorImpl {
 
 #[async_trait]
 impl ActualizarJugador for ActualizarJugadorImpl {
+    #[tracing::instrument(name = "actualizar_jugador", skip_all, fields(id = %params.id), err(level = "warn"))]
     async fn ejecutar(&self, params: ParamsActualizarJugador) -> Result<Jugador, ErrorJugador> {
-        tracing::info!(id = %params.id, "actualizar_jugador: inicio");
         let mut entidad = self
             .repositorio
             .buscar_por_id(params.id)
-            .await
-            .inspect_err(
-                |e| tracing::error!(error = %e, "actualizar_jugador: fallo del repositorio"),
-            )?
-            .ok_or_else(|| {
-                let err = ErrorJugador::NoEncontrado;
-                tracing::warn!(error = %err, "actualizar_jugador: rechazado");
-                err
-            })?;
-        entidad
-            .actualizar(PropsJugador {
-                equipo_id: params.equipo_id,
-                dorsal: params.dorsal,
-                email: params.email,
-            })
-            .inspect_err(|e| tracing::warn!(error = %e, "actualizar_jugador: rechazado"))?;
-        self.repositorio.guardar(&entidad).await.inspect_err(
-            |e| tracing::error!(error = %e, "actualizar_jugador: fallo del repositorio"),
-        )?;
+            .await?
+            .ok_or(ErrorJugador::NoEncontrado)?;
+        entidad.actualizar(PropsJugador {
+            equipo_id: params.equipo_id,
+            dorsal: params.dorsal,
+            email: params.email,
+        })?;
+        self.repositorio.guardar(&entidad).await?;
         Ok(entidad)
     }
 }
@@ -2856,25 +2809,18 @@ pub struct BorrarJugadorImpl {
 
 #[async_trait]
 impl BorrarJugador for BorrarJugadorImpl {
+    #[tracing::instrument(name = "borrar_jugador", skip_all, fields(id = %params.id), err(level = "warn"))]
     async fn ejecutar(&self, params: ParamsBorrarJugador) -> Result<(), ErrorJugador> {
-        tracing::info!(id = %params.id, "borrar_jugador: inicio");
         let mut entidad = self
             .repositorio
             .buscar_por_id(params.id)
-            .await
-            .inspect_err(|e| tracing::error!(error = %e, "borrar_jugador: fallo del repositorio"))?
-            .ok_or_else(|| {
-                let err = ErrorJugador::NoEncontrado;
-                tracing::warn!(error = %err, "borrar_jugador: rechazado");
-                err
-            })?;
+            .await?
+            .ok_or(ErrorJugador::NoEncontrado)?;
         let ahora = chrono::Utc::now();
         entidad.borrado = true;
         entidad.borrado_en = Some(ahora);
         entidad.actualizado_en = ahora;
-        self.repositorio.guardar(&entidad).await.inspect_err(
-            |e| tracing::error!(error = %e, "borrar_jugador: fallo del repositorio"),
-        )?;
+        self.repositorio.guardar(&entidad).await?;
         Ok(())
     }
 }
@@ -2979,19 +2925,14 @@ pub struct CrearJugadorImpl {
 
 #[async_trait]
 impl CrearJugador for CrearJugadorImpl {
+    #[tracing::instrument(name = "crear_jugador", skip_all, err(level = "warn"))]
     async fn ejecutar(&self, params: ParamsCrearJugador) -> Result<Jugador, ErrorJugador> {
-        tracing::info!("crear_jugador: inicio");
         let entidad = Jugador::new(PropsJugador {
             equipo_id: params.equipo_id,
             dorsal: params.dorsal,
             email: params.email,
-        })
-        .inspect_err(|e| tracing::warn!(error = %e, "crear_jugador: rechazado"))?;
-        self.repositorio
-            .guardar(&entidad)
-            .await
-            .inspect_err(|e| tracing::error!(error = %e, "crear_jugador: fallo del repositorio"))?;
-        tracing::info!(id = %entidad.id, "crear_jugador: fin");
+        })?;
+        self.repositorio.guardar(&entidad).await?;
         Ok(entidad)
     }
 }
@@ -3170,15 +3111,11 @@ pub struct ListarJugadoresImpl {
 
 #[async_trait]
 impl ListarJugadores for ListarJugadoresImpl {
+    #[tracing::instrument(name = "listar_jugadores", skip_all, err(level = "warn"))]
     async fn ejecutar(
         &self,
         params: ParamsListarJugadores,
     ) -> Result<Pagina<Jugador>, ErrorJugador> {
-        tracing::info!(
-            limite = params.pagina.limite(),
-            desplazamiento = params.pagina.desplazamiento(),
-            "listar_jugadores: inicio"
-        );
         self.repositorio
             .buscar_todos(
                 params.pagina,
@@ -3187,7 +3124,6 @@ impl ListarJugadores for ListarJugadoresImpl {
                 },
             )
             .await
-            .inspect_err(|e| tracing::error!(error = %e, "listar_jugadores: fallo del repositorio"))
             .map_err(ErrorJugador::from)
     }
 }
@@ -3331,20 +3267,12 @@ pub struct ObtenerJugadorImpl {
 
 #[async_trait]
 impl ObtenerJugador for ObtenerJugadorImpl {
+    #[tracing::instrument(name = "obtener_jugador", skip_all, fields(id = %params.id), err(level = "warn"))]
     async fn ejecutar(&self, params: ParamsObtenerJugador) -> Result<Jugador, ErrorJugador> {
-        tracing::info!(id = %params.id, "obtener_jugador: inicio");
-        let resultado = self
-            .repositorio
+        self.repositorio
             .buscar_por_id(params.id)
-            .await
-            .inspect_err(
-                |e| tracing::error!(error = %e, "obtener_jugador: fallo del repositorio"),
-            )?;
-        resultado.ok_or_else(|| {
-            let err = ErrorJugador::NoEncontrado;
-            tracing::warn!(error = %err, "obtener_jugador: rechazado");
-            err
-        })
+            .await?
+            .ok_or(ErrorJugador::NoEncontrado)
     }
 }
 

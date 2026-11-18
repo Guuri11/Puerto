@@ -15,10 +15,9 @@ pub struct LogoutImpl {
 
 #[async_trait]
 impl Logout for LogoutImpl {
+    #[tracing::instrument(name = "logout", skip_all, err(level = "warn"))]
     async fn ejecutar(&self, params: ParamsLogout) -> Result<(), ErrorUsuario> {
-        tracing::info!("logout: inicio");
         self.sesiones.revocar(&params.token).await?;
-        tracing::info!("logout: fin");
         Ok(())
     }
 }

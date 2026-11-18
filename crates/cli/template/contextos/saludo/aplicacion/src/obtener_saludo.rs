@@ -37,27 +37,18 @@ pub struct ObtenerSaludoImpl {
 
 #[async_trait]
 impl ObtenerSaludo for ObtenerSaludoImpl {
+    // El span da nombre a los logs de lo que llama y registra el error que devuelve; `skip_all`:
+    // el nombre es un dato del usuario y no va al log.
+    #[tracing::instrument(name = "obtener_saludo", skip_all, err(level = "warn"))]
     async fn ejecutar(&self, params: ParamsObtenerSaludo) -> Result<Saludo, ErrorSaludo> {
-        tracing::info!(nombre = %params.nombre, "obtener_saludo: inicio");
-
         if params.nombre.trim().is_empty() {
-            let err = ErrorSaludo::Validacion("nombre_vacio".into());
-            tracing::warn!(error = %err, "obtener_saludo: rechazado");
-            return Err(err);
+            return Err(ErrorSaludo::Validacion("nombre_vacio".into()));
         }
 
-        let resultado = match self
-            .repositorio
-            .buscar_por_nombre(&params.nombre)
-            .await
-            .inspect_err(|e| tracing::error!(error = %e, "obtener_saludo: fallo del repositorio"))?
-        {
-            Some(saludo) => saludo,
-            None => Saludo::new(&params.nombre)?,
-        };
-
-        tracing::info!("obtener_saludo: fin");
-        Ok(resultado)
+        match self.repositorio.buscar_por_nombre(&params.nombre).await? {
+            Some(saludo) => Ok(saludo),
+            None => Saludo::new(&params.nombre),
+        }
     }
 }
 

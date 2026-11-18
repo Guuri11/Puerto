@@ -387,15 +387,10 @@ pub struct CrearProductoImpl {                                 // 4. la implemen
 
 #[async_trait]
 impl CrearProducto for CrearProductoImpl {
+    #[tracing::instrument(name = "crear_producto", skip_all, err(level = "warn"))]
     async fn ejecutar(&self, params: ParamsCrearProducto) -> Result<Producto, ErrorProducto> {
-        tracing::info!("crear_producto: inicio");
-        let entidad = Producto::new(PropsProducto { nombre: params.nombre })
-            .inspect_err(|e| tracing::warn!(error = %e, "crear_producto: rechazado"))?;
-        self.repositorio
-            .guardar(&entidad)
-            .await
-            .inspect_err(|e| tracing::error!(error = %e, "crear_producto: fallo del repositorio"))?;
-        tracing::info!(id = %entidad.id, "crear_producto: fin");
+        let entidad = Producto::new(PropsProducto { nombre: params.nombre })?;
+        self.repositorio.guardar(&entidad).await?;
         Ok(entidad)
     }
 }
@@ -413,9 +408,11 @@ mod tests { /* 5. sus tests */ }
   implementación construye los objetos valor antes de `Producto::new()`
 - Las dependencias se inyectan como `Arc<dyn Trait>` — nunca tipos concretos
 - **Logs con `tracing` directamente** — sin logger inyectado ni puerto `Logger` (ADR-0006).
-  `tracing` ya es una fachada: el subscriber lo instala una vez `puerto_web::App`. Un caso de uso
-  registra `<caso>: inicio` y `<caso>: fin` (más el id cuando lo hay); nunca registra los datos de
-  la petición, que son del usuario
+  `tracing` ya es una fachada: el subscriber lo instala una vez `puerto_web::App`. El `ejecutar`
+  de un caso de uso lleva `#[tracing::instrument(name = "<caso>", skip_all, err(level = "warn"))]`
+  (con `fields(id = %params.id)` si hay id) y no escribe líneas propias (ADR-0026): el span da
+  nombre a los logs del adaptador, que registra cada fallo con su causa, y `err` registra una vez
+  el código del error. `skip_all`: nunca se registran los datos de la petición, que son del usuario
 - El caso de uso se renderiza con dos plantillas (contrato e implementación) que el generador une
   bajo un solo bloque de `use` (`generators/merge.rs`): dos `use` del mismo nombre son E0252
 

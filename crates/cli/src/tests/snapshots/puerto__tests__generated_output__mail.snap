@@ -194,9 +194,10 @@ comando.
 - **Los errores son códigos legibles por máquina** (`producto.no_encontrado`,
   `producto.validacion.titulo_vacio`), nunca frases. La API los devuelve en
   `RespuestaError.codigo`; los fallos de validación del dominio son `422`.
-- **Logs:** `tracing::info!` / `warn!` / `error!` directamente, sin logger inyectado. Un caso de uso
-  registra `<caso_de_uso>: inicio` y `<caso_de_uso>: fin`; nunca registres el contenido de una
-  petición (son datos del usuario).
+- **Logs:** `tracing` directamente, sin logger inyectado. El `ejecutar` de un caso de uso lleva
+  `#[tracing::instrument(name = "<caso_de_uso>", skip_all, err(level = "warn"))]`: el span da
+  nombre a los logs de lo que llama y registra su error una vez. No escribas líneas de inicio ni de
+  fin, y nunca registres el contenido de una petición (son datos del usuario: por eso `skip_all`).
 - **Nada de `unwrap()` / `expect()`** fuera de los tests.
 - **API primero:** cambia `rutas.rs` + `dto.rs` (el contrato) antes que la implementación.
 
@@ -943,27 +944,18 @@ pub struct ObtenerSaludoImpl {
 
 #[async_trait]
 impl ObtenerSaludo for ObtenerSaludoImpl {
+    // El span da nombre a los logs de lo que llama y registra el error que devuelve; `skip_all`:
+    // el nombre es un dato del usuario y no va al log.
+    #[tracing::instrument(name = "obtener_saludo", skip_all, err(level = "warn"))]
     async fn ejecutar(&self, params: ParamsObtenerSaludo) -> Result<Saludo, ErrorSaludo> {
-        tracing::info!(nombre = %params.nombre, "obtener_saludo: inicio");
-
         if params.nombre.trim().is_empty() {
-            let err = ErrorSaludo::Validacion("nombre_vacio".into());
-            tracing::warn!(error = %err, "obtener_saludo: rechazado");
-            return Err(err);
+            return Err(ErrorSaludo::Validacion("nombre_vacio".into()));
         }
 
-        let resultado = match self
-            .repositorio
-            .buscar_por_nombre(&params.nombre)
-            .await
-            .inspect_err(|e| tracing::error!(error = %e, "obtener_saludo: fallo del repositorio"))?
-        {
-            Some(saludo) => saludo,
-            None => Saludo::new(&params.nombre)?,
-        };
-
-        tracing::info!("obtener_saludo: fin");
-        Ok(resultado)
+        match self.repositorio.buscar_por_nombre(&params.nombre).await? {
+            Some(saludo) => Ok(saludo),
+            None => Saludo::new(&params.nombre),
+        }
     }
 }
 

@@ -14,14 +14,9 @@ pub struct Obtener{{ pascal }}Impl {
 
 #[async_trait]
 impl Obtener{{ pascal }} for Obtener{{ pascal }}Impl {
+    #[tracing::instrument(name = "obtener_{{ snake }}", skip_all, fields(id = %params.id), err(level = "warn"))]
     async fn ejecutar(&self, params: ParamsObtener{{ pascal }}) -> Result<{{ pascal }}, Error{{ pascal }}> {
-        tracing::info!(id = %params.id, "obtener_{{ snake }}: inicio");
-        let resultado = self.repositorio.buscar_por_id(params.id).await.inspect_err(|e| tracing::error!(error = %e, "obtener_{{ snake }}: fallo del repositorio"))?;
-        resultado.ok_or_else(|| {
-            let err = Error{{ pascal }}::NoEncontrado;
-            tracing::warn!(error = %err, "obtener_{{ snake }}: rechazado");
-            err
-        })
+        self.repositorio.buscar_por_id(params.id).await?.ok_or(Error{{ pascal }}::NoEncontrado)
     }
 }
 

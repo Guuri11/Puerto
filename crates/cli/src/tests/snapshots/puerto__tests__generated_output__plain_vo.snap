@@ -203,9 +203,10 @@ CRUD; `puerto generar web <Nombre>` las escribe solas.
 - **Los errores son códigos legibles por máquina** (`producto.no_encontrado`,
   `producto.validacion.titulo_vacio`), nunca frases. La API los devuelve en
   `RespuestaError.codigo`; los fallos de validación del dominio son `422`.
-- **Logs:** `tracing::info!` / `warn!` / `error!` directamente, sin logger inyectado. Un caso de uso
-  registra `<caso_de_uso>: inicio` y `<caso_de_uso>: fin`; nunca registres el contenido de una
-  petición (son datos del usuario).
+- **Logs:** `tracing` directamente, sin logger inyectado. El `ejecutar` de un caso de uso lleva
+  `#[tracing::instrument(name = "<caso_de_uso>", skip_all, err(level = "warn"))]`: el span da
+  nombre a los logs de lo que llama y registra su error una vez. No escribas líneas de inicio ni de
+  fin, y nunca registres el contenido de una petición (son datos del usuario: por eso `skip_all`).
 - **Nada de `unwrap()` / `expect()`** fuera de los tests.
 - **API primero:** cambia `rutas.rs` + `dto.rs` (el contrato) antes que la implementación.
 
@@ -355,29 +356,18 @@ pub struct ActualizarArticuloImpl {
 
 #[async_trait]
 impl ActualizarArticulo for ActualizarArticuloImpl {
+    #[tracing::instrument(name = "actualizar_articulo", skip_all, fields(id = %params.id), err(level = "warn"))]
     async fn ejecutar(&self, params: ParamsActualizarArticulo) -> Result<Articulo, ErrorArticulo> {
-        tracing::info!(id = %params.id, "actualizar_articulo: inicio");
         let mut entidad = self
             .repositorio
             .buscar_por_id(params.id)
-            .await
-            .inspect_err(
-                |e| tracing::error!(error = %e, "actualizar_articulo: fallo del repositorio"),
-            )?
-            .ok_or_else(|| {
-                let err = ErrorArticulo::NoEncontrado;
-                tracing::warn!(error = %err, "actualizar_articulo: rechazado");
-                err
-            })?;
+            .await?
+            .ok_or(ErrorArticulo::NoEncontrado)?;
         let name = Name::new(params.name)?;
         let sku = Sku::new(params.sku)?;
         let weight = Weight::new(params.weight)?;
-        entidad
-            .actualizar(PropsArticulo { name, sku, weight })
-            .inspect_err(|e| tracing::warn!(error = %e, "actualizar_articulo: rechazado"))?;
-        self.repositorio.guardar(&entidad).await.inspect_err(
-            |e| tracing::error!(error = %e, "actualizar_articulo: fallo del repositorio"),
-        )?;
+        entidad.actualizar(PropsArticulo { name, sku, weight })?;
+        self.repositorio.guardar(&entidad).await?;
         Ok(entidad)
     }
 }
@@ -544,25 +534,18 @@ pub struct BorrarArticuloImpl {
 
 #[async_trait]
 impl BorrarArticulo for BorrarArticuloImpl {
+    #[tracing::instrument(name = "borrar_articulo", skip_all, fields(id = %params.id), err(level = "warn"))]
     async fn ejecutar(&self, params: ParamsBorrarArticulo) -> Result<(), ErrorArticulo> {
-        tracing::info!(id = %params.id, "borrar_articulo: inicio");
         let mut entidad = self
             .repositorio
             .buscar_por_id(params.id)
-            .await
-            .inspect_err(|e| tracing::error!(error = %e, "borrar_articulo: fallo del repositorio"))?
-            .ok_or_else(|| {
-                let err = ErrorArticulo::NoEncontrado;
-                tracing::warn!(error = %err, "borrar_articulo: rechazado");
-                err
-            })?;
+            .await?
+            .ok_or(ErrorArticulo::NoEncontrado)?;
         let ahora = chrono::Utc::now();
         entidad.borrado = true;
         entidad.borrado_en = Some(ahora);
         entidad.actualizado_en = ahora;
-        self.repositorio.guardar(&entidad).await.inspect_err(
-            |e| tracing::error!(error = %e, "borrar_articulo: fallo del repositorio"),
-        )?;
+        self.repositorio.guardar(&entidad).await?;
         Ok(())
     }
 }
@@ -658,17 +641,13 @@ pub struct CrearArticuloImpl {
 
 #[async_trait]
 impl CrearArticulo for CrearArticuloImpl {
+    #[tracing::instrument(name = "crear_articulo", skip_all, err(level = "warn"))]
     async fn ejecutar(&self, params: ParamsCrearArticulo) -> Result<Articulo, ErrorArticulo> {
-        tracing::info!("crear_articulo: inicio");
         let name = Name::new(params.name)?;
         let sku = Sku::new(params.sku)?;
         let weight = Weight::new(params.weight)?;
-        let entidad = Articulo::new(PropsArticulo { name, sku, weight })
-            .inspect_err(|e| tracing::warn!(error = %e, "crear_articulo: rechazado"))?;
-        self.repositorio.guardar(&entidad).await.inspect_err(
-            |e| tracing::error!(error = %e, "crear_articulo: fallo del repositorio"),
-        )?;
-        tracing::info!(id = %entidad.id, "crear_articulo: fin");
+        let entidad = Articulo::new(PropsArticulo { name, sku, weight })?;
+        self.repositorio.guardar(&entidad).await?;
         Ok(entidad)
     }
 }
@@ -830,19 +809,14 @@ pub struct ListarArticulosImpl {
 
 #[async_trait]
 impl ListarArticulos for ListarArticulosImpl {
+    #[tracing::instrument(name = "listar_articulos", skip_all, err(level = "warn"))]
     async fn ejecutar(
         &self,
         params: ParamsListarArticulos,
     ) -> Result<Pagina<Articulo>, ErrorArticulo> {
-        tracing::info!(
-            limite = params.pagina.limite(),
-            desplazamiento = params.pagina.desplazamiento(),
-            "listar_articulos: inicio"
-        );
         self.repositorio
             .buscar_todos(params.pagina)
             .await
-            .inspect_err(|e| tracing::error!(error = %e, "listar_articulos: fallo del repositorio"))
             .map_err(ErrorArticulo::from)
     }
 }
@@ -958,20 +932,12 @@ pub struct ObtenerArticuloImpl {
 
 #[async_trait]
 impl ObtenerArticulo for ObtenerArticuloImpl {
+    #[tracing::instrument(name = "obtener_articulo", skip_all, fields(id = %params.id), err(level = "warn"))]
     async fn ejecutar(&self, params: ParamsObtenerArticulo) -> Result<Articulo, ErrorArticulo> {
-        tracing::info!(id = %params.id, "obtener_articulo: inicio");
-        let resultado = self
-            .repositorio
+        self.repositorio
             .buscar_por_id(params.id)
-            .await
-            .inspect_err(
-                |e| tracing::error!(error = %e, "obtener_articulo: fallo del repositorio"),
-            )?;
-        resultado.ok_or_else(|| {
-            let err = ErrorArticulo::NoEncontrado;
-            tracing::warn!(error = %err, "obtener_articulo: rechazado");
-            err
-        })
+            .await?
+            .ok_or(ErrorArticulo::NoEncontrado)
     }
 }
 
@@ -2457,27 +2423,18 @@ pub struct ObtenerSaludoImpl {
 
 #[async_trait]
 impl ObtenerSaludo for ObtenerSaludoImpl {
+    // El span da nombre a los logs de lo que llama y registra el error que devuelve; `skip_all`:
+    // el nombre es un dato del usuario y no va al log.
+    #[tracing::instrument(name = "obtener_saludo", skip_all, err(level = "warn"))]
     async fn ejecutar(&self, params: ParamsObtenerSaludo) -> Result<Saludo, ErrorSaludo> {
-        tracing::info!(nombre = %params.nombre, "obtener_saludo: inicio");
-
         if params.nombre.trim().is_empty() {
-            let err = ErrorSaludo::Validacion("nombre_vacio".into());
-            tracing::warn!(error = %err, "obtener_saludo: rechazado");
-            return Err(err);
+            return Err(ErrorSaludo::Validacion("nombre_vacio".into()));
         }
 
-        let resultado = match self
-            .repositorio
-            .buscar_por_nombre(&params.nombre)
-            .await
-            .inspect_err(|e| tracing::error!(error = %e, "obtener_saludo: fallo del repositorio"))?
-        {
-            Some(saludo) => saludo,
-            None => Saludo::new(&params.nombre)?,
-        };
-
-        tracing::info!("obtener_saludo: fin");
-        Ok(resultado)
+        match self.repositorio.buscar_por_nombre(&params.nombre).await? {
+            Some(saludo) => Ok(saludo),
+            None => Saludo::new(&params.nombre),
+        }
     }
 }
 

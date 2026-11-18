@@ -77,8 +77,9 @@ Postgres) están tras la feature `pruebas` de cada crate, que los demás crates 
   `commit`), y sus tests usan `unit_of_work::dobles::UnitOfWorkFactoryGrabadora`.
 - **Dependencias inyectadas como `Arc<dyn Trait>`**, nunca tipos concretos.
 - **Nada de `unwrap()`/`expect()`** fuera de los tests (los módulos `pruebas` son código de test).
-- **Logs con `tracing` directamente**, sin puerto de logger. Un caso de uso registra
-  `<caso_de_uso>: inicio` y `<caso_de_uso>: fin`; nunca el contenido.
+- **Logs con `tracing` directamente**, sin puerto de logger. El `ejecutar` de un caso de uso lleva
+  `#[tracing::instrument(name = "<caso_de_uso>", skip_all, err(level = "warn"))]`, sin líneas de
+  inicio ni de fin; `skip_all`: nunca el contenido.
 - **Objetos valor**: valor interno privado, `new()` que devuelve `Result`; los objetos valor enum
   implementan `std::str::FromStr` (`"Activo".parse::<Estado>()`) y `as_str()`.
 - **Los códigos de error son legibles por máquina**: `"producto.no_encontrado"`,

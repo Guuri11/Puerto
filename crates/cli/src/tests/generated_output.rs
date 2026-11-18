@@ -125,6 +125,43 @@ snapshot_scenarios! {
     snapshot_auth_local => AUTH_LOCAL,
 }
 
+/// ADR-0026: a use case logs through its `#[tracing::instrument]` span, never by hand.
+#[test]
+fn every_use_case_logs_through_its_span_and_writes_no_start_or_done_line() {
+    for scenario in [&PRIMITIVES, &EVENTS_DB, &CUSTOM_USE_CASE, &AUTH_LOCAL] {
+        let dir = temp_dir(&format!("use_case_span_{}", scenario.name));
+        cleanup(&dir);
+        fs::create_dir_all(&dir).unwrap();
+        let output = generate_project("snapshot", &dir).unwrap();
+        apply_scenario(scenario, &output);
+        let tree = project_tree(&output);
+        cleanup(&dir);
+
+        for (path, content) in tree.iter().filter(|(p, _)| p.ends_with(".rs")) {
+            for line in [
+                ": inicio\"",
+                ": fin\"",
+                ": rechazado\"",
+                "fallo del repositorio\"",
+            ] {
+                assert!(
+                    !content.contains(line),
+                    "{}: {path} has {line}",
+                    scenario.name
+                );
+            }
+            let use_case = path.contains("/aplicacion/src/") && !path.ends_with("/lib.rs");
+            if use_case {
+                assert!(
+                    content.contains("#[tracing::instrument(name = \""),
+                    "{}: {path}",
+                    scenario.name
+                );
+            }
+        }
+    }
+}
+
 #[test]
 fn should_hide_only_the_migration_version_from_snapshots() {
     assert_eq!(

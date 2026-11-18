@@ -112,7 +112,9 @@ fn generated_use_case_logs_no_payload_and_its_test_is_marked_to_write() {
     );
     // The params are user data (architecture.md): the log names the use case only.
     assert!(!impl_rs.contains("?params"), "{impl_rs}");
-    assert!(impl_rs.contains("tracing::info!(\"archive_producto: inicio\");"));
+    assert!(impl_rs.contains(
+        "#[tracing::instrument(name = \"archive_producto\", skip_all, err(level = \"warn\"))]"
+    ));
     // An empty test body passed: `cargo test` said the use case was tested.
     assert!(
         impl_rs.contains("#[ignore = \"escribe este test\"]"),

@@ -203,9 +203,10 @@ CRUD; `puerto generar web <Nombre>` las escribe solas.
 - **Los errores son códigos legibles por máquina** (`producto.no_encontrado`,
   `producto.validacion.titulo_vacio`), nunca frases. La API los devuelve en
   `RespuestaError.codigo`; los fallos de validación del dominio son `422`.
-- **Logs:** `tracing::info!` / `warn!` / `error!` directamente, sin logger inyectado. Un caso de uso
-  registra `<caso_de_uso>: inicio` y `<caso_de_uso>: fin`; nunca registres el contenido de una
-  petición (son datos del usuario).
+- **Logs:** `tracing` directamente, sin logger inyectado. El `ejecutar` de un caso de uso lleva
+  `#[tracing::instrument(name = "<caso_de_uso>", skip_all, err(level = "warn"))]`: el span da
+  nombre a los logs de lo que llama y registra su error una vez. No escribas líneas de inicio ni de
+  fin, y nunca registres el contenido de una petición (son datos del usuario: por eso `skip_all`).
 - **Nada de `unwrap()` / `expect()`** fuera de los tests.
 - **API primero:** cambia `rutas.rs` + `dto.rs` (el contrato) antes que la implementación.
 
@@ -364,20 +365,13 @@ pub struct ActualizarCuentaImpl {
 
 #[async_trait]
 impl ActualizarCuenta for ActualizarCuentaImpl {
+    #[tracing::instrument(name = "actualizar_cuenta", skip_all, fields(id = %params.id), err(level = "warn"))]
     async fn ejecutar(&self, params: ParamsActualizarCuenta) -> Result<Cuenta, ErrorCuenta> {
-        tracing::info!(id = %params.id, "actualizar_cuenta: inicio");
         let mut entidad = self
             .repositorio
             .buscar_por_id(params.id)
-            .await
-            .inspect_err(
-                |e| tracing::error!(error = %e, "actualizar_cuenta: fallo del repositorio"),
-            )?
-            .ok_or_else(|| {
-                let err = ErrorCuenta::NoEncontrado;
-                tracing::warn!(error = %err, "actualizar_cuenta: rechazado");
-                err
-            })?;
+            .await?
+            .ok_or(ErrorCuenta::NoEncontrado)?;
         let name = Name::new(params.name)?;
         let sku = Sku::new(params.sku)?;
         let middle_name = params.middle_name.map(MiddleName::new).transpose()?;
@@ -388,22 +382,18 @@ impl ActualizarCuenta for ActualizarCuentaImpl {
             .collect::<Result<Vec<_>, _>>()?;
         let status = params.status.parse::<Status>()?;
         let email = Email::new(params.email).map_err(|_| ErrorCuenta::EmailInvalido)?;
-        entidad
-            .actualizar(PropsCuenta {
-                title: params.title,
-                price: params.price,
-                name,
-                sku,
-                note: params.note,
-                middle_name,
-                tags,
-                status,
-                email,
-            })
-            .inspect_err(|e| tracing::warn!(error = %e, "actualizar_cuenta: rechazado"))?;
-        self.repositorio.guardar(&entidad).await.inspect_err(
-            |e| tracing::error!(error = %e, "actualizar_cuenta: fallo del repositorio"),
-        )?;
+        entidad.actualizar(PropsCuenta {
+            title: params.title,
+            price: params.price,
+            name,
+            sku,
+            note: params.note,
+            middle_name,
+            tags,
+            status,
+            email,
+        })?;
+        self.repositorio.guardar(&entidad).await?;
         Ok(entidad)
     }
 }
@@ -695,26 +685,18 @@ pub struct BorrarCuentaImpl {
 
 #[async_trait]
 impl BorrarCuenta for BorrarCuentaImpl {
+    #[tracing::instrument(name = "borrar_cuenta", skip_all, fields(id = %params.id), err(level = "warn"))]
     async fn ejecutar(&self, params: ParamsBorrarCuenta) -> Result<(), ErrorCuenta> {
-        tracing::info!(id = %params.id, "borrar_cuenta: inicio");
         let mut entidad = self
             .repositorio
             .buscar_por_id(params.id)
-            .await
-            .inspect_err(|e| tracing::error!(error = %e, "borrar_cuenta: fallo del repositorio"))?
-            .ok_or_else(|| {
-                let err = ErrorCuenta::NoEncontrado;
-                tracing::warn!(error = %err, "borrar_cuenta: rechazado");
-                err
-            })?;
+            .await?
+            .ok_or(ErrorCuenta::NoEncontrado)?;
         let ahora = chrono::Utc::now();
         entidad.borrado = true;
         entidad.borrado_en = Some(ahora);
         entidad.actualizado_en = ahora;
-        self.repositorio
-            .guardar(&entidad)
-            .await
-            .inspect_err(|e| tracing::error!(error = %e, "borrar_cuenta: fallo del repositorio"))?;
+        self.repositorio.guardar(&entidad).await?;
         Ok(())
     }
 }
@@ -816,8 +798,8 @@ pub struct CrearCuentaImpl {
 
 #[async_trait]
 impl CrearCuenta for CrearCuentaImpl {
+    #[tracing::instrument(name = "crear_cuenta", skip_all, err(level = "warn"))]
     async fn ejecutar(&self, params: ParamsCrearCuenta) -> Result<Cuenta, ErrorCuenta> {
-        tracing::info!("crear_cuenta: inicio");
         let name = Name::new(params.name)?;
         let sku = Sku::new(params.sku)?;
         let middle_name = params.middle_name.map(MiddleName::new).transpose()?;
@@ -838,13 +820,8 @@ impl CrearCuenta for CrearCuentaImpl {
             tags,
             status,
             email,
-        })
-        .inspect_err(|e| tracing::warn!(error = %e, "crear_cuenta: rechazado"))?;
-        self.repositorio
-            .guardar(&entidad)
-            .await
-            .inspect_err(|e| tracing::error!(error = %e, "crear_cuenta: fallo del repositorio"))?;
-        tracing::info!(id = %entidad.id, "crear_cuenta: fin");
+        })?;
+        self.repositorio.guardar(&entidad).await?;
         Ok(entidad)
     }
 }
@@ -1145,16 +1122,11 @@ pub struct ListarCuentasImpl {
 
 #[async_trait]
 impl ListarCuentas for ListarCuentasImpl {
+    #[tracing::instrument(name = "listar_cuentas", skip_all, err(level = "warn"))]
     async fn ejecutar(&self, params: ParamsListarCuentas) -> Result<Pagina<Cuenta>, ErrorCuenta> {
-        tracing::info!(
-            limite = params.pagina.limite(),
-            desplazamiento = params.pagina.desplazamiento(),
-            "listar_cuentas: inicio"
-        );
         self.repositorio
             .buscar_todos(params.pagina)
             .await
-            .inspect_err(|e| tracing::error!(error = %e, "listar_cuentas: fallo del repositorio"))
             .map_err(ErrorCuenta::from)
     }
 }
@@ -1270,20 +1242,12 @@ pub struct ObtenerCuentaImpl {
 
 #[async_trait]
 impl ObtenerCuenta for ObtenerCuentaImpl {
+    #[tracing::instrument(name = "obtener_cuenta", skip_all, fields(id = %params.id), err(level = "warn"))]
     async fn ejecutar(&self, params: ParamsObtenerCuenta) -> Result<Cuenta, ErrorCuenta> {
-        tracing::info!(id = %params.id, "obtener_cuenta: inicio");
-        let resultado = self
-            .repositorio
+        self.repositorio
             .buscar_por_id(params.id)
-            .await
-            .inspect_err(
-                |e| tracing::error!(error = %e, "obtener_cuenta: fallo del repositorio"),
-            )?;
-        resultado.ok_or_else(|| {
-            let err = ErrorCuenta::NoEncontrado;
-            tracing::warn!(error = %err, "obtener_cuenta: rechazado");
-            err
-        })
+            .await?
+            .ok_or(ErrorCuenta::NoEncontrado)
     }
 }
 
@@ -3039,27 +3003,18 @@ pub struct ObtenerSaludoImpl {
 
 #[async_trait]
 impl ObtenerSaludo for ObtenerSaludoImpl {
+    // El span da nombre a los logs de lo que llama y registra el error que devuelve; `skip_all`:
+    // el nombre es un dato del usuario y no va al log.
+    #[tracing::instrument(name = "obtener_saludo", skip_all, err(level = "warn"))]
     async fn ejecutar(&self, params: ParamsObtenerSaludo) -> Result<Saludo, ErrorSaludo> {
-        tracing::info!(nombre = %params.nombre, "obtener_saludo: inicio");
-
         if params.nombre.trim().is_empty() {
-            let err = ErrorSaludo::Validacion("nombre_vacio".into());
-            tracing::warn!(error = %err, "obtener_saludo: rechazado");
-            return Err(err);
+            return Err(ErrorSaludo::Validacion("nombre_vacio".into()));
         }
 
-        let resultado = match self
-            .repositorio
-            .buscar_por_nombre(&params.nombre)
-            .await
-            .inspect_err(|e| tracing::error!(error = %e, "obtener_saludo: fallo del repositorio"))?
-        {
-            Some(saludo) => saludo,
-            None => Saludo::new(&params.nombre)?,
-        };
-
-        tracing::info!("obtener_saludo: fin");
-        Ok(resultado)
+        match self.repositorio.buscar_por_nombre(&params.nombre).await? {
+            Some(saludo) => Ok(saludo),
+            None => Saludo::new(&params.nombre),
+        }
     }
 }
 

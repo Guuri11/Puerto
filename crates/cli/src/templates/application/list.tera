@@ -15,8 +15,8 @@ pub struct Listar{{ plural_pascal }}Impl {
 
 #[async_trait]
 impl Listar{{ plural_pascal }} for Listar{{ plural_pascal }}Impl {
+    #[tracing::instrument(name = "listar_{{ plural }}", skip_all, err(level = "warn"))]
     async fn ejecutar(&self, params: ParamsListar{{ plural_pascal }}) -> Result<Pagina<{{ pascal }}>, Error{{ pascal }}> {
-        tracing::info!(limite = params.pagina.limite(), desplazamiento = params.pagina.desplazamiento(), "listar_{{ plural }}: inicio");
         self.repositorio
 {% if refs %}            .buscar_todos(
                 params.pagina,
@@ -26,7 +26,6 @@ impl Listar{{ plural_pascal }} for Listar{{ plural_pascal }}Impl {
             )
 {% else %}            .buscar_todos(params.pagina)
 {% endif %}            .await
-            .inspect_err(|e| tracing::error!(error = %e, "listar_{{ plural }}: fallo del repositorio"))
             .map_err(Error{{ pascal }}::from)
     }
 }

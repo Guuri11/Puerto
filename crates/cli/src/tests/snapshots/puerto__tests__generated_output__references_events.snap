@@ -243,9 +243,10 @@ lee.
 - **Los errores son códigos legibles por máquina** (`producto.no_encontrado`,
   `producto.validacion.titulo_vacio`), nunca frases. La API los devuelve en
   `RespuestaError.codigo`; los fallos de validación del dominio son `422`.
-- **Logs:** `tracing::info!` / `warn!` / `error!` directamente, sin logger inyectado. Un caso de uso
-  registra `<caso_de_uso>: inicio` y `<caso_de_uso>: fin`; nunca registres el contenido de una
-  petición (son datos del usuario).
+- **Logs:** `tracing` directamente, sin logger inyectado. El `ejecutar` de un caso de uso lleva
+  `#[tracing::instrument(name = "<caso_de_uso>", skip_all, err(level = "warn"))]`: el span da
+  nombre a los logs de lo que llama y registra su error una vez. No escribas líneas de inicio ni de
+  fin, y nunca registres el contenido de una petición (son datos del usuario: por eso `skip_all`).
 - **Nada de `unwrap()` / `expect()`** fuera de los tests.
 - **API primero:** cambia `rutas.rs` + `dto.rs` (el contrato) antes que la implementación.
 
@@ -586,7 +587,6 @@ use dominio_compra::modelo::{Compra, IdCompra, PropsCompra};
 use dominio_compra::repositorio::RepositorioCompra;
 use dominio_compra::unit_of_work::UnitOfWorkFactoryCompra;
 use dominio_proveedor::modelo::IdProveedor;
-use puerto_nucleo::ErrorRepositorio;
 use std::sync::Arc;
 
 #[derive(Debug, Clone)]
@@ -625,34 +625,25 @@ pub struct ActualizarCompraImpl {
 
 #[async_trait]
 impl ActualizarCompra for ActualizarCompraImpl {
+    #[tracing::instrument(name = "actualizar_compra", skip_all, fields(id = %params.id), err(level = "warn"))]
     async fn ejecutar(&self, params: ParamsActualizarCompra) -> Result<Compra, ErrorCompra> {
-        tracing::info!(id = %params.id, "actualizar_compra: inicio");
-        let fallido = |e: &ErrorRepositorio| tracing::error!(error = %e, "actualizar_compra: fallo del repositorio");
         let mut entidad = self
             .repositorio
             .buscar_por_id(params.id)
-            .await
-            .inspect_err(fallido)?
-            .ok_or_else(|| {
-                let err = ErrorCompra::NoEncontrado;
-                tracing::warn!(error = %err, "actualizar_compra: rechazado");
-                err
-            })?;
-        entidad
-            .actualizar(PropsCompra {
-                proveedor_id: params.proveedor_id,
-                approver_id: params.approver_id,
-                total: params.total,
-            })
-            .inspect_err(|e| tracing::warn!(error = %e, "actualizar_compra: rechazado"))?;
-        let mut uow = self.uow_factory.begin().await.inspect_err(fallido)?;
-        uow.guardar(&entidad).await.inspect_err(fallido)?;
+            .await?
+            .ok_or(ErrorCompra::NoEncontrado)?;
+        entidad.actualizar(PropsCompra {
+            proveedor_id: params.proveedor_id,
+            approver_id: params.approver_id,
+            total: params.total,
+        })?;
+        let mut uow = self.uow_factory.begin().await?;
+        uow.guardar(&entidad).await?;
         uow.registrar(EventoCompra::Actualizado(SnapshotCompra::from_entidad(
             &entidad,
         )))
-        .await
-        .inspect_err(fallido)?;
-        uow.commit().await.inspect_err(fallido)?;
+        .await?;
+        uow.commit().await?;
         Ok(entidad)
     }
 }
@@ -745,7 +736,6 @@ use dominio_compra::eventos::{EventoCompra, SnapshotCompra};
 use dominio_compra::modelo::IdCompra;
 use dominio_compra::repositorio::RepositorioCompra;
 use dominio_compra::unit_of_work::UnitOfWorkFactoryCompra;
-use puerto_nucleo::ErrorRepositorio;
 use std::sync::Arc;
 
 #[derive(Debug, Clone)]
@@ -781,31 +771,24 @@ pub struct BorrarCompraImpl {
 
 #[async_trait]
 impl BorrarCompra for BorrarCompraImpl {
+    #[tracing::instrument(name = "borrar_compra", skip_all, fields(id = %params.id), err(level = "warn"))]
     async fn ejecutar(&self, params: ParamsBorrarCompra) -> Result<(), ErrorCompra> {
-        tracing::info!(id = %params.id, "borrar_compra: inicio");
-        let fallido = |e: &ErrorRepositorio| tracing::error!(error = %e, "borrar_compra: fallo del repositorio");
         let mut entidad = self
             .repositorio
             .buscar_por_id(params.id)
-            .await
-            .inspect_err(fallido)?
-            .ok_or_else(|| {
-                let err = ErrorCompra::NoEncontrado;
-                tracing::warn!(error = %err, "borrar_compra: rechazado");
-                err
-            })?;
+            .await?
+            .ok_or(ErrorCompra::NoEncontrado)?;
         let ahora = chrono::Utc::now();
         entidad.borrado = true;
         entidad.borrado_en = Some(ahora);
         entidad.actualizado_en = ahora;
-        let mut uow = self.uow_factory.begin().await.inspect_err(fallido)?;
-        uow.guardar(&entidad).await.inspect_err(fallido)?;
+        let mut uow = self.uow_factory.begin().await?;
+        uow.guardar(&entidad).await?;
         uow.registrar(EventoCompra::Borrado(SnapshotCompra::from_entidad(
             &entidad,
         )))
-        .await
-        .inspect_err(fallido)?;
-        uow.commit().await.inspect_err(fallido)?;
+        .await?;
+        uow.commit().await?;
         Ok(())
     }
 }
@@ -883,7 +866,6 @@ use dominio_compra::eventos::{EventoCompra, SnapshotCompra};
 use dominio_compra::modelo::{Compra, PropsCompra};
 use dominio_compra::unit_of_work::UnitOfWorkFactoryCompra;
 use dominio_proveedor::modelo::IdProveedor;
-use puerto_nucleo::ErrorRepositorio;
 use std::sync::Arc;
 
 #[derive(Debug, Clone)]
@@ -920,22 +902,18 @@ pub struct CrearCompraImpl {
 
 #[async_trait]
 impl CrearCompra for CrearCompraImpl {
+    #[tracing::instrument(name = "crear_compra", skip_all, err(level = "warn"))]
     async fn ejecutar(&self, params: ParamsCrearCompra) -> Result<Compra, ErrorCompra> {
-        tracing::info!("crear_compra: inicio");
-        let fallido = |e: &ErrorRepositorio| tracing::error!(error = %e, "crear_compra: fallo del repositorio");
         let entidad = Compra::new(PropsCompra {
             proveedor_id: params.proveedor_id,
             approver_id: params.approver_id,
             total: params.total,
-        })
-        .inspect_err(|e| tracing::warn!(error = %e, "crear_compra: rechazado"))?;
-        let mut uow = self.uow_factory.begin().await.inspect_err(fallido)?;
-        uow.guardar(&entidad).await.inspect_err(fallido)?;
+        })?;
+        let mut uow = self.uow_factory.begin().await?;
+        uow.guardar(&entidad).await?;
         uow.registrar(EventoCompra::Creado(SnapshotCompra::from_entidad(&entidad)))
-            .await
-            .inspect_err(fallido)?;
-        uow.commit().await.inspect_err(fallido)?;
-        tracing::info!(id = %entidad.id, "crear_compra: fin");
+            .await?;
+        uow.commit().await?;
         Ok(entidad)
     }
 }
@@ -945,6 +923,7 @@ mod tests {
     use super::*;
     use dominio_compra::pruebas::madres::MadreCompra;
     use dominio_compra::unit_of_work::dobles::{FallarEn, UnitOfWorkFactoryGrabadora};
+    use puerto_nucleo::ErrorRepositorio;
     use puerto_nucleo::EventoDominio;
 
     #[tokio::test]
@@ -1145,12 +1124,8 @@ pub struct ListarComprasImpl {
 
 #[async_trait]
 impl ListarCompras for ListarComprasImpl {
+    #[tracing::instrument(name = "listar_compras", skip_all, err(level = "warn"))]
     async fn ejecutar(&self, params: ParamsListarCompras) -> Result<Pagina<Compra>, ErrorCompra> {
-        tracing::info!(
-            limite = params.pagina.limite(),
-            desplazamiento = params.pagina.desplazamiento(),
-            "listar_compras: inicio"
-        );
         self.repositorio
             .buscar_todos(
                 params.pagina,
@@ -1160,7 +1135,6 @@ impl ListarCompras for ListarComprasImpl {
                 },
             )
             .await
-            .inspect_err(|e| tracing::error!(error = %e, "listar_compras: fallo del repositorio"))
             .map_err(ErrorCompra::from)
     }
 }
@@ -1309,20 +1283,12 @@ pub struct ObtenerCompraImpl {
 
 #[async_trait]
 impl ObtenerCompra for ObtenerCompraImpl {
+    #[tracing::instrument(name = "obtener_compra", skip_all, fields(id = %params.id), err(level = "warn"))]
     async fn ejecutar(&self, params: ParamsObtenerCompra) -> Result<Compra, ErrorCompra> {
-        tracing::info!(id = %params.id, "obtener_compra: inicio");
-        let resultado = self
-            .repositorio
+        self.repositorio
             .buscar_por_id(params.id)
-            .await
-            .inspect_err(
-                |e| tracing::error!(error = %e, "obtener_compra: fallo del repositorio"),
-            )?;
-        resultado.ok_or_else(|| {
-            let err = ErrorCompra::NoEncontrado;
-            tracing::warn!(error = %err, "obtener_compra: rechazado");
-            err
-        })
+            .await?
+            .ok_or(ErrorCompra::NoEncontrado)
     }
 }
 
@@ -3443,7 +3409,6 @@ use dominio_entrega::modelo::{Entrega, IdEntrega, PropsEntrega};
 use dominio_entrega::repositorio::RepositorioEntrega;
 use dominio_entrega::unit_of_work::UnitOfWorkFactoryEntrega;
 use dominio_proveedor::modelo::IdProveedor;
-use puerto_nucleo::ErrorRepositorio;
 use std::sync::Arc;
 
 #[derive(Debug, Clone)]
@@ -3482,34 +3447,25 @@ pub struct ActualizarEntregaImpl {
 
 #[async_trait]
 impl ActualizarEntrega for ActualizarEntregaImpl {
+    #[tracing::instrument(name = "actualizar_entrega", skip_all, fields(id = %params.id), err(level = "warn"))]
     async fn ejecutar(&self, params: ParamsActualizarEntrega) -> Result<Entrega, ErrorEntrega> {
-        tracing::info!(id = %params.id, "actualizar_entrega: inicio");
-        let fallido = |e: &ErrorRepositorio| tracing::error!(error = %e, "actualizar_entrega: fallo del repositorio");
         let mut entidad = self
             .repositorio
             .buscar_por_id(params.id)
-            .await
-            .inspect_err(fallido)?
-            .ok_or_else(|| {
-                let err = ErrorEntrega::NoEncontrado;
-                tracing::warn!(error = %err, "actualizar_entrega: rechazado");
-                err
-            })?;
-        entidad
-            .actualizar(PropsEntrega {
-                compra_id: params.compra_id,
-                destinatario_id: params.destinatario_id,
-                carrier: params.carrier,
-            })
-            .inspect_err(|e| tracing::warn!(error = %e, "actualizar_entrega: rechazado"))?;
-        let mut uow = self.uow_factory.begin().await.inspect_err(fallido)?;
-        uow.guardar(&entidad).await.inspect_err(fallido)?;
+            .await?
+            .ok_or(ErrorEntrega::NoEncontrado)?;
+        entidad.actualizar(PropsEntrega {
+            compra_id: params.compra_id,
+            destinatario_id: params.destinatario_id,
+            carrier: params.carrier,
+        })?;
+        let mut uow = self.uow_factory.begin().await?;
+        uow.guardar(&entidad).await?;
         uow.registrar(EventoEntrega::Actualizado(SnapshotEntrega::from_entidad(
             &entidad,
         )))
-        .await
-        .inspect_err(fallido)?;
-        uow.commit().await.inspect_err(fallido)?;
+        .await?;
+        uow.commit().await?;
         Ok(entidad)
     }
 }
@@ -3639,7 +3595,6 @@ use dominio_entrega::eventos::{EventoEntrega, SnapshotEntrega};
 use dominio_entrega::modelo::IdEntrega;
 use dominio_entrega::repositorio::RepositorioEntrega;
 use dominio_entrega::unit_of_work::UnitOfWorkFactoryEntrega;
-use puerto_nucleo::ErrorRepositorio;
 use std::sync::Arc;
 
 #[derive(Debug, Clone)]
@@ -3675,31 +3630,24 @@ pub struct BorrarEntregaImpl {
 
 #[async_trait]
 impl BorrarEntrega for BorrarEntregaImpl {
+    #[tracing::instrument(name = "borrar_entrega", skip_all, fields(id = %params.id), err(level = "warn"))]
     async fn ejecutar(&self, params: ParamsBorrarEntrega) -> Result<(), ErrorEntrega> {
-        tracing::info!(id = %params.id, "borrar_entrega: inicio");
-        let fallido = |e: &ErrorRepositorio| tracing::error!(error = %e, "borrar_entrega: fallo del repositorio");
         let mut entidad = self
             .repositorio
             .buscar_por_id(params.id)
-            .await
-            .inspect_err(fallido)?
-            .ok_or_else(|| {
-                let err = ErrorEntrega::NoEncontrado;
-                tracing::warn!(error = %err, "borrar_entrega: rechazado");
-                err
-            })?;
+            .await?
+            .ok_or(ErrorEntrega::NoEncontrado)?;
         let ahora = chrono::Utc::now();
         entidad.borrado = true;
         entidad.borrado_en = Some(ahora);
         entidad.actualizado_en = ahora;
-        let mut uow = self.uow_factory.begin().await.inspect_err(fallido)?;
-        uow.guardar(&entidad).await.inspect_err(fallido)?;
+        let mut uow = self.uow_factory.begin().await?;
+        uow.guardar(&entidad).await?;
         uow.registrar(EventoEntrega::Borrado(SnapshotEntrega::from_entidad(
             &entidad,
         )))
-        .await
-        .inspect_err(fallido)?;
-        uow.commit().await.inspect_err(fallido)?;
+        .await?;
+        uow.commit().await?;
         Ok(())
     }
 }
@@ -3779,7 +3727,6 @@ use dominio_entrega::eventos::{EventoEntrega, SnapshotEntrega};
 use dominio_entrega::modelo::{Entrega, PropsEntrega};
 use dominio_entrega::unit_of_work::UnitOfWorkFactoryEntrega;
 use dominio_proveedor::modelo::IdProveedor;
-use puerto_nucleo::ErrorRepositorio;
 use std::sync::Arc;
 
 #[derive(Debug, Clone)]
@@ -3816,24 +3763,20 @@ pub struct CrearEntregaImpl {
 
 #[async_trait]
 impl CrearEntrega for CrearEntregaImpl {
+    #[tracing::instrument(name = "crear_entrega", skip_all, err(level = "warn"))]
     async fn ejecutar(&self, params: ParamsCrearEntrega) -> Result<Entrega, ErrorEntrega> {
-        tracing::info!("crear_entrega: inicio");
-        let fallido = |e: &ErrorRepositorio| tracing::error!(error = %e, "crear_entrega: fallo del repositorio");
         let entidad = Entrega::new(PropsEntrega {
             compra_id: params.compra_id,
             destinatario_id: params.destinatario_id,
             carrier: params.carrier,
-        })
-        .inspect_err(|e| tracing::warn!(error = %e, "crear_entrega: rechazado"))?;
-        let mut uow = self.uow_factory.begin().await.inspect_err(fallido)?;
-        uow.guardar(&entidad).await.inspect_err(fallido)?;
+        })?;
+        let mut uow = self.uow_factory.begin().await?;
+        uow.guardar(&entidad).await?;
         uow.registrar(EventoEntrega::Creado(SnapshotEntrega::from_entidad(
             &entidad,
         )))
-        .await
-        .inspect_err(fallido)?;
-        uow.commit().await.inspect_err(fallido)?;
-        tracing::info!(id = %entidad.id, "crear_entrega: fin");
+        .await?;
+        uow.commit().await?;
         Ok(entidad)
     }
 }
@@ -3843,6 +3786,7 @@ mod tests {
     use super::*;
     use dominio_entrega::pruebas::madres::MadreEntrega;
     use dominio_entrega::unit_of_work::dobles::{FallarEn, UnitOfWorkFactoryGrabadora};
+    use puerto_nucleo::ErrorRepositorio;
     use puerto_nucleo::EventoDominio;
 
     #[tokio::test]
@@ -4076,15 +4020,11 @@ pub struct ListarEntregasImpl {
 
 #[async_trait]
 impl ListarEntregas for ListarEntregasImpl {
+    #[tracing::instrument(name = "listar_entregas", skip_all, err(level = "warn"))]
     async fn ejecutar(
         &self,
         params: ParamsListarEntregas,
     ) -> Result<Pagina<Entrega>, ErrorEntrega> {
-        tracing::info!(
-            limite = params.pagina.limite(),
-            desplazamiento = params.pagina.desplazamiento(),
-            "listar_entregas: inicio"
-        );
         self.repositorio
             .buscar_todos(
                 params.pagina,
@@ -4094,7 +4034,6 @@ impl ListarEntregas for ListarEntregasImpl {
                 },
             )
             .await
-            .inspect_err(|e| tracing::error!(error = %e, "listar_entregas: fallo del repositorio"))
             .map_err(ErrorEntrega::from)
     }
 }
@@ -4244,20 +4183,12 @@ pub struct ObtenerEntregaImpl {
 
 #[async_trait]
 impl ObtenerEntrega for ObtenerEntregaImpl {
+    #[tracing::instrument(name = "obtener_entrega", skip_all, fields(id = %params.id), err(level = "warn"))]
     async fn ejecutar(&self, params: ParamsObtenerEntrega) -> Result<Entrega, ErrorEntrega> {
-        tracing::info!(id = %params.id, "obtener_entrega: inicio");
-        let resultado = self
-            .repositorio
+        self.repositorio
             .buscar_por_id(params.id)
-            .await
-            .inspect_err(
-                |e| tracing::error!(error = %e, "obtener_entrega: fallo del repositorio"),
-            )?;
-        resultado.ok_or_else(|| {
-            let err = ErrorEntrega::NoEncontrado;
-            tracing::warn!(error = %err, "obtener_entrega: rechazado");
-            err
-        })
+            .await?
+            .ok_or(ErrorEntrega::NoEncontrado)
     }
 }
 
@@ -6458,7 +6389,6 @@ use dominio_proveedor::modelo::{IdProveedor, PropsProveedor, Proveedor};
 use dominio_proveedor::repositorio::RepositorioProveedor;
 use dominio_proveedor::unit_of_work::UnitOfWorkFactoryProveedor;
 use dominio_proveedor::valores::Name;
-use puerto_nucleo::ErrorRepositorio;
 use std::sync::Arc;
 
 #[derive(Debug, Clone)]
@@ -6499,37 +6429,28 @@ pub struct ActualizarProveedorImpl {
 
 #[async_trait]
 impl ActualizarProveedor for ActualizarProveedorImpl {
+    #[tracing::instrument(name = "actualizar_proveedor", skip_all, fields(id = %params.id), err(level = "warn"))]
     async fn ejecutar(
         &self,
         params: ParamsActualizarProveedor,
     ) -> Result<Proveedor, ErrorProveedor> {
-        tracing::info!(id = %params.id, "actualizar_proveedor: inicio");
-        let fallido = |e: &ErrorRepositorio| tracing::error!(error = %e, "actualizar_proveedor: fallo del repositorio");
         let mut entidad = self
             .repositorio
             .buscar_por_id(params.id)
-            .await
-            .inspect_err(fallido)?
-            .ok_or_else(|| {
-                let err = ErrorProveedor::NoEncontrado;
-                tracing::warn!(error = %err, "actualizar_proveedor: rechazado");
-                err
-            })?;
+            .await?
+            .ok_or(ErrorProveedor::NoEncontrado)?;
         let name = Name::new(params.name)?;
-        entidad
-            .actualizar(PropsProveedor {
-                name,
-                email: params.email,
-            })
-            .inspect_err(|e| tracing::warn!(error = %e, "actualizar_proveedor: rechazado"))?;
-        let mut uow = self.uow_factory.begin().await.inspect_err(fallido)?;
-        uow.guardar(&entidad).await.inspect_err(fallido)?;
+        entidad.actualizar(PropsProveedor {
+            name,
+            email: params.email,
+        })?;
+        let mut uow = self.uow_factory.begin().await?;
+        uow.guardar(&entidad).await?;
         uow.registrar(EventoProveedor::Actualizado(
             SnapshotProveedor::from_entidad(&entidad),
         ))
-        .await
-        .inspect_err(fallido)?;
-        uow.commit().await.inspect_err(fallido)?;
+        .await?;
+        uow.commit().await?;
         Ok(entidad)
     }
 }
@@ -6689,7 +6610,6 @@ use dominio_proveedor::eventos::{EventoProveedor, SnapshotProveedor};
 use dominio_proveedor::modelo::IdProveedor;
 use dominio_proveedor::repositorio::RepositorioProveedor;
 use dominio_proveedor::unit_of_work::UnitOfWorkFactoryProveedor;
-use puerto_nucleo::ErrorRepositorio;
 use std::sync::Arc;
 
 #[derive(Debug, Clone)]
@@ -6725,31 +6645,24 @@ pub struct BorrarProveedorImpl {
 
 #[async_trait]
 impl BorrarProveedor for BorrarProveedorImpl {
+    #[tracing::instrument(name = "borrar_proveedor", skip_all, fields(id = %params.id), err(level = "warn"))]
     async fn ejecutar(&self, params: ParamsBorrarProveedor) -> Result<(), ErrorProveedor> {
-        tracing::info!(id = %params.id, "borrar_proveedor: inicio");
-        let fallido = |e: &ErrorRepositorio| tracing::error!(error = %e, "borrar_proveedor: fallo del repositorio");
         let mut entidad = self
             .repositorio
             .buscar_por_id(params.id)
-            .await
-            .inspect_err(fallido)?
-            .ok_or_else(|| {
-                let err = ErrorProveedor::NoEncontrado;
-                tracing::warn!(error = %err, "borrar_proveedor: rechazado");
-                err
-            })?;
+            .await?
+            .ok_or(ErrorProveedor::NoEncontrado)?;
         let ahora = chrono::Utc::now();
         entidad.borrado = true;
         entidad.borrado_en = Some(ahora);
         entidad.actualizado_en = ahora;
-        let mut uow = self.uow_factory.begin().await.inspect_err(fallido)?;
-        uow.guardar(&entidad).await.inspect_err(fallido)?;
+        let mut uow = self.uow_factory.begin().await?;
+        uow.guardar(&entidad).await?;
         uow.registrar(EventoProveedor::Borrado(SnapshotProveedor::from_entidad(
             &entidad,
         )))
-        .await
-        .inspect_err(fallido)?;
-        uow.commit().await.inspect_err(fallido)?;
+        .await?;
+        uow.commit().await?;
         Ok(())
     }
 }
@@ -6831,7 +6744,6 @@ use dominio_proveedor::eventos::{EventoProveedor, SnapshotProveedor};
 use dominio_proveedor::modelo::{PropsProveedor, Proveedor};
 use dominio_proveedor::unit_of_work::UnitOfWorkFactoryProveedor;
 use dominio_proveedor::valores::Name;
-use puerto_nucleo::ErrorRepositorio;
 use std::sync::Arc;
 
 #[derive(Debug, Clone)]
@@ -6867,24 +6779,20 @@ pub struct CrearProveedorImpl {
 
 #[async_trait]
 impl CrearProveedor for CrearProveedorImpl {
+    #[tracing::instrument(name = "crear_proveedor", skip_all, err(level = "warn"))]
     async fn ejecutar(&self, params: ParamsCrearProveedor) -> Result<Proveedor, ErrorProveedor> {
-        tracing::info!("crear_proveedor: inicio");
-        let fallido = |e: &ErrorRepositorio| tracing::error!(error = %e, "crear_proveedor: fallo del repositorio");
         let name = Name::new(params.name)?;
         let entidad = Proveedor::new(PropsProveedor {
             name,
             email: params.email,
-        })
-        .inspect_err(|e| tracing::warn!(error = %e, "crear_proveedor: rechazado"))?;
-        let mut uow = self.uow_factory.begin().await.inspect_err(fallido)?;
-        uow.guardar(&entidad).await.inspect_err(fallido)?;
+        })?;
+        let mut uow = self.uow_factory.begin().await?;
+        uow.guardar(&entidad).await?;
         uow.registrar(EventoProveedor::Creado(SnapshotProveedor::from_entidad(
             &entidad,
         )))
-        .await
-        .inspect_err(fallido)?;
-        uow.commit().await.inspect_err(fallido)?;
-        tracing::info!(id = %entidad.id, "crear_proveedor: fin");
+        .await?;
+        uow.commit().await?;
         Ok(entidad)
     }
 }
@@ -6894,6 +6802,7 @@ mod tests {
     use super::*;
     use dominio_proveedor::pruebas::madres::MadreProveedor;
     use dominio_proveedor::unit_of_work::dobles::{FallarEn, UnitOfWorkFactoryGrabadora};
+    use puerto_nucleo::ErrorRepositorio;
     use puerto_nucleo::EventoDominio;
 
     #[tokio::test]
@@ -7082,21 +6991,14 @@ pub struct ListarProveedoresImpl {
 
 #[async_trait]
 impl ListarProveedores for ListarProveedoresImpl {
+    #[tracing::instrument(name = "listar_proveedores", skip_all, err(level = "warn"))]
     async fn ejecutar(
         &self,
         params: ParamsListarProveedores,
     ) -> Result<Pagina<Proveedor>, ErrorProveedor> {
-        tracing::info!(
-            limite = params.pagina.limite(),
-            desplazamiento = params.pagina.desplazamiento(),
-            "listar_proveedores: inicio"
-        );
         self.repositorio
             .buscar_todos(params.pagina)
             .await
-            .inspect_err(
-                |e| tracing::error!(error = %e, "listar_proveedores: fallo del repositorio"),
-            )
             .map_err(ErrorProveedor::from)
     }
 }
@@ -7212,20 +7114,12 @@ pub struct ObtenerProveedorImpl {
 
 #[async_trait]
 impl ObtenerProveedor for ObtenerProveedorImpl {
+    #[tracing::instrument(name = "obtener_proveedor", skip_all, fields(id = %params.id), err(level = "warn"))]
     async fn ejecutar(&self, params: ParamsObtenerProveedor) -> Result<Proveedor, ErrorProveedor> {
-        tracing::info!(id = %params.id, "obtener_proveedor: inicio");
-        let resultado = self
-            .repositorio
+        self.repositorio
             .buscar_por_id(params.id)
-            .await
-            .inspect_err(
-                |e| tracing::error!(error = %e, "obtener_proveedor: fallo del repositorio"),
-            )?;
-        resultado.ok_or_else(|| {
-            let err = ErrorProveedor::NoEncontrado;
-            tracing::warn!(error = %err, "obtener_proveedor: rechazado");
-            err
-        })
+            .await?
+            .ok_or(ErrorProveedor::NoEncontrado)
     }
 }
 
@@ -9200,27 +9094,18 @@ pub struct ObtenerSaludoImpl {
 
 #[async_trait]
 impl ObtenerSaludo for ObtenerSaludoImpl {
+    // El span da nombre a los logs de lo que llama y registra el error que devuelve; `skip_all`:
+    // el nombre es un dato del usuario y no va al log.
+    #[tracing::instrument(name = "obtener_saludo", skip_all, err(level = "warn"))]
     async fn ejecutar(&self, params: ParamsObtenerSaludo) -> Result<Saludo, ErrorSaludo> {
-        tracing::info!(nombre = %params.nombre, "obtener_saludo: inicio");
-
         if params.nombre.trim().is_empty() {
-            let err = ErrorSaludo::Validacion("nombre_vacio".into());
-            tracing::warn!(error = %err, "obtener_saludo: rechazado");
-            return Err(err);
+            return Err(ErrorSaludo::Validacion("nombre_vacio".into()));
         }
 
-        let resultado = match self
-            .repositorio
-            .buscar_por_nombre(&params.nombre)
-            .await
-            .inspect_err(|e| tracing::error!(error = %e, "obtener_saludo: fallo del repositorio"))?
-        {
-            Some(saludo) => saludo,
-            None => Saludo::new(&params.nombre)?,
-        };
-
-        tracing::info!("obtener_saludo: fin");
-        Ok(resultado)
+        match self.repositorio.buscar_por_nombre(&params.nombre).await? {
+            Some(saludo) => Ok(saludo),
+            None => Saludo::new(&params.nombre),
+        }
     }
 }
 

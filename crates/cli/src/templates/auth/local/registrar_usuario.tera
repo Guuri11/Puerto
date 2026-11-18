@@ -24,8 +24,8 @@ pub struct RegistrarUsuarioImpl {
 
 #[async_trait]
 impl RegistrarUsuario for RegistrarUsuarioImpl {
+    #[tracing::instrument(name = "registrar_usuario", skip_all, err(level = "warn"))]
     async fn ejecutar(&self, params: ParamsRegistrarUsuario) -> Result<Usuario, ErrorUsuario> {
-        tracing::info!("registrar_usuario: inicio");
         if params.contrasena.chars().count() < LONGITUD_MINIMA_CONTRASENA {
             return Err(ErrorUsuario::Validacion("contrasena_demasiado_corta".into()));
         }
@@ -46,7 +46,6 @@ impl RegistrarUsuario for RegistrarUsuarioImpl {
                     .await?
                     .is_some()
                 {
-                    tracing::warn!("registrar_usuario: el email está ocupado");
                     return Err(ErrorUsuario::Duplicado);
                 }
                 existente
@@ -59,7 +58,6 @@ impl RegistrarUsuario for RegistrarUsuarioImpl {
         self.credenciales
             .guardar_hash_contrasena(usuario.id.valor(), &hash)
             .await?;
-        tracing::info!(id = %usuario.id, "registrar_usuario: fin");
         Ok(usuario)
     }
 }

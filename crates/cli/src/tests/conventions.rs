@@ -30,7 +30,7 @@ fn scaffold_use_case_impl_logs_with_tracing() {
     let content =
         fs::read_to_string(dir.join("contextos/producto/aplicacion/src/crear_producto.rs"))
             .unwrap();
-    assert!(content.contains("tracing::info!"), "{content}");
+    assert!(content.contains("#[tracing::instrument("), "{content}");
     assert!(!content.contains("logger"), "{content}");
 
     cleanup(&dir);
@@ -47,7 +47,7 @@ fn use_case_generator_impl_logs_with_tracing() {
     let content =
         fs::read_to_string(dir.join("contextos/producto/aplicacion/src/borrar_producto.rs"))
             .unwrap();
-    assert!(content.contains("tracing::info!"), "{content}");
+    assert!(content.contains("#[tracing::instrument("), "{content}");
     assert!(!content.contains("logger"), "{content}");
 
     cleanup(&dir);
@@ -160,7 +160,7 @@ fn generated_project_logs_with_tracing_and_has_no_logger_port() {
     let create =
         fs::read_to_string(output.join("contextos/producto/aplicacion/src/crear_producto.rs"))
             .unwrap();
-    assert!(create.contains("tracing::info!"), "{create}");
+    assert!(create.contains("#[tracing::instrument("), "{create}");
     let application_toml =
         fs::read_to_string(output.join("contextos/producto/aplicacion/Cargo.toml")).unwrap();
     assert!(application_toml.contains("tracing"), "{application_toml}");

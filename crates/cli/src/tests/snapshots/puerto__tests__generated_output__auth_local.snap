@@ -273,9 +273,10 @@ envía el token como `Authorization: Bearer <token>`; la base de datos solo guar
 - **Los errores son códigos legibles por máquina** (`producto.no_encontrado`,
   `producto.validacion.titulo_vacio`), nunca frases. La API los devuelve en
   `RespuestaError.codigo`; los fallos de validación del dominio son `422`.
-- **Logs:** `tracing::info!` / `warn!` / `error!` directamente, sin logger inyectado. Un caso de uso
-  registra `<caso_de_uso>: inicio` y `<caso_de_uso>: fin`; nunca registres el contenido de una
-  petición (son datos del usuario).
+- **Logs:** `tracing` directamente, sin logger inyectado. El `ejecutar` de un caso de uso lleva
+  `#[tracing::instrument(name = "<caso_de_uso>", skip_all, err(level = "warn"))]`: el span da
+  nombre a los logs de lo que llama y registra su error una vez. No escribas líneas de inicio ni de
+  fin, y nunca registres el contenido de una petición (son datos del usuario: por eso `skip_all`).
 - **Nada de `unwrap()` / `expect()`** fuera de los tests.
 - **API primero:** cambia `rutas.rs` + `dto.rs` (el contrato) antes que la implementación.
 
@@ -645,28 +646,17 @@ pub struct ActualizarPedidoImpl {
 
 #[async_trait]
 impl ActualizarPedido for ActualizarPedidoImpl {
+    #[tracing::instrument(name = "actualizar_pedido", skip_all, fields(id = %params.id), err(level = "warn"))]
     async fn ejecutar(&self, params: ParamsActualizarPedido) -> Result<Pedido, ErrorPedido> {
-        tracing::info!(id = %params.id, "actualizar_pedido: inicio");
         let mut entidad = self
             .repositorio
             .buscar_por_id(params.id)
-            .await
-            .inspect_err(
-                |e| tracing::error!(error = %e, "actualizar_pedido: fallo del repositorio"),
-            )?
-            .ok_or_else(|| {
-                let err = ErrorPedido::NoEncontrado;
-                tracing::warn!(error = %err, "actualizar_pedido: rechazado");
-                err
-            })?;
-        entidad
-            .actualizar(PropsPedido {
-                total: params.total,
-            })
-            .inspect_err(|e| tracing::warn!(error = %e, "actualizar_pedido: rechazado"))?;
-        self.repositorio.guardar(&entidad).await.inspect_err(
-            |e| tracing::error!(error = %e, "actualizar_pedido: fallo del repositorio"),
-        )?;
+            .await?
+            .ok_or(ErrorPedido::NoEncontrado)?;
+        entidad.actualizar(PropsPedido {
+            total: params.total,
+        })?;
+        self.repositorio.guardar(&entidad).await?;
         Ok(entidad)
     }
 }
@@ -777,26 +767,18 @@ pub struct BorrarPedidoImpl {
 
 #[async_trait]
 impl BorrarPedido for BorrarPedidoImpl {
+    #[tracing::instrument(name = "borrar_pedido", skip_all, fields(id = %params.id), err(level = "warn"))]
     async fn ejecutar(&self, params: ParamsBorrarPedido) -> Result<(), ErrorPedido> {
-        tracing::info!(id = %params.id, "borrar_pedido: inicio");
         let mut entidad = self
             .repositorio
             .buscar_por_id(params.id)
-            .await
-            .inspect_err(|e| tracing::error!(error = %e, "borrar_pedido: fallo del repositorio"))?
-            .ok_or_else(|| {
-                let err = ErrorPedido::NoEncontrado;
-                tracing::warn!(error = %err, "borrar_pedido: rechazado");
-                err
-            })?;
+            .await?
+            .ok_or(ErrorPedido::NoEncontrado)?;
         let ahora = chrono::Utc::now();
         entidad.borrado = true;
         entidad.borrado_en = Some(ahora);
         entidad.actualizado_en = ahora;
-        self.repositorio
-            .guardar(&entidad)
-            .await
-            .inspect_err(|e| tracing::error!(error = %e, "borrar_pedido: fallo del repositorio"))?;
+        self.repositorio.guardar(&entidad).await?;
         Ok(())
     }
 }
@@ -897,17 +879,12 @@ pub struct CrearPedidoImpl {
 
 #[async_trait]
 impl CrearPedido for CrearPedidoImpl {
+    #[tracing::instrument(name = "crear_pedido", skip_all, err(level = "warn"))]
     async fn ejecutar(&self, params: ParamsCrearPedido) -> Result<Pedido, ErrorPedido> {
-        tracing::info!("crear_pedido: inicio");
         let entidad = Pedido::new(PropsPedido {
             total: params.total,
-        })
-        .inspect_err(|e| tracing::warn!(error = %e, "crear_pedido: rechazado"))?;
-        self.repositorio
-            .guardar(&entidad)
-            .await
-            .inspect_err(|e| tracing::error!(error = %e, "crear_pedido: fallo del repositorio"))?;
-        tracing::info!(id = %entidad.id, "crear_pedido: fin");
+        })?;
+        self.repositorio.guardar(&entidad).await?;
         Ok(entidad)
     }
 }
@@ -1019,16 +996,11 @@ pub struct ListarPedidosImpl {
 
 #[async_trait]
 impl ListarPedidos for ListarPedidosImpl {
+    #[tracing::instrument(name = "listar_pedidos", skip_all, err(level = "warn"))]
     async fn ejecutar(&self, params: ParamsListarPedidos) -> Result<Pagina<Pedido>, ErrorPedido> {
-        tracing::info!(
-            limite = params.pagina.limite(),
-            desplazamiento = params.pagina.desplazamiento(),
-            "listar_pedidos: inicio"
-        );
         self.repositorio
             .buscar_todos(params.pagina)
             .await
-            .inspect_err(|e| tracing::error!(error = %e, "listar_pedidos: fallo del repositorio"))
             .map_err(ErrorPedido::from)
     }
 }
@@ -1152,20 +1124,12 @@ pub struct ObtenerPedidoImpl {
 
 #[async_trait]
 impl ObtenerPedido for ObtenerPedidoImpl {
+    #[tracing::instrument(name = "obtener_pedido", skip_all, fields(id = %params.id), err(level = "warn"))]
     async fn ejecutar(&self, params: ParamsObtenerPedido) -> Result<Pedido, ErrorPedido> {
-        tracing::info!(id = %params.id, "obtener_pedido: inicio");
-        let resultado = self
-            .repositorio
+        self.repositorio
             .buscar_por_id(params.id)
-            .await
-            .inspect_err(
-                |e| tracing::error!(error = %e, "obtener_pedido: fallo del repositorio"),
-            )?;
-        resultado.ok_or_else(|| {
-            let err = ErrorPedido::NoEncontrado;
-            tracing::warn!(error = %err, "obtener_pedido: rechazado");
-            err
-        })
+            .await?
+            .ok_or(ErrorPedido::NoEncontrado)
     }
 }
 
@@ -2772,33 +2736,22 @@ pub struct ActualizarProductoImpl {
 
 #[async_trait]
 impl ActualizarProducto for ActualizarProductoImpl {
+    #[tracing::instrument(name = "actualizar_producto", skip_all, fields(id = %params.id), err(level = "warn"))]
     async fn ejecutar(&self, params: ParamsActualizarProducto) -> Result<Producto, ErrorProducto> {
-        tracing::info!(id = %params.id, "actualizar_producto: inicio");
         let mut entidad = self
             .repositorio
             .buscar_por_id(params.id)
-            .await
-            .inspect_err(
-                |e| tracing::error!(error = %e, "actualizar_producto: fallo del repositorio"),
-            )?
-            .ok_or_else(|| {
-                let err = ErrorProducto::NoEncontrado;
-                tracing::warn!(error = %err, "actualizar_producto: rechazado");
-                err
-            })?;
+            .await?
+            .ok_or(ErrorProducto::NoEncontrado)?;
         let name = Name::new(params.name)?;
         let status = params.status.parse::<Status>()?;
-        entidad
-            .actualizar(PropsProducto {
-                name,
-                sku: params.sku,
-                price: params.price,
-                status,
-            })
-            .inspect_err(|e| tracing::warn!(error = %e, "actualizar_producto: rechazado"))?;
-        self.repositorio.guardar(&entidad).await.inspect_err(
-            |e| tracing::error!(error = %e, "actualizar_producto: fallo del repositorio"),
-        )?;
+        entidad.actualizar(PropsProducto {
+            name,
+            sku: params.sku,
+            price: params.price,
+            status,
+        })?;
+        self.repositorio.guardar(&entidad).await?;
         Ok(entidad)
     }
 }
@@ -2986,25 +2939,18 @@ pub struct BorrarProductoImpl {
 
 #[async_trait]
 impl BorrarProducto for BorrarProductoImpl {
+    #[tracing::instrument(name = "borrar_producto", skip_all, fields(id = %params.id), err(level = "warn"))]
     async fn ejecutar(&self, params: ParamsBorrarProducto) -> Result<(), ErrorProducto> {
-        tracing::info!(id = %params.id, "borrar_producto: inicio");
         let mut entidad = self
             .repositorio
             .buscar_por_id(params.id)
-            .await
-            .inspect_err(|e| tracing::error!(error = %e, "borrar_producto: fallo del repositorio"))?
-            .ok_or_else(|| {
-                let err = ErrorProducto::NoEncontrado;
-                tracing::warn!(error = %err, "borrar_producto: rechazado");
-                err
-            })?;
+            .await?
+            .ok_or(ErrorProducto::NoEncontrado)?;
         let ahora = chrono::Utc::now();
         entidad.borrado = true;
         entidad.borrado_en = Some(ahora);
         entidad.actualizado_en = ahora;
-        self.repositorio.guardar(&entidad).await.inspect_err(
-            |e| tracing::error!(error = %e, "borrar_producto: fallo del repositorio"),
-        )?;
+        self.repositorio.guardar(&entidad).await?;
         Ok(())
     }
 }
@@ -3110,8 +3056,8 @@ pub struct CrearProductoImpl {
 
 #[async_trait]
 impl CrearProducto for CrearProductoImpl {
+    #[tracing::instrument(name = "crear_producto", skip_all, err(level = "warn"))]
     async fn ejecutar(&self, params: ParamsCrearProducto) -> Result<Producto, ErrorProducto> {
-        tracing::info!("crear_producto: inicio");
         let name = Name::new(params.name)?;
         let status = params.status.parse::<Status>()?;
         let entidad = Producto::new(PropsProducto {
@@ -3119,12 +3065,8 @@ impl CrearProducto for CrearProductoImpl {
             sku: params.sku,
             price: params.price,
             status,
-        })
-        .inspect_err(|e| tracing::warn!(error = %e, "crear_producto: rechazado"))?;
-        self.repositorio.guardar(&entidad).await.inspect_err(
-            |e| tracing::error!(error = %e, "crear_producto: fallo del repositorio"),
-        )?;
-        tracing::info!(id = %entidad.id, "crear_producto: fin");
+        })?;
+        self.repositorio.guardar(&entidad).await?;
         Ok(entidad)
     }
 }
@@ -3327,19 +3269,14 @@ pub struct ListarProductosImpl {
 
 #[async_trait]
 impl ListarProductos for ListarProductosImpl {
+    #[tracing::instrument(name = "listar_productos", skip_all, err(level = "warn"))]
     async fn ejecutar(
         &self,
         params: ParamsListarProductos,
     ) -> Result<Pagina<Producto>, ErrorProducto> {
-        tracing::info!(
-            limite = params.pagina.limite(),
-            desplazamiento = params.pagina.desplazamiento(),
-            "listar_productos: inicio"
-        );
         self.repositorio
             .buscar_todos(params.pagina)
             .await
-            .inspect_err(|e| tracing::error!(error = %e, "listar_productos: fallo del repositorio"))
             .map_err(ErrorProducto::from)
     }
 }
@@ -3455,20 +3392,12 @@ pub struct ObtenerProductoImpl {
 
 #[async_trait]
 impl ObtenerProducto for ObtenerProductoImpl {
+    #[tracing::instrument(name = "obtener_producto", skip_all, fields(id = %params.id), err(level = "warn"))]
     async fn ejecutar(&self, params: ParamsObtenerProducto) -> Result<Producto, ErrorProducto> {
-        tracing::info!(id = %params.id, "obtener_producto: inicio");
-        let resultado = self
-            .repositorio
+        self.repositorio
             .buscar_por_id(params.id)
-            .await
-            .inspect_err(
-                |e| tracing::error!(error = %e, "obtener_producto: fallo del repositorio"),
-            )?;
-        resultado.ok_or_else(|| {
-            let err = ErrorProducto::NoEncontrado;
-            tracing::warn!(error = %err, "obtener_producto: rechazado");
-            err
-        })
+            .await?
+            .ok_or(ErrorProducto::NoEncontrado)
     }
 }
 
@@ -3584,9 +3513,10 @@ pub struct PublishProductoImpl {
 
 #[async_trait]
 impl PublishProducto for PublishProductoImpl {
+    // El span da nombre a los logs de lo que llama y registra el error que devuelve; `skip_all`:
+    // los parámetros son datos del usuario y no van al log.
+    #[tracing::instrument(name = "publish_producto", skip_all, err(level = "warn"))]
     async fn ejecutar(&self, _params: ParamsPublishProducto) -> Result<Producto, ErrorProducto> {
-        // Al log va lo que identifica el trabajo, nunca los parámetros: son datos del usuario.
-        tracing::info!("publish_producto: inicio");
         todo!()
     }
 }
@@ -5478,8 +5408,8 @@ pub struct LoginImpl {
 
 #[async_trait]
 impl Login for LoginImpl {
+    #[tracing::instrument(name = "login", skip_all, err(level = "warn"))]
     async fn ejecutar(&self, params: ParamsLogin) -> Result<Sesion, ErrorUsuario> {
-        tracing::info!("login: inicio");
         let sujeto = Usuario::sujeto_local(&params.email);
         let usuario = self
             .usuarios
@@ -5497,11 +5427,9 @@ impl Login for LoginImpl {
         // mismo, así que el tiempo de respuesta no delata qué emails tienen cuenta.
         let valido = self.hasher.verificar(&params.contrasena, hash).await;
         let Some(usuario) = usuario.filter(|_| valido) else {
-            tracing::warn!("login: rechazado");
             return Err(ErrorUsuario::CredencialesInvalidas);
         };
         let sesion = self.sesiones.abrir(usuario.id.valor()).await?;
-        tracing::info!(id = %usuario.id, "login: fin");
         Ok(sesion)
     }
 }
@@ -5669,10 +5597,9 @@ pub struct LogoutImpl {
 
 #[async_trait]
 impl Logout for LogoutImpl {
+    #[tracing::instrument(name = "logout", skip_all, err(level = "warn"))]
     async fn ejecutar(&self, params: ParamsLogout) -> Result<(), ErrorUsuario> {
-        tracing::info!("logout: inicio");
         self.sesiones.revocar(&params.token).await?;
-        tracing::info!("logout: fin");
         Ok(())
     }
 }
@@ -5783,8 +5710,8 @@ pub struct RegistrarUsuarioImpl {
 
 #[async_trait]
 impl RegistrarUsuario for RegistrarUsuarioImpl {
+    #[tracing::instrument(name = "registrar_usuario", skip_all, err(level = "warn"))]
     async fn ejecutar(&self, params: ParamsRegistrarUsuario) -> Result<Usuario, ErrorUsuario> {
-        tracing::info!("registrar_usuario: inicio");
         if params.contrasena.chars().count() < LONGITUD_MINIMA_CONTRASENA {
             return Err(ErrorUsuario::Validacion(
                 "contrasena_demasiado_corta".into(),
@@ -5807,7 +5734,6 @@ impl RegistrarUsuario for RegistrarUsuarioImpl {
                     .await?
                     .is_some()
                 {
-                    tracing::warn!("registrar_usuario: el email está ocupado");
                     return Err(ErrorUsuario::Duplicado);
                 }
                 existente
@@ -5820,7 +5746,6 @@ impl RegistrarUsuario for RegistrarUsuarioImpl {
         self.credenciales
             .guardar_hash_contrasena(usuario.id.valor(), &hash)
             .await?;
-        tracing::info!(id = %usuario.id, "registrar_usuario: fin");
         Ok(usuario)
     }
 }

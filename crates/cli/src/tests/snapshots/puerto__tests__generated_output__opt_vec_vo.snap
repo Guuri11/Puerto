@@ -203,9 +203,10 @@ CRUD; `puerto generar web <Nombre>` las escribe solas.
 - **Los errores son códigos legibles por máquina** (`producto.no_encontrado`,
   `producto.validacion.titulo_vacio`), nunca frases. La API los devuelve en
   `RespuestaError.codigo`; los fallos de validación del dominio son `422`.
-- **Logs:** `tracing::info!` / `warn!` / `error!` directamente, sin logger inyectado. Un caso de uso
-  registra `<caso_de_uso>: inicio` y `<caso_de_uso>: fin`; nunca registres el contenido de una
-  petición (son datos del usuario).
+- **Logs:** `tracing` directamente, sin logger inyectado. El `ejecutar` de un caso de uso lleva
+  `#[tracing::instrument(name = "<caso_de_uso>", skip_all, err(level = "warn"))]`: el span da
+  nombre a los logs de lo que llama y registra su error una vez. No escribas líneas de inicio ni de
+  fin, y nunca registres el contenido de una petición (son datos del usuario: por eso `skip_all`).
 - **Nada de `unwrap()` / `expect()`** fuera de los tests.
 - **API primero:** cambia `rutas.rs` + `dto.rs` (el contrato) antes que la implementación.
 
@@ -355,36 +356,25 @@ pub struct ActualizarPersonaImpl {
 
 #[async_trait]
 impl ActualizarPersona for ActualizarPersonaImpl {
+    #[tracing::instrument(name = "actualizar_persona", skip_all, fields(id = %params.id), err(level = "warn"))]
     async fn ejecutar(&self, params: ParamsActualizarPersona) -> Result<Persona, ErrorPersona> {
-        tracing::info!(id = %params.id, "actualizar_persona: inicio");
         let mut entidad = self
             .repositorio
             .buscar_por_id(params.id)
-            .await
-            .inspect_err(
-                |e| tracing::error!(error = %e, "actualizar_persona: fallo del repositorio"),
-            )?
-            .ok_or_else(|| {
-                let err = ErrorPersona::NoEncontrado;
-                tracing::warn!(error = %err, "actualizar_persona: rechazado");
-                err
-            })?;
+            .await?
+            .ok_or(ErrorPersona::NoEncontrado)?;
         let middle_name = params.middle_name.map(MiddleName::new).transpose()?;
         let tags: Vec<Tag> = params
             .tags
             .into_iter()
             .map(Tag::new)
             .collect::<Result<Vec<_>, _>>()?;
-        entidad
-            .actualizar(PropsPersona {
-                name: params.name,
-                middle_name,
-                tags,
-            })
-            .inspect_err(|e| tracing::warn!(error = %e, "actualizar_persona: rechazado"))?;
-        self.repositorio.guardar(&entidad).await.inspect_err(
-            |e| tracing::error!(error = %e, "actualizar_persona: fallo del repositorio"),
-        )?;
+        entidad.actualizar(PropsPersona {
+            name: params.name,
+            middle_name,
+            tags,
+        })?;
+        self.repositorio.guardar(&entidad).await?;
         Ok(entidad)
     }
 }
@@ -542,25 +532,18 @@ pub struct BorrarPersonaImpl {
 
 #[async_trait]
 impl BorrarPersona for BorrarPersonaImpl {
+    #[tracing::instrument(name = "borrar_persona", skip_all, fields(id = %params.id), err(level = "warn"))]
     async fn ejecutar(&self, params: ParamsBorrarPersona) -> Result<(), ErrorPersona> {
-        tracing::info!(id = %params.id, "borrar_persona: inicio");
         let mut entidad = self
             .repositorio
             .buscar_por_id(params.id)
-            .await
-            .inspect_err(|e| tracing::error!(error = %e, "borrar_persona: fallo del repositorio"))?
-            .ok_or_else(|| {
-                let err = ErrorPersona::NoEncontrado;
-                tracing::warn!(error = %err, "borrar_persona: rechazado");
-                err
-            })?;
+            .await?
+            .ok_or(ErrorPersona::NoEncontrado)?;
         let ahora = chrono::Utc::now();
         entidad.borrado = true;
         entidad.borrado_en = Some(ahora);
         entidad.actualizado_en = ahora;
-        self.repositorio.guardar(&entidad).await.inspect_err(
-            |e| tracing::error!(error = %e, "borrar_persona: fallo del repositorio"),
-        )?;
+        self.repositorio.guardar(&entidad).await?;
         Ok(())
     }
 }
@@ -656,8 +639,8 @@ pub struct CrearPersonaImpl {
 
 #[async_trait]
 impl CrearPersona for CrearPersonaImpl {
+    #[tracing::instrument(name = "crear_persona", skip_all, err(level = "warn"))]
     async fn ejecutar(&self, params: ParamsCrearPersona) -> Result<Persona, ErrorPersona> {
-        tracing::info!("crear_persona: inicio");
         let middle_name = params.middle_name.map(MiddleName::new).transpose()?;
         let tags: Vec<Tag> = params
             .tags
@@ -668,13 +651,8 @@ impl CrearPersona for CrearPersonaImpl {
             name: params.name,
             middle_name,
             tags,
-        })
-        .inspect_err(|e| tracing::warn!(error = %e, "crear_persona: rechazado"))?;
-        self.repositorio
-            .guardar(&entidad)
-            .await
-            .inspect_err(|e| tracing::error!(error = %e, "crear_persona: fallo del repositorio"))?;
-        tracing::info!(id = %entidad.id, "crear_persona: fin");
+        })?;
+        self.repositorio.guardar(&entidad).await?;
         Ok(entidad)
     }
 }
@@ -826,19 +804,14 @@ pub struct ListarPersonasImpl {
 
 #[async_trait]
 impl ListarPersonas for ListarPersonasImpl {
+    #[tracing::instrument(name = "listar_personas", skip_all, err(level = "warn"))]
     async fn ejecutar(
         &self,
         params: ParamsListarPersonas,
     ) -> Result<Pagina<Persona>, ErrorPersona> {
-        tracing::info!(
-            limite = params.pagina.limite(),
-            desplazamiento = params.pagina.desplazamiento(),
-            "listar_personas: inicio"
-        );
         self.repositorio
             .buscar_todos(params.pagina)
             .await
-            .inspect_err(|e| tracing::error!(error = %e, "listar_personas: fallo del repositorio"))
             .map_err(ErrorPersona::from)
     }
 }
@@ -954,20 +927,12 @@ pub struct ObtenerPersonaImpl {
 
 #[async_trait]
 impl ObtenerPersona for ObtenerPersonaImpl {
+    #[tracing::instrument(name = "obtener_persona", skip_all, fields(id = %params.id), err(level = "warn"))]
     async fn ejecutar(&self, params: ParamsObtenerPersona) -> Result<Persona, ErrorPersona> {
-        tracing::info!(id = %params.id, "obtener_persona: inicio");
-        let resultado = self
-            .repositorio
+        self.repositorio
             .buscar_por_id(params.id)
-            .await
-            .inspect_err(
-                |e| tracing::error!(error = %e, "obtener_persona: fallo del repositorio"),
-            )?;
-        resultado.ok_or_else(|| {
-            let err = ErrorPersona::NoEncontrado;
-            tracing::warn!(error = %err, "obtener_persona: rechazado");
-            err
-        })
+            .await?
+            .ok_or(ErrorPersona::NoEncontrado)
     }
 }
 
@@ -2398,27 +2363,18 @@ pub struct ObtenerSaludoImpl {
 
 #[async_trait]
 impl ObtenerSaludo for ObtenerSaludoImpl {
+    // El span da nombre a los logs de lo que llama y registra el error que devuelve; `skip_all`:
+    // el nombre es un dato del usuario y no va al log.
+    #[tracing::instrument(name = "obtener_saludo", skip_all, err(level = "warn"))]
     async fn ejecutar(&self, params: ParamsObtenerSaludo) -> Result<Saludo, ErrorSaludo> {
-        tracing::info!(nombre = %params.nombre, "obtener_saludo: inicio");
-
         if params.nombre.trim().is_empty() {
-            let err = ErrorSaludo::Validacion("nombre_vacio".into());
-            tracing::warn!(error = %err, "obtener_saludo: rechazado");
-            return Err(err);
+            return Err(ErrorSaludo::Validacion("nombre_vacio".into()));
         }
 
-        let resultado = match self
-            .repositorio
-            .buscar_por_nombre(&params.nombre)
-            .await
-            .inspect_err(|e| tracing::error!(error = %e, "obtener_saludo: fallo del repositorio"))?
-        {
-            Some(saludo) => saludo,
-            None => Saludo::new(&params.nombre)?,
-        };
-
-        tracing::info!("obtener_saludo: fin");
-        Ok(resultado)
+        match self.repositorio.buscar_por_nombre(&params.nombre).await? {
+            Some(saludo) => Ok(saludo),
+            None => Saludo::new(&params.nombre),
+        }
     }
 }
 

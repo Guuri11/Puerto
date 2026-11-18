@@ -203,9 +203,10 @@ CRUD; `puerto generar web <Nombre>` las escribe solas.
 - **Los errores son códigos legibles por máquina** (`producto.no_encontrado`,
   `producto.validacion.titulo_vacio`), nunca frases. La API los devuelve en
   `RespuestaError.codigo`; los fallos de validación del dominio son `422`.
-- **Logs:** `tracing::info!` / `warn!` / `error!` directamente, sin logger inyectado. Un caso de uso
-  registra `<caso_de_uso>: inicio` y `<caso_de_uso>: fin`; nunca registres el contenido de una
-  petición (son datos del usuario).
+- **Logs:** `tracing` directamente, sin logger inyectado. El `ejecutar` de un caso de uso lleva
+  `#[tracing::instrument(name = "<caso_de_uso>", skip_all, err(level = "warn"))]`: el span da
+  nombre a los logs de lo que llama y registra su error una vez. No escribas líneas de inicio ni de
+  fin, y nunca registres el contenido de una petición (son datos del usuario: por eso `skip_all`).
 - **Nada de `unwrap()` / `expect()`** fuera de los tests.
 - **API primero:** cambia `rutas.rs` + `dto.rs` (el contrato) antes que la implementación.
 
@@ -367,18 +368,13 @@ pub struct ActualizarCaseImpl {
 
 #[async_trait]
 impl ActualizarCase for ActualizarCaseImpl {
+    #[tracing::instrument(name = "actualizar_case", skip_all, fields(id = %params.id), err(level = "warn"))]
     async fn ejecutar(&self, params: ParamsActualizarCase) -> Result<Case, ErrorCase> {
-        tracing::info!(id = %params.id, "actualizar_case: inicio");
         let mut entidad = self
             .repositorio
             .buscar_por_id(params.id)
-            .await
-            .inspect_err(|e| tracing::error!(error = %e, "actualizar_case: fallo del repositorio"))?
-            .ok_or_else(|| {
-                let err = ErrorCase::NoEncontrado;
-                tracing::warn!(error = %err, "actualizar_case: rechazado");
-                err
-            })?;
+            .await?
+            .ok_or(ErrorCase::NoEncontrado)?;
         let status = params.status.parse::<Status>()?;
         let middle_name = params.middle_name.map(MiddleName::new).transpose()?;
         let labels: Vec<Label> = params
@@ -386,26 +382,22 @@ impl ActualizarCase for ActualizarCaseImpl {
             .into_iter()
             .map(Label::new)
             .collect::<Result<Vec<_>, _>>()?;
-        entidad
-            .actualizar(PropsCase {
-                title: params.title,
-                summary: params.summary,
-                views: params.views,
-                ratio: params.ratio,
-                urgent: params.urgent,
-                due_at: params.due_at,
-                opened_at: params.opened_at,
-                tags: params.tags,
-                scores: params.scores,
-                meta: params.meta,
-                status,
-                middle_name,
-                labels,
-            })
-            .inspect_err(|e| tracing::warn!(error = %e, "actualizar_case: rechazado"))?;
-        self.repositorio.guardar(&entidad).await.inspect_err(
-            |e| tracing::error!(error = %e, "actualizar_case: fallo del repositorio"),
-        )?;
+        entidad.actualizar(PropsCase {
+            title: params.title,
+            summary: params.summary,
+            views: params.views,
+            ratio: params.ratio,
+            urgent: params.urgent,
+            due_at: params.due_at,
+            opened_at: params.opened_at,
+            tags: params.tags,
+            scores: params.scores,
+            meta: params.meta,
+            status,
+            middle_name,
+            labels,
+        })?;
+        self.repositorio.guardar(&entidad).await?;
         Ok(entidad)
     }
 }
@@ -592,26 +584,18 @@ pub struct BorrarCaseImpl {
 
 #[async_trait]
 impl BorrarCase for BorrarCaseImpl {
+    #[tracing::instrument(name = "borrar_case", skip_all, fields(id = %params.id), err(level = "warn"))]
     async fn ejecutar(&self, params: ParamsBorrarCase) -> Result<(), ErrorCase> {
-        tracing::info!(id = %params.id, "borrar_case: inicio");
         let mut entidad = self
             .repositorio
             .buscar_por_id(params.id)
-            .await
-            .inspect_err(|e| tracing::error!(error = %e, "borrar_case: fallo del repositorio"))?
-            .ok_or_else(|| {
-                let err = ErrorCase::NoEncontrado;
-                tracing::warn!(error = %err, "borrar_case: rechazado");
-                err
-            })?;
+            .await?
+            .ok_or(ErrorCase::NoEncontrado)?;
         let ahora = chrono::Utc::now();
         entidad.borrado = true;
         entidad.borrado_en = Some(ahora);
         entidad.actualizado_en = ahora;
-        self.repositorio
-            .guardar(&entidad)
-            .await
-            .inspect_err(|e| tracing::error!(error = %e, "borrar_case: fallo del repositorio"))?;
+        self.repositorio.guardar(&entidad).await?;
         Ok(())
     }
 }
@@ -718,8 +702,8 @@ pub struct CrearCaseImpl {
 
 #[async_trait]
 impl CrearCase for CrearCaseImpl {
+    #[tracing::instrument(name = "crear_case", skip_all, err(level = "warn"))]
     async fn ejecutar(&self, params: ParamsCrearCase) -> Result<Case, ErrorCase> {
-        tracing::info!("crear_case: inicio");
         let status = params.status.parse::<Status>()?;
         let middle_name = params.middle_name.map(MiddleName::new).transpose()?;
         let labels: Vec<Label> = params
@@ -741,13 +725,8 @@ impl CrearCase for CrearCaseImpl {
             status,
             middle_name,
             labels,
-        })
-        .inspect_err(|e| tracing::warn!(error = %e, "crear_case: rechazado"))?;
-        self.repositorio
-            .guardar(&entidad)
-            .await
-            .inspect_err(|e| tracing::error!(error = %e, "crear_case: fallo del repositorio"))?;
-        tracing::info!(id = %entidad.id, "crear_case: fin");
+        })?;
+        self.repositorio.guardar(&entidad).await?;
         Ok(entidad)
     }
 }
@@ -965,16 +944,11 @@ pub struct ListarCasesImpl {
 
 #[async_trait]
 impl ListarCases for ListarCasesImpl {
+    #[tracing::instrument(name = "listar_cases", skip_all, err(level = "warn"))]
     async fn ejecutar(&self, params: ParamsListarCases) -> Result<Pagina<Case>, ErrorCase> {
-        tracing::info!(
-            limite = params.pagina.limite(),
-            desplazamiento = params.pagina.desplazamiento(),
-            "listar_cases: inicio"
-        );
         self.repositorio
             .buscar_todos(params.pagina)
             .await
-            .inspect_err(|e| tracing::error!(error = %e, "listar_cases: fallo del repositorio"))
             .map_err(ErrorCase::from)
     }
 }
@@ -1088,18 +1062,12 @@ pub struct ObtenerCaseImpl {
 
 #[async_trait]
 impl ObtenerCase for ObtenerCaseImpl {
+    #[tracing::instrument(name = "obtener_case", skip_all, fields(id = %params.id), err(level = "warn"))]
     async fn ejecutar(&self, params: ParamsObtenerCase) -> Result<Case, ErrorCase> {
-        tracing::info!(id = %params.id, "obtener_case: inicio");
-        let resultado = self
-            .repositorio
+        self.repositorio
             .buscar_por_id(params.id)
-            .await
-            .inspect_err(|e| tracing::error!(error = %e, "obtener_case: fallo del repositorio"))?;
-        resultado.ok_or_else(|| {
-            let err = ErrorCase::NoEncontrado;
-            tracing::warn!(error = %err, "obtener_case: rechazado");
-            err
-        })
+            .await?
+            .ok_or(ErrorCase::NoEncontrado)
     }
 }
 
@@ -2789,27 +2757,18 @@ pub struct ObtenerSaludoImpl {
 
 #[async_trait]
 impl ObtenerSaludo for ObtenerSaludoImpl {
+    // El span da nombre a los logs de lo que llama y registra el error que devuelve; `skip_all`:
+    // el nombre es un dato del usuario y no va al log.
+    #[tracing::instrument(name = "obtener_saludo", skip_all, err(level = "warn"))]
     async fn ejecutar(&self, params: ParamsObtenerSaludo) -> Result<Saludo, ErrorSaludo> {
-        tracing::info!(nombre = %params.nombre, "obtener_saludo: inicio");
-
         if params.nombre.trim().is_empty() {
-            let err = ErrorSaludo::Validacion("nombre_vacio".into());
-            tracing::warn!(error = %err, "obtener_saludo: rechazado");
-            return Err(err);
+            return Err(ErrorSaludo::Validacion("nombre_vacio".into()));
         }
 
-        let resultado = match self
-            .repositorio
-            .buscar_por_nombre(&params.nombre)
-            .await
-            .inspect_err(|e| tracing::error!(error = %e, "obtener_saludo: fallo del repositorio"))?
-        {
-            Some(saludo) => saludo,
-            None => Saludo::new(&params.nombre)?,
-        };
-
-        tracing::info!("obtener_saludo: fin");
-        Ok(resultado)
+        match self.repositorio.buscar_por_nombre(&params.nombre).await? {
+            Some(saludo) => Ok(saludo),
+            None => Saludo::new(&params.nombre),
+        }
     }
 }
 
