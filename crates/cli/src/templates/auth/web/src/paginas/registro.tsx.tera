@@ -38,7 +38,7 @@ export function PaginaRegistro() {
   };
 
   return (
-    <section className="mx-auto max-w-sm space-y-4">
+    <section className="space-y-4">
       <h1 className="text-2xl font-bold">Crea una cuenta</h1>
       {problema?.campo === null && <AlertaError error={fallo} mensaje={problema.texto} />}
       <form
@@ -86,7 +86,7 @@ export function PaginaRegistro() {
           />
         </label>
         <ErrorCampo problema={problema} campo="nombre" />
-        <button type="submit" className="btn btn-primary" disabled={guardando}>
+        <button type="submit" className="btn btn-primary w-full" disabled={guardando}>
           Crear cuenta
         </button>
       </form>

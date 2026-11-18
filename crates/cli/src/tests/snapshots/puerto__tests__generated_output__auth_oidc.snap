@@ -254,6 +254,8 @@ producción.
   API: su `403` llega a la alerta como `auth.prohibido`.
 - `generado/rutas.tsx` envuelve cada pantalla no pública en `<RequiereAuth>`, que inicia sesión y
   vuelve. Envuelve igual tus propias rutas en `rutas.tsx`.
+- `/auth/callback` va en `main.tsx`, dentro de `MarcoAcceso` (sin el menú de la app); `/perfil`
+  (`paginas/perfil.tsx`) muestra lo que responde `GET /me` y se abre desde el menú de usuario.
 - El token se queda en memoria y `oidc-client-ts` se queda en `auth/pasarela-oidc.ts`
   (`make web/lint` lo comprueba): al recargar se vuelve a iniciar sesión con la sesión del
   proveedor. `web/.env` guarda `VITE_AUTH_*`.
@@ -7125,6 +7127,111 @@ export class ErrorAuth extends Error {
   }
 }
 
+=== web/src/compartido/ui/avatar.test.tsx ===
+import { describe, expect, test } from "bun:test";
+import { MadreUsuarioActual } from "../../pruebas/auth";
+import { iniciales } from "./avatar";
+
+describe("iniciales", () => {
+  test("debería tomar la primera letra de las dos primeras palabras del nombre", () => {
+    // Preparar
+    const usuario = MadreUsuarioActual.aleatorio({ nombre: "ana lozano pérez" });
+
+    // Actuar
+    const resultado = iniciales(usuario);
+
+    // Comprobar
+    expect(resultado).toBe("AL");
+  });
+
+  test("debería tomar la primera letra del email cuando no hay nombre", () => {
+    // Preparar
+    const usuario = MadreUsuarioActual.aleatorio({ nombre: null, email: "bea@example.com" });
+
+    // Actuar
+    const resultado = iniciales(usuario);
+
+    // Comprobar
+    expect(resultado).toBe("B");
+  });
+
+  test("debería mostrar una interrogación cuando no hay nombre ni email", () => {
+    // Preparar
+    const usuario = MadreUsuarioActual.aleatorio({ nombre: "  ", email: null });
+
+    // Actuar
+    const resultado = iniciales(usuario);
+
+    // Comprobar
+    expect(resultado).toBe("?");
+  });
+});
+
+=== web/src/compartido/ui/avatar.tsx ===
+import type { UsuarioActual } from "../../auth/sesion";
+
+/** Las iniciales de quien tiene la sesión: de las dos primeras palabras de su nombre o, si no, de su email. */
+export function iniciales(usuario: UsuarioActual): string {
+  const palabras = (usuario.nombre ?? "").trim().split(/\s+/).filter(Boolean);
+  const letras =
+    palabras.length > 0
+      ? palabras.slice(0, 2).map((palabra) => palabra[0])
+      : [usuario.email?.[0] ?? "?"];
+  return letras.join("").toUpperCase();
+}
+
+/** Un círculo con las iniciales de `usuario`; `className` le da el tamaño (`w-8 text-xs` por defecto). */
+export function Avatar({
+  usuario,
+  className = "w-8 text-xs",
+}: {
+  usuario: UsuarioActual;
+  className?: string;
+}) {
+  return (
+    <span
+      className={`inline-flex aspect-square items-center justify-center rounded-full bg-primary font-semibold text-primary-content ${className}`}
+      aria-hidden="true"
+    >
+      {iniciales(usuario)}
+    </span>
+  );
+}
+
+=== web/src/compartido/ui/marco-acceso.tsx ===
+import type { ReactNode } from "react";
+import { Link } from "wouter";
+import { marca } from "../../marca/marca";
+
+/**
+ * El marco de las páginas de acceso (iniciar sesión, crear una cuenta): sin el menú de la app, la
+ * marca a un lado y el formulario en una tarjeta al otro. En una pantalla estrecha, solo la tarjeta.
+ */
+export function MarcoAcceso({ children }: { children: ReactNode }) {
+  return (
+    <div className="grid min-h-screen bg-base-200 lg:grid-cols-2">
+      <aside className="hidden flex-col justify-between bg-primary p-12 text-primary-content lg:flex">
+        <Link href="/" className="flex items-center gap-3 text-2xl font-bold">
+          <img src={marca.logo} alt="" className="size-12" />
+          {marca.nombre}
+        </Link>
+        <p className="max-w-md text-4xl font-semibold leading-tight">{marca.eslogan}</p>
+      </aside>
+      <main className="flex items-center justify-center p-4">
+        <div className="card w-full max-w-sm bg-base-100 shadow-xl">
+          <div className="card-body gap-4">
+            <Link href="/" className="flex items-center gap-2 text-lg font-bold lg:hidden">
+              <img src={marca.logo} alt="" className="size-8" />
+              {marca.nombre}
+            </Link>
+            {children}
+          </div>
+        </div>
+      </main>
+    </div>
+  );
+}
+
 === web/src/compartido/ui/marco.tsx ===
 import { type ReactNode, useState } from "react";
 import { Link, useLocation } from "wouter";
@@ -7226,7 +7333,7 @@ import { renderizarPantalla } from "../../pruebas/renderizar";
 import { MenuUsuario } from "./menu-usuario";
 
 describe("MenuUsuario", () => {
-  test("debería mostrar quién tiene la sesión iniciada", async () => {
+  test("debería mostrar quién tiene la sesión iniciada y enlazar su perfil", async () => {
     // Preparar
     const usuario = MadreUsuarioActual.aleatorio({ nombre: "Ana Lozano" });
 
@@ -7235,6 +7342,8 @@ describe("MenuUsuario", () => {
 
     // Comprobar
     expect(await screen.findByText("Ana Lozano")).toBeTruthy();
+    expect(screen.getByText("AL")).toBeTruthy();
+    expect(screen.getByText("Perfil").getAttribute("href")).toBe("/perfil");
     expect(screen.getByText("Cerrar sesión")).toBeTruthy();
   });
 
@@ -7252,24 +7361,38 @@ describe("MenuUsuario", () => {
 });
 
 === web/src/compartido/ui/menu-usuario.tsx ===
+import { Link } from "wouter";
 import { useAuth } from "../../auth/auth";
+import { Avatar } from "./avatar";
 
-/** Quién tiene la sesión iniciada, y el botón para iniciarla o cerrarla. */
+/** Quién tiene la sesión iniciada, con su perfil y el botón para cerrarla; o el botón para iniciarla. */
 export function MenuUsuario() {
   const { usuario, login, logout } = useAuth();
   if (usuario === null) {
     return (
-      <button type="button" className="btn btn-ghost" onClick={() => void login()}>
+      <button type="button" className="btn btn-primary btn-sm" onClick={() => void login()}>
         Iniciar sesión
       </button>
     );
   }
   return (
-    <div className="flex items-center gap-2">
-      <span className="text-sm">{usuario.nombre ?? usuario.email ?? "Con sesión"}</span>
-      <button type="button" className="btn btn-ghost btn-sm" onClick={() => void logout()}>
-        Cerrar sesión
+    <div className="dropdown dropdown-end">
+      <button type="button" className="btn btn-ghost gap-2 px-2">
+        <Avatar usuario={usuario} />
+        <span className="hidden text-sm sm:inline">
+          {usuario.nombre ?? usuario.email ?? "Con sesión"}
+        </span>
       </button>
+      <ul className="dropdown-content menu z-30 mt-2 w-52 rounded-box bg-base-100 p-2 shadow-lg">
+        <li>
+          <Link href="/perfil">Perfil</Link>
+        </li>
+        <li>
+          <button type="button" onClick={() => void logout()}>
+            Cerrar sesión
+          </button>
+        </li>
+      </ul>
     </div>
   );
 }
@@ -8596,9 +8719,9 @@ import { ContenedorListaPedido } from "../contextos/pedido/contenedores/lista-pe
 import { ContenedorDetalleProducto } from "../contextos/producto/contenedores/detalle-producto";
 import { ContenedorFormularioProducto } from "../contextos/producto/contenedores/formulario-producto";
 import { ContenedorListaProducto } from "../contextos/producto/contenedores/lista-producto";
-import { PaginaAuthCallback } from "../paginas/auth-callback";
 import { PaginaNoEncontrada } from "../paginas/no-encontrada";
 import { PaginaPanel } from "../paginas/panel";
+import { PaginaPerfil } from "../paginas/perfil";
 import { rutasPropias } from "../rutas";
 
 export const entradasMenu: EntradaMenu[] = [
@@ -8622,8 +8745,10 @@ export function RutasApp() {
           <PaginaPanel entradas={entradasMenu} />
         </RequiereAuth>
       </Route>
-      <Route path="/auth/callback">
-        <PaginaAuthCallback />
+      <Route path="/perfil">
+        <RequiereAuth>
+          <PaginaPerfil />
+        </RequiereAuth>
       </Route>
       {rutasPropias}
       <Route path="/pedidos">
@@ -8680,12 +8805,15 @@ import "./index.css";
 
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
+import { Route, Switch } from "wouter";
 import { ProveedorAuth } from "./auth/auth";
 import { Marco } from "./compartido/ui/marco";
+import { MarcoAcceso } from "./compartido/ui/marco-acceso";
 import { ProveedorDependencias } from "./dependencias";
 import { crearDependencias } from "./generado/dependencias";
 import { entradasMenu, RutasApp } from "./generado/rutas";
 import { marca } from "./marca/marca";
+import { PaginaAuthCallback } from "./paginas/auth-callback";
 
 const raiz = document.getElementById("root");
 if (raiz === null) {
@@ -8697,9 +8825,18 @@ createRoot(raiz).render(
   <StrictMode>
     <ProveedorDependencias valor={crearDependencias()}>
       <ProveedorAuth>
-        <Marco menu={entradasMenu}>
-          <RutasApp />
-        </Marco>
+        <Switch>
+          <Route path="/auth/callback">
+            <MarcoAcceso>
+              <PaginaAuthCallback />
+            </MarcoAcceso>
+          </Route>
+          <Route>
+            <Marco menu={entradasMenu}>
+              <RutasApp />
+            </Marco>
+          </Route>
+        </Switch>
       </ProveedorAuth>
     </ProveedorDependencias>
   </StrictMode>,
@@ -8765,6 +8902,108 @@ export function PaginaAuthCallback() {
     <span className="loading loading-spinner" />
   ) : (
     <AlertaError error={fallo} />
+  );
+}
+
+=== web/src/paginas/perfil.test.tsx ===
+import { describe, expect, test } from "bun:test";
+import { fireEvent, screen, waitFor } from "@testing-library/react";
+import { MadreUsuarioActual, pasarelaAuthFalsa } from "../pruebas/auth";
+import { renderizarPantalla } from "../pruebas/renderizar";
+import { PaginaPerfil } from "./perfil";
+
+describe("PaginaPerfil", () => {
+  test("debería mostrar el nombre, el email y los roles de quien tiene la sesión", async () => {
+    // Preparar
+    const usuario = MadreUsuarioActual.aleatorio({
+      nombre: "Ana Lozano",
+      email: "ana@example.com",
+      roles: ["admin"],
+    });
+
+    // Actuar
+    renderizarPantalla(<PaginaPerfil />, {}, "/perfil", { usuario });
+
+    // Comprobar
+    expect(await screen.findByText("Ana Lozano")).toBeTruthy();
+    expect(screen.getByText("ana@example.com")).toBeTruthy();
+    expect(screen.getByText("admin")).toBeTruthy();
+  });
+
+  test("debería decirlo cuando quien tiene la sesión no tiene roles", async () => {
+    // Preparar
+    const usuario = MadreUsuarioActual.aleatorio({ roles: [] });
+
+    // Actuar
+    renderizarPantalla(<PaginaPerfil />, {}, "/perfil", { usuario });
+
+    // Comprobar
+    expect(await screen.findByText("Sin roles")).toBeTruthy();
+  });
+
+  test("debería cerrar la sesión cuando se pulsa Cerrar sesión", async () => {
+    // Preparar
+    const usuario = MadreUsuarioActual.aleatorio();
+    let cerrada = false;
+    const auth = {
+      ...pasarelaAuthFalsa({ usuario }),
+      logout: async () => {
+        cerrada = true;
+      },
+    };
+    renderizarPantalla(<PaginaPerfil />, { auth }, "/perfil");
+
+    // Actuar
+    fireEvent.click(await screen.findByText("Cerrar sesión"));
+
+    // Comprobar
+    await waitFor(() => expect(cerrada).toBe(true));
+  });
+});
+
+=== web/src/paginas/perfil.tsx ===
+import { useAuth } from "../auth/auth";
+import { Avatar } from "../compartido/ui/avatar";
+
+/** Quién tiene la sesión iniciada, tal como lo responde la API (`GET /me`), y el botón para cerrarla. */
+export function PaginaPerfil() {
+  const { usuario, logout } = useAuth();
+  // `RequiereAuth` la protege: sin sesión, nunca llega a pintarse.
+  if (usuario === null) return null;
+  return (
+    <section className="mx-auto max-w-xl space-y-6">
+      <h1 className="text-3xl font-bold">Perfil</h1>
+      <div className="card bg-base-100 shadow-sm">
+        <div className="card-body gap-6">
+          <div className="flex items-center gap-4">
+            <Avatar usuario={usuario} className="w-16 text-xl" />
+            <div>
+              <p className="text-xl font-semibold">{usuario.nombre ?? "Sin nombre"}</p>
+              <p className="text-base-content/70">{usuario.email ?? "Sin email"}</p>
+            </div>
+          </div>
+          <div className="space-y-2">
+            <h2 className="font-semibold">Roles</h2>
+            {usuario.roles.length === 0 ? (
+              <p className="text-base-content/70">Sin roles</p>
+            ) : (
+              <ul className="flex flex-wrap gap-2">
+                {usuario.roles.map((rol) => (
+                  <li key={rol} className="badge badge-outline">
+                    {rol}
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+          <div className="card-actions justify-end">
+            <button type="button" className="btn" onClick={() => void logout()}>
+              Cerrar sesión
+            </button>
+          </div>
+        </div>
+      </div>
+    </section>
   );
 }
 

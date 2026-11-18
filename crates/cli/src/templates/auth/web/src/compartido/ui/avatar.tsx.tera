@@ -1,0 +1,29 @@
+import type { UsuarioActual } from "../../auth/sesion";
+
+/** Las iniciales de quien tiene la sesión: de las dos primeras palabras de su nombre o, si no, de su email. */
+export function iniciales(usuario: UsuarioActual): string {
+  const palabras = (usuario.nombre ?? "").trim().split(/\s+/).filter(Boolean);
+  const letras =
+    palabras.length > 0
+      ? palabras.slice(0, 2).map((palabra) => palabra[0])
+      : [usuario.email?.[0] ?? "?"];
+  return letras.join("").toUpperCase();
+}
+
+/** Un círculo con las iniciales de `usuario`; `className` le da el tamaño (`w-8 text-xs` por defecto). */
+export function Avatar({
+  usuario,
+  className = "w-8 text-xs",
+}: {
+  usuario: UsuarioActual;
+  className?: string;
+}) {
+  return (
+    <span
+      className={`inline-flex aspect-square items-center justify-center rounded-full bg-primary font-semibold text-primary-content ${className}`}
+      aria-hidden="true"
+    >
+      {iniciales(usuario)}
+    </span>
+  );
+}

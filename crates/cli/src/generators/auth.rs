@@ -466,9 +466,10 @@ fn add_makefile_targets(
 }
 
 /// The frontend's auth files of both modes, written once under `web/` (their templates mirror the
-/// paths). The last three replace the template's own: the app runs inside `AuthProvider`, the
-/// layout shows the user, and `renderScreen` signs a caller in.
-const WEB_FILES: [&str; 11] = [
+/// paths). The last three replace the template's own: the app runs inside `ProveedorAuth` (with
+/// the access pages outside the app's frame), the frame shows the user, and `renderizarPantalla`
+/// signs a caller in.
+const WEB_FILES: [&str; 16] = [
     "src/auth/sesion.ts",
     "src/auth/middleware-bearer.ts",
     "src/auth/middleware-bearer.test.ts",
@@ -476,6 +477,11 @@ const WEB_FILES: [&str; 11] = [
     "src/auth/auth.test.tsx",
     "src/compartido/ui/menu-usuario.tsx",
     "src/compartido/ui/menu-usuario.test.tsx",
+    "src/compartido/ui/avatar.tsx",
+    "src/compartido/ui/avatar.test.tsx",
+    "src/compartido/ui/marco-acceso.tsx",
+    "src/paginas/perfil.tsx",
+    "src/paginas/perfil.test.tsx",
     "src/pruebas/auth.ts",
     "src/main.tsx",
     "src/compartido/ui/marco.tsx",
@@ -666,6 +672,8 @@ pub const AGENTS_AUTH_WEB_SECTION: &str = r#"### Auth en `web/`
   API: su `403` llega a la alerta como `auth.prohibido`.
 - `generado/rutas.tsx` envuelve cada pantalla no pública en `<RequiereAuth>`, que inicia sesión y
   vuelve. Envuelve igual tus propias rutas en `rutas.tsx`.
+- `/auth/callback` va en `main.tsx`, dentro de `MarcoAcceso` (sin el menú de la app); `/perfil`
+  (`paginas/perfil.tsx`) muestra lo que responde `GET /me` y se abre desde el menú de usuario.
 - El token se queda en memoria y `oidc-client-ts` se queda en `auth/pasarela-oidc.ts`
   (`make web/lint` lo comprueba): al recargar se vuelve a iniciar sesión con la sesión del
   proveedor. `web/.env` guarda `VITE_AUTH_*`.
@@ -686,7 +694,10 @@ pub const AGENTS_AUTH_LOCAL_WEB_SECTION: &str = r#"### Auth en `web/`
   igual tus propias rutas en `rutas.tsx`.
 - `/login` y `/registro` (`paginas/`) inician sesión a través de `Cuentas` (`auth/cuentas.ts`);
   `auth/mensajes.ts` convierte los códigos de la API en lo que dicen los formularios, bajo el campo
-  al que se refieren. Estos ficheros son tuyos.
+  al que se refieren. `main.tsx` las monta dentro de `MarcoAcceso` (la marca a un lado, el
+  formulario en una tarjeta), sin el menú de la app. Estos ficheros son tuyos.
+- `/perfil` (`paginas/perfil.tsx`) muestra lo que responde `GET /me` y se abre desde el menú de
+  usuario.
 - El token de sesión está en `localStorage` (`auth/pasarela-local.ts`): al recargar se sigue con la
   sesión iniciada; «Cerrar sesión» la revoca en la API.
 - Los tests de pantalla inician sesión con alguien que tiene todos los roles

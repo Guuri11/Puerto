@@ -4,7 +4,7 @@ import { Route, Switch } from "wouter";
 {% if entities -%}
 import { contarTotal, PAGINA_DE_UNO } from "../api/http";
 {% endif -%}
-{% if guarded -%}
+{% if guarded or auth -%}
 import { RequiereAuth } from "../auth/auth";
 {% endif -%}
 import type { EntradaMenu } from "../compartido/ui/marco";
@@ -13,16 +13,10 @@ import { ContenedorDetalle{{ e.pascal }} } from "../contextos/{{ e.kebab }}/cont
 import { ContenedorFormulario{{ e.pascal }} } from "../contextos/{{ e.kebab }}/contenedores/formulario-{{ e.kebab }}";
 import { ContenedorLista{{ e.pascal }} } from "../contextos/{{ e.kebab }}/contenedores/lista-{{ e.kebab }}";
 {% endfor -%}
-{% if auth and not local -%}
-import { PaginaAuthCallback } from "../paginas/auth-callback";
-{% endif -%}
-{% if local -%}
-import { PaginaLogin } from "../paginas/login";
-{% endif -%}
 import { PaginaNoEncontrada } from "../paginas/no-encontrada";
 import { PaginaPanel } from "../paginas/panel";
-{% if local -%}
-import { PaginaRegistro } from "../paginas/registro";
+{% if auth -%}
+import { PaginaPerfil } from "../paginas/perfil";
 {% endif -%}
 import { rutasPropias } from "../rutas";
 
@@ -54,16 +48,11 @@ export function RutasApp() {
         <PaginaPanel entradas={entradasMenu} />
 {%- endif %}
       </Route>
-{%- if local %}
-      <Route path="/login">
-        <PaginaLogin />
-      </Route>
-      <Route path="/registro">
-        <PaginaRegistro />
-      </Route>
-{%- elif auth %}
-      <Route path="/auth/callback">
-        <PaginaAuthCallback />
+{%- if auth %}
+      <Route path="/perfil">
+        <RequiereAuth>
+          <PaginaPerfil />
+        </RequiereAuth>
       </Route>
 {%- endif %}
       {rutasPropias}

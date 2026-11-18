@@ -532,6 +532,11 @@ fn new_with_auth_and_web_writes_the_gateway_the_provider_and_the_callback() {
         "web/src/paginas/auth-callback.test.tsx",
         "web/src/compartido/ui/menu-usuario.tsx",
         "web/src/compartido/ui/menu-usuario.test.tsx",
+        "web/src/compartido/ui/marco-acceso.tsx",
+        "web/src/compartido/ui/avatar.tsx",
+        "web/src/compartido/ui/avatar.test.tsx",
+        "web/src/paginas/perfil.tsx",
+        "web/src/paginas/perfil.test.tsx",
         "web/src/pruebas/auth.ts",
     ] {
         assert!(output.join(file).exists(), "{file} missing");
@@ -552,11 +557,16 @@ fn new_with_auth_and_web_writes_the_gateway_the_provider_and_the_callback() {
         dependencies.contains("pasarelaOidc(ajustesOidcDeEntorno())"),
         "{dependencies}"
     );
-    let routes = read(&output, "web/src/generado/rutas.tsx");
+    // The callback has its route outside the app's frame, in the access one.
+    let main = read(&output, "web/src/main.tsx");
     assert!(
-        routes.contains("<Route path=\"/auth/callback\">"),
-        "{routes}"
+        main.contains(
+            "<Route path=\"/auth/callback\">\n            <MarcoAcceso>\n              <PaginaAuthCallback />"
+        ),
+        "{main}"
     );
+    let routes = read(&output, "web/src/generado/rutas.tsx");
+    assert!(!routes.contains("/auth/callback"), "{routes}");
     assert!(output.join("web/src/generado/roles.ts").exists());
     cleanup(&dir);
 }
@@ -890,6 +900,8 @@ fn new_with_local_auth_and_web_signs_in_with_a_password_not_a_provider() {
         "web/src/auth/pasarela-local.test.ts",
         "web/src/paginas/login.tsx",
         "web/src/paginas/registro.tsx",
+        "web/src/paginas/perfil.tsx",
+        "web/src/compartido/ui/marco-acceso.tsx",
         "web/src/auth/auth.tsx",
         "web/src/auth/middleware-bearer.ts",
     ] {
@@ -903,10 +915,26 @@ fn new_with_local_auth_and_web_signs_in_with_a_password_not_a_provider() {
     let dependencies = read(&output, "web/src/generado/dependencias.ts");
     assert!(dependencies.contains("cuentas: Cuentas;"), "{dependencies}");
     assert!(dependencies.contains("pasarelaLocal()"), "{dependencies}");
+    // Signing in and up happen outside the app's frame, in the access one.
+    let main = read(&output, "web/src/main.tsx");
+    for page in [
+        "login\">\n            <MarcoAcceso>\n              <PaginaLogin />",
+        "registro\">\n            <MarcoAcceso>\n              <PaginaRegistro />",
+    ] {
+        assert!(main.contains(&format!("<Route path=\"/{page}")), "{main}");
+    }
+    assert!(!main.contains("/auth/callback"), "{main}");
     let routes = read(&output, "web/src/generado/rutas.tsx");
-    assert!(routes.contains("<Route path=\"/login\">"), "{routes}");
-    assert!(routes.contains("<Route path=\"/registro\">"), "{routes}");
-    assert!(!routes.contains("/auth/callback"), "{routes}");
+    assert!(
+        !routes.contains("/login") && !routes.contains("/registro"),
+        "{routes}"
+    );
+    assert!(
+        routes.contains(
+            "<Route path=\"/perfil\">\n        <RequiereAuth>\n          <PaginaPerfil />"
+        ),
+        "{routes}"
+    );
     assert!(read(&output, "web/src/pruebas/auth.ts").contains("export function cuentasFalsas"));
     assert!(
         read(&output, "AGENTS.md").contains(crate::generators::auth::AGENTS_AUTH_LOCAL_WEB_SECTION)

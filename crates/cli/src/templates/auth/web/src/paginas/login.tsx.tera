@@ -40,7 +40,7 @@ export function PaginaLogin() {
   };
 
   return (
-    <section className="mx-auto max-w-sm space-y-4">
+    <section className="space-y-4">
       <h1 className="text-2xl font-bold">Iniciar sesión</h1>
       {problema?.campo === null && <AlertaError error={fallo} mensaje={problema.texto} />}
       <form
@@ -76,7 +76,7 @@ export function PaginaLogin() {
           />
         </label>
         <ErrorCampo problema={problema} campo="contrasena" />
-        <button type="submit" className="btn btn-primary" disabled={guardando}>
+        <button type="submit" className="btn btn-primary w-full" disabled={guardando}>
           Iniciar sesión
         </button>
       </form>

@@ -5,7 +5,7 @@ import { renderizarPantalla } from "../../pruebas/renderizar";
 import { MenuUsuario } from "./menu-usuario";
 
 describe("MenuUsuario", () => {
-  test("debería mostrar quién tiene la sesión iniciada", async () => {
+  test("debería mostrar quién tiene la sesión iniciada y enlazar su perfil", async () => {
     // Preparar
     const usuario = MadreUsuarioActual.aleatorio({ nombre: "Ana Lozano" });
 
@@ -14,6 +14,8 @@ describe("MenuUsuario", () => {
 
     // Comprobar
     expect(await screen.findByText("Ana Lozano")).toBeTruthy();
+    expect(screen.getByText("AL")).toBeTruthy();
+    expect(screen.getByText("Perfil").getAttribute("href")).toBe("/perfil");
     expect(screen.getByText("Cerrar sesión")).toBeTruthy();
   });
 
