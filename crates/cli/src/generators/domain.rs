@@ -399,14 +399,15 @@ pub fn run_generate_domain_with(
 
     if config.entity.iter().any(|e| e.name == pascal) {
         return Err(format!(
-            "{pascal} is already in puerto.toml. Use `puerto generar caso-de-uso` to add a use case."
+            "{pascal} ya está en puerto.toml. Usa `puerto generar caso-de-uso` para añadirle un caso \
+             de uso."
         )
         .into());
     }
 
     let fields = shape.mark_private(&pascal, cli_fields.to_vec(), &[])?;
     if !config.project.has_auth() && fields.iter().any(|f| f.private) {
-        return Err("--privado needs an auth project (`puerto nuevo --auth oidc`)".into());
+        return Err("--privado necesita un proyecto con auth (`puerto nuevo --auth oidc`)".into());
     }
     let shared_vos = config.value_object.clone();
 
@@ -436,17 +437,22 @@ pub fn run_generate_domain_with(
 
     let dir = layout::crate_dir(&snake, Layer::Domain);
     if has_local_vo {
-        println!("✓ {dir}/ — model, errors, value objects, repository port, Madre{pascal}");
+        println!("✓ {dir}/: modelo, errores, objetos valor, puerto del repositorio, Madre{pascal}");
     } else if has_vo {
-        println!("✓ {dir}/ — model, errors (shared VOs), repository port, Madre{pascal}");
+        println!(
+            "✓ {dir}/: modelo, errores (objetos valor compartidos), puerto del repositorio, Madre{pascal}"
+        );
     } else {
-        println!("✓ {dir}/ — model, errors, repository port, Madre{pascal}");
+        println!("✓ {dir}/: modelo, errores, puerto del repositorio, Madre{pascal}");
     }
     if !shared_vos.is_empty() {
-        println!("✓ {}/ — shared value objects + errors", layout::NUCLEO_DIR);
+        println!(
+            "✓ {}/: objetos valor compartidos y sus errores",
+            layout::NUCLEO_DIR
+        );
     }
-    println!("✓ puerto.toml         — {pascal} registered");
+    println!("✓ puerto.toml: {pascal} registrada");
     println!();
-    println!("  Next: puerto generar aplicacion {pascal}");
+    println!("  Siguiente: puerto generar aplicacion {pascal}");
     Ok(())
 }

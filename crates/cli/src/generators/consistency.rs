@@ -91,7 +91,7 @@ pub fn missing_consumer_files(base: &Path, config: &PuertoConfig) -> Vec<String>
         .filter(|c| !base.join(layout::consumer(&c.name)).exists())
         .map(|c| {
             format!(
-                "consumer '{0}': {1} is missing — remove its [[consumidor]] block and run \
+                "consumidor '{0}': falta {1}; quita su bloque [[consumidor]] y ejecuta \
                  `puerto generar consumidor {0} --tras {2}`",
                 c.name,
                 layout::consumer(&c.name),
@@ -119,8 +119,8 @@ pub fn missing_mail_files(base: &Path, config: &PuertoConfig) -> Vec<String> {
         for path in paths {
             if !base.join(&path).exists() {
                 lines.push(format!(
-                    "mail '{name}': {path} is missing — restore it, or remove the [[correo]] block \
-                     and the mail's other files, then run `puerto generar correo {name}`"
+                    "correo '{name}': falta {path}; recupéralo, o quita el bloque [[correo]] y los \
+                     demás ficheros del correo, y ejecuta `puerto generar correo {name}`"
                 ));
             }
         }
@@ -186,7 +186,7 @@ pub fn drift_lines(drifts: &[EntityDrift]) -> Vec<String> {
         .map(|d| {
             let paths: Vec<String> = d.missing.iter().map(|p| p.display().to_string()).collect();
             format!(
-                "entity '{}' is in puerto.toml but its code is missing ({}). Run `{}`",
+                "la entidad '{}' está en puerto.toml, pero falta su código ({}). Ejecuta `{}`",
                 d.entity,
                 paths.join(", "),
                 suggested_command(&d.entity, &d.missing)
@@ -289,24 +289,24 @@ pub fn auth_drift(base: &Path, config: &PuertoConfig) -> Vec<String> {
             let public = entity.public.contains(uc);
             if public && handler.takes_bearer_auth() {
                 lines.push(format!(
-                    "entity '{}': '{uc}' is public in puerto.toml, but its handler in {path} \
-                     takes BearerAuth",
+                    "entidad '{}': '{uc}' es público en puerto.toml, pero su handler en {path} \
+                     recibe BearerAuth",
                     entity.name
                 ));
             }
             if !public && !handler.takes_bearer_auth() {
                 lines.push(format!(
-                    "entity '{}': '{uc}' is protected in puerto.toml, but its handler in {path} \
-                     takes no BearerAuth — anyone can call it. Add `auth: BearerAuth`, or list it \
-                     in `public`",
+                    "entidad '{}': '{uc}' está protegido en puerto.toml, pero su handler en {path} \
+                     no recibe BearerAuth: cualquiera puede llamarlo. Añade `auth: BearerAuth`, o \
+                     ponlo en `publicos`",
                     entity.name
                 ));
             }
             for role in entity.roles.get(uc).into_iter().flatten() {
                 if !handler.requires_role(role) {
                     lines.push(format!(
-                        "entity '{}': '{uc}' requires the role '{role}' in puerto.toml, but its \
-                         handler in {path} has no #[requiere_rol(\"{role}\")]",
+                        "entidad '{}': '{uc}' exige el rol '{role}' en puerto.toml, pero su \
+                         handler en {path} no tiene #[requiere_rol(\"{role}\")]",
                         entity.name
                     ));
                 }
@@ -510,11 +510,11 @@ mod tests {
 
         assert_eq!(lines.len(), 3, "{lines:?}");
         assert!(
-            lines[0].contains("'crear_product' is public in puerto.toml"),
+            lines[0].contains("'crear_product' es público en puerto.toml"),
             "{lines:?}"
         );
         assert!(
-            lines[1].contains("'listar_products' is protected"),
+            lines[1].contains("'listar_products' está protegido"),
             "{lines:?}"
         );
         assert!(

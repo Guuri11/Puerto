@@ -173,7 +173,7 @@ fn use_case_rerun_is_refused_and_leaves_files_untouched() {
     let result = scaffold::run_use_case("Producto", "borrar_producto", &dir);
 
     assert!(result.is_err(), "a second run must be refused");
-    assert!(result.unwrap_err().to_string().contains("already exists"));
+    assert!(result.unwrap_err().to_string().contains("ya existe"));
     assert_eq!(
         fs::read_to_string(&impl_path).unwrap(),
         "// implemented by hand\n"
@@ -230,7 +230,7 @@ fn use_case_refuses_to_replace_a_scaffolded_crud_use_case() {
     let result = scaffold::run_use_case("Producto", "crear_producto", &output);
 
     assert!(result.is_err());
-    assert!(result.unwrap_err().to_string().contains("already exists"));
+    assert!(result.unwrap_err().to_string().contains("ya existe"));
     assert_eq!(fs::read_to_string(&impl_path).unwrap(), before);
 
     cleanup(&dir);

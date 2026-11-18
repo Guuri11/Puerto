@@ -44,17 +44,18 @@ pub fn run(
         format!("Repositorio{pascal}EnMemoria")
     };
     let dir = layout::context_dir(&snake);
-    println!("✓ {dir}/dominio/         — model, errors, repository port, Madre{pascal}");
-    println!("✓ {dir}/aplicacion/      — create, get, list, update, delete");
-    println!("✓ {dir}/infraestructura/ — {repo_name}");
-    println!("✓ {dir}/rest/            — routes, dto, responses, errors");
+    println!("✓ {dir}/dominio/         modelo, errores, puerto del repositorio, Madre{pascal}");
+    println!("✓ {dir}/aplicacion/      crear, obtener, listar, actualizar, borrar");
+    println!("✓ {dir}/infraestructura/ {repo_name}");
+    println!("✓ {dir}/rest/            rutas, dto, respuestas, errores");
     if web {
-        println!("✓ web/ — list, detail and form screens, HTTP repository");
+        println!("✓ web/                   pantallas de lista, detalle y formulario");
     }
-    println!("✓ Done. Zero manual wiring.");
+    println!("✓ Hecho. Sin cablear nada a mano.");
     if web {
         println!(
-            "\nThe API changed. Next: make web/sync   (exports the spec, regenerates the web types)"
+            "\nLa API cambió. Siguiente: make web/sync   (exporta la especificación y regenera los \
+             tipos de la web)"
         );
     }
 
@@ -79,7 +80,8 @@ impl ScaffoldAccess {
         for arg in roles {
             let (use_case, role) = arg.split_once('=').ok_or_else(|| {
                 format!(
-                    "invalid --rol '{arg}'. Expected <use_case>=<role>, e.g. borrar_product=admin"
+                    "--rol inválido '{arg}'. El formato es <caso_de_uso>=<rol>, p. ej. \
+                     borrar_producto=admin"
                 )
             })?;
             let roles = access.roles.entry(use_case.to_string()).or_default();
@@ -139,7 +141,7 @@ impl EntityShape {
             .find(|name| !fields.iter().any(|f| &&f.name == name))
         {
             return Err(format!(
-                "{pascal}: privado: '{unknown}' is not a field of {pascal}"
+                "{pascal}: privado: '{unknown}' no es un campo de {pascal}"
             ));
         }
         Ok(fields
@@ -226,7 +228,8 @@ fn record_access(
     if !config.project.has_auth() {
         if !access.is_empty() {
             return Err(
-                "--publico and --rol need an auth project (`puerto nuevo --auth oidc`)".into(),
+                "--publico y --rol necesitan un proyecto con auth (`puerto nuevo --auth oidc`)"
+                    .into(),
             );
         }
         return Ok(());
@@ -327,8 +330,8 @@ pub fn run_scaffold_with_options(
     let fields = shape.mark_private(&pascal, fields, &declared)?;
     if !config.project.has_auth() && fields.iter().any(|f| f.private) {
         return Err(
-            "--privado needs an auth project (`puerto nuevo --auth oidc`): with no session, \
-             nobody would ever see the field"
+            "--privado necesita un proyecto con auth (`puerto nuevo --auth oidc`): sin sesión, \
+             nadie vería nunca el campo"
                 .into(),
         );
     }
@@ -393,11 +396,12 @@ pub fn run_value_object(
 
     let config = crate::puerto_toml::read(base)?;
     if config.value_object.iter().any(|vo| vo.name == name) {
-        return Err(
-            format!("shared value object '{name}' is already declared in puerto.toml").into(),
-        );
+        return Err(format!(
+            "el objeto valor compartido '{name}' ya está declarado en puerto.toml"
+        )
+        .into());
     }
     crate::puerto_toml::add_value_object(base, name, inner_type)?;
-    println!("✓ Shared value object '{name}' added to puerto.toml");
+    println!("✓ Objeto valor compartido '{name}' añadido a puerto.toml");
     Ok(())
 }

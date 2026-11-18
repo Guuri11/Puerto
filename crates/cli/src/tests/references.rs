@@ -34,7 +34,7 @@ fn should_parse_a_unique_reference_as_one_to_one() {
 fn should_reject_a_unique_optional_reference() {
     let err = puerto_toml::parse_field_arg("reviewer_id:ref:opt:Cliente!").unwrap_err();
 
-    assert!(err.contains("unique"), "{err}");
+    assert!(err.contains("único"), "{err}");
 }
 
 #[test]
@@ -138,7 +138,7 @@ fn should_refuse_a_reference_to_the_entity_itself() {
     .unwrap_err();
 
     assert!(
-        err.contains("'parent_id'") && err.contains("itself"),
+        err.contains("'parent_id'") && err.contains("su propia entidad"),
         "{err}"
     );
 }
@@ -192,7 +192,7 @@ fn should_refuse_a_reference_that_is_also_a_value_object() {
     .unwrap_err();
 
     assert!(
-        err.contains("'cliente_id'") && err.contains("value_object"),
+        err.contains("'cliente_id'") && err.contains("objeto_valor"),
         "{err}"
     );
 }

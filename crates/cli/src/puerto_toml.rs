@@ -189,7 +189,7 @@ pub fn parse_field_arg(s: &str) -> Result<Field, String> {
 
     if parts.len() == 1 || parts[0].is_empty() {
         return Err(format!(
-            "invalid field argument '{}'. Expected format: name:Type (e.g. title:String)",
+            "argumento de campo inválido '{}'. El formato es nombre:Tipo (p. ej. titulo:String)",
             s
         ));
     }
@@ -216,7 +216,7 @@ fn parse_field_shape(s: &str, name: String, parts: &[&str], unique: bool) -> Res
             let ft = expand_type(parts[1]);
             if ft.is_empty() {
                 return Err(format!(
-                    "invalid field argument '{}'. Type cannot be empty",
+                    "argumento de campo inválido '{}'. Falta el tipo",
                     s
                 ));
             }
@@ -251,7 +251,7 @@ fn parse_field_shape(s: &str, name: String, parts: &[&str], unique: bool) -> Res
                     ..Default::default()
                 }),
                 _ => Err(format!(
-                    "invalid field argument '{}'. '{}' is not a known keyword (opt, vec) or a PascalCase VO name",
+                    "argumento de campo inválido '{}'. '{}' no es una palabra conocida (opt, vec) ni el nombre de un objeto valor en PascalCase",
                     s, second
                 )),
             }
@@ -263,7 +263,7 @@ fn parse_field_shape(s: &str, name: String, parts: &[&str], unique: bool) -> Res
 
             if !is_pascal_case(vo_name) {
                 return Err(format!(
-                    "invalid value object name '{}'. Must be PascalCase (starts with uppercase, alphanumeric)",
+                    "nombre de objeto valor inválido '{}'. Va en PascalCase (una mayúscula seguida de letras y dígitos)",
                     vo_name
                 ));
             }
@@ -286,7 +286,7 @@ fn parse_field_shape(s: &str, name: String, parts: &[&str], unique: bool) -> Res
                 "enum" => {
                     if rest.is_empty() {
                         return Err(format!(
-                            "invalid field argument '{}'. Enum variants cannot be empty",
+                            "argumento de campo inválido '{}'. Faltan las variantes del enum",
                             s
                         ));
                     }
@@ -295,7 +295,7 @@ fn parse_field_shape(s: &str, name: String, parts: &[&str], unique: bool) -> Res
                     for variant in &variants {
                         if !is_pascal_case(variant) {
                             return Err(format!(
-                                "invalid enum variant '{}'. Must be PascalCase (starts with uppercase, alphanumeric)",
+                                "variante de enum inválida '{}'. Va en PascalCase (una mayúscula seguida de letras y dígitos)",
                                 variant
                             ));
                         }
@@ -311,13 +311,13 @@ fn parse_field_shape(s: &str, name: String, parts: &[&str], unique: bool) -> Res
                     })
                 }
                 _ => Err(format!(
-                    "invalid field argument '{}'. Modifier '{}' is not recognized (use: opt, vec, enum)",
+                    "argumento de campo inválido '{}'. El modificador '{}' no existe (valen: opt, vec, enum)",
                     s, modifier
                 )),
             }
         }
         _ => Err(format!(
-            "invalid field argument '{}'. Too many colon-separated parts (expected 2–4)",
+            "argumento de campo inválido '{}'. Demasiadas partes separadas por dos puntos (van de 2 a 4)",
             s
         )),
     }
@@ -455,7 +455,7 @@ pub fn add_event(
         .entity
         .iter_mut()
         .find(|e| e.name == entity_name)
-        .ok_or_else(|| format!("entity '{entity_name}' not found in puerto.toml"))?;
+        .ok_or_else(|| format!("la entidad '{entity_name}' no está en puerto.toml"))?;
     if !entity.events.iter().any(|e| e == event) {
         entity.events.push(event.to_string());
         write(base, &config)?;
@@ -467,7 +467,7 @@ pub fn add_event(
 pub fn add_consumer(base: &Path, consumer: Consumer) -> Result<(), Box<dyn std::error::Error>> {
     let mut config = read(base)?;
     if config.consumer.iter().any(|c| c.name == consumer.name) {
-        return Err(format!("consumer '{}' is already declared", consumer.name).into());
+        return Err(format!("el consumidor '{}' ya está declarado", consumer.name).into());
     }
     config.consumer.push(consumer);
     write(base, &config)
@@ -476,7 +476,7 @@ pub fn add_consumer(base: &Path, consumer: Consumer) -> Result<(), Box<dyn std::
 pub fn add_mail(base: &Path, mail: Mail) -> Result<(), Box<dyn std::error::Error>> {
     let mut config = read(base)?;
     if config.mail.iter().any(|m| m.name == mail.name) {
-        return Err(format!("mail '{}' is already declared", mail.name).into());
+        return Err(format!("el correo '{}' ya está declarado", mail.name).into());
     }
     config.mail.push(mail);
     write(base, &config)
@@ -493,7 +493,7 @@ pub fn add_use_case(
         .entity
         .iter_mut()
         .find(|e| e.name == entity_name)
-        .ok_or_else(|| format!("entity '{entity_name}' not found in puerto.toml"))?;
+        .ok_or_else(|| format!("la entidad '{entity_name}' no está en puerto.toml"))?;
     if !entity.use_cases.contains(&action.to_string()) {
         entity.use_cases.push(action.to_string());
         write(base, &config)?;

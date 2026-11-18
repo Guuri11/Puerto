@@ -47,7 +47,7 @@ pub fn run_validate(cwd: &Path) -> Result<(), Box<dyn std::error::Error>> {
     let mut warnings: Vec<String> = vec![];
 
     if config.project.name.is_empty() {
-        errors.push("proyecto.nombre is empty".into());
+        errors.push("proyecto.nombre está vacío".into());
     }
     if let Some(transport) = &config.project.events {
         if let Err(e) = crate::validation::validate_events_transport(transport) {
@@ -55,7 +55,7 @@ pub fn run_validate(cwd: &Path) -> Result<(), Box<dyn std::error::Error>> {
         }
         // The outbox is written in the same transaction as the entity (ADR-0018 § 1).
         if !config.project.db {
-            errors.push("proyecto.eventos needs proyecto.db = true: events are written to an outbox table in the entity's transaction".into());
+            errors.push("proyecto.eventos necesita proyecto.db = true: los eventos se escriben en una tabla outbox, en la transacción de la entidad".into());
         }
     }
 
@@ -65,58 +65,55 @@ pub fn run_validate(cwd: &Path) -> Result<(), Box<dyn std::error::Error>> {
         }
         // Local sessions and credentials are rows (ADR-0021 § 2).
         if mode == "local" && !config.project.db {
-            errors.push("proyecto.auth = \"local\" needs proyecto.db = true: sessions and credentials are database rows".into());
+            errors.push("proyecto.auth = \"local\" necesita proyecto.db = true: las sesiones y las credenciales son filas de la base de datos".into());
         }
     }
 
     let mut seen_entities: Vec<String> = vec![];
     for entity in &config.entity {
         if let Err(e) = crate::validation::validate_entity_name(&entity.name) {
-            errors.push(format!("entity '{}': {}", entity.name, e));
+            errors.push(format!("entidad '{}': {}", entity.name, e));
         }
 
         if config.project.has_auth() {
             if let Err(e) = crate::validation::validate_auth_entity_name(&entity.name) {
-                errors.push(format!("entity '{}': {}", entity.name, e));
+                errors.push(format!("entidad '{}': {}", entity.name, e));
             }
         } else if !entity.public.is_empty() || !entity.roles.is_empty() {
             errors.push(format!(
-                "entity '{}': declares publicos or roles, but proyecto.auth is not set",
+                "entidad '{}': declara publicos o roles, pero proyecto.auth no está puesto",
                 entity.name
             ));
         }
         for e in crate::validation::validate_entity_access(entity) {
-            errors.push(format!("entity '{}': {e}", entity.name));
+            errors.push(format!("entidad '{}': {e}", entity.name));
         }
         for e in crate::validation::validate_entity_shape(entity) {
-            errors.push(format!("entity '{}': {e}", entity.name));
+            errors.push(format!("entidad '{}': {e}", entity.name));
         }
         if !config.project.has_auth() {
             for f in entity.fields.iter().filter(|f| f.private) {
                 errors.push(format!(
-                    "entity '{}': field '{}' is privado, but proyecto.auth is not set — with no \
-                     session, nobody would ever see it",
+                    "entidad '{}': el campo '{}' es privado, pero proyecto.auth no está puesto: sin \
+                     sesión, nadie lo vería nunca",
                     entity.name, f.name
                 ));
             }
         }
 
         if seen_entities.contains(&entity.name) {
-            errors.push(format!("duplicate entity name '{}'", entity.name));
+            errors.push(format!("la entidad '{}' está repetida", entity.name));
         }
         seen_entities.push(entity.name.clone());
 
         if entity.use_cases.is_empty() {
-            warnings.push(format!(
-                "entity '{}': has no use cases defined",
-                entity.name
-            ));
+            warnings.push(format!("entidad '{}': no tiene casos de uso", entity.name));
         }
 
         for uc in &entity.use_cases {
             if crate::validation::validate_use_case_name(uc).is_err() {
                 errors.push(format!(
-                    "entity '{}': use case '{}' is not valid snake_case",
+                    "entidad '{}': el caso de uso '{}' no es snake_case válido",
                     entity.name, uc
                 ));
             }
@@ -125,7 +122,7 @@ pub fn run_validate(cwd: &Path) -> Result<(), Box<dyn std::error::Error>> {
         let snake = crate::generators::naming::pascal_to_snake(&entity.name);
         if !entity.events.is_empty() && !config.project.has_events() {
             errors.push(format!(
-                "entity '{}': declares eventos, but proyecto.eventos is not set",
+                "entidad '{}': declara eventos, pero proyecto.eventos no está puesto",
                 entity.name
             ));
         }
@@ -133,29 +130,32 @@ pub fn run_validate(cwd: &Path) -> Result<(), Box<dyn std::error::Error>> {
             if let Err(e) =
                 crate::validation::validate_event_name(&snake, event, &entity.events[..i])
             {
-                errors.push(format!("entity '{}': {e}", entity.name));
+                errors.push(format!("entidad '{}': {e}", entity.name));
             }
         }
 
         let mut seen_fields: Vec<String> = vec![];
         for field in &entity.fields {
             if field.name.is_empty() {
-                errors.push(format!("entity '{}': field has empty name", entity.name));
+                errors.push(format!(
+                    "entidad '{}': un campo tiene el nombre vacío",
+                    entity.name
+                ));
                 continue;
             }
 
             if let Err(e) = crate::validation::validate_field_name(&field.name) {
-                errors.push(format!("entity '{}': {}", entity.name, e));
+                errors.push(format!("entidad '{}': {}", entity.name, e));
             }
             if config.project.db {
                 if let Err(e) = crate::validation::validate_sql_field_name(&field.name) {
-                    errors.push(format!("entity '{}': {}", entity.name, e));
+                    errors.push(format!("entidad '{}': {}", entity.name, e));
                 }
             }
 
             if seen_fields.contains(&field.name) {
                 errors.push(format!(
-                    "entity '{}': duplicate field name '{}'",
+                    "entidad '{}': el campo '{}' está repetido",
                     entity.name, field.name
                 ));
             }
@@ -163,14 +163,14 @@ pub fn run_validate(cwd: &Path) -> Result<(), Box<dyn std::error::Error>> {
 
             if let Err(e) = resolve_type(&field.field_type) {
                 errors.push(format!(
-                    "entity '{}': field '{}' has {}",
+                    "entidad '{}': el campo '{}' tiene {}",
                     entity.name, field.name, e
                 ));
             }
 
             if field.field_type.starts_with("Option<") && field.unique {
                 warnings.push(format!(
-                    "entity '{}': field '{}' is Option<> and marked unique — nullable unique fields may not be intended",
+                    "entidad '{}': el campo '{}' es Option<> y único: un único que admite nulos quizá no sea lo que buscas",
                     entity.name, field.name
                 ));
             }
@@ -180,27 +180,27 @@ pub fn run_validate(cwd: &Path) -> Result<(), Box<dyn std::error::Error>> {
                     crate::validation::validate_vo_name(field.value_object.as_deref().unwrap())
                 {
                     errors.push(format!(
-                        "entity '{}': field '{}': {}",
+                        "entidad '{}': campo '{}': {}",
                         entity.name, field.name, e
                     ));
                 }
                 if is_enum_vo(field) {
                     if field.field_type != "String" {
                         errors.push(format!(
-                            "entity '{}': field '{}' has enum objeto_valor but type '{}' is not String",
+                            "entidad '{}': el campo '{}' tiene un objeto_valor enum, pero su tipo '{}' no es String",
                             entity.name, field.name, field.field_type
                         ));
                     }
                     if field.enum_variants.is_none() {
                         errors.push(format!(
-                            "entity '{}': field '{}' has enum clase_objeto_valor but no variantes",
+                            "entidad '{}': el campo '{}' tiene clase_objeto_valor enum, pero no tiene variantes",
                             entity.name, field.name
                         ));
                     }
                     if let Some(variants) = &field.enum_variants {
                         if let Err(e) = crate::validation::validate_enum_variants(variants) {
                             errors.push(format!(
-                                "entity '{}': field '{}': {}",
+                                "entidad '{}': campo '{}': {}",
                                 entity.name, field.name, e
                             ));
                         }
@@ -208,26 +208,26 @@ pub fn run_validate(cwd: &Path) -> Result<(), Box<dyn std::error::Error>> {
                 } else {
                     if !VO_ALLOWED_INNER_TYPES.contains(&field.field_type.as_str()) {
                         errors.push(format!(
-                            "entity '{}': field '{}' has objeto_valor but inner type '{}' is not a allowed (allowed: {})",
+                            "entidad '{}': el campo '{}' tiene objeto_valor, pero el tipo interno '{}' no vale (valen: {})",
                             entity.name, field.name, field.field_type, VO_ALLOWED_INNER_TYPES.join(", ")
                         ));
                     }
                     if !vo_inner_type_is_valid(&field.field_type) {
                         errors.push(format!(
-                            "entity '{}': field '{}' has objeto_valor with invalid composed inner type '{}'",
+                            "entidad '{}': el campo '{}' tiene objeto_valor con un tipo interno compuesto inválido '{}'",
                             entity.name, field.name, field.field_type
                         ));
                     }
                     if field.enum_variants.is_some() {
                         errors.push(format!(
-                            "entity '{}': field '{}' has variantes but clase_objeto_valor is not 'enum'",
+                            "entidad '{}': el campo '{}' tiene variantes, pero clase_objeto_valor no es 'enum'",
                             entity.name, field.name
                         ));
                     }
                 }
                 if field.unique && (is_option_vo(field) || is_vec_vo(field)) {
                     errors.push(format!(
-                        "entity '{}': field '{}' is an Option/Vec value object and cannot be marked unique",
+                        "entidad '{}': el campo '{}' es un objeto valor Option/Vec y no puede ser único",
                         entity.name, field.name
                     ));
                 }
@@ -236,35 +236,35 @@ pub fn run_validate(cwd: &Path) -> Result<(), Box<dyn std::error::Error>> {
 
         for field in entity.fields.iter().filter(|f| f.references.is_some()) {
             if let Err(e) = crate::validation::validate_field(field) {
-                errors.push(format!("entity '{}': {e}", entity.name));
+                errors.push(format!("entidad '{}': {e}", entity.name));
             }
         }
         for e in crate::validation::validate_references(&entity.name, &entity.fields, &config) {
-            errors.push(format!("entity '{}': {e}", entity.name));
+            errors.push(format!("entidad '{}': {e}", entity.name));
         }
 
         // One `value_objects.rs` is written per entity — two fields cannot define the same VO
         // with different inner types.
         for e in crate::validation::validate_vo_coherence(&entity.fields, &config.value_object) {
-            errors.push(format!("entity '{}': {}", entity.name, e));
+            errors.push(format!("entidad '{}': {}", entity.name, e));
         }
     }
 
     let mut seen_shared_vo_names: Vec<String> = vec![];
     for vo_def in &config.value_object {
         if let Err(e) = crate::validation::validate_vo_name(&vo_def.name) {
-            errors.push(format!("shared objeto_valor '{}': {}", vo_def.name, e));
+            errors.push(format!("objeto_valor compartido '{}': {}", vo_def.name, e));
         }
         if seen_shared_vo_names.contains(&vo_def.name) {
             errors.push(format!(
-                "duplicate shared objeto_valor name '{}'",
+                "el objeto_valor compartido '{}' está repetido",
                 vo_def.name
             ));
         }
         seen_shared_vo_names.push(vo_def.name.clone());
         if !SHARED_VO_ALLOWED_INNER_TYPES.contains(&vo_def.inner_type.as_str()) {
             errors.push(format!(
-                "shared objeto_valor '{}': inner type '{}' is not allowed (allowed: {})",
+                "objeto_valor compartido '{}': el tipo interno '{}' no vale (valen: {})",
                 vo_def.name,
                 vo_def.inner_type,
                 SHARED_VO_ALLOWED_INNER_TYPES.join(", ")
@@ -278,27 +278,27 @@ pub fn run_validate(cwd: &Path) -> Result<(), Box<dyn std::error::Error>> {
     for consumer in &config.consumer {
         if !config.project.has_events() {
             errors.push(format!(
-                "consumer '{}': declared, but proyecto.eventos is not set",
+                "consumidor '{}': declarado, pero proyecto.eventos no está puesto",
                 consumer.name
             ));
         }
         if let Err(e) = crate::validation::validate_consumer_name(&consumer.name) {
-            errors.push(format!("consumer '{}': {e}", consumer.name));
+            errors.push(format!("consumidor '{}': {e}", consumer.name));
         }
         if seen_consumers.contains(&consumer.name.as_str()) {
-            errors.push(format!("duplicate consumer name '{}'", consumer.name));
+            errors.push(format!("el consumidor '{}' está repetido", consumer.name));
         }
         seen_consumers.push(&consumer.name);
         if consumer.events.is_empty() {
             errors.push(format!(
-                "consumer '{}': subscribes to no event",
+                "consumidor '{}': no se suscribe a ningún evento",
                 consumer.name
             ));
         }
         for event in &consumer.events {
             if !declared.iter().any(|d| d.event_type == *event) {
                 errors.push(format!(
-                    "consumer '{}': event '{event}' is not declared by any entity",
+                    "consumidor '{}': ninguna entidad declara el evento '{event}'",
                     consumer.name
                 ));
             }
@@ -312,10 +312,10 @@ pub fn run_validate(cwd: &Path) -> Result<(), Box<dyn std::error::Error>> {
     let mut seen_mails: Vec<&str> = vec![];
     for mail in &config.mail {
         if let Err(e) = crate::validation::validate_mail_name(&mail.name) {
-            errors.push(format!("mail '{}': {e}", mail.name));
+            errors.push(format!("correo '{}': {e}", mail.name));
         }
         if seen_mails.contains(&mail.name.as_str()) {
-            errors.push(format!("duplicate mail name '{}'", mail.name));
+            errors.push(format!("el correo '{}' está repetido", mail.name));
         }
         seen_mails.push(&mail.name);
         if mail.on.is_empty() {
@@ -323,14 +323,14 @@ pub fn run_validate(cwd: &Path) -> Result<(), Box<dyn std::error::Error>> {
         }
         if !config.project.has_events() {
             errors.push(format!(
-                "mail '{}': sent on events, but proyecto.eventos is not set",
+                "correo '{}': se envía tras eventos, pero proyecto.eventos no está puesto",
                 mail.name
             ));
         }
         for event in &mail.on {
             if !declared.iter().any(|d| d.event_type == *event) {
                 errors.push(format!(
-                    "mail '{}': event '{event}' is not declared by any entity",
+                    "correo '{}': ninguna entidad declara el evento '{event}'",
                     mail.name
                 ));
             }
@@ -341,8 +341,8 @@ pub fn run_validate(cwd: &Path) -> Result<(), Box<dyn std::error::Error>> {
             .any(|c| c.name == format!("correo_{}", mail.name))
         {
             errors.push(format!(
-                "mail '{0}': the worker runs it as the consumer 'correo_{0}', which a [[consumidor]] \
-                 already uses",
+                "correo '{0}': el worker lo ejecuta como el consumidor 'correo_{0}', que ya usa un \
+                 [[consumidor]]",
                 mail.name
             ));
         }
@@ -361,8 +361,8 @@ pub fn run_validate(cwd: &Path) -> Result<(), Box<dyn std::error::Error>> {
     errors.extend(crate::generators::consistency::auth_drift(cwd, &config));
     for orphan in crate::generators::consistency::orphan_entity_dirs(cwd, &config) {
         warnings.push(format!(
-            "'contextos/{orphan}' exists but has no [[entidad]] block — Puerto commands cannot \
-             see it"
+            "'contextos/{orphan}' existe, pero no tiene bloque [[entidad]]: los comandos de Puerto \
+             no lo ven"
         ));
     }
 
@@ -376,7 +376,7 @@ pub fn run_validate(cwd: &Path) -> Result<(), Box<dyn std::error::Error>> {
     }
 
     if !errors.is_empty() {
-        eprintln!("Validation failed:");
+        eprintln!("La validación falló:");
         for e in &errors {
             eprintln!("  ✗ {e}");
         }
@@ -386,20 +386,21 @@ pub fn run_validate(cwd: &Path) -> Result<(), Box<dyn std::error::Error>> {
             }
         }
         let msg = errors.join("\n  ");
-        return Err(format!("{}\n  {} error(s) found", msg, errors.len()).into());
+        return Err(format!("{}\n  {} error(es) encontrado(s)", msg, errors.len()).into());
     }
 
     if !warnings.is_empty() {
-        eprintln!("Warnings:");
+        eprintln!("Avisos:");
         for w in &warnings {
             eprintln!("  ⚠ {w}");
         }
     }
 
     println!(
-        "✓ puerto.toml is valid — {} entit{} validated",
+        "✓ puerto.toml es válido: {} entidad{} validada{}",
         config.entity.len(),
-        if config.entity.len() == 1 { "y" } else { "ies" }
+        if config.entity.len() == 1 { "" } else { "es" },
+        if config.entity.len() == 1 { "" } else { "s" }
     );
     Ok(())
 }

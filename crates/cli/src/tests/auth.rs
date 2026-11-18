@@ -421,7 +421,7 @@ fn scaffold_refuses_access_naming_another_use_case_before_writing() {
     assert!(
         result
             .unwrap_err()
-            .contains("'listar_producto' is not one of")
+            .contains("'listar_producto' no es uno de")
     );
     assert!(!output.join("contextos/producto").exists());
     cleanup(&dir);
@@ -439,7 +439,7 @@ fn scaffold_refuses_a_role_on_a_public_route() {
     assert!(
         result
             .unwrap_err()
-            .contains("both public and requires a role")
+            .contains("es público y a la vez exige un rol")
     );
     cleanup(&dir);
 }
@@ -460,7 +460,7 @@ fn scaffold_refuses_the_user_entity_in_an_auth_project() {
         result
             .unwrap_err()
             .to_string()
-            .contains("an auth project already uses")
+            .contains("un proyecto con auth ya usa")
     );
     cleanup(&dir);
 }
@@ -471,14 +471,22 @@ fn scaffold_refuses_access_flags_outside_an_auth_project() {
 
     let result = scaffold_producto(&output, &access(&["listar_productos"], &[]));
 
-    assert!(result.unwrap_err().contains("need an auth project"));
+    assert!(
+        result
+            .unwrap_err()
+            .contains("necesitan un proyecto con auth")
+    );
     cleanup(&dir);
 }
 
 #[test]
 fn role_args_need_a_use_case_and_a_role() {
     let result = scaffold::ScaffoldAccess::from_args(&[], &["admin".into()]);
-    assert!(result.unwrap_err().contains("Expected <use_case>=<role>"));
+    assert!(
+        result
+            .unwrap_err()
+            .contains("El formato es <caso_de_uso>=<rol>")
+    );
 }
 
 #[test]

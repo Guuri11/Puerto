@@ -160,7 +160,7 @@ pub fn resolve_type(field_type: &str) -> Result<&'static TypeMapping, String> {
         .ok_or_else(|| {
             let valid: Vec<&str> = TYPE_REGISTRY.iter().map(|m| m.rust_type).collect();
             format!(
-                "unsupported field type '{}'. Supported types: {}",
+                "tipo de campo no admitido '{}'. Los admitidos: {}",
                 field_type,
                 valid.join(", ")
             )
@@ -957,7 +957,7 @@ mod tests {
     #[test]
     fn resolve_unknown_type_errors() {
         let err = resolve_type("CustomType").unwrap_err();
-        assert!(err.contains("unsupported field type 'CustomType'"));
+        assert!(err.contains("tipo de campo no admitido 'CustomType'"));
         assert!(err.contains("String"));
     }
 
@@ -1015,7 +1015,7 @@ mod tests {
             },
         ];
         let err = validate_fields(&fields).unwrap_err();
-        assert!(err.contains("unsupported field type 'UnknownType'"));
+        assert!(err.contains("tipo de campo no admitido 'UnknownType'"));
     }
 
     fn field(field_type: &str, vo: Option<&str>) -> crate::puerto_toml::Field {

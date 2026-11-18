@@ -267,7 +267,11 @@ pub(crate) fn insert_workspace_dependency(
     }
     let header = "[workspace.dependencies]\n";
     let Some(at) = src.find(header) else {
-        return Err(format!("{}: no [workspace.dependencies] table", path.display()).into());
+        return Err(format!(
+            "{}: no tiene tabla [workspace.dependencies]",
+            path.display()
+        )
+        .into());
     };
     let line = format!("{name} = {value}");
     let body = at + header.len();
@@ -390,7 +394,7 @@ pub fn apply_events_to_new_project(
     crate::validation::validate_events_transport(transport)?;
     let mut config = crate::puerto_toml::read(base)?;
     if !config.project.db {
-        return Err("--eventos needs a database: add --db".into());
+        return Err("--eventos necesita una base de datos: añade --db".into());
     }
     config.project.events = Some(transport.to_string());
     crate::puerto_toml::write(base, &config)?;
@@ -429,7 +433,10 @@ fn without_event_deliveries(sql: &str) -> Result<String, Box<dyn std::error::Err
         .and_then(|at| sql[at..].find(";\n\n").map(|i| at + i + ";\n\n".len()));
     match (start, end) {
         (Some(start), Some(end)) if start < end => Ok(format!("{}{}", &sql[..start], &sql[end..])),
-        _ => Err("the outbox migration has no `entregas_eventos` block to leave out".into()),
+        _ => Err(
+            "la migración del outbox no tiene el bloque `entregas_eventos` que hay que quitar"
+                .into(),
+        ),
     }
 }
 

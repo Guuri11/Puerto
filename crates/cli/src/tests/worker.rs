@@ -368,7 +368,7 @@ fn generate_consumer_refuses_an_existing_name() {
         &output,
     ));
 
-    assert!(err.contains("already declared"), "{err}");
+    assert!(err.contains("ya está declarad"), "{err}");
     assert_eq!(puerto_toml::read(&output).unwrap().consumer.len(), 1);
     cleanup(&dir);
 }
@@ -386,7 +386,7 @@ fn generate_consumer_never_overwrites_a_handler_on_disk() {
         &output,
     ));
 
-    assert!(err.contains("never overwritten"), "{err}");
+    assert!(err.contains("nunca se sobrescribe"), "{err}");
     assert_eq!(
         read(&output, "presentacion/worker/src/consumidores/audit.rs"),
         "// mine\n"
@@ -401,10 +401,10 @@ fn generate_consumer_refuses_names_that_would_not_compile() {
 
     for (name, expected) in [
         ("NotifyNewProducto", "snake_case"),
-        ("match", "keyword"),
-        ("bucles", "already uses"),
-        ("evento_producto", "already uses"),
-        ("snapshot_producto", "already uses"),
+        ("match", "palabra clave"),
+        ("bucles", "ya usa"),
+        ("evento_producto", "ya usa"),
+        ("snapshot_producto", "ya usa"),
     ] {
         let err = error_of(scaffold::run_generate_consumer(
             name,
@@ -513,7 +513,7 @@ fn generate_bootstrap_refuses_when_a_declared_consumer_has_no_handler() {
     let err = error_of(scaffold::run_bootstrap_command(&output, false));
 
     assert!(
-        err.contains("presentacion/worker/src/consumidores/audit.rs is missing"),
+        err.contains("falta presentacion/worker/src/consumidores/audit.rs"),
         "{err}"
     );
     cleanup(&dir);
@@ -557,7 +557,7 @@ fn validate_rejects_a_consumer_of_an_undeclared_event() {
     let err = validate_manifest("validate_consumer_event", &manifest).unwrap_err();
 
     assert!(
-        err.contains("event 'producto_sold' is not declared"),
+        err.contains("ninguna entidad declara el evento 'producto_sold'"),
         "{err}"
     );
 }
@@ -572,10 +572,16 @@ fn validate_rejects_bad_duplicate_and_empty_consumers() {
 
     let err = validate_manifest("validate_consumer_names", &manifest).unwrap_err();
 
-    assert!(err.contains("invalid consumer name 'Audit'"), "{err}");
-    assert!(err.contains("duplicate consumer name 'notify'"), "{err}");
     assert!(
-        err.contains("consumer 'notify': subscribes to no event"),
+        err.contains("nombre de consumidor inválido 'Audit'"),
+        "{err}"
+    );
+    assert!(
+        err.contains("el consumidor 'notify' está repetido"),
+        "{err}"
+    );
+    assert!(
+        err.contains("consumidor 'notify': no se suscribe a ningún evento"),
         "{err}"
     );
 }
@@ -586,7 +592,7 @@ fn validate_rejects_consumers_in_a_project_without_events() {
 
     let err = validate_manifest("validate_consumer_no_events", manifest).unwrap_err();
 
-    assert!(err.contains("proyecto.eventos is not set"), "{err}");
+    assert!(err.contains("proyecto.eventos no está puesto"), "{err}");
 }
 
 #[test]
@@ -601,7 +607,7 @@ fn validate_rejects_a_declared_consumer_whose_handler_is_missing() {
         .unwrap_or_default();
 
     assert!(
-        err.contains("presentacion/worker/src/consumidores/audit.rs is missing"),
+        err.contains("falta presentacion/worker/src/consumidores/audit.rs"),
         "{err}"
     );
     cleanup(&dir);

@@ -60,7 +60,7 @@ tipo = "FancyType"
     assert!(result.is_err());
     let err = result.unwrap_err().to_string();
     assert!(
-        err.contains("unsupported field type 'FancyType'"),
+        err.contains("tipo de campo no admitido 'FancyType'"),
         "expected type error, got: {err}"
     );
 
@@ -155,7 +155,7 @@ tipo = "i64"
     assert!(result.is_err());
     let err = result.unwrap_err().to_string();
     assert!(
-        err.contains("duplicate field name 'title'"),
+        err.contains("el campo 'title' está repetido"),
         "expected duplicate error, got: {err}"
     );
 
@@ -217,7 +217,7 @@ casos_de_uso = ["obtener_producto"]
     assert!(result.is_err());
     let err = result.unwrap_err().to_string();
     assert!(
-        err.contains("duplicate entity name 'Producto'"),
+        err.contains("la entidad 'Producto' está repetida"),
         "expected duplicate entity error, got: {err}"
     );
 
@@ -390,7 +390,7 @@ fn parse_field_arg_rejects_system_field_names() {
         let arg = format!("{name}:String");
         let result = puerto_toml::parse_field_arg(&arg);
         assert!(result.is_err(), "'{arg}' must be rejected");
-        assert!(result.unwrap_err().contains("reserved"));
+        assert!(result.unwrap_err().contains("reservado"));
     }
 }
 
@@ -398,7 +398,7 @@ fn parse_field_arg_rejects_system_field_names() {
 fn parse_field_arg_rejects_rust_keyword_field_names() {
     let result = puerto_toml::parse_field_arg("type:String");
     assert!(result.is_err());
-    assert!(result.unwrap_err().contains("Rust keyword"));
+    assert!(result.unwrap_err().contains("palabra clave de Rust"));
 }
 
 #[test]
@@ -410,7 +410,7 @@ fn parse_field_arg_rejects_leading_underscore_field_name() {
 fn parse_field_arg_rejects_duplicate_enum_variants() {
     let result = puerto_toml::parse_field_arg("status:Status:enum:Active/Active");
     assert!(result.is_err());
-    assert!(result.unwrap_err().contains("duplicate enum variant"));
+    assert!(result.unwrap_err().contains("está repetida"));
 }
 
 #[test]
@@ -437,7 +437,7 @@ tipo = "DateTime<Utc>"
 
     let result = validate::run_validate(&dir);
     assert!(result.is_err());
-    assert!(result.unwrap_err().to_string().contains("reserved"));
+    assert!(result.unwrap_err().to_string().contains("reservado"));
 
     cleanup(&dir);
 }
@@ -462,7 +462,7 @@ casos_de_uso = ["crear_error"]
 
     let result = validate::run_validate(&dir);
     assert!(result.is_err());
-    assert!(result.unwrap_err().to_string().contains("collides"));
+    assert!(result.unwrap_err().to_string().contains("choca"));
 
     cleanup(&dir);
 }
@@ -498,7 +498,10 @@ objeto_valor = "Code"
     let result = validate::run_validate(&dir);
     assert!(result.is_err());
     assert!(
-        result.unwrap_err().to_string().contains("declared twice"),
+        result
+            .unwrap_err()
+            .to_string()
+            .contains("se declara dos veces"),
         "one value_objects.rs cannot define Code as both String and i64"
     );
 
@@ -676,7 +679,11 @@ fn validate_rejects_an_unknown_auth_mode() {
         "[proyecto]\nnombre = \"my-app\"\nauth = \"auth0\"\n",
     );
 
-    assert!(result.unwrap_err().contains("unknown auth mode 'auth0'"));
+    assert!(
+        result
+            .unwrap_err()
+            .contains("modo de auth desconocido 'auth0'")
+    );
 }
 
 #[test]
@@ -686,7 +693,7 @@ fn validate_rejects_local_auth_without_a_database() {
         "[proyecto]\nnombre = \"my-app\"\nauth = \"local\"\n",
     );
 
-    assert!(result.unwrap_err().contains("needs proyecto.db = true"));
+    assert!(result.unwrap_err().contains("necesita proyecto.db = true"));
 }
 
 #[test]
@@ -706,7 +713,7 @@ publicos = ["listar_productos"]
     assert!(
         result
             .unwrap_err()
-            .contains("declares publicos or roles, but proyecto.auth is not set")
+            .contains("declara publicos o roles, pero proyecto.auth no está puesto")
     );
 }
 
@@ -724,7 +731,7 @@ casos_de_uso = ["obtener_usuario"]
 "#,
     );
 
-    assert!(result.unwrap_err().contains("an auth project already uses"));
+    assert!(result.unwrap_err().contains("un proyecto con auth ya usa"));
 }
 
 #[test]
@@ -745,7 +752,7 @@ roles = { borrar_producto = ["admin"] }
     assert!(
         result
             .unwrap_err()
-            .contains("roles: 'borrar_producto' is not one of the entity's use cases")
+            .contains("roles: 'borrar_producto' no es uno de los casos de uso de la entidad")
     );
 }
 

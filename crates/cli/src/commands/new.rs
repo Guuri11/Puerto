@@ -47,8 +47,8 @@ pub fn validate_project_name(name: &str) -> Result<(), String> {
         && chars.all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-' || c == '_');
     if !valid {
         return Err(format!(
-            "invalid project name '{name}'. Use lowercase letters, digits, '-' and '_', starting \
-             with a letter (e.g. 'my-app')"
+            "nombre de proyecto inválido '{name}'. Usa minúsculas, dígitos, '-' y '_', y empieza \
+             por una letra (p. ej. 'mi-app')"
         ));
     }
     Ok(())
@@ -80,9 +80,17 @@ pub fn new_project(
         events,
         auth,
     } = options;
-    if let Some(name) = &name {
-        validate_project_name(name)?;
-    }
+    let name = match name {
+        Some(name) => {
+            validate_project_name(&name)?;
+            name
+        }
+        // Asked here, not by cargo-generate: its prompt is in English and accepts names we reject.
+        None => dialoguer::Input::<String>::new()
+            .with_prompt("Nombre del proyecto")
+            .validate_with(|n: &String| validate_project_name(n))
+            .interact_text()?,
+    };
     if let Some(transport) = &events {
         crate::validation::validate_events_transport(transport)?;
     }
@@ -96,7 +104,7 @@ pub fn new_project(
         false
     } else if dialoguer::console::user_attended() {
         dialoguer::Confirm::new()
-            .with_prompt("Include database support (SQLx + Postgres)?")
+            .with_prompt("¿Incluir base de datos (SQLx + Postgres)?")
             .default(false)
             .interact()?
     } else {
@@ -105,14 +113,14 @@ pub fn new_project(
 
     // The outbox only works inside a database transaction (ADR-0018 § 1).
     if events.is_some() && !resolved_db {
-        return Err("--eventos needs a database: add --db".into());
+        return Err("--eventos necesita una base de datos: añade --db".into());
     }
     let resolved_events = if events.is_some() || !resolved_db {
         events
     } else if dialoguer::console::user_attended() {
-        let transports = ["none", "db", "kafka"];
+        let transports = ["ninguno", "db", "kafka"];
         let choice = dialoguer::Select::new()
-            .with_prompt("Domain events?")
+            .with_prompt("¿Eventos de dominio?")
             .items(&transports)
             .default(0)
             .interact()?;
@@ -126,17 +134,17 @@ pub fn new_project(
     } else if dialoguer::console::user_attended() {
         let mut modes = vec![(
             "oidc",
-            "oidc (Auth0, Keycloak, any OpenID Connect provider)",
+            "oidc (Auth0, Keycloak, cualquier proveedor OpenID Connect)",
         )];
         // Local accounts live in the database.
         if resolved_db {
-            modes.push(("local", "local (accounts and sessions in this database)"));
+            modes.push(("local", "local (cuentas y sesiones en esta base de datos)"));
         }
-        let labels: Vec<&str> = std::iter::once("none")
+        let labels: Vec<&str> = std::iter::once("ninguna")
             .chain(modes.iter().map(|(_, label)| *label))
             .collect();
         let choice = dialoguer::Select::new()
-            .with_prompt("Auth?")
+            .with_prompt("¿Auth?")
             .items(&labels)
             .default(0)
             .interact()?;
@@ -149,7 +157,7 @@ pub fn new_project(
         true
     } else if dialoguer::console::user_attended() {
         !dialoguer::Confirm::new()
-            .with_prompt("Include the Saludo demo entity?")
+            .with_prompt("¿Incluir la entidad de demo Saludo?")
             .default(true)
             .interact()?
     } else {
@@ -160,7 +168,7 @@ pub fn new_project(
         true
     } else if dialoguer::console::user_attended() {
         !dialoguer::Confirm::new()
-            .with_prompt("Include the web frontend (React + daisyUI, needs Bun)?")
+            .with_prompt("¿Incluir el frontend web (React + daisyUI, necesita Bun)?")
             .default(true)
             .interact()?
     } else {
@@ -171,9 +179,9 @@ pub fn new_project(
         crate::generators::auth::check_new_project(mode, resolved_db)?;
     }
 
-    eprintln!("Constructing project skeleton...");
+    eprintln!("Construyendo el esqueleto del proyecto...");
 
-    let output = generate_new_project(name, destination)?;
+    let output = generate_new_project(Some(name), destination)?;
 
     crate::generators::project::apply_base_env(&output)?;
 

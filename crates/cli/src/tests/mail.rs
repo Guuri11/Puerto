@@ -333,7 +333,7 @@ fn generate_mail_refuses_a_mail_already_declared() {
 
     let err = error_of(scaffold::run_generate_mail("welcome", &[], &output));
 
-    assert!(err.contains("already"), "{err}");
+    assert!(err.contains("ya está declarado"), "{err}");
     cleanup(&dir);
 }
 
@@ -355,8 +355,8 @@ fn generate_mail_refuses_fields_a_mail_cannot_carry() {
 
     for (field, reason) in [
         ("para:String", "para"),
-        ("name:Name:String", "value object"),
-        ("sku:String!", "unique"),
+        ("name:Name:String", "objeto valor"),
+        ("sku:String!", "único"),
         ("tags:vec:String", "Vec<String>"),
         ("meta:map", "HashMap<String, String>"),
         ("price:u32", "u32"),
@@ -373,7 +373,7 @@ fn generate_mail_refuses_fields_a_mail_cannot_carry() {
         &args(&["name:String", "name:i64"]),
         &output,
     ));
-    assert!(err.contains("duplicate"), "{err}");
+    assert!(err.contains("repetido"), "{err}");
     assert!(!read(&output, "puerto.toml").contains("[[correo]]"));
     cleanup(&dir);
 }
@@ -429,8 +429,8 @@ fn validate_rejects_invalid_and_duplicate_mail_names() {
 
     let err = error_of(validate::run_validate(&output));
 
-    assert!(err.contains("invalid mail name 'Welcome'"), "{err}");
-    assert!(err.contains("duplicate mail name 'Welcome'"), "{err}");
+    assert!(err.contains("nombre de correo inválido 'Welcome'"), "{err}");
+    assert!(err.contains("el correo 'Welcome' está repetido"), "{err}");
     cleanup(&dir);
 }
 
@@ -450,8 +450,8 @@ fn validate_rejects_a_mail_sent_on_events_in_a_project_without_events() {
 
     let err = error_of(validate::run_validate(&output));
 
-    assert!(err.contains("mail 'welcome'"), "{err}");
-    assert!(err.contains("proyecto.eventos is not set"), "{err}");
+    assert!(err.contains("correo 'welcome'"), "{err}");
+    assert!(err.contains("proyecto.eventos no está puesto"), "{err}");
     cleanup(&dir);
 }
 
@@ -476,7 +476,7 @@ fn validate_rejects_a_consumer_named_like_the_consumer_of_a_mail() {
     let err = error_of(validate::run_validate(&output));
 
     assert!(
-        err.contains("the worker runs it as the consumer 'correo_welcome'"),
+        err.contains("el worker lo ejecuta como el consumidor 'correo_welcome'"),
         "{err}"
     );
     cleanup(&dir);
@@ -491,7 +491,7 @@ fn list_shows_the_mails() {
     let report = list::list_report(&puerto_toml::read(&output).unwrap());
 
     assert!(
-        report.contains("\nMails:\n  welcome\n  receipt\n"),
+        report.contains("\nCorreos:\n  welcome\n  receipt\n"),
         "{report}"
     );
     cleanup(&dir);
@@ -799,7 +799,7 @@ fn mail_and_consumer_names_never_share_a_consumer() {
         &on(&["cliente_creado"]),
         &output,
     ));
-    assert!(err.contains("mail 'receipt'"), "{err}");
+    assert!(err.contains("correo 'receipt'"), "{err}");
     cleanup(&dir);
 }
 

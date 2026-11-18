@@ -21,7 +21,7 @@ pub(crate) static TEMPLATE_DIR: Dir = include_dir!("$CARGO_MANIFEST_DIR/template
 #[command(
     name = "puerto",
     version,
-    about = "Puerto — Rust full-stack DDD framework"
+    about = "Puerto: framework full-stack DDD en Rust"
 )]
 struct Cli {
     #[command(subcommand)]
@@ -30,209 +30,241 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Commands {
-    /// Scaffold a new Puerto project
+    /// Crea un proyecto Puerto nuevo
     #[command(name = "nuevo")]
     New {
-        /// Project name (skips interactive prompt)
-        #[arg(long = "nombre")]
+        /// Nombre del proyecto (no lo pregunta)
+        #[arg(value_name = "NOMBRE", long = "nombre")]
         name: Option<String>,
-        /// Include database support (SQLx + Postgres) (skips interactive prompt)
+        /// Con base de datos (SQLx + Postgres) (no lo pregunta)
         #[arg(long, conflicts_with = "no_db")]
         db: bool,
-        /// Explicitly skip database support without prompting
+        /// Sin base de datos, sin preguntar
         #[arg(long = "sin-db", conflicts_with = "db")]
         no_db: bool,
-        /// Skip the Saludo demo entity (creates an empty project)
+        /// Sin la entidad de demo Saludo (un proyecto vacío)
         #[arg(long = "sin-demo")]
         no_demo: bool,
-        /// Skip the web frontend (`web/`: React + daisyUI on Bun)
+        /// Sin el frontend web (`web/`: React + daisyUI sobre Bun)
         #[arg(long = "sin-web")]
         no_web: bool,
-        /// Domain events (needs --db): every write records an event in an outbox, relayed through
-        /// this transport
-        #[arg(long = "eventos", value_parser = ["db", "kafka"], conflicts_with = "no_db")]
+        /// Eventos de dominio (necesita --db): cada escritura registra un evento en un outbox, que
+        /// sale por este transporte
+        #[arg(value_name = "TRANSPORTE", long = "eventos", value_parser = ["db", "kafka"], conflicts_with = "no_db")]
         events: Option<String>,
-        /// Auth: `oidc` verifies an OpenID Connect provider's tokens (Auth0, Keycloak — Keycloak
-        /// runs in docker-compose.yml for development); `local` keeps accounts and sessions in the
-        /// project's database (needs --db)
-        #[arg(long, value_parser = ["oidc", "local"])]
+        /// Auth: `oidc` comprueba los tokens de un proveedor OpenID Connect (Auth0, Keycloak;
+        /// Keycloak corre en docker-compose.yml para desarrollo); `local` guarda las cuentas y las
+        /// sesiones en la base de datos del proyecto (necesita --db)
+        #[arg(value_name = "MODO", long, value_parser = ["oidc", "local"])]
         auth: Option<String>,
-        /// Directory where the project will be created (defaults to current directory)
-        #[arg(long = "destino")]
+        /// Directorio donde se crea el proyecto (por defecto, el actual)
+        #[arg(value_name = "DIRECTORIO", long = "destino")]
         destination: Option<PathBuf>,
     },
-    /// Code generators for existing Puerto projects
+    /// Generadores de código para un proyecto Puerto que ya existe
     #[command(name = "generar")]
     Generate {
         #[command(subcommand)]
         action: GenerateAction,
     },
-    /// List entities and use cases defined in puerto.toml
+    /// Lista las entidades y los casos de uso de puerto.toml
     #[command(name = "listar")]
     List,
-    /// Validate puerto.toml (field types, names, entity consistency)
+    /// Valida puerto.toml (tipos de los campos, nombres, coherencia con el código)
     #[command(name = "validar")]
     Validate,
-    /// Print shell completion script
+    /// Imprime el script de autocompletado de la shell
     Completions {
-        /// Shell to generate completions for (bash, zsh, fish, powershell)
+        /// La shell (bash, zsh, fish, powershell)
         shell: Shell,
     },
 }
 
 #[derive(Subcommand)]
 enum GenerateAction {
-    /// Scaffold all DDD layers for a new entity (db and CRUD inferred from puerto.toml)
+    /// Todas las capas DDD de una entidad nueva (la base de datos sale de puerto.toml)
     Scaffold {
-        /// Entity name in PascalCase (e.g. Producto, LineaPedido)
+        /// Nombre de la entidad en PascalCase (p. ej. Producto, LineaPedido)
+        #[arg(value_name = "NOMBRE")]
         name: String,
-        /// Overwrite an already-generated entity, discarding hand-written changes in its files
+        /// Sobrescribe una entidad ya generada, y pierde lo cambiado a mano en sus ficheros
         #[arg(long = "forzar")]
         force: bool,
-        /// Auth projects: use cases whose routes need no token, comma-separated
-        /// (e.g. listar_productos,obtener_producto). Every other route takes `auth: BearerAuth`
-        #[arg(long = "publico", value_delimiter = ',')]
+        /// Proyectos con auth: los casos de uso cuyas rutas no piden token, separados por comas
+        /// (p. ej. listar_productos,obtener_producto). Las demás rutas reciben `auth: BearerAuth`
+        #[arg(value_name = "CASOS_DE_USO", long = "publico", value_delimiter = ',')]
         public: Vec<String>,
-        /// Auth projects: a role a route requires, <use_case>=<role>, comma-separated
-        /// (e.g. crear_producto=admin,borrar_producto=admin) — `#[requiere_rol]` on the handler
-        #[arg(long = "rol", value_delimiter = ',')]
+        /// Proyectos con auth: el rol que exige una ruta, <caso_de_uso>=<rol>, separados por comas
+        /// (p. ej. crear_producto=admin,borrar_producto=admin): `#[requiere_rol]` en el handler
+        #[arg(value_name = "CASO=ROL", long = "rol", value_delimiter = ',')]
         role: Vec<String>,
-        /// A unique over several fields, comma-separated (e.g. jugador_id,partido_id): one partial
-        /// unique index in Postgres, checked by the in-memory repository too. Repeatable
-        #[arg(long = "unico")]
+        /// Un único sobre varios campos, separados por comas (p. ej. jugador_id,partido_id): un
+        /// índice único parcial en Postgres, que también comprueba el repositorio en memoria. Se
+        /// puede repetir
+        #[arg(value_name = "CAMPOS", long = "unico")]
         unique: Vec<String>,
-        /// The order of the list, comma-separated, a `-` for descending (e.g. --orden=-puntos,nombre).
-        /// Then the newest first
-        #[arg(long = "orden", value_delimiter = ',', allow_hyphen_values = true)]
+        /// El orden de la lista, separado por comas, con `-` para descendente (p. ej.
+        /// --orden=-puntos,nombre). Después, lo más nuevo primero
+        #[arg(
+            value_name = "CAMPOS",
+            long = "orden",
+            value_delimiter = ',',
+            allow_hyphen_values = true
+        )]
         order: Vec<String>,
-        /// Auth projects: fields public routes answer only to a caller with a session,
-        /// comma-separated (e.g. email,telefono). Text fields only
-        #[arg(long = "privado", value_delimiter = ',')]
+        /// Proyectos con auth: los campos que las rutas públicas solo dan a quien tiene sesión,
+        /// separados por comas (p. ej. email,telefono). Solo campos de texto
+        #[arg(value_name = "CAMPOS", long = "privado", value_delimiter = ',')]
         private: Vec<String>,
-        /// Fields after -- separator. Primitives: titulo:String precio:i64! nota:opt:String etiquetas:vec:String
-        /// Value Objects: nombre:Nombre:String edad:Edad:i64 estado:Estado:enum:Activo/Inactivo apodo:Apodo:opt:String
-        /// Shared VO (type inferred from puerto.toml): email:Email
-        #[arg(raw = true)]
+        /// Los campos, tras --. Primitivos: titulo:String precio:i64! nota:opt:String etiquetas:vec:String
+        /// Objetos valor: nombre:Nombre:String edad:Edad:i64 estado:Estado:enum:Activo/Inactivo apodo:Apodo:opt:String
+        /// Objeto valor compartido (el tipo sale de puerto.toml): email:Email
+        #[arg(value_name = "CAMPOS", raw = true)]
         fields: Vec<String>,
     },
-    /// Add a use case to an existing entity
+    /// Añade un caso de uso a una entidad que ya existe
     #[command(name = "caso-de-uso")]
     UseCase {
-        /// Entity name in PascalCase (e.g. Producto)
+        /// Nombre de la entidad en PascalCase (p. ej. Producto)
+        #[arg(value_name = "ENTIDAD")]
         entity: String,
-        /// Use case action in snake_case (e.g. publicar_producto)
+        /// La acción del caso de uso en snake_case (p. ej. publicar_producto)
+        #[arg(value_name = "ACCION")]
         action: String,
     },
-    /// Declare a custom domain event of a CRUD entity and regenerate its events.rs (projects
-    /// created with --eventos)
+    /// Declara un evento de dominio propio de una entidad CRUD y regenera su eventos.rs
+    /// (proyectos creados con --eventos)
     #[command(name = "evento")]
     Event {
-        /// Entity name in PascalCase (e.g. Producto)
+        /// Nombre de la entidad en PascalCase (p. ej. Producto)
+        #[arg(value_name = "ENTIDAD")]
         entity: String,
-        /// Event type in snake_case, past tense (e.g. producto_publicado)
+        /// El tipo de evento en snake_case y en participio (p. ej. producto_publicado)
+        #[arg(value_name = "NOMBRE")]
         name: String,
     },
-    /// Add a consumer to the worker: an event handler, its tests and its registry entry
-    /// (projects created with --eventos)
+    /// Añade un consumidor al worker: un manejador de eventos, sus tests y su entrada en el
+    /// registro (proyectos creados con --eventos)
     #[command(name = "consumidor")]
     Consumer {
-        /// Consumer name in snake_case (e.g. avisar_producto_nuevo)
+        /// Nombre del consumidor en snake_case (p. ej. avisar_producto_nuevo)
+        #[arg(value_name = "NOMBRE")]
         name: String,
-        /// The event types it handles, comma-separated (e.g. producto_creado,producto_publicado)
-        #[arg(long = "tras", value_delimiter = ',', required = true)]
+        /// Los tipos de evento que maneja, separados por comas (p. ej. producto_creado,producto_publicado)
+        #[arg(
+            value_name = "EVENTOS",
+            long = "tras",
+            value_delimiter = ',',
+            required = true
+        )]
         on: Vec<String>,
     },
-    /// Add a mail: its port, its template implementation and its templates (asunto.txt,
-    /// cuerpo.html, cuerpo.txt). The first one also adds Mailpit and SMTP_URL / MAIL_FROM to .env
+    /// Añade un correo: su puerto, su implementación con plantillas y las plantillas (asunto.txt,
+    /// cuerpo.html, cuerpo.txt). El primero añade además Mailpit, y SMTP_URL / MAIL_FROM a .env
     #[command(name = "correo")]
     Mail {
-        /// Mail name in snake_case (e.g. bienvenida, pedido_enviado)
+        /// Nombre del correo en snake_case (p. ej. bienvenida, pedido_enviado)
+        #[arg(value_name = "NOMBRE")]
         name: String,
-        /// Projects created with --eventos: the worker sends the mail on these event types,
-        /// comma-separated (e.g. cliente_creado). Its fields come from the events' snapshots
-        #[arg(long = "tras", value_delimiter = ',')]
+        /// Proyectos creados con --eventos: el worker envía el correo tras estos tipos de evento,
+        /// separados por comas (p. ej. cliente_creado). Sus campos salen de los snapshots
+        #[arg(value_name = "EVENTOS", long = "tras", value_delimiter = ',')]
         on: Vec<String>,
-        /// With --tras: the String field of the snapshot that holds the recipient (e.g. email)
-        #[arg(long = "para")]
+        /// Con --tras: el campo String del snapshot que guarda el destinatario (p. ej. email)
+        #[arg(value_name = "CAMPO", long = "para")]
         to: Option<String>,
-        /// The values its text shows, after --: nombre:String plazas:i64 plan:opt:String.
-        /// Primitives and opt:<type> only; the recipient `para` is always there. None: nombre:String
-        #[arg(raw = true)]
+        /// Los valores que muestra su texto, tras --: nombre:String plazas:i64 plan:opt:String.
+        /// Solo primitivos y opt:<tipo>; el destinatario `para` siempre está. Sin campos: nombre:String
+        #[arg(value_name = "CAMPOS", raw = true)]
         fields: Vec<String>,
     },
-    /// Regenerate the wiring (presentacion/cableado, presentacion/api/src/generado/bootstrap.rs)
-    /// from puerto.toml
+    /// Regenera el cableado (presentacion/cableado, presentacion/api/src/generado/bootstrap.rs)
+    /// desde puerto.toml
     Bootstrap {
-        /// Write the file even when puerto.toml declares entities whose code is not on disk
+        /// Lo escribe aunque puerto.toml declare entidades cuyo código no está en disco
         #[arg(long = "permitir-faltantes")]
         allow_missing: bool,
     },
-    /// Create a new SQLx migration file
+    /// Crea una migración SQLx nueva
     #[command(name = "migracion")]
     Migration {
-        /// Migration name in snake_case (e.g. anadir_stock_a_productos)
+        /// Nombre de la migración en snake_case (p. ej. anadir_stock_a_productos)
+        #[arg(value_name = "NOMBRE")]
         name: String,
     },
-    /// Write IDE snippet files (.zed/snippets/rust.json, .vscode/puerto.code-snippets)
+    /// Escribe los snippets del IDE (.zed/snippets/rust.json, .vscode/puerto.code-snippets)
     Snippets {
-        /// Target IDE: zed or vscode (default: both)
-        #[arg(long)]
+        /// El IDE: zed o vscode (por defecto, los dos)
+        #[arg(value_name = "IDE", long)]
         ide: Option<String>,
     },
-    /// Scaffold only the domain layer for a new entity (domain-first workflow)
+    /// Solo la capa de dominio de una entidad nueva (empezar por el dominio)
     #[command(name = "dominio")]
     Domain {
-        /// Entity name in PascalCase (e.g. Producto, LineaPedido)
+        /// Nombre de la entidad en PascalCase (p. ej. Producto, LineaPedido)
+        #[arg(value_name = "NOMBRE")]
         name: String,
-        /// A unique over several fields, comma-separated (e.g. jugador_id,partido_id). Repeatable
-        #[arg(long = "unico")]
+        /// Un único sobre varios campos, separados por comas (p. ej. jugador_id,partido_id). Se
+        /// puede repetir
+        #[arg(value_name = "CAMPOS", long = "unico")]
         unique: Vec<String>,
-        /// The order of the list, comma-separated, a `-` for descending (e.g. --orden=-puntos,nombre).
-        /// Then the newest first
-        #[arg(long = "orden", value_delimiter = ',', allow_hyphen_values = true)]
+        /// El orden de la lista, separado por comas, con `-` para descendente (p. ej.
+        /// --orden=-puntos,nombre). Después, lo más nuevo primero
+        #[arg(
+            value_name = "CAMPOS",
+            long = "orden",
+            value_delimiter = ',',
+            allow_hyphen_values = true
+        )]
         order: Vec<String>,
-        /// Auth projects: fields public routes answer only to a caller with a session,
-        /// comma-separated (e.g. email,telefono). Text fields only
-        #[arg(long = "privado", value_delimiter = ',')]
+        /// Proyectos con auth: los campos que las rutas públicas solo dan a quien tiene sesión,
+        /// separados por comas (p. ej. email,telefono). Solo campos de texto
+        #[arg(value_name = "CAMPOS", long = "privado", value_delimiter = ',')]
         private: Vec<String>,
-        /// Fields after -- separator. Same syntax as `generar scaffold`. They are written to
-        /// puerto.toml, so `generar aplicacion/repositorio/presentacion` pick them up.
-        #[arg(raw = true)]
+        /// Los campos, tras --. La misma sintaxis que `generar scaffold`. Se escriben en
+        /// puerto.toml, así que `generar aplicacion/repositorio/presentacion` los ven.
+        #[arg(value_name = "CAMPOS", raw = true)]
         fields: Vec<String>,
     },
-    /// Scaffold only the application layer for an existing entity
+    /// Solo la capa de aplicación de una entidad que ya existe
     #[command(name = "aplicacion")]
     Application {
-        /// Entity name in PascalCase (e.g. Producto)
+        /// Nombre de la entidad en PascalCase (p. ej. Producto)
+        #[arg(value_name = "NOMBRE")]
         name: String,
     },
-    /// Scaffold only the repository (infrastructure) layer for an existing entity
+    /// Solo la capa del repositorio (infraestructura) de una entidad que ya existe
     #[command(name = "repositorio")]
     Repository {
-        /// Entity name in PascalCase (e.g. Producto)
+        /// Nombre de la entidad en PascalCase (p. ej. Producto)
+        #[arg(value_name = "NOMBRE")]
         name: String,
     },
-    /// Scaffold only the presentation layer for an existing entity (regenerates bootstrap.rs)
+    /// Solo la capa de presentación de una entidad que ya existe (regenera bootstrap.rs)
     #[command(name = "presentacion")]
     Presentation {
-        /// Entity name in PascalCase (e.g. Producto)
+        /// Nombre de la entidad en PascalCase (p. ej. Producto)
+        #[arg(value_name = "NOMBRE")]
         name: String,
     },
-    /// Scaffold only the frontend slice of an existing CRUD entity (web projects; regenerates
+    /// Solo las pantallas web de una entidad CRUD que ya existe (proyectos con web; regenera
     /// web/src/generado/)
     Web {
-        /// Entity name in PascalCase (e.g. Producto)
+        /// Nombre de la entidad en PascalCase (p. ej. Producto)
+        #[arg(value_name = "NOMBRE")]
         name: String,
-        /// Overwrite the entity's existing frontend files, discarding hand-written changes
+        /// Sobrescribe los ficheros web de la entidad, y pierde lo cambiado a mano
         #[arg(long = "forzar")]
         force: bool,
     },
-    /// Declare a shared value object in puerto.toml (reusable across entities)
+    /// Declara un objeto valor compartido en puerto.toml (lo pueden usar varias entidades)
     #[command(name = "objeto-valor")]
     ValueObject {
-        /// Value object name in PascalCase (e.g. Email, Dinero)
+        /// Nombre del objeto valor en PascalCase (p. ej. Email, Dinero)
+        #[arg(value_name = "NOMBRE")]
         name: String,
-        /// Inner primitive type: String, i64, bool, f64, Uuid, DateTime
+        /// El tipo primitivo interno: String, i64, bool, f64, Uuid, DateTime
+        #[arg(value_name = "TIPO")]
         inner_type: String,
     },
 }
@@ -262,8 +294,124 @@ fn parse_cli_fields(
 
 // ── Entry point ───────────────────────────────────────────────────────────────
 
+/// clap's own text, the fixed pieces of its help and its errors, in the order they are replaced: a
+/// phrase that contains another goes first.
+const CLAP_EN_CASTELLANO: &[(&str, &str)] = &[
+    ("Usage:", "Uso:"),
+    ("Commands:", "Comandos:"),
+    ("Arguments:", "Argumentos:"),
+    ("Options:", "Opciones:"),
+    ("[OPTIONS]", "[OPCIONES]"),
+    ("<COMMAND>", "<COMANDO>"),
+    ("[possible values: ", "[valores posibles: "),
+    ("[subcommands: ", "[subcomandos: "),
+    (
+        "Print this message or the help of the given subcommand(s)",
+        "Muestra esta ayuda o la de los subcomandos dados",
+    ),
+    (
+        "Print help (see more with '--help')",
+        "Muestra la ayuda (más con '--help')",
+    ),
+    (
+        "Print help (see a summary with '-h')",
+        "Muestra la ayuda (un resumen con '-h')",
+    ),
+    ("Print help", "Muestra la ayuda"),
+    ("Print version", "Muestra la versión"),
+    (
+        "' cannot be used multiple times",
+        "' no se puede usar varias veces",
+    ),
+    ("' cannot be used with", "' no se puede usar con"),
+    ("the argument '", "el argumento '"),
+    ("the subcommand '", "el subcomando '"),
+    (
+        " one or more of the other specified arguments",
+        " uno o más de los otros argumentos",
+    ),
+    (
+        "equal sign is needed when assigning values to '",
+        "hace falta un signo igual para dar valores a '",
+    ),
+    ("a value is required for '", "hace falta un valor para '"),
+    ("' but none was supplied", "', y no se ha dado ninguno"),
+    ("invalid value '", "valor inválido '"),
+    ("unexpected value '", "valor inesperado '"),
+    ("' found; no more were expected", "'; no se esperaban más"),
+    ("unexpected argument '", "argumento inesperado '"),
+    ("unrecognized subcommand '", "subcomando desconocido '"),
+    ("' for '", "' para '"),
+    ("' found", "'"),
+    (
+        "the following required arguments were not provided:",
+        "faltan estos argumentos obligatorios:",
+    ),
+    (
+        "' requires a subcommand but one was not provided",
+        "' necesita un subcomando, y no se ha dado ninguno",
+    ),
+    (
+        " a similar argument exists: ",
+        " hay un argumento parecido: ",
+    ),
+    (
+        " a similar subcommand exists: ",
+        " hay un subcomando parecido: ",
+    ),
+    (" a similar value exists: ", " hay un valor parecido: "),
+    (
+        " some similar arguments exist: ",
+        " hay argumentos parecidos: ",
+    ),
+    (
+        " some similar subcommands exist: ",
+        " hay subcomandos parecidos: ",
+    ),
+    (" some similar values exist: ", " hay valores parecidos: "),
+    ("to pass '", "para pasar '"),
+    ("' as a value, use '", "' como valor, usa '"),
+    ("tip:", "consejo:"),
+    (
+        "For more information, try '",
+        "Para más información, prueba '",
+    ),
+];
+
+/// `text` with clap's fixed English pieces replaced. Anything it does not know stays as it was.
+fn clap_en_castellano(text: &str) -> String {
+    CLAP_EN_CASTELLANO
+        .iter()
+        .fold(text.to_string(), |text, (en, es)| text.replace(en, es))
+}
+
+/// What `Error::exit` does — help and version to stdout, errors to stderr, colours only on a
+/// terminal — with the text in Spanish.
+fn exit_with(e: clap::Error) -> ! {
+    use std::io::IsTerminal;
+    let to_stderr = e.use_stderr();
+    let terminal = if to_stderr {
+        std::io::stderr().is_terminal()
+    } else {
+        std::io::stdout().is_terminal()
+    };
+    let rendered = e.render();
+    let text = if terminal {
+        rendered.ansi().to_string()
+    } else {
+        rendered.to_string()
+    };
+    let text = clap_en_castellano(&text);
+    if to_stderr {
+        eprint!("{text}");
+    } else {
+        print!("{text}");
+    }
+    std::process::exit(e.exit_code());
+}
+
 fn main() {
-    let cli = Cli::parse();
+    let cli = Cli::try_parse().unwrap_or_else(|e| exit_with(e));
     if let Err(e) = run(cli.command) {
         eprintln!("Error: {e}");
         std::process::exit(1);
@@ -294,26 +442,26 @@ fn run(command: Commands) -> Result<(), Box<dyn std::error::Error>> {
                 format_after_generation(&path);
                 let project_name = path.file_name().and_then(|n| n.to_str()).unwrap_or("");
                 let web = path.join("web").is_dir();
-                println!("├── nucleo/          (shared value objects)");
-                println!("├── contextos/       (one crate per context and layer)");
-                println!("├── presentacion/    (the binaries and their wiring)");
+                println!("├── nucleo/          (objetos valor compartidos)");
+                println!("├── contextos/       (un crate por contexto y capa)");
+                println!("├── presentacion/    (los binarios y su cableado)");
                 if web {
-                    println!("├── web/             (React frontend)");
+                    println!("├── web/             (el frontend React)");
                 }
                 println!("└── Cargo.toml");
-                println!("✓ Project '{project_name}' created.\n");
-                println!("Next steps:");
+                println!("✓ Proyecto '{project_name}' creado.\n");
+                println!("Siguientes pasos:");
                 println!("  cd {project_name}");
                 println!("  make run");
                 if web {
-                    println!("  make web/install && make web/dev   # in another terminal");
+                    println!("  make web/install && make web/dev   # en otra terminal");
                 }
                 println!();
-                println!("API docs available at  http://localhost:8080");
+                println!("Docs de la API en:     http://localhost:8080");
                 if web {
-                    println!("Frontend available at  http://localhost:5173");
+                    println!("Frontend en:           http://localhost:5173");
                 }
-                println!("Add an entity with:    puerto generar scaffold <Name>");
+                println!("Añade una entidad con: puerto generar scaffold <Nombre>");
             })
         }
         Commands::Generate {

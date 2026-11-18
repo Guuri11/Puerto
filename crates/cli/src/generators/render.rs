@@ -16,7 +16,7 @@ impl std::fmt::Display for RenderError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(
             f,
-            "cannot render template {}: {}",
+            "no se puede renderizar la plantilla {}: {}",
             self.template, self.cause
         )
     }
@@ -76,7 +76,7 @@ fn collect(
         let name = file.path().to_string_lossy().into_owned();
         let content = file
             .contents_utf8()
-            .ok_or_else(|| format!("template {name} is not UTF-8"))?;
+            .ok_or_else(|| format!("la plantilla {name} no es UTF-8"))?;
         out.push((name, content));
     }
     for sub in dir.dirs() {

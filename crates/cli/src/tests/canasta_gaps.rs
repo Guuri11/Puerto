@@ -170,13 +170,13 @@ fn validation_rejects_unique_groups_that_cannot_be_an_index() {
 
     assert!(errors_of(&[&["jugador", "partido"]]).is_empty());
     for (groups, expected) in [
-        (&[&["jugador"][..]][..], "at least two"),
-        (&[&["jugador", "equipo"][..]][..], "'equipo' is not a field"),
-        (&[&["jugador", "jugador"][..]][..], "'jugador' twice"),
+        (&[&["jugador"][..]][..], "al menos dos"),
+        (&[&["jugador", "equipo"][..]][..], "'equipo' no es un campo"),
+        (&[&["jugador", "jugador"][..]][..], "'jugador' dos veces"),
         (&[&["jugador", "nota"][..]][..], "'nota'"),
         (
             &[&["jugador", "partido"][..], &["partido", "jugador"][..]][..],
-            "twice",
+            "dos veces",
         ),
     ] {
         let errors = errors_of(groups);
@@ -205,7 +205,7 @@ fn scaffold_refuses_a_unique_group_naming_an_unknown_field_and_writes_nothing() 
     .unwrap_err()
     .to_string();
 
-    assert!(err.contains("'equipo' is not a field"), "{err}");
+    assert!(err.contains("'equipo' no es un campo"), "{err}");
     assert!(!output.join("contextos/linea").exists());
     assert!(!read(&output, "puerto.toml").contains("Linea"));
     cleanup(&dir);
@@ -317,8 +317,8 @@ fn validation_rejects_an_order_that_names_no_sortable_field() {
 
     assert!(errors_of(&["-faltas", "jugador"]).is_empty());
     for (keys, expected) in [
-        (&["equipo"][..], "'equipo' is not a field"),
-        (&["faltas", "-faltas"][..], "'faltas' twice"),
+        (&["equipo"][..], "'equipo' no es un campo"),
+        (&["faltas", "-faltas"][..], "'faltas' dos veces"),
         (&["nota"][..], "'nota'"),
         (&["-"][..], "'-'"),
     ] {
@@ -464,7 +464,7 @@ fn a_private_field_must_be_text_and_needs_an_auth_project() {
     let err = jugador_with_private_email("canasta_private_number", &["dorsal"]).unwrap_err();
     assert!(err.contains("privado: 'dorsal'"), "{err}");
     let err = jugador_with_private_email("canasta_private_unknown", &["telefono"]).unwrap_err();
-    assert!(err.contains("'telefono' is not a field"), "{err}");
+    assert!(err.contains("'telefono' no es un campo"), "{err}");
 
     let dir = temp_dir("canasta_private_no_auth");
     cleanup(&dir);

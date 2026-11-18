@@ -136,19 +136,21 @@ fn parse_field_arg_option_vo_with_datetime_shorthand() {
 #[test]
 fn parse_field_arg_rejects_unknown_keyword() {
     let err = puerto_toml::parse_field_arg("tags:unknown:String").unwrap_err();
-    assert!(err.contains("not a known keyword") || err.contains("PascalCase VO name"));
+    assert!(
+        err.contains("no es una palabra conocida") || err.contains("objeto valor en PascalCase")
+    );
 }
 
 #[test]
 fn parse_field_arg_rejects_empty_enum_variants() {
     let err = puerto_toml::parse_field_arg("status:Status:enum:").unwrap_err();
-    assert!(err.contains("Enum variants cannot be empty") || err.contains("PascalCase"));
+    assert!(err.contains("Faltan las variantes del enum") || err.contains("PascalCase"));
 }
 
 #[test]
 fn parse_field_arg_rejects_lowercase_vo_name() {
     let err = puerto_toml::parse_field_arg("name:myName:String").unwrap_err();
-    assert!(err.contains("PascalCase") || err.contains("not a known keyword"));
+    assert!(err.contains("PascalCase") || err.contains("no es una palabra conocida"));
 }
 
 #[test]
@@ -170,27 +172,27 @@ fn parse_field_arg_uuid_unique() {
 #[test]
 fn parse_field_arg_rejects_no_colon() {
     let err = puerto_toml::parse_field_arg("titleString").unwrap_err();
-    assert!(err.contains("invalid field argument"));
-    assert!(err.contains("Expected format: name:Type"));
+    assert!(err.contains("argumento de campo inválido"));
+    assert!(err.contains("El formato es nombre:Tipo"));
 }
 
 #[test]
 fn parse_field_arg_rejects_empty_type() {
     let err = puerto_toml::parse_field_arg("title:").unwrap_err();
-    assert!(err.contains("Type cannot be empty"));
+    assert!(err.contains("Falta el tipo"));
 }
 
 #[test]
 fn parse_field_arg_rejects_uppercase_name() {
     let err = puerto_toml::parse_field_arg("Title:String").unwrap_err();
-    assert!(err.contains("invalid field name"));
+    assert!(err.contains("nombre de campo inválido"));
     assert!(err.contains("snake_case"));
 }
 
 #[test]
 fn parse_field_arg_rejects_name_starting_with_digit() {
     let err = puerto_toml::parse_field_arg("1title:String").unwrap_err();
-    assert!(err.contains("invalid field name"));
+    assert!(err.contains("nombre de campo inválido"));
 }
 
 #[test]

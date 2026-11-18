@@ -116,7 +116,7 @@ fn generate_snippets_unknown_ide_returns_error() {
 
     let result = snippets::run(&dir, Some("neovim"));
     assert!(result.is_err());
-    assert!(result.unwrap_err().to_string().contains("unknown IDE"));
+    assert!(result.unwrap_err().to_string().contains("IDE desconocido"));
 
     cleanup(&dir);
 }

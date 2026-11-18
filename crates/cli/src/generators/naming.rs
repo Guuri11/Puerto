@@ -176,7 +176,10 @@ pub fn event_variant(snake: &str, event_type: &str) -> String {
 /// `Permission denied (os error 13)` does not tell the user which file.
 pub fn write_file(path: &Path, content: &str) -> Result<(), std::io::Error> {
     let with_path = |e: std::io::Error| {
-        std::io::Error::new(e.kind(), format!("cannot write {}: {e}", path.display()))
+        std::io::Error::new(
+            e.kind(),
+            format!("no se puede escribir {}: {e}", path.display()),
+        )
     };
     if let Some(parent) = path.parent() {
         fs::create_dir_all(parent).map_err(with_path)?;

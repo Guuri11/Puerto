@@ -176,24 +176,25 @@ pub fn is_pascal_case(name: &str) -> bool {
 /// Full check for a `[[entidad.campos]]` name.
 pub fn validate_field_name(name: &str) -> Result<(), String> {
     if name.is_empty() {
-        return Err("field name is empty".to_string());
+        return Err("el nombre del campo está vacío".to_string());
     }
     if !is_valid_field_name(name) {
         return Err(format!(
-            "invalid field name '{name}'. Must be snake_case (lowercase letters, digits and \
-             underscores, starting with a lowercase letter)"
+            "nombre de campo inválido '{name}'. Va en snake_case (minúsculas, dígitos y guiones \
+             bajos, y empieza por una minúscula)"
         ));
     }
     if SYSTEM_FIELDS.contains(&name) {
         return Err(format!(
-            "field name '{name}' is reserved — every entity already has {}. Remove it from the \
-             field list",
+            "el nombre de campo '{name}' está reservado: toda entidad ya tiene {}. Quítalo de la \
+             lista de campos",
             SYSTEM_FIELDS.join(", ")
         ));
     }
     if RUST_KEYWORDS.contains(&name) {
         return Err(format!(
-            "field name '{name}' is a Rust keyword and cannot be a struct field. Pick another name"
+            "el nombre de campo '{name}' es una palabra clave de Rust y no puede ser un campo de un \
+             struct. Elige otro nombre"
         ));
     }
     Ok(())
@@ -203,8 +204,8 @@ pub fn validate_field_name(name: &str) -> Result<(), String> {
 pub fn validate_sql_field_name(name: &str) -> Result<(), String> {
     if SQL_RESERVED_WORDS.contains(&name) {
         return Err(format!(
-            "field name '{name}' is a reserved SQL keyword and cannot be a column name. Pick \
-             another name (e.g. '{name}_value')"
+            "el nombre de campo '{name}' es una palabra reservada de SQL y no puede ser el nombre \
+             de una columna. Elige otro nombre (p. ej. '{name}_valor')"
         ));
     }
     Ok(())
@@ -216,7 +217,7 @@ pub fn validate_unique_field_names(fields: &[Field]) -> Result<(), String> {
     for f in fields {
         if seen.contains(&f.name.as_str()) {
             return Err(format!(
-                "duplicate field name '{}' — every field must be distinct",
+                "el campo '{}' está repetido: cada campo tiene su propio nombre",
                 f.name
             ));
         }
@@ -229,13 +230,13 @@ pub fn validate_unique_field_names(fields: &[Field]) -> Result<(), String> {
 pub fn validate_use_case_name(action: &str) -> Result<(), String> {
     if !is_valid_field_name(action) {
         return Err(format!(
-            "invalid use case name '{action}'. Must be snake_case (lowercase letters, digits and \
-             underscores, starting with a lowercase letter), e.g. 'archive_product'"
+            "nombre de caso de uso inválido '{action}'. Va en snake_case (minúsculas, dígitos y \
+             guiones bajos, y empieza por una minúscula), p. ej. 'archivar_producto'"
         ));
     }
     if RUST_KEYWORDS.contains(&action) {
         return Err(format!(
-            "use case name '{action}' is a Rust keyword. Pick another name"
+            "el caso de uso '{action}' es una palabra clave de Rust. Elige otro nombre"
         ));
     }
     Ok(())
@@ -246,13 +247,13 @@ pub fn validate_use_case_name(action: &str) -> Result<(), String> {
 pub fn validate_consumer_name(name: &str) -> Result<(), String> {
     if !is_valid_field_name(name) {
         return Err(format!(
-            "invalid consumer name '{name}'. Must be snake_case (lowercase letters, digits and \
-             underscores, starting with a lowercase letter), e.g. 'notify_new_product'"
+            "nombre de consumidor inválido '{name}'. Va en snake_case (minúsculas, dígitos y \
+             guiones bajos, y empieza por una minúscula), p. ej. 'avisar_producto_nuevo'"
         ));
     }
     if RUST_KEYWORDS.contains(&name) {
         return Err(format!(
-            "consumer name '{name}' is a Rust keyword. Pick another name"
+            "el consumidor '{name}' es una palabra clave de Rust. Elige otro nombre"
         ));
     }
     Ok(())
@@ -263,13 +264,13 @@ pub fn validate_consumer_name(name: &str) -> Result<(), String> {
 pub fn validate_mail_name(name: &str) -> Result<(), String> {
     if !is_valid_field_name(name) {
         return Err(format!(
-            "invalid mail name '{name}'. Must be snake_case (lowercase letters, digits and \
-             underscores, starting with a lowercase letter), e.g. 'welcome'"
+            "nombre de correo inválido '{name}'. Va en snake_case (minúsculas, dígitos y guiones \
+             bajos, y empieza por una minúscula), p. ej. 'bienvenida'"
         ));
     }
     if RUST_KEYWORDS.contains(&name) {
         return Err(format!(
-            "mail name '{name}' is a Rust keyword. Pick another name"
+            "el correo '{name}' es una palabra clave de Rust. Elige otro nombre"
         ));
     }
     Ok(())
@@ -279,8 +280,8 @@ pub fn validate_mail_name(name: &str) -> Result<(), String> {
 pub fn validate_shared_vo_inner_type(inner_type: &str) -> Result<(), String> {
     if !SHARED_VO_ALLOWED_INNER_TYPES.contains(&inner_type) {
         return Err(format!(
-            "inner type '{inner_type}' is not allowed for a shared value object (allowed: {}; \
-             'DateTime' is accepted as shorthand)",
+            "el tipo interno '{inner_type}' no vale para un objeto valor compartido (valen: {}; \
+             'DateTime' sirve de atajo)",
             SHARED_VO_ALLOWED_INNER_TYPES.join(", ")
         ));
     }
@@ -290,30 +291,30 @@ pub fn validate_shared_vo_inner_type(inner_type: &str) -> Result<(), String> {
 /// Full check for an entity name, in the PascalCase form the user typed.
 pub fn validate_entity_name(pascal: &str) -> Result<(), String> {
     if pascal.is_empty() {
-        return Err("entity name is empty".to_string());
+        return Err("el nombre de la entidad está vacío".to_string());
     }
     if !is_pascal_case(pascal) {
         return Err(format!(
-            "invalid entity name '{pascal}'. Must be PascalCase (an uppercase letter followed by \
-             alphanumeric characters)"
+            "nombre de entidad inválido '{pascal}'. Va en PascalCase (una mayúscula seguida de \
+             letras y dígitos)"
         ));
     }
     if RESERVED_TYPE_NAMES.contains(&pascal) {
         return Err(format!(
-            "entity name '{pascal}' collides with a type used in generated code. Pick another name"
+            "la entidad '{pascal}' choca con un tipo que usa el código generado. Elige otro nombre"
         ));
     }
     let snake = crate::generators::naming::pascal_to_snake(pascal);
     if RUST_KEYWORDS.contains(&snake.as_str()) {
         return Err(format!(
-            "entity name '{pascal}' becomes the module name '{snake}', which is a Rust keyword. \
-             Pick another name"
+            "la entidad '{pascal}' da el módulo '{snake}', que es una palabra clave de Rust. Elige \
+             otro nombre"
         ));
     }
     if RESERVED_MODULE_NAMES.contains(&snake.as_str()) {
         return Err(format!(
-            "entity name '{pascal}' becomes the context '{snake}', which the generated project \
-             already uses. Pick another name"
+            "la entidad '{pascal}' da el contexto '{snake}', que el proyecto generado ya usa. \
+             Elige otro nombre"
         ));
     }
     Ok(())
@@ -322,18 +323,18 @@ pub fn validate_entity_name(pascal: &str) -> Result<(), String> {
 /// Full check for a value object name — local or shared.
 pub fn validate_vo_name(vo_name: &str) -> Result<(), String> {
     if vo_name.is_empty() {
-        return Err("value object name is empty".to_string());
+        return Err("el nombre del objeto valor está vacío".to_string());
     }
     if !is_pascal_case(vo_name) {
         return Err(format!(
-            "invalid value object name '{vo_name}'. Must be PascalCase (an uppercase letter \
-             followed by alphanumeric characters)"
+            "nombre de objeto valor inválido '{vo_name}'. Va en PascalCase (una mayúscula seguida \
+             de letras y dígitos)"
         ));
     }
     if RESERVED_TYPE_NAMES.contains(&vo_name) {
         return Err(format!(
-            "value object name '{vo_name}' collides with a type used in generated code. Pick \
-             another name"
+            "el objeto valor '{vo_name}' choca con un tipo que usa el código generado. Elige otro \
+             nombre"
         ));
     }
     Ok(())
@@ -343,19 +344,19 @@ pub fn validate_vo_name(vo_name: &str) -> Result<(), String> {
 /// twice (E0428).
 pub fn validate_enum_variants(variants: &[String]) -> Result<(), String> {
     if variants.is_empty() {
-        return Err("enum value object has no variants".to_string());
+        return Err("el objeto valor enum no tiene variantes".to_string());
     }
     let mut seen: Vec<&str> = vec![];
     for v in variants {
         if !is_pascal_case(v) {
             return Err(format!(
-                "invalid enum variant '{v}'. Must be PascalCase (an uppercase letter followed by \
-                 alphanumeric characters)"
+                "variante de enum inválida '{v}'. Va en PascalCase (una mayúscula seguida de letras y \
+                 dígitos)"
             ));
         }
         if seen.contains(&v.as_str()) {
             return Err(format!(
-                "duplicate enum variant '{v}' — every variant must be distinct"
+                "la variante '{v}' está repetida: cada variante tiene su propio nombre"
             ));
         }
         seen.push(v);
@@ -387,8 +388,8 @@ pub fn validate_vo_coherence(
         if let Some((_, previous)) = declared.iter().find(|(n, _)| *n == vo_name) {
             if *previous != inner {
                 errors.push(format!(
-                    "value object '{vo_name}' is declared twice with different inner types \
-                     ('{previous}' and '{inner}') — one value_objects.rs cannot define both"
+                    "el objeto valor '{vo_name}' se declara dos veces con tipos internos distintos \
+                     ('{previous}' y '{inner}'): un mismo valores.rs no puede definir los dos"
                 ));
             }
         } else {
@@ -398,8 +399,8 @@ pub fn validate_vo_coherence(
         if let Some(shared) = shared_vos.iter().find(|v| v.name == vo_name) {
             if inner != "enum" && shared.inner_type != inner {
                 errors.push(format!(
-                    "value object '{vo_name}' is declared as [[objeto_valor]] with type \
-                     '{}' but field '{}' uses it as '{inner}'",
+                    "el objeto valor '{vo_name}' está declarado en [[objeto_valor]] con el tipo \
+                     '{}', pero el campo '{}' lo usa como '{inner}'",
                     shared.inner_type, field.name
                 ));
             }
@@ -431,25 +432,25 @@ fn validate_reference_shape(field: &Field) -> Result<(), String> {
     let target = field.references.as_deref().unwrap_or_default();
     if !is_pascal_case(target) {
         return Err(format!(
-            "field '{name}' references '{target}': an entity name must be PascalCase"
+            "el campo '{name}' referencia '{target}': un nombre de entidad va en PascalCase"
         ));
     }
     if !matches!(field.field_type.as_str(), "Uuid" | "Option<Uuid>") {
         return Err(format!(
-            "field '{name}' references {target} but its type is '{}': a reference holds an id, \
-             Uuid or Option<Uuid>",
+            "el campo '{name}' referencia {target}, pero su tipo es '{}': una referencia guarda un \
+             id, Uuid u Option<Uuid>",
             field.field_type
         ));
     }
     if field.value_object.is_some() {
         return Err(format!(
-            "field '{name}' references {target} and also names a value_object: a reference's \
-             type is {target}'s id"
+            "el campo '{name}' referencia {target} y además nombra un objeto_valor: el tipo de una \
+             referencia es el id de {target}"
         ));
     }
     if field.unique && field.field_type.starts_with("Option<") {
         return Err(format!(
-            "field '{name}' is an optional reference and cannot be marked unique"
+            "el campo '{name}' es una referencia opcional y no puede ser único"
         ));
     }
     Ok(())
@@ -473,27 +474,27 @@ pub fn validate_references(
         let name = &field.name;
         if target == pascal {
             errors.push(format!(
-                "field '{name}' references {target} itself: references to the same entity are \
-                 not generated yet"
+                "el campo '{name}' referencia a su propia entidad, {target}: todavía no se generan \
+                 autorreferencias"
             ));
             continue;
         }
         if config.project.has_auth() && validate_auth_entity_name(target).is_err() {
             errors.push(format!(
-                "field '{name}' references {target}: references to the auth entities are not \
-                 generated yet"
+                "el campo '{name}' referencia {target}: todavía no se generan referencias a las \
+                 entidades de auth"
             ));
             continue;
         }
         match config.entity.iter().find(|e| e.name == target) {
             None => errors.push(format!(
-                "field '{name}' references {target}, which is not declared in puerto.toml — \
-                 `puerto generar scaffold {target}` first"
+                "el campo '{name}' referencia {target}, que no está declarada en puerto.toml: antes, \
+                 `puerto generar scaffold {target}`"
             )),
             Some(entity) if !is_crud_entity(&pascal_to_snake(target), &entity.use_cases) => errors
                 .push(format!(
-                    "field '{name}' references {target}, which is not a CRUD entity: only an \
-                     entity with its five scaffolded use cases has an id type and a table"
+                    "el campo '{name}' referencia {target}, que no es una entidad CRUD: solo una \
+                     entidad con sus cinco casos de uso del scaffold tiene un tipo de id y una tabla"
                 )),
             Some(_) => {}
         }
@@ -502,9 +503,9 @@ pub fn validate_references(
         && let Some(cycle) = reference_cycle(pascal, fields, config)
     {
         errors.push(format!(
-            "{}: this reference closes a cycle. Each context is its own crates, and Cargo cannot \
-             build crates that depend on each other in a circle (ADR-0023 § 3) — drop one of the \
-             references",
+            "{}: esta referencia cierra un ciclo. Cada contexto tiene sus propios crates, y Cargo \
+             no compila crates que dependen unos de otros en círculo (ADR-0023 § 3): quita una de \
+             las referencias",
             cycle.join(" → ")
         ));
     }
@@ -576,8 +577,8 @@ pub fn validate_references_before_writing(
                     .any(|e| e.file_name().to_string_lossy().ends_with(&suffix));
             if !model.exists() || !migrated {
                 errors.push(format!(
-                    "{pascal} references {target}, which has no code yet — run \
-                     `puerto generar scaffold {target}` first"
+                    "{pascal} referencia {target}, que aún no tiene código: ejecuta antes \
+                     `puerto generar scaffold {target}`"
                 ));
             }
         }
@@ -597,7 +598,7 @@ pub fn validate_events_transport(transport: &str) -> Result<(), String> {
         return Ok(());
     }
     Err(format!(
-        "unknown events transport '{transport}'. Use one of: {}",
+        "transporte de eventos desconocido '{transport}'. Usa uno de estos: {}",
         EVENT_TRANSPORTS.join(", ")
     ))
 }
@@ -610,19 +611,20 @@ pub fn validate_event_name(snake: &str, event: &str, declared: &[String]) -> Res
 
     if !is_valid_field_name(event) {
         return Err(format!(
-            "invalid event name '{event}'. Must be snake_case, past tense, e.g. '{snake}_published'"
+            "nombre de evento inválido '{event}'. Va en snake_case y en participio, p. ej. \
+             '{snake}_publicado'"
         ));
     }
     let variant = event_variant(snake, event);
     if variant == "Self" {
-        return Err(format!("event name '{event}' would be the variant `Self`"));
+        return Err(format!("el evento '{event}' daría la variante `Self`"));
     }
     if let Some((_, crud)) = crud_events(snake)
         .into_iter()
         .find(|(crud_variant, crud)| crud == event || *crud_variant == variant)
     {
         return Err(format!(
-            "event '{event}' clashes with '{crud}', which every write of the entity already records"
+            "el evento '{event}' choca con '{crud}', que ya registra cada escritura de la entidad"
         ));
     }
     if let Some(existing) = declared
@@ -630,7 +632,7 @@ pub fn validate_event_name(snake: &str, event: &str, declared: &[String]) -> Res
         .find(|d| *d == event || event_variant(snake, d) == variant)
     {
         return Err(format!(
-            "event '{event}' is already declared (as '{existing}')"
+            "el evento '{event}' ya está declarado (como '{existing}')"
         ));
     }
     Ok(())
@@ -644,7 +646,7 @@ pub fn validate_auth_mode(mode: &str) -> Result<(), String> {
         return Ok(());
     }
     Err(format!(
-        "unknown auth mode '{mode}'. Use one of: {}",
+        "modo de auth desconocido '{mode}'. Usa uno de estos: {}",
         AUTH_MODES.join(", ")
     ))
 }
@@ -658,8 +660,8 @@ pub fn validate_auth_entity_name(pascal: &str) -> Result<(), String> {
     let snake = crate::generators::naming::pascal_to_snake(pascal);
     if AUTH_RESERVED_MODULE_NAMES.contains(&snake.as_str()) {
         return Err(format!(
-            "entity name '{pascal}' becomes the context '{snake}', which an auth project already \
-             uses (the usuario context, the Usuario entity, GET /me, /auth). Pick another name"
+            "la entidad '{pascal}' da el contexto '{snake}', que un proyecto con auth ya usa (el \
+             contexto usuario, la entidad Usuario, GET /me, /auth). Elige otro nombre"
         ));
     }
     Ok(())
@@ -673,8 +675,8 @@ pub fn validate_role_name(role: &str) -> Result<(), String> {
             .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || matches!(c, '_' | ':' | '-'));
     if !valid {
         return Err(format!(
-            "invalid role '{role}'. Use lowercase letters, digits, '_', ':' and '-', starting \
-             with a letter (e.g. 'admin', 'billing:read')"
+            "rol inválido '{role}'. Usa minúsculas, dígitos, '_', ':' y '-', y empieza por una \
+             letra (p. ej. 'admin', 'facturas:leer')"
         ));
     }
     Ok(())
@@ -692,13 +694,14 @@ pub fn validate_entity_shape(entity: &crate::puerto_toml::Entity) -> Vec<String>
         let shown = group.join(", ");
         if group.len() < 2 {
             errors.push(format!(
-                "unicos: [{shown}] needs at least two fields — a single one is `unico = true` on the field"
+                "unicos: [{shown}] necesita al menos dos campos; para uno solo, `unico = true` en el \
+                 campo"
             ));
         }
         for (i, name) in group.iter().enumerate() {
             match fields.iter().find(|f| &f.name == name) {
                 None => errors.push(format!(
-                    "unicos: '{name}' is not a field of {}",
+                    "unicos: '{name}' no es un campo de {}",
                     entity.name
                 )),
                 Some(f)
@@ -707,20 +710,20 @@ pub fn validate_entity_shape(entity: &crate::puerto_toml::Entity) -> Vec<String>
                         || f.field_type.starts_with("HashMap<") =>
                 {
                     errors.push(format!(
-                        "unicos: '{name}' is a {} — a unique holds plain, required fields",
+                        "unicos: '{name}' es un {}: un único lleva campos simples y obligatorios",
                         f.field_type
                     ));
                 }
                 Some(_) => {}
             }
             if group[..i].contains(name) {
-                errors.push(format!("unicos: [{shown}] names '{name}' twice"));
+                errors.push(format!("unicos: [{shown}] nombra '{name}' dos veces"));
             }
         }
         let mut sorted: Vec<&String> = group.iter().collect();
         sorted.sort();
         if seen.contains(&sorted) {
-            errors.push(format!("unicos: [{shown}] is listed twice"));
+            errors.push(format!("unicos: [{shown}] está dos veces"));
         }
         seen.push(sorted);
     }
@@ -729,8 +732,8 @@ pub fn validate_entity_shape(entity: &crate::puerto_toml::Entity) -> Vec<String>
         // A reference is a `Uuid`: never text.
         if !text || crate::generators::types::is_enum_vo(f) {
             errors.push(format!(
-                "privado: '{}' is a {} — a private field is text (String, Option<String> or a \
-                 value object over one, not an enum)",
+                "privado: '{}' es un {}: un campo privado es texto (String, Option<String> o un \
+                 objeto valor sobre uno de ellos, que no sea enum)",
                 f.name, f.field_type
             ));
         }
@@ -739,16 +742,17 @@ pub fn validate_entity_shape(entity: &crate::puerto_toml::Entity) -> Vec<String>
         let name = key.strip_prefix('-').unwrap_or(key);
         match fields.iter().find(|f| f.name == name) {
             None if name.is_empty() => errors.push(format!(
-                "orden: '{key}' names no field — a field, or `-` and a field for descending"
+                "orden: '{key}' no nombra ningún campo: un campo, o `-` y un campo para el orden \
+                 descendente"
             )),
-            None => errors.push(format!("orden: '{name}' is not a field of {}", entity.name)),
+            None => errors.push(format!("orden: '{name}' no es un campo de {}", entity.name)),
             Some(f)
                 if f.field_type.starts_with("Option<")
                     || f.field_type.starts_with("Vec<")
                     || f.field_type.starts_with("HashMap<") =>
             {
                 errors.push(format!(
-                    "orden: '{name}' is a {} — a list is ordered by plain, required fields",
+                    "orden: '{name}' es un {}: una lista se ordena por campos simples y obligatorios",
                     f.field_type
                 ));
             }
@@ -758,7 +762,7 @@ pub fn validate_entity_shape(entity: &crate::puerto_toml::Entity) -> Vec<String>
             .iter()
             .any(|k| k.strip_prefix('-').unwrap_or(k) == name);
         if earlier {
-            errors.push(format!("orden: names '{name}' twice"));
+            errors.push(format!("orden: nombra '{name}' dos veces"));
         }
     }
     errors
@@ -772,27 +776,28 @@ pub fn validate_entity_access(entity: &crate::puerto_toml::Entity) -> Vec<String
     for (i, uc) in entity.public.iter().enumerate() {
         if !names_use_case(uc) {
             errors.push(format!(
-                "public: '{uc}' is not one of the entity's use cases"
+                "publicos: '{uc}' no es uno de los casos de uso de la entidad"
             ));
         }
         if entity.public[..i].contains(uc) {
-            errors.push(format!("public: '{uc}' is listed twice"));
+            errors.push(format!("publicos: '{uc}' está dos veces"));
         }
     }
     for (uc, roles) in &entity.roles {
         if !names_use_case(uc) {
             errors.push(format!(
-                "roles: '{uc}' is not one of the entity's use cases"
+                "roles: '{uc}' no es uno de los casos de uso de la entidad"
             ));
         }
         if entity.public.contains(uc) {
             errors.push(format!(
-                "'{uc}' is both public and requires a role: a public route has no caller to check"
+                "'{uc}' es público y a la vez exige un rol: una ruta pública no tiene llamante que \
+                 comprobar"
             ));
         }
         if roles.is_empty() {
             errors.push(format!(
-                "roles: '{uc}' requires no role — remove it or name one"
+                "roles: '{uc}' no exige ningún rol: quítalo o nombra uno"
             ));
         }
         for role in roles {
@@ -1003,11 +1008,11 @@ mod tests {
         let errors = validate_entity_access(&entity);
         assert_eq!(errors.len(), 2, "{errors:?}");
         assert!(
-            errors[0].contains("'obtener_product' is not one of"),
+            errors[0].contains("'obtener_product' no es uno de"),
             "{errors:?}"
         );
         assert!(
-            errors[1].contains("'borrar_product' is not one of"),
+            errors[1].contains("'borrar_product' no es uno de"),
             "{errors:?}"
         );
     }
@@ -1018,7 +1023,7 @@ mod tests {
         let errors = validate_entity_access(&entity);
         assert_eq!(errors.len(), 1, "{errors:?}");
         assert!(
-            errors[0].contains("both public and requires a role"),
+            errors[0].contains("es público y a la vez exige un rol"),
             "{errors:?}"
         );
     }
@@ -1026,16 +1031,16 @@ mod tests {
     #[test]
     fn should_reject_roles_when_they_are_empty_or_not_role_names() {
         let errors = validate_entity_access(&product(&[], &[("crear_product", &[])]));
-        assert!(errors[0].contains("requires no role"), "{errors:?}");
+        assert!(errors[0].contains("no exige ningún rol"), "{errors:?}");
         let errors = validate_entity_access(&product(&[], &[("crear_product", &["Admin"])]));
-        assert!(errors[0].contains("invalid role 'Admin'"), "{errors:?}");
+        assert!(errors[0].contains("rol inválido 'Admin'"), "{errors:?}");
     }
 
     #[test]
     fn should_reject_a_public_use_case_when_it_is_listed_twice() {
         let errors = validate_entity_access(&product(&["listar_products", "listar_products"], &[]));
         assert_eq!(errors.len(), 1, "{errors:?}");
-        assert!(errors[0].contains("listed twice"), "{errors:?}");
+        assert!(errors[0].contains("está dos veces"), "{errors:?}");
     }
 
     #[test]

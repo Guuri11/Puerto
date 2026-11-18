@@ -125,7 +125,7 @@ pub fn run_generate_event(
     let config = crate::puerto_toml::read(base)?;
     if !config.project.has_events() {
         return Err(
-            "this project has no domain events — they need a project created with \
+            "este proyecto no tiene eventos de dominio: necesitan un proyecto creado con \
                     `puerto nuevo --db --eventos db`"
                 .into(),
         );
@@ -136,10 +136,11 @@ pub fn run_generate_event(
         .entity
         .iter()
         .find(|e| e.name == pascal)
-        .ok_or_else(|| format!("entity '{pascal}' not found in puerto.toml"))?;
+        .ok_or_else(|| format!("la entidad '{pascal}' no está en puerto.toml"))?;
     if !uses_unit_of_work(declared, true) {
         return Err(format!(
-            "{pascal} is not a CRUD entity: only the writes of scaffolded entities record events"
+            "{pascal} no es una entidad CRUD: solo las escrituras de las entidades del scaffold \
+             registran eventos"
         )
         .into());
     }
@@ -149,12 +150,12 @@ pub fn run_generate_event(
     regenerate_bootstrap(base)?;
 
     println!(
-        "✓ Event '{event}' added to {pascal}: Evento{pascal}::{}",
+        "✓ Evento '{event}' añadido a {pascal}: Evento{pascal}::{}",
         event_variant(&snake, event)
     );
-    println!("  {} regenerated.", layout::domain_file(&snake, "eventos"));
+    println!("  {} regenerado.", layout::domain_file(&snake, "eventos"));
     println!(
-        "  Record it from a use case: uow.registrar(Evento{pascal}::{}(Snapshot{pascal}::from_entidad(&entidad)))",
+        "  Regístralo desde un caso de uso: uow.registrar(Evento{pascal}::{}(Snapshot{pascal}::from_entidad(&entidad)))",
         event_variant(&snake, event)
     );
     Ok(())

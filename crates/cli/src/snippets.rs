@@ -1269,11 +1269,11 @@ pub fn apply(base: &Path, ide: Option<&str>) -> Result<(), Box<dyn std::error::E
         write_file(&base.join(".zed/snippets/rust.json"), SNIPPETS_JSON)?;
         write_file(&base.join(".zed/snippets/sql.json"), SQL_SNIPPETS_JSON)?;
         println!(
-            "✓ .zed/snippets/rust.json + sql.json  (Zed — loaded automatically from project root)"
+            "✓ .zed/snippets/rust.json + sql.json  (Zed: los carga solo desde la raíz del proyecto)"
         );
         if web {
             write_file(&base.join(".zed/snippets/tsx.json"), WEB_TSX_SNIPPETS_JSON)?;
-            println!("✓ .zed/snippets/tsx.json  (the web/ frontend)");
+            println!("✓ .zed/snippets/tsx.json  (el frontend de web/)");
         }
     }
     if write_vscode {
@@ -1283,14 +1283,14 @@ pub fn apply(base: &Path, ide: Option<&str>) -> Result<(), Box<dyn std::error::E
             SQL_SNIPPETS_JSON,
         )?;
         println!(
-            "✓ .vscode/puerto.code-snippets + puerto.sql.code-snippets  (VS Code — loaded automatically)"
+            "✓ .vscode/puerto.code-snippets + puerto.sql.code-snippets  (VS Code: los carga solo)"
         );
         if web {
             write_file(
                 &base.join(".vscode/puerto.ts.code-snippets"),
                 &vscode_web_snippets()?,
             )?;
-            println!("✓ .vscode/puerto.ts.code-snippets  (the web/ frontend)");
+            println!("✓ .vscode/puerto.ts.code-snippets  (el frontend de web/)");
         }
         println!(
             "  nvim+LuaSnip: require(\"luasnip.loaders.from_vscode\").lazy_load({{ paths = {{ \"./.vscode\" }} }})"
@@ -1314,7 +1314,7 @@ fn vscode_web_snippets() -> Result<String, serde_json::Error> {
 pub fn run(base: &Path, ide: Option<&str>) -> Result<(), Box<dyn std::error::Error>> {
     if let Some(i) = ide {
         if !matches!(i, "zed" | "vscode") {
-            return Err(format!("unknown IDE '{i}' — supported values: zed, vscode").into());
+            return Err(format!("IDE desconocido '{i}': valen zed, vscode").into());
         }
     }
     apply(base, ide)

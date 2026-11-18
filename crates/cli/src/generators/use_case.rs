@@ -27,11 +27,11 @@ pub fn run_use_case(
         .entity
         .iter()
         .find(|e| e.name == pascal)
-        .ok_or_else(|| format!("entity '{pascal}' not found in puerto.toml"))?;
+        .ok_or_else(|| format!("la entidad '{pascal}' no está en puerto.toml"))?;
     if declared.use_cases.contains(&uc) || path.exists() {
         return Err(format!(
-            "use case '{uc}' already exists for {pascal}. Pick another name, or delete its files \
-             and its entry in puerto.toml first"
+            "el caso de uso '{uc}' ya existe en {pascal}. Elige otro nombre, o borra antes sus \
+             ficheros y su entrada en puerto.toml"
         )
         .into());
     }
@@ -64,12 +64,12 @@ pub fn run_use_case(
     regenerate_bootstrap(base)?;
 
     println!(
-        "✓ Use case {uc_pascal} added to {pascal}: {}",
+        "✓ Caso de uso {uc_pascal} añadido a {pascal}: {}",
         layout::use_case(&snake, &uc)
     );
-    println!("  puerto.toml updated + bootstrap.rs regenerated.");
+    println!("  puerto.toml actualizado y bootstrap.rs regenerado.");
     println!(
-        "  Api{pascal} now holds `{uc}` — call it from an endpoint in {}.",
+        "  Api{pascal} ya tiene `{uc}`: llámalo desde un endpoint en {}.",
         layout::rest_file(&snake, "rutas")
     );
 

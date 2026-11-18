@@ -222,7 +222,7 @@ pub fn run_generate_application(name: &str, base: &Path) -> Result<(), Box<dyn s
 
     if !config.entity.iter().any(|e| e.name == pascal) {
         return Err(format!(
-            "{pascal} not found in puerto.toml. Run `puerto generar dominio {pascal}` first."
+            "{pascal} no está en puerto.toml. Ejecuta antes `puerto generar dominio {pascal}`."
         )
         .into());
     }
@@ -238,10 +238,10 @@ pub fn run_generate_application(name: &str, base: &Path) -> Result<(), Box<dyn s
     write_application_files(&pascal, &snake, base, &fields, &shared_vos)?;
 
     println!(
-        "✓ {}/ — 5 use cases (create, get, list, update, delete)",
+        "✓ {}/: 5 casos de uso (crear, obtener, listar, actualizar, borrar)",
         layout::crate_dir(&snake, Layer::Application)
     );
     println!();
-    println!("  Next: puerto generar repositorio {pascal}");
+    println!("  Siguiente: puerto generar repositorio {pascal}");
     Ok(())
 }

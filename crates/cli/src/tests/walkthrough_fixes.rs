@@ -64,18 +64,19 @@ eventos = ["producto_creado", "producto_published"]
 
     let report = crate::commands::list::list_report(&config);
 
-    assert!(report.contains("Events: db"), "{report}");
+    assert!(report.contains("Eventos: db"), "{report}");
     assert!(report.contains("    · publish_producto"), "{report}");
     assert!(
-        report.contains("    events: producto_published"),
+        report.contains("    eventos: producto_published"),
         "{report}"
     );
     assert!(
-        report.contains("Shared value objects:\n  Email (String)"),
+        report.contains("Objetos valor compartidos:\n  Email (String)"),
         "{report}"
     );
     assert!(
-        report.contains("Consumers:\n  notify_new_producto ← producto_creado, producto_published"),
+        report
+            .contains("Consumidores:\n  notify_new_producto ← producto_creado, producto_published"),
         "{report}"
     );
 }
@@ -89,9 +90,9 @@ fn list_of_a_plain_project_has_no_empty_sections() {
 
     let report = crate::commands::list::list_report(&config);
 
-    assert!(!report.contains("Consumers"), "{report}");
-    assert!(!report.contains("Shared value objects"), "{report}");
-    assert!(!report.contains("events:"), "{report}");
+    assert!(!report.contains("Consumidores"), "{report}");
+    assert!(!report.contains("Objetos valor compartidos"), "{report}");
+    assert!(!report.contains("eventos:"), "{report}");
 }
 
 // ── `generate use-case` ─────────────────────────────────────────────────────

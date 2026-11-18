@@ -36,25 +36,27 @@ fn mail_field(field: &Field) -> Result<MailField, String> {
     let name = &field.name;
     if name == "para" {
         return Err(
-            "field 'para' is the recipient every mail already has — pick another name".to_string(),
+            "el campo 'para' es el destinatario que ya tiene todo correo: elige otro nombre"
+                .to_string(),
         );
     }
     if field.value_object.is_some() {
         return Err(format!(
-            "field '{name}': a mail carries primitives, not a value object — use \
-             {name}:<type>"
+            "campo '{name}': un correo lleva primitivos, no un objeto valor: usa \
+             {name}:<tipo>"
         ));
     }
     if field.unique {
         return Err(format!(
-            "field '{name}': `!` (unique) is a database constraint, it means nothing on a mail"
+            "campo '{name}': `!` (único) es una restricción de la base de datos, y en un correo no \
+             significa nada"
         ));
     }
-    let mapping = resolve_type(&field.field_type).map_err(|e| format!("field '{name}': {e}"))?;
+    let mapping = resolve_type(&field.field_type).map_err(|e| format!("campo '{name}': {e}"))?;
     if mapping.rust_type.starts_with("Vec<") || mapping.rust_type.starts_with("HashMap<") {
         return Err(format!(
-            "field '{name}': {} is not a value a mail template prints — use String, i64, bool, \
-             f64, Uuid, DateTime or opt:<type>",
+            "campo '{name}': {} no es un valor que imprima una plantilla de correo: usa String, \
+             i64, bool, f64, Uuid, DateTime u opt:<tipo>",
             mapping.rust_type
         ));
     }
@@ -89,7 +91,7 @@ fn mail_fields(args: &[String]) -> Result<Vec<MailField>, String> {
     let mut out: Vec<MailField> = vec![];
     for field in &fields {
         if out.iter().any(|f| f.name == field.name) {
-            return Err(format!("duplicate field '{}'", field.name));
+            return Err(format!("el campo '{}' está repetido", field.name));
         }
         out.push(mail_field(field)?);
     }
@@ -383,14 +385,15 @@ fn trigger(
         (true, None) => return Ok(None),
         (true, Some(_)) => {
             return Err(
-                "--para names the recipient of a mail sent on events: it needs --tras <event_type>"
+                "--para nombra el destinatario de un correo que se envía tras eventos: necesita \
+                 --tras <tipo_evento>"
                     .to_string(),
             );
         }
         (false, None) => {
             return Err(
-                "--tras needs --para <field>: the String field of the event's snapshot that \
-                 holds the recipient"
+                "--tras necesita --para <campo>: el campo String del snapshot del evento que \
+                 guarda el destinatario"
                     .to_string(),
             );
         }
@@ -398,7 +401,7 @@ fn trigger(
     };
     if !has_worker(config) {
         return Err(
-            "a mail sent on events needs the worker — a project created with \
+            "un correo que se envía tras eventos necesita el worker: un proyecto creado con \
              `puerto nuevo --db --eventos db|kafka`"
                 .to_string(),
         );
@@ -423,10 +426,10 @@ fn trigger(
                 .map(|(n, _)| n.as_str())
                 .collect();
             return Err(format!(
-                "--para {to}: the snapshot of {} has no String field '{to}' (its String fields: {})",
+                "--para {to}: el snapshot de {} no tiene el campo String '{to}' (sus campos String: {})",
                 event.event_type,
                 if strings.is_empty() {
-                    "none".to_string()
+                    "ninguno".to_string()
                 } else {
                     strings.join(", ")
                 }
@@ -478,8 +481,9 @@ fn trigger_fields(
     for f in &fields {
         if let Some(event) = in_every(&f.name, &f.rust_type) {
             return Err(format!(
-                "field '{}': the snapshot of {event} has no {} field '{}' — a mail sent on an \
-                 event is built from its snapshot; add other values to the mail by hand afterwards",
+                "campo '{}': el snapshot de {event} no tiene el campo {} '{}'. Un correo que se \
+                 envía tras un evento se construye con su snapshot; añade otros valores al correo a \
+                 mano después",
                 f.name, f.rust_type, f.name
             ));
         }
@@ -503,7 +507,7 @@ fn render_handler(
                     event.entity_snake.clone(),
                     vec![format!("Snapshot{}", event.entity_pascal)],
                 ));
-                &mut by_entity.last_mut().ok_or("no entity")?.1
+                &mut by_entity.last_mut().ok_or("ninguna entidad")?.1
             }
         };
         names.push(event.constant.clone());
@@ -538,7 +542,7 @@ fn set_up_worker_mail(base: &Path) -> Result<(), Box<dyn std::error::Error>> {
     if !src.contains("puerto-correo") {
         let events = "puerto-eventos = { workspace = true }\n";
         if !src.contains(events) {
-            return Err(format!("{}: no `{}`", path.display(), events.trim_end()).into());
+            return Err(format!("{}: no tiene `{}`", path.display(), events.trim_end()).into());
         }
         src = src.replacen(
             events,
@@ -591,13 +595,13 @@ pub fn run_generate_mail_on(
     let config = crate::puerto_toml::read(base)?;
     crate::validation::validate_mail_name(name)?;
     if config.mail.iter().any(|m| m.name == name) {
-        return Err(format!("mail '{name}' is already declared in puerto.toml").into());
+        return Err(format!("el correo '{name}' ya está declarado en puerto.toml").into());
     }
     let consumer_name = format!("correo_{name}");
     if config.consumer.iter().any(|c| c.name == consumer_name) {
         return Err(format!(
-            "the worker runs mail '{name}' as the consumer '{consumer_name}', which a \
-             [[consumidor]] already uses — pick another name"
+            "el worker ejecuta el correo '{name}' como el consumidor '{consumer_name}', que ya usa \
+             un [[consumidor]]: elige otro nombre"
         )
         .into());
     }
@@ -618,7 +622,7 @@ pub fn run_generate_mail_on(
     for path in paths {
         if path.exists() {
             return Err(format!(
-                "{} already exists — it is never overwritten. Remove it or pick another name",
+                "{} ya existe, y nunca se sobrescribe. Bórralo o elige otro nombre",
                 path.display()
             )
             .into());
@@ -663,13 +667,13 @@ pub fn run_generate_mail_on(
     }
 
     let pascal = to_pascal_case(name);
-    println!("✓ Mail '{name}' added — yours from here on:");
+    println!("✓ Correo '{name}' añadido; desde aquí es tuyo:");
     println!(
-        "  {}  Correo{pascal} + the port EnviadorCorreo{pascal}",
+        "  {}  Correo{pascal} y el puerto EnviadorCorreo{pascal}",
         layout::mail_port(name)
     );
     println!(
-        "  {}  EnviadorCorreo{pascal}Plantilla, with its tests",
+        "  {}  EnviadorCorreo{pascal}Plantilla, con sus tests",
         layout::mail_adapter(name)
     );
     println!(
@@ -678,7 +682,7 @@ pub fn run_generate_mail_on(
     );
     if let Some(trigger) = &trigger {
         println!(
-            "  {}  sends it on {}, to `{}` — once per event",
+            "  {}  lo envía tras {}, a `{}`: una vez por evento",
             layout::consumer(&consumer_name),
             trigger
                 .events
@@ -691,8 +695,8 @@ pub fn run_generate_mail_on(
     }
     if first {
         println!(
-            "  Mailpit added to docker-compose.yml; SMTP_URL and MAIL_FROM to .env. \
-             See the mails with `make correo/ui`."
+            "  Mailpit añadido a docker-compose.yml; SMTP_URL y MAIL_FROM, a .env. \
+             Mira los correos con `make correo/ui`."
         );
     }
     Ok(())

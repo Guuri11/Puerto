@@ -736,7 +736,7 @@ pub fn web_slice_refusal(entity: &Entity) -> Option<String> {
         .collect();
     if !missing.is_empty() {
         return Some(format!(
-            "it has no CRUD endpoints for the screens to call (missing {})",
+            "no tiene endpoints CRUD a los que llamen las pantallas (faltan {})",
             missing.join(", ")
         ));
     }
@@ -753,17 +753,17 @@ pub fn run_generate_web(
     let pascal = to_pascal_case(name);
     if !config.project.web {
         return Err(
-            "this project has no frontend ([proyecto] web is not true in puerto.toml)".into(),
+            "este proyecto no tiene frontend ([proyecto] web no es true en puerto.toml)".into(),
         );
     }
     let Some(entity) = config.entity.iter().find(|e| e.name == pascal) else {
         return Err(format!(
-            "{pascal} not found in puerto.toml. Run `puerto generar scaffold {pascal}` first."
+            "{pascal} no está en puerto.toml. Ejecuta antes `puerto generar scaffold {pascal}`."
         )
         .into());
     };
     if let Some(reason) = web_slice_refusal(entity) {
-        return Err(format!("no web slice for {pascal}: {reason}").into());
+        return Err(format!("{pascal} no tiene pantallas web: {reason}").into());
     }
     let snake = pascal_to_snake(&pascal);
     guard_files_overwrite(base, &snake, &web_entity_files(&snake), overwrite)?;
@@ -772,9 +772,11 @@ pub fn run_generate_web(
     regenerate_web(base, &config)?;
 
     let kebab = snake_to_kebab(&snake);
-    println!("✓ web/src/contextos/{kebab}/ — contenedores, vistas, mensajes");
-    println!("✓ web/src/generado/       — dependencias.ts, rutas.tsx");
-    println!("\nNext: make web/sync   (exports the spec, regenerates the web types)");
+    println!("✓ web/src/contextos/{kebab}/: contenedores, vistas, mensajes");
+    println!("✓ web/src/generado/: dependencias.ts, rutas.tsx");
+    println!(
+        "\nSiguiente: make web/sync   (exporta la especificación y regenera los tipos de la web)"
+    );
     Ok(())
 }
 

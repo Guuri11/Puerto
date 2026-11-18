@@ -356,15 +356,20 @@ fn generate_web_refuses_an_undeclared_entity_a_non_crud_one_and_a_project_withou
         undeclared
             .unwrap_err()
             .to_string()
-            .contains("not found in puerto.toml")
+            .contains("no está en puerto.toml")
     );
     assert!(
         saludo
             .unwrap_err()
             .to_string()
-            .contains("no CRUD endpoints")
+            .contains("no tiene endpoints CRUD")
     );
-    assert!(non_web.unwrap_err().to_string().contains("no frontend"));
+    assert!(
+        non_web
+            .unwrap_err()
+            .to_string()
+            .contains("no tiene frontend")
+    );
     assert!(!output.join("web").exists());
     cleanup(&dir);
 }

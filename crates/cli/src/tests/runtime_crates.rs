@@ -190,7 +190,10 @@ fn should_warn_when_a_runtime_crate_is_on_another_minor() {
     let manifest = "[workspace.dependencies]\npuerto-nucleo = \"0.13\"\n";
     assert_eq!(
         crate::runtime::version_warnings(manifest, "0.14.0"),
-        vec!["puerto-nucleo 0.13 but puerto 0.14 — see the CHANGELOG migration guide".to_string()]
+        vec![
+            "puerto-nucleo 0.13, pero puerto 0.14: mira la guía de migración del CHANGELOG"
+                .to_string()
+        ]
     );
 }
 

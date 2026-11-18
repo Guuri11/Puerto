@@ -157,7 +157,7 @@ fn type_registry_resolve_all_types() {
 fn type_registry_rejects_unknown() {
     use crate::generators::types::resolve_type;
     let err = resolve_type("FooBar").unwrap_err();
-    assert!(err.contains("unsupported field type 'FooBar'"));
+    assert!(err.contains("tipo de campo no admitido 'FooBar'"));
 }
 
 // ── Phase 2: Domain model with custom fields ──────────────────────────────────

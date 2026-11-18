@@ -397,10 +397,10 @@ fn generate_event_refuses_a_crud_event_a_duplicate_and_a_bad_name() {
     scaffold::run_generate_event("Producto", "producto_published", &output).unwrap();
 
     for (event, expected) in [
-        ("producto_creado", "clashes"),
-        ("borrado", "clashes"),
-        ("producto_published", "already declared"),
-        ("published", "already declared"),
+        ("producto_creado", "choca"),
+        ("borrado", "choca"),
+        ("producto_published", "ya está declarado"),
+        ("published", "ya está declarado"),
         ("ProductoPublished", "snake_case"),
     ] {
         let err = scaffold::run_generate_event("Producto", event, &output)
@@ -449,7 +449,7 @@ fn generate_event_is_refused_for_an_entity_that_is_not_crud() {
         .map(|e| e.to_string())
         .unwrap_or_default();
 
-    assert!(err.contains("not a CRUD entity"), "{err}");
+    assert!(err.contains("no es una entidad CRUD"), "{err}");
     cleanup(&dir);
 }
 

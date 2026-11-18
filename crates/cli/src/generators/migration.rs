@@ -31,13 +31,13 @@ pub fn run_migration(
     let body = content.unwrap_or("-- Escribe aquí la migración\n");
     fs::write(&path, format!("{header}{body}"))?;
 
-    println!("✓ Migration '{normalised}' created in migraciones/");
+    println!("✓ Migración '{normalised}' creada en migraciones/");
     // The project builds with SQLX_OFFLINE=true: until the query cache knows the new schema, the
     // queries that use it do not compile.
     if content.is_some() {
-        println!("  Schema pre-filled — run: make sqlx/migrate && make sqlx/prepare");
+        println!("  Esquema ya escrito; ejecuta: make sqlx/migrate && make sqlx/prepare");
     } else {
-        println!("  Edit the file, then run: make sqlx/migrate && make sqlx/prepare");
+        println!("  Edita el fichero y ejecuta: make sqlx/migrate && make sqlx/prepare");
     }
 
     Ok(())
@@ -63,10 +63,10 @@ pub fn run_create_table_migration(
     let Some(existing) = existing else {
         return run_migration(&name, base, Some(sql));
     };
-    println!("• migraciones/{existing} already creates the table — no new migration.");
-    println!("  If the fields changed: not applied anywhere yet → edit that file;");
-    println!("  applied → `puerto generar migracion <name>` with the ALTER TABLE.");
-    println!("  Then: make sqlx/migrate && make sqlx/prepare");
+    println!("• migraciones/{existing} ya crea la tabla: no hay migración nueva.");
+    println!("  Si cambiaron los campos: sin aplicar todavía → edita ese fichero;");
+    println!("  ya aplicada → `puerto generar migracion <nombre>` con el ALTER TABLE.");
+    println!("  Después: make sqlx/migrate && make sqlx/prepare");
     Ok(())
 }
 
@@ -75,8 +75,8 @@ pub fn run_generate_migration(name: &str, base: &Path) -> Result<(), Box<dyn std
     let config = crate::puerto_toml::read(base)?;
     if !config.project.db {
         return Err(
-            "this project has no database — migrations need a project created with \
-                    `puerto nuevo --db`"
+            "este proyecto no tiene base de datos: las migraciones necesitan un proyecto creado \
+                    con `puerto nuevo --db`"
                 .into(),
         );
     }

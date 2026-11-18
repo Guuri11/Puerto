@@ -159,17 +159,17 @@ pub fn run_bootstrap_command(
         ));
         if !lines.is_empty() {
             return Err(format!(
-                "refusing to write generated wiring that will not compile:\n  {}\n\nPass \
-                 --permitir-faltantes to write it anyway.",
+                "no se escribe un cableado generado que no compilaría:\n  {}\n\nPasa \
+                 --permitir-faltantes para escribirlo igualmente.",
                 lines.join("\n  ")
             )
             .into());
         }
     }
     regenerate_bootstrap(base)?;
-    println!("✓ bootstrap.rs regenerated.");
+    println!("✓ bootstrap.rs regenerado.");
     if crate::puerto_toml::read(base).is_ok_and(|c| c.project.web) {
-        println!("✓ web/src/generado/ regenerated.");
+        println!("✓ web/src/generado/ regenerado.");
     }
     Ok(())
 }

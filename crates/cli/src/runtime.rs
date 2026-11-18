@@ -58,7 +58,7 @@ pub fn version_warnings(manifest: &str, cli_version: &str) -> Vec<String> {
             let declared = requirement(declared.trim_start_matches(['^', '=', '~']));
             if declared != cli {
                 warnings.push(format!(
-                    "{name} {declared} but puerto {cli} — see the CHANGELOG migration guide"
+                    "{name} {declared}, pero puerto {cli}: mira la guía de migración del CHANGELOG"
                 ));
             }
         }

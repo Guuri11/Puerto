@@ -208,7 +208,7 @@ pub fn run_generate_presentation(
 
     if !config.entity.iter().any(|e| e.name == pascal) {
         return Err(format!(
-            "{pascal} not found in puerto.toml. Run `puerto generar dominio {pascal}` first."
+            "{pascal} no está en puerto.toml. Ejecuta antes `puerto generar dominio {pascal}`."
         )
         .into());
     }
@@ -219,8 +219,8 @@ pub fn run_generate_presentation(
         .exists()
     {
         return Err(format!(
-            "{pascal} has no application crate yet: the routes hold its use cases. Run \
-             `puerto generar aplicacion {pascal}` first."
+            "{pascal} aún no tiene crate de aplicación, y las rutas guardan sus casos de uso. \
+             Ejecuta antes `puerto generar aplicacion {pascal}`."
         )
         .into());
     }
@@ -235,7 +235,7 @@ pub fn run_generate_presentation(
     write_presentation_files(&pascal, &snake, base, &fields)?;
     crate::patchers::routes_rs::patch_routes_from_manifest(base, &pascal, &snake)?;
     println!(
-        "✓ {}/ — routes, dto, responses, errors",
+        "✓ {}/: rutas, dto, respuestas, errores",
         layout::crate_dir(&snake, Layer::Rest)
     );
 
@@ -250,15 +250,15 @@ pub fn run_generate_presentation(
         .collect();
     if missing.is_empty() {
         regenerate_bootstrap(base)?;
-        println!("✓ bootstrap.rs         — regenerated");
+        println!("✓ bootstrap.rs regenerado");
         println!();
-        println!("  All layers wired. Run `make run` to start.");
+        println!("  Todas las capas cableadas. Arranca con `make run`.");
         return Ok(());
     }
 
     let next = "repositorio";
     println!();
-    println!("  bootstrap.rs not regenerated yet: {pascal} has no {next} layer.");
-    println!("  Next: puerto generar {next} {pascal}, then `puerto generar bootstrap`.");
+    println!("  bootstrap.rs aún sin regenerar: {pascal} no tiene la capa {next}.");
+    println!("  Siguiente: puerto generar {next} {pascal}, y después `puerto generar bootstrap`.");
     Ok(())
 }

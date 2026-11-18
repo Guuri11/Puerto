@@ -31,7 +31,7 @@ pub fn check_mode(mode: &str) -> Result<(), String> {
 pub fn check_new_project(mode: &str, db: bool) -> Result<(), String> {
     check_mode(mode)?;
     if mode == "local" && !db {
-        return Err("--auth local keeps accounts in the database: add --db".into());
+        return Err("--auth local guarda las cuentas en la base de datos: añade --db".into());
     }
     Ok(())
 }
@@ -560,15 +560,19 @@ fn write_web(base: &Path, project: &str, local: bool) -> Result<(), Box<dyn std:
 
     let path = web.join("package.json");
     let package = fs::read_to_string(&path)?;
-    let package = add_oidc_client(&package)
-        .ok_or_else(|| format!("{}: no `openapi-fetch` dependency", path.display()))?;
+    let package = add_oidc_client(&package).ok_or_else(|| {
+        format!(
+            "{}: no tiene la dependencia `openapi-fetch`",
+            path.display()
+        )
+    })?;
     fs::write(&path, package)?;
 
     let path = web.join(".dependency-cruiser.cjs");
     let cruiser = fs::read_to_string(&path)?;
     if !cruiser.contains("oidc-client-ts") {
         let cruiser = insert_after_line(&cruiser, "  forbidden: [", CRUISER_RULE.trim_end())
-            .ok_or_else(|| format!("{}: no `forbidden: [`", path.display()))?;
+            .ok_or_else(|| format!("{}: no tiene `forbidden: [`", path.display()))?;
         fs::write(&path, cruiser)?;
     }
 
@@ -778,7 +782,7 @@ mod tests {
         assert!(
             check_new_project("auth0", true)
                 .unwrap_err()
-                .contains("unknown auth mode")
+                .contains("modo de auth desconocido")
         );
     }
 

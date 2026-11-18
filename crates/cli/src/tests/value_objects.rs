@@ -523,7 +523,7 @@ fn value_object_command_rejects_invalid_name_type_and_duplicates() {
     let dup = scaffold::run_value_object("Email", "String", &dir);
 
     assert!(dup.is_err());
-    assert!(dup.unwrap_err().to_string().contains("already declared"));
+    assert!(dup.unwrap_err().to_string().contains("ya está declarad"));
     let config = puerto_toml::read(&dir).unwrap();
     assert_eq!(config.value_object.len(), 1);
 

@@ -19,6 +19,56 @@ fn cli_supports_version_flag() {
 }
 
 #[test]
+fn clap_help_and_errors_are_in_spanish() {
+    // The help and the errors are clap's: their headings and phrases are English until
+    // `clap_en_castellano` replaces them.
+    use clap::CommandFactory;
+    let render = |args: &[&str]| {
+        let err = crate::Cli::command()
+            .try_get_matches_from(args)
+            .expect_err("help and bad input stop parsing");
+        crate::clap_en_castellano(&err.render().to_string())
+    };
+
+    let root = render(&["puerto", "--help"]);
+    let scaffold = render(&["puerto", "generar", "scaffold", "--help"]);
+    let typo = render(&["puerto", "generar", "scafold"]);
+    let missing = render(&["puerto", "generar", "caso-de-uso"]);
+
+    for (help, text) in [("root", &root), ("scaffold", &scaffold)] {
+        for english in [
+            "Usage:",
+            "Commands:",
+            "Arguments:",
+            "Options:",
+            "[OPTIONS]",
+            "Print",
+        ] {
+            assert!(!text.contains(english), "{help}: {english}\n{text}");
+        }
+    }
+    assert!(root.contains("Uso: puerto <COMANDO>"), "{root}");
+    assert!(root.contains("-h, --help     Muestra la ayuda"), "{root}");
+    assert!(
+        scaffold.contains("[OPCIONES] <NOMBRE> [-- <CAMPOS>...]"),
+        "{scaffold}"
+    );
+    assert!(typo.contains("subcomando desconocido 'scafold'"), "{typo}");
+    assert!(
+        typo.contains("hay un subcomando parecido: 'scaffold'"),
+        "{typo}"
+    );
+    assert!(
+        missing.contains("faltan estos argumentos obligatorios:"),
+        "{missing}"
+    );
+    assert!(
+        missing.contains("Para más información, prueba '--help'."),
+        "{missing}"
+    );
+}
+
+#[test]
 fn cli_definition_is_well_formed() {
     // Catches conflicting flags, duplicate short options and broken `raw = true` args at test
     // time rather than at the first invocation.
@@ -37,7 +87,7 @@ fn list_fails_outside_puerto_project() {
     let result = run_list(&dir);
     assert!(result.is_err());
     let msg = result.unwrap_err().to_string();
-    assert!(msg.contains("puerto.toml not found"));
+    assert!(msg.contains("no se encuentra puerto.toml"));
 
     cleanup(&dir);
 }
@@ -68,7 +118,7 @@ fn generate_scaffold_fails_outside_puerto_project() {
         result
             .unwrap_err()
             .to_string()
-            .contains("puerto.toml not found")
+            .contains("no se encuentra puerto.toml")
     );
 
     cleanup(&dir);

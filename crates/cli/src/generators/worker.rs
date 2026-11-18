@@ -111,10 +111,13 @@ pub(crate) fn subscribed(
 fn undeclared_event(event: &str, declared: &[DeclaredEvent]) -> String {
     let known: Vec<&str> = declared.iter().map(|d| d.event_type.as_str()).collect();
     if known.is_empty() {
-        format!("event '{event}' is not declared: no CRUD entity records events yet")
+        format!(
+            "ninguna entidad declara el evento '{event}': aún no hay entidades CRUD que registren \
+             eventos"
+        )
     } else {
         format!(
-            "event '{event}' is not declared by any entity. Declared: {}",
+            "ninguna entidad declara el evento '{event}'. Los declarados: {}",
             known.join(", ")
         )
     }
@@ -275,7 +278,7 @@ pub fn generate_consumer(
     events: &[DeclaredEvent],
 ) -> Result<String, Box<dyn std::error::Error>> {
     let Some(first) = events.first() else {
-        return Err(format!("consumer '{name}' subscribes to no event").into());
+        return Err(format!("el consumidor '{name}' no se suscribe a ningún evento").into());
     };
     let mut by_entity: BTreeMap<&str, (Vec<String>, &str)> = BTreeMap::new();
     for event in events {
@@ -535,7 +538,11 @@ fn add_redpanda_to_compose(
         return Ok(());
     }
     let Some(at) = src.find("\nvolumes:\n") else {
-        return Err(format!("{}: no top-level `volumes:`", path.display()).into());
+        return Err(format!(
+            "{}: no tiene `volumes:` en el nivel superior",
+            path.display()
+        )
+        .into());
     };
     let out = format!(
         "{}{}{}  redpanda-data:\n",
@@ -558,7 +565,7 @@ pub fn run_generate_consumer(
     let config = crate::puerto_toml::read(base)?;
     if !has_worker(&config) {
         return Err(
-            "this project has no worker — consumers need a project created with \
+            "este proyecto no tiene worker: los consumidores necesitan un proyecto creado con \
              `puerto nuevo --db --eventos db|kafka`"
                 .into(),
         );
@@ -576,25 +583,25 @@ pub fn run_generate_consumer(
         });
     if taken {
         return Err(format!(
-            "consumer name '{name}' would be the type `{pascal}`, which the worker already uses"
+            "el consumidor '{name}' daría el tipo `{pascal}`, que el worker ya usa"
         )
         .into());
     }
     if config.consumer.iter().any(|c| c.name == name) {
-        return Err(format!("consumer '{name}' is already declared").into());
+        return Err(format!("el consumidor '{name}' ya está declarado").into());
     }
     if let Some(mail) = name
         .strip_prefix("correo_")
         .filter(|mail| config.mail.iter().any(|m| m.name == *mail))
     {
         return Err(format!(
-            "consumer name '{name}' is reserved: the worker runs mail '{mail}' as the consumer \
-             'correo_{mail}'. Pick another name"
+            "el consumidor '{name}' está reservado: el worker ejecuta el correo '{mail}' como el \
+             consumidor 'correo_{mail}'. Elige otro nombre"
         )
         .into());
     }
     if events.is_empty() {
-        return Err("a consumer needs at least one event: --tras <event_type>".into());
+        return Err("un consumidor necesita al menos un evento: --tras <tipo_evento>".into());
     }
     let mut unique: Vec<String> = vec![];
     for event in events {
@@ -611,7 +618,7 @@ pub fn run_generate_consumer(
     let path = base.join(layout::consumer(name));
     if path.exists() {
         return Err(format!(
-            "{} already exists — it is never overwritten. Remove it or pick another name",
+            "{} ya existe, y nunca se sobrescribe. Bórralo o elige otro nombre",
             path.display()
         )
         .into());
@@ -625,7 +632,7 @@ pub fn run_generate_consumer(
     regenerate_registry(base, &crate::puerto_toml::read(base)?)?;
 
     println!(
-        "✓ Consumer '{name}' added, on: {}",
+        "✓ Consumidor '{name}' añadido, tras: {}",
         subscribed
             .iter()
             .map(|e| e.event_type.as_str())
@@ -633,10 +640,11 @@ pub fn run_generate_consumer(
             .join(", ")
     );
     println!(
-        "  presentacion/worker/src/consumidores/{name}.rs — yours: make it idempotent, it can see an event twice."
+        "  presentacion/worker/src/consumidores/{name}.rs es tuyo: hazlo idempotente, puede recibir \
+         un evento dos veces."
     );
     println!(
-        "  presentacion/worker/src/generado/registro.rs regenerated. Run it with `make worker`."
+        "  presentacion/worker/src/generado/registro.rs regenerado. Arráncalo con `make worker`."
     );
     Ok(())
 }

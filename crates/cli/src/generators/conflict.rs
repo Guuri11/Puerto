@@ -98,31 +98,33 @@ pub fn guard_files_overwrite(
     }
 
     eprintln!(
-        "'{snake}' is already generated — this would overwrite {} file(s):",
+        "'{snake}' ya está generada: esto sobrescribiría {} fichero(s):",
         conflicts.len()
     );
     for f in conflicts.iter().take(10) {
         eprintln!("  {}", f.display());
     }
     if conflicts.len() > 10 {
-        eprintln!("  … and {} more", conflicts.len() - 10);
+        eprintln!("  … y {} más", conflicts.len() - 10);
     }
     eprintln!();
 
     if dialoguer::console::user_attended() {
         let proceed = dialoguer::Confirm::new()
-            .with_prompt("Overwrite these files? Any hand-written changes in them are lost")
+            .with_prompt(
+                "¿Sobrescribir estos ficheros? Se pierde lo que hayas cambiado a mano en ellos",
+            )
             .default(false)
             .interact()?;
         if proceed {
             return Ok(());
         }
-        return Err("aborted — no files were written".into());
+        return Err("cancelado: no se ha escrito ningún fichero".into());
     }
 
     Err(format!(
-        "refusing to overwrite existing files for '{snake}'. Re-run with --forzar to overwrite, \
-         or remove the files first. Nothing was written."
+        "no se sobrescriben los ficheros de '{snake}'. Vuelve a ejecutarlo con --forzar para \
+         sobrescribirlos, o borra antes los ficheros. No se ha escrito nada."
     )
     .into())
 }

@@ -18,21 +18,21 @@ pub fn format_project(root: &Path) -> Result<(), String> {
         .args(["fmt", "--all"])
         .current_dir(root)
         .output()
-        .map_err(|e| format!("cannot run `cargo fmt`: {e}"))?;
+        .map_err(|e| format!("no se puede ejecutar `cargo fmt`: {e}"))?;
     if output.status.success() {
         return Ok(());
     }
     let stderr = String::from_utf8_lossy(&output.stderr);
     let first_line = stderr.lines().find(|l| !l.trim().is_empty()).unwrap_or("");
-    Err(format!("`cargo fmt` failed: {first_line}"))
+    Err(format!("`cargo fmt` falló: {first_line}"))
 }
 
 /// [`format_project`] for the CLI: a project that cannot be formatted (no `rustfmt`, a declared
 /// module whose file does not exist yet) is still generated — the user is told how to finish.
 pub fn format_after_generation(root: &Path) {
     if let Err(e) = format_project(root) {
-        eprintln!("⚠ generated code left unformatted — {e}");
-        eprintln!("  Run `make format/fix` once the project builds.");
+        eprintln!("⚠ el código generado se queda sin formatear: {e}");
+        eprintln!("  Ejecuta `make format/fix` cuando el proyecto compile.");
     }
 }
 
@@ -79,6 +79,6 @@ mod tests {
 
         // Assert
         let message = result.unwrap_err();
-        assert!(message.starts_with("`cargo fmt` failed"), "{message}");
+        assert!(message.starts_with("`cargo fmt` falló"), "{message}");
     }
 }

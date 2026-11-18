@@ -180,7 +180,7 @@ fn generate_application_errors_without_prior_domain() {
         result
             .unwrap_err()
             .to_string()
-            .contains("not found in puerto.toml")
+            .contains("no está en puerto.toml")
     );
 
     cleanup(&dir);
@@ -311,7 +311,7 @@ fn generate_presentation_errors_without_prior_domain() {
         result
             .unwrap_err()
             .to_string()
-            .contains("not found in puerto.toml")
+            .contains("no está en puerto.toml")
     );
 
     cleanup(&dir);
