@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="assets/brand/github-social.svg" alt="Puerto — Scaffold. Structure. Ship." width="100%"/>
+  <img src="assets/brand/github-social.svg" alt="Puerto — Genera. Ordena. Zarpa." width="100%"/>
 </p>
 
 <p align="center">
