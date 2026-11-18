@@ -1,0 +1,108 @@
+use async_trait::async_trait;
+use dominio_producto::errores::ErrorProducto;
+use dominio_producto::modelo::IdProducto;
+use dominio_producto::repositorio::RepositorioProducto;
+use puerto_nucleo::auth::Principal;
+use std::sync::Arc;
+
+#[derive(Debug, Clone)]
+pub struct ParamsBorrarProducto {
+    /// Quien lo pide (ADR-0021). Una regla que depende de los datos ("solo edita el propietario")
+    /// se decide aquí, sobre él, y responde `Prohibido`.
+    pub actor: Principal,
+    pub id: IdProducto,
+}
+
+#[async_trait]
+pub trait BorrarProducto: Send + Sync {
+    async fn ejecutar(&self, params: ParamsBorrarProducto) -> Result<(), ErrorProducto>;
+}
+
+#[cfg(any(test, feature = "pruebas"))]
+pub mod dobles {
+    use mockall::mock;
+
+    use super::*;
+
+    mock! {
+        pub BorrarProducto {}
+
+        #[async_trait]
+        impl BorrarProducto for BorrarProducto {
+            async fn ejecutar(&self, params: ParamsBorrarProducto) -> Result<(), ErrorProducto>;
+        }
+    }
+}
+
+pub struct BorrarProductoImpl {
+    pub repositorio: Arc<dyn RepositorioProducto>,
+}
+
+#[async_trait]
+impl BorrarProducto for BorrarProductoImpl {
+    #[tracing::instrument(name = "borrar_producto", skip_all, fields(id = %params.id), err(level = "warn"))]
+    async fn ejecutar(&self, params: ParamsBorrarProducto) -> Result<(), ErrorProducto> {
+        let mut entidad = self
+            .repositorio
+            .buscar_por_id(params.id)
+            .await?
+            .ok_or(ErrorProducto::NoEncontrado)?;
+        entidad.borrar();
+        self.repositorio.guardar(&entidad).await?;
+        Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use dominio_producto::{
+        modelo::IdProducto, pruebas::madres::MadreProducto,
+        repositorio::dobles::MockRepositorioProducto,
+    };
+    use puerto_nucleo::auth::dobles::MadrePrincipal;
+
+    #[tokio::test]
+    async fn deberia_hacer_borrado_logico_de_producto_cuando_el_id_existe() {
+        let entidad = MadreProducto::aleatorio();
+        let id_entidad = entidad.id;
+        let mut repositorio_doble = MockRepositorioProducto::new();
+        repositorio_doble
+            .expect_buscar_por_id()
+            .returning(move |_| Ok(Some(entidad.clone())));
+        repositorio_doble.expect_guardar().returning(|_| Ok(()));
+        let caso_de_uso = BorrarProductoImpl {
+            repositorio: Arc::new(repositorio_doble),
+        };
+
+        let resultado = caso_de_uso
+            .ejecutar(ParamsBorrarProducto {
+                actor: MadrePrincipal::aleatorio(),
+                id: id_entidad,
+            })
+            .await;
+
+        assert!(resultado.is_ok());
+    }
+
+    #[tokio::test]
+    async fn deberia_devolver_no_encontrado_cuando_producto_no_existe() {
+        let mut repositorio_doble = MockRepositorioProducto::new();
+        repositorio_doble
+            .expect_buscar_por_id()
+            .returning(|_| Ok(None));
+        let caso_de_uso = BorrarProductoImpl {
+            repositorio: Arc::new(repositorio_doble),
+        };
+
+        let resultado = caso_de_uso
+            .ejecutar(ParamsBorrarProducto {
+                actor: MadrePrincipal::aleatorio(),
+                id: IdProducto::generar(),
+            })
+            .await;
+
+        assert!(resultado.is_err());
+        assert_eq!(resultado.unwrap_err().to_string(), "producto.no_encontrado");
+    }
+}

@@ -1,0 +1,191 @@
+use async_trait::async_trait;
+use dominio_producto::errores::ErrorProducto;
+use dominio_producto::modelo::{IdProducto, Producto, PropsProducto};
+use dominio_producto::repositorio::RepositorioProducto;
+use std::sync::Arc;
+
+#[derive(Debug, Clone)]
+pub struct ParamsActualizarProducto {
+    pub id: IdProducto,
+    pub nombre: String,
+    pub precio: i64,
+    pub sku: String,
+}
+
+#[async_trait]
+pub trait ActualizarProducto: Send + Sync {
+    async fn ejecutar(&self, params: ParamsActualizarProducto) -> Result<Producto, ErrorProducto>;
+}
+
+#[cfg(any(test, feature = "pruebas"))]
+pub mod dobles {
+    use mockall::mock;
+
+    use super::*;
+
+    mock! {
+        pub ActualizarProducto {}
+
+        #[async_trait]
+        impl ActualizarProducto for ActualizarProducto {
+            async fn ejecutar(&self, params: ParamsActualizarProducto) -> Result<Producto, ErrorProducto>;
+        }
+    }
+}
+
+pub struct ActualizarProductoImpl {
+    pub repositorio: Arc<dyn RepositorioProducto>,
+}
+
+#[async_trait]
+impl ActualizarProducto for ActualizarProductoImpl {
+    #[tracing::instrument(name = "actualizar_producto", skip_all, fields(id = %params.id), err(level = "warn"))]
+    async fn ejecutar(&self, params: ParamsActualizarProducto) -> Result<Producto, ErrorProducto> {
+        let mut entidad = self
+            .repositorio
+            .buscar_por_id(params.id)
+            .await?
+            .ok_or(ErrorProducto::NoEncontrado)?;
+        entidad.actualizar(PropsProducto {
+            nombre: params.nombre,
+            precio: params.precio,
+            sku: params.sku,
+        })?;
+        self.repositorio.guardar(&entidad).await?;
+        Ok(entidad)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use dominio_producto::{
+        modelo::IdProducto, pruebas::madres::MadreProducto,
+        repositorio::dobles::MockRepositorioProducto,
+    };
+
+    #[tokio::test]
+    async fn deberia_actualizar_producto_cuando_los_parametros_son_validos() {
+        // Preparar
+        let props = MadreProducto::new().construir_props();
+        let mut entidad = MadreProducto::aleatorio();
+        // Lo que estaba guardado, distinto de lo que trae la actualización.
+        entidad.nombre = "original".to_string();
+        let id_entidad = entidad.id;
+        let mut repositorio_doble = MockRepositorioProducto::new();
+        repositorio_doble
+            .expect_buscar_por_id()
+            .returning(move |_| Ok(Some(entidad.clone())));
+        repositorio_doble.expect_guardar().returning(|_| Ok(()));
+        let caso_de_uso = ActualizarProductoImpl {
+            repositorio: Arc::new(repositorio_doble),
+        };
+
+        // Actuar
+        let resultado = caso_de_uso
+            .ejecutar(ParamsActualizarProducto {
+                id: id_entidad,
+                nombre: props.nombre,
+                precio: props.precio,
+                sku: props.sku,
+            })
+            .await;
+
+        // Comprobar
+        assert_eq!(
+            resultado.unwrap().nombre,
+            MadreProducto::new().construir_props().nombre
+        );
+    }
+
+    #[tokio::test]
+    async fn deberia_devolver_no_encontrado_cuando_producto_no_existe() {
+        // Preparar
+        let props = MadreProducto::new().construir_props();
+        let mut repositorio_doble = MockRepositorioProducto::new();
+        repositorio_doble
+            .expect_buscar_por_id()
+            .returning(|_| Ok(None));
+        let caso_de_uso = ActualizarProductoImpl {
+            repositorio: Arc::new(repositorio_doble),
+        };
+
+        // Actuar
+        let resultado = caso_de_uso
+            .ejecutar(ParamsActualizarProducto {
+                id: IdProducto::generar(),
+                nombre: props.nombre,
+                precio: props.precio,
+                sku: props.sku,
+            })
+            .await;
+
+        // Comprobar
+        assert!(resultado.is_err());
+        assert_eq!(resultado.unwrap_err().to_string(), "producto.no_encontrado");
+    }
+
+    #[tokio::test]
+    async fn deberia_devolver_error_cuando_nombre_es_una_cadena_vacia() {
+        // Preparar
+        let props = MadreProducto::new().construir_props();
+        let entidad = MadreProducto::aleatorio();
+        let id_entidad = entidad.id;
+        let mut repositorio_doble = MockRepositorioProducto::new();
+        repositorio_doble
+            .expect_buscar_por_id()
+            .returning(move |_| Ok(Some(entidad.clone())));
+        let caso_de_uso = ActualizarProductoImpl {
+            repositorio: Arc::new(repositorio_doble),
+        };
+
+        // Actuar
+        let resultado = caso_de_uso
+            .ejecutar(ParamsActualizarProducto {
+                id: id_entidad,
+                nombre: "".to_string(),
+                precio: props.precio,
+                sku: props.sku,
+            })
+            .await;
+
+        // Comprobar
+        assert!(resultado.is_err());
+        assert_eq!(
+            resultado.unwrap_err().to_string(),
+            "producto.validacion.nombre_vacio"
+        );
+    }
+
+    #[tokio::test]
+    async fn deberia_devolver_error_cuando_sku_es_una_cadena_vacia() {
+        // Preparar
+        let props = MadreProducto::new().construir_props();
+        let entidad = MadreProducto::aleatorio();
+        let id_entidad = entidad.id;
+        let mut repositorio_doble = MockRepositorioProducto::new();
+        repositorio_doble
+            .expect_buscar_por_id()
+            .returning(move |_| Ok(Some(entidad.clone())));
+        let caso_de_uso = ActualizarProductoImpl {
+            repositorio: Arc::new(repositorio_doble),
+        };
+
+        // Actuar
+        let resultado = caso_de_uso
+            .ejecutar(ParamsActualizarProducto {
+                id: id_entidad,
+                nombre: props.nombre,
+                precio: props.precio,
+                sku: "".to_string(),
+            })
+            .await;
+
+        // Comprobar
+        assert!(resultado.is_err());
+        assert_eq!(
+            resultado.unwrap_err().to_string(),
+            "producto.validacion.sku_vacio"
+        );
+    }
+}

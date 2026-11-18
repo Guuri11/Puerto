@@ -1,0 +1,184 @@
+use async_trait::async_trait;
+use dominio_cliente::errores::ErrorCliente;
+use dominio_cliente::modelo::{Cliente, PropsCliente};
+use dominio_cliente::repositorio::RepositorioCliente;
+use dominio_cliente::valores::{Email, Etiqueta};
+use std::sync::Arc;
+
+#[derive(Debug, Clone)]
+pub struct ParamsCrearCliente {
+    pub email: String,
+    pub nombre: String,
+    pub etiquetas: Vec<String>,
+}
+
+#[async_trait]
+pub trait CrearCliente: Send + Sync {
+    async fn ejecutar(&self, params: ParamsCrearCliente) -> Result<Cliente, ErrorCliente>;
+}
+
+#[cfg(any(test, feature = "pruebas"))]
+pub mod dobles {
+    use mockall::mock;
+
+    use super::*;
+
+    mock! {
+        pub CrearCliente {}
+
+        #[async_trait]
+        impl CrearCliente for CrearCliente {
+            async fn ejecutar(&self, params: ParamsCrearCliente) -> Result<Cliente, ErrorCliente>;
+        }
+    }
+}
+
+pub struct CrearClienteImpl {
+    pub repositorio: Arc<dyn RepositorioCliente>,
+}
+
+#[async_trait]
+impl CrearCliente for CrearClienteImpl {
+    #[tracing::instrument(name = "crear_cliente", skip_all, err(level = "warn"))]
+    async fn ejecutar(&self, params: ParamsCrearCliente) -> Result<Cliente, ErrorCliente> {
+        let email = Email::new(params.email)?;
+        let etiquetas: Vec<Etiqueta> = params
+            .etiquetas
+            .into_iter()
+            .map(Etiqueta::new)
+            .collect::<Result<Vec<_>, _>>()?;
+        let entidad = Cliente::new(PropsCliente {
+            email,
+            nombre: params.nombre,
+            etiquetas,
+        })?;
+        self.repositorio.guardar(&entidad).await?;
+        Ok(entidad)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use dominio_cliente::pruebas::madres::MadreCliente;
+    use dominio_cliente::repositorio::dobles::MockRepositorioCliente;
+    use puerto_nucleo::ErrorRepositorio;
+
+    #[tokio::test]
+    async fn deberia_crear_cliente_cuando_los_campos_son_validos() {
+        // Preparar
+        let props = MadreCliente::new().construir_props();
+        let mut repositorio_doble = MockRepositorioCliente::new();
+        repositorio_doble.expect_guardar().returning(|_| Ok(()));
+        let caso_de_uso = CrearClienteImpl {
+            repositorio: Arc::new(repositorio_doble),
+        };
+
+        // Actuar
+        let resultado = caso_de_uso
+            .ejecutar(ParamsCrearCliente {
+                email: props.email.valor().to_string(),
+                nombre: props.nombre,
+                etiquetas: props
+                    .etiquetas
+                    .iter()
+                    .map(|v| v.valor().to_string())
+                    .collect::<Vec<_>>(),
+            })
+            .await;
+
+        // Comprobar
+        assert!(resultado.is_ok());
+        assert_eq!(
+            resultado.unwrap().nombre,
+            MadreCliente::new().construir_props().nombre
+        );
+    }
+
+    #[tokio::test]
+    async fn deberia_devolver_duplicado_cuando_el_almacen_rechaza_un_duplicado() {
+        // Preparar
+        let props = MadreCliente::new().construir_props();
+        let mut repositorio_doble = MockRepositorioCliente::new();
+        repositorio_doble
+            .expect_guardar()
+            .returning(|_| Err(ErrorRepositorio::Duplicado));
+        let caso_de_uso = CrearClienteImpl {
+            repositorio: Arc::new(repositorio_doble),
+        };
+
+        // Actuar
+        let resultado = caso_de_uso
+            .ejecutar(ParamsCrearCliente {
+                email: props.email.valor().to_string(),
+                nombre: props.nombre,
+                etiquetas: props
+                    .etiquetas
+                    .iter()
+                    .map(|v| v.valor().to_string())
+                    .collect::<Vec<_>>(),
+            })
+            .await;
+
+        // Comprobar
+        assert!(resultado.is_err());
+        assert_eq!(resultado.unwrap_err().to_string(), "cliente.duplicado");
+    }
+
+    #[tokio::test]
+    async fn deberia_devolver_error_cuando_nombre_es_una_cadena_vacia() {
+        // Preparar
+        let props = MadreCliente::new().construir_props();
+        let repositorio_doble = MockRepositorioCliente::new();
+        let caso_de_uso = CrearClienteImpl {
+            repositorio: Arc::new(repositorio_doble),
+        };
+
+        // Actuar
+        let resultado = caso_de_uso
+            .ejecutar(ParamsCrearCliente {
+                email: props.email.valor().to_string(),
+                nombre: "".to_string(),
+                etiquetas: props
+                    .etiquetas
+                    .iter()
+                    .map(|v| v.valor().to_string())
+                    .collect::<Vec<_>>(),
+            })
+            .await;
+
+        // Comprobar
+        assert!(resultado.is_err());
+        assert_eq!(
+            resultado.unwrap_err().to_string(),
+            "cliente.validacion.nombre_vacio"
+        );
+    }
+
+    #[tokio::test]
+    async fn deberia_devolver_error_cuando_email_es_una_cadena_vacia() {
+        // Preparar
+        let props = MadreCliente::new().construir_props();
+        let repositorio_doble = MockRepositorioCliente::new();
+        let caso_de_uso = CrearClienteImpl {
+            repositorio: Arc::new(repositorio_doble),
+        };
+
+        // Actuar
+        let resultado = caso_de_uso
+            .ejecutar(ParamsCrearCliente {
+                email: "".to_string(),
+                nombre: props.nombre,
+                etiquetas: props
+                    .etiquetas
+                    .iter()
+                    .map(|v| v.valor().to_string())
+                    .collect::<Vec<_>>(),
+            })
+            .await;
+
+        // Comprobar
+        assert!(resultado.is_err());
+        assert_eq!(resultado.unwrap_err().to_string(), "cliente.email_invalido");
+    }
+}

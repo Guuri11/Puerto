@@ -1,0 +1,130 @@
+use async_trait::async_trait;
+use puerto_nucleo::ErrorRepositorio;
+
+use crate::{eventos::EventoPedido, modelo::Pedido};
+
+/// Una transacción de pedido (ADR-0018 § 2): lo que guarda y los eventos que registra se
+/// escriben juntos en el `commit`, o no se escriben. Soltarla sin `commit` la deshace, así que un
+/// `?` temprano es el rollback.
+#[async_trait]
+pub trait UnitOfWorkPedido: Send {
+    async fn guardar(&mut self, entidad: &Pedido) -> Result<(), ErrorRepositorio>;
+    async fn registrar(&mut self, evento: EventoPedido) -> Result<(), ErrorRepositorio>;
+    async fn commit(self: Box<Self>) -> Result<(), ErrorRepositorio>;
+}
+
+/// Abre una [`UnitOfWorkPedido`]: por donde pasa toda escritura de pedido. El
+/// repositorio solo lee, así que una escritura que se salte el outbox no compila.
+#[async_trait]
+pub trait UnitOfWorkFactoryPedido: Send + Sync {
+    async fn begin(&self) -> Result<Box<dyn UnitOfWorkPedido>, ErrorRepositorio>;
+
+    /// La escritura de siempre en una llamada (ADR-0026 de Puerto): guarda la entidad y registra el
+    /// evento que emitió, las dos cosas o ninguna. Para escribir más de una vez, `begin` y `commit`.
+    async fn guardar(
+        &self,
+        entidad: &Pedido,
+        evento: EventoPedido,
+    ) -> Result<(), ErrorRepositorio> {
+        let mut uow = self.begin().await?;
+        uow.guardar(entidad).await?;
+        uow.registrar(evento).await?;
+        uow.commit().await
+    }
+}
+
+#[cfg(any(test, feature = "pruebas"))]
+pub mod dobles {
+    use std::sync::{Arc, Mutex, MutexGuard};
+
+    use super::*;
+
+    /// Dónde falla una [`UnitOfWorkFactoryGrabadora`], si se le ha indicado.
+    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+    pub enum FallarEn {
+        Begin,
+        Guardar,
+        Commit,
+    }
+
+    /// Lo que se pidió a las unidades de trabajo de una [`UnitOfWorkFactoryGrabadora`].
+    #[derive(Debug, Clone, Default)]
+    pub struct Grabado {
+        pub guardados: Vec<Pedido>,
+        pub eventos: Vec<EventoPedido>,
+        pub confirmado: bool,
+    }
+
+    /// Un `UnitOfWorkFactoryPedido` falso para los tests de casos de uso: sus unidades de
+    /// trabajo apuntan lo que guardan y registran y si hicieron `commit`, y fallan donde se les
+    /// haya indicado.
+    #[derive(Clone, Default)]
+    pub struct UnitOfWorkFactoryGrabadora {
+        grabado: Arc<Mutex<Grabado>>,
+        fallo: Option<(FallarEn, ErrorRepositorio)>,
+    }
+
+    impl UnitOfWorkFactoryGrabadora {
+        pub fn new() -> Self {
+            Self::default()
+        }
+
+        pub fn fallando_en(punto: FallarEn, error: ErrorRepositorio) -> Self {
+            Self {
+                fallo: Some((punto, error)),
+                ..Self::default()
+            }
+        }
+
+        pub fn grabado(&self) -> Grabado {
+            lock(&self.grabado).clone()
+        }
+
+        fn fallar_en(&self, punto: FallarEn) -> Result<(), ErrorRepositorio> {
+            match self.fallo {
+                Some((fallido, error)) if fallido == punto => Err(error),
+                _ => Ok(()),
+            }
+        }
+    }
+
+    fn lock(grabado: &Mutex<Grabado>) -> MutexGuard<'_, Grabado> {
+        grabado
+            .lock()
+            .unwrap_or_else(|envenenado| envenenado.into_inner())
+    }
+
+    struct UnitOfWorkGrabadora {
+        factory: UnitOfWorkFactoryGrabadora,
+    }
+
+    #[async_trait]
+    impl UnitOfWorkPedido for UnitOfWorkGrabadora {
+        async fn guardar(&mut self, entidad: &Pedido) -> Result<(), ErrorRepositorio> {
+            self.factory.fallar_en(FallarEn::Guardar)?;
+            lock(&self.factory.grabado).guardados.push(entidad.clone());
+            Ok(())
+        }
+
+        async fn registrar(&mut self, evento: EventoPedido) -> Result<(), ErrorRepositorio> {
+            lock(&self.factory.grabado).eventos.push(evento);
+            Ok(())
+        }
+
+        async fn commit(self: Box<Self>) -> Result<(), ErrorRepositorio> {
+            self.factory.fallar_en(FallarEn::Commit)?;
+            lock(&self.factory.grabado).confirmado = true;
+            Ok(())
+        }
+    }
+
+    #[async_trait]
+    impl UnitOfWorkFactoryPedido for UnitOfWorkFactoryGrabadora {
+        async fn begin(&self) -> Result<Box<dyn UnitOfWorkPedido>, ErrorRepositorio> {
+            self.fallar_en(FallarEn::Begin)?;
+            Ok(Box::new(UnitOfWorkGrabadora {
+                factory: self.clone(),
+            }))
+        }
+    }
+}

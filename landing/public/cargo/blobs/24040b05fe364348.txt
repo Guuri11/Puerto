@@ -1,0 +1,179 @@
+use crate::valores::Estado;
+use crate::valores::Importe;
+use chrono::{DateTime, Utc};
+use uuid::Uuid;
+
+use crate::errores::ErrorPedido;
+use crate::eventos::{EventoPedido, SnapshotPedido};
+
+/// El id de cada `Pedido`: un `Uuid` que no se puede pasar donde se espera el id de otra
+/// entidad.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct IdPedido(Uuid);
+
+impl IdPedido {
+    /// Un id nuevo y aleatorio — para una entidad que se está creando.
+    pub fn generar() -> Self {
+        Self(Uuid::new_v4())
+    }
+
+    /// Un id leído de fuera (un parámetro de ruta, una fila) — sin validar: cualquier `Uuid` es un
+    /// id.
+    pub fn from_uuid(valor: Uuid) -> Self {
+        Self(valor)
+    }
+
+    pub fn valor(&self) -> Uuid {
+        self.0
+    }
+}
+
+impl std::fmt::Display for IdPedido {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        self.0.fmt(f)
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct PropsPedido {
+    pub importe: Importe,
+    pub estado: Estado,
+    pub nota: Option<String>,
+}
+
+#[derive(Debug, Clone)]
+pub struct Pedido {
+    pub id: IdPedido,
+    pub creado_en: DateTime<Utc>,
+    pub actualizado_en: DateTime<Utc>,
+    pub borrado: bool,
+    pub borrado_en: Option<DateTime<Utc>>,
+    pub importe: Importe,
+    pub estado: Estado,
+    pub nota: Option<String>,
+}
+
+impl Pedido {
+    pub fn new(props: PropsPedido) -> Result<Self, ErrorPedido> {
+        Self::validar(&props)?;
+        let ahora = chrono::Utc::now();
+        Ok(Self {
+            id: IdPedido::generar(),
+            creado_en: ahora,
+            actualizado_en: ahora,
+            borrado: false,
+            borrado_en: None,
+            importe: props.importe,
+            estado: props.estado,
+            nota: props.nota,
+        })
+    }
+
+    /// Crea pedido y emite `Creado` (ADR-0026 de Puerto). `new` construye sin emitir nada:
+    /// lo usan la madre y los tests.
+    pub fn crear(props: PropsPedido) -> Result<(Self, EventoPedido), ErrorPedido> {
+        let entidad = Self::new(props)?;
+        let evento = EventoPedido::Creado(SnapshotPedido::from_entidad(&entidad));
+        Ok((entidad, evento))
+    }
+
+    /// Cambia los campos propios, con las mismas reglas que `new`, y emite `Actualizado`.
+    pub fn actualizar(&mut self, props: PropsPedido) -> Result<EventoPedido, ErrorPedido> {
+        Self::validar(&props)?;
+        self.importe = props.importe;
+        self.estado = props.estado;
+        self.nota = props.nota;
+        self.actualizado_en = chrono::Utc::now();
+        Ok(EventoPedido::Actualizado(SnapshotPedido::from_entidad(
+            self,
+        )))
+    }
+
+    /// El borrado lógico: la fila se queda, marcada como borrada, y emite `Borrado`.
+    pub fn borrar(&mut self) -> EventoPedido {
+        let ahora = chrono::Utc::now();
+        self.borrado = true;
+        self.borrado_en = Some(ahora);
+        self.actualizado_en = ahora;
+        EventoPedido::Borrado(SnapshotPedido::from_entidad(self))
+    }
+
+    pub fn from_repositorio(datos: Pedido) -> Self {
+        datos
+    }
+
+    /// Las reglas de los campos propios: las comprueban `new` y `actualizar`, así que una regla nueva
+    /// se escribe solo aquí.
+    fn validar(_props: &PropsPedido) -> Result<(), ErrorPedido> {
+        Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::pruebas::madres::MadrePedido;
+    use puerto_nucleo::EventoDominio;
+
+    #[test]
+    fn deberia_crear_pedido_cuando_los_campos_son_validos() {
+        let resultado = Pedido::new(MadrePedido::new().construir_props());
+        assert!(resultado.is_ok());
+    }
+
+    #[test]
+    fn deberia_rechazar_pedido_cuando_estado_no_es_una_variante_conocida() {
+        let resultado = "VarianteInvalida".parse::<Estado>();
+        assert!(resultado.is_err());
+        assert_eq!(resultado.unwrap_err().to_string(), "pedido.estado_invalido");
+    }
+
+    #[test]
+    fn deberia_emitir_pedido_creado_cuando_se_crea() {
+        // Preparar
+        let props = MadrePedido::new().construir_props();
+
+        // Actuar
+        let resultado = Pedido::crear(props);
+
+        // Comprobar
+        let (entidad, evento) = match resultado {
+            Ok(creado) => creado,
+            Err(e) => panic!("la creación falló: {e}"),
+        };
+        assert_eq!(evento.tipo_evento(), "pedido_creado");
+        assert_eq!(evento.id_agregado(), entidad.id.valor());
+    }
+
+    #[test]
+    fn deberia_emitir_pedido_actualizado_cuando_se_actualiza() {
+        // Preparar
+        let mut entidad = MadrePedido::aleatorio();
+
+        // Actuar
+        let resultado = entidad.actualizar(MadrePedido::new().construir_props());
+
+        // Comprobar
+        let evento = match resultado {
+            Ok(evento) => evento,
+            Err(e) => panic!("la actualización falló: {e}"),
+        };
+        assert_eq!(evento.tipo_evento(), "pedido_actualizado");
+        assert_eq!(evento.id_agregado(), entidad.id.valor());
+    }
+
+    #[test]
+    fn deberia_marcar_pedido_como_borrado_cuando_se_borra() {
+        // Preparar
+        let mut entidad = MadrePedido::aleatorio();
+
+        // Actuar
+        let evento = entidad.borrar();
+
+        // Comprobar
+        assert!(entidad.borrado);
+        assert!(entidad.borrado_en.is_some());
+        assert_eq!(evento.tipo_evento(), "pedido_borrado");
+        assert_eq!(evento.id_agregado(), entidad.id.valor());
+    }
+}

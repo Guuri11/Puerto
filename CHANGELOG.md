@@ -1,3 +1,51 @@
+## [0.25.0] - 2026-11-18
+
+Los casos de uso de escritura se quedan en el negocio: la entidad emite sus eventos, la factoría de
+unidades de trabajo los guarda en una llamada y `#[tracing::instrument]` hace los logs (PLAN Fase 24,
+ADR-0026). Sin bus de comandos ni middleware.
+
+### Changed
+
+- **Los logs de los casos de uso, con `#[tracing::instrument]`**: todo `ejecutar` generado lleva
+  `#[tracing::instrument(name = "<caso>", skip_all, err(level = "warn"))]` (con
+  `fields(id = %params.id)` si hay id) en lugar de las líneas `inicio` / `fin` / `rechazado` /
+  `fallo del repositorio`, los cierres `fallido` y los `inspect_err`. El span da nombre a los logs
+  del adaptador (que ya registra cada fallo con la causa del driver) y `err` registra una vez el
+  código del error; `skip_all` no registra la petición (el demo `obtener_saludo` registraba el
+  nombre). También el esqueleto de `generar caso-de-uso` y los casos de uso de `--auth local`.
+- **`UnitOfWorkFactory<Entidad>::guardar(&entidad, evento)`** (proyectos con eventos): un método por
+  defecto que hace `begin`, `guardar`, `registrar` y `commit`. Los `crear` / `actualizar` /
+  `borrar` generados escriben con él; `begin` / `commit` siguen para escribir más de una vez.
+- **La entidad emite sus eventos** (proyectos con eventos): `Producto::crear(props)` devuelve
+  `(Producto, EventoProducto)` (`new` + `Creado`; `new` sigue para la madre y los tests),
+  `actualizar` devuelve su `Actualizado` y el nuevo `borrar` su `Borrado`, con tests en `modelo.rs`.
+  `EventoProducto` es `#[must_use]`: un evento que nadie guarda es un aviso, y `make lint` lo
+  rechaza.
+- **El borrado lógico es de la entidad**: `Producto::borrar(&mut self)` marca `borrado`,
+  `borrado_en` y `actualizado_en`; `borrar_<e>` ya no lo hace a mano.
+- Snippets: `domain-event` (un método de la entidad que emite un evento propio); `app-use-case`,
+  `app-use-case-uow` y `uow-write` (ahora, varias escrituras en una transacción) siguen el patrón
+  nuevo. El mensaje de `generar evento`, los `AGENTS.md` generados y las guías de la web, también.
+
+### Breaking
+
+- En un proyecto con eventos, `Producto::actualizar` devuelve `Result<EventoProducto, _>` en vez de
+  `Result<(), _>`: el código escrito a mano que lo llama como `entidad.actualizar(props)?;` da el
+  aviso `unused_must_use` y falla el `make lint` del proyecto. Ni las rutas de los ficheros, ni los
+  crates, ni `puerto.toml`, ni la API de los crates del runtime cambian.
+
+### Migration Guide
+
+Un proyecto 0.24 conserva sus casos de uso tal como están: un re-scaffold con `--forzar` reescribe
+los CRUD, y lo escrito a mano se adapta así:
+
+1. Con eventos, guarda el evento que devuelve la entidad:
+   `let evento = entidad.actualizar(props)?; self.uow_factory.guardar(&entidad, evento).await?;`.
+   Un evento propio lo emite un método tuyo de la entidad que devuelve
+   `EventoProducto::Publicado(SnapshotProducto::from_entidad(self))`.
+2. Opcional: cambia las líneas `inicio` / `fin` de tus casos de uso por
+   `#[tracing::instrument(name = "<caso>", skip_all, err(level = "warn"))]` sobre `ejecutar`.
+
 ## [0.24.0] - 2026-11-18
 
 La CLI, el README y la web, en castellano como lo que genera Puerto (PLAN Fase 23, ADR-0024). Lo

@@ -1,0 +1,107 @@
+use async_trait::async_trait;
+use dominio_pedido::errores::ErrorPedido;
+use dominio_pedido::modelo::IdPedido;
+use dominio_pedido::repositorio::RepositorioPedido;
+use puerto_nucleo::auth::Principal;
+use std::sync::Arc;
+
+#[derive(Debug, Clone)]
+pub struct ParamsBorrarPedido {
+    /// Quien lo pide (ADR-0021). Una regla que depende de los datos ("solo edita el propietario")
+    /// se decide aquí, sobre él, y responde `Prohibido`.
+    pub actor: Principal,
+    pub id: IdPedido,
+}
+
+#[async_trait]
+pub trait BorrarPedido: Send + Sync {
+    async fn ejecutar(&self, params: ParamsBorrarPedido) -> Result<(), ErrorPedido>;
+}
+
+#[cfg(any(test, feature = "pruebas"))]
+pub mod dobles {
+    use mockall::mock;
+
+    use super::*;
+
+    mock! {
+        pub BorrarPedido {}
+
+        #[async_trait]
+        impl BorrarPedido for BorrarPedido {
+            async fn ejecutar(&self, params: ParamsBorrarPedido) -> Result<(), ErrorPedido>;
+        }
+    }
+}
+
+pub struct BorrarPedidoImpl {
+    pub repositorio: Arc<dyn RepositorioPedido>,
+}
+
+#[async_trait]
+impl BorrarPedido for BorrarPedidoImpl {
+    #[tracing::instrument(name = "borrar_pedido", skip_all, fields(id = %params.id), err(level = "warn"))]
+    async fn ejecutar(&self, params: ParamsBorrarPedido) -> Result<(), ErrorPedido> {
+        let mut entidad = self
+            .repositorio
+            .buscar_por_id(params.id)
+            .await?
+            .ok_or(ErrorPedido::NoEncontrado)?;
+        entidad.borrar();
+        self.repositorio.guardar(&entidad).await?;
+        Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use dominio_pedido::{
+        modelo::IdPedido, pruebas::madres::MadrePedido, repositorio::dobles::MockRepositorioPedido,
+    };
+    use puerto_nucleo::auth::dobles::MadrePrincipal;
+
+    #[tokio::test]
+    async fn deberia_hacer_borrado_logico_de_pedido_cuando_el_id_existe() {
+        let entidad = MadrePedido::aleatorio();
+        let id_entidad = entidad.id;
+        let mut repositorio_doble = MockRepositorioPedido::new();
+        repositorio_doble
+            .expect_buscar_por_id()
+            .returning(move |_| Ok(Some(entidad.clone())));
+        repositorio_doble.expect_guardar().returning(|_| Ok(()));
+        let caso_de_uso = BorrarPedidoImpl {
+            repositorio: Arc::new(repositorio_doble),
+        };
+
+        let resultado = caso_de_uso
+            .ejecutar(ParamsBorrarPedido {
+                actor: MadrePrincipal::aleatorio(),
+                id: id_entidad,
+            })
+            .await;
+
+        assert!(resultado.is_ok());
+    }
+
+    #[tokio::test]
+    async fn deberia_devolver_no_encontrado_cuando_pedido_no_existe() {
+        let mut repositorio_doble = MockRepositorioPedido::new();
+        repositorio_doble
+            .expect_buscar_por_id()
+            .returning(|_| Ok(None));
+        let caso_de_uso = BorrarPedidoImpl {
+            repositorio: Arc::new(repositorio_doble),
+        };
+
+        let resultado = caso_de_uso
+            .ejecutar(ParamsBorrarPedido {
+                actor: MadrePrincipal::aleatorio(),
+                id: IdPedido::generar(),
+            })
+            .await;
+
+        assert!(resultado.is_err());
+        assert_eq!(resultado.unwrap_err().to_string(), "pedido.no_encontrado");
+    }
+}

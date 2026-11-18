@@ -1,0 +1,212 @@
+use crate::valores::Email;
+use crate::valores::Etiqueta;
+use chrono::{DateTime, Utc};
+use uuid::Uuid;
+
+use crate::errores::ErrorCliente;
+use crate::eventos::{EventoCliente, SnapshotCliente};
+
+/// El id de cada `Cliente`: un `Uuid` que no se puede pasar donde se espera el id de otra
+/// entidad.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct IdCliente(Uuid);
+
+impl IdCliente {
+    /// Un id nuevo y aleatorio — para una entidad que se está creando.
+    pub fn generar() -> Self {
+        Self(Uuid::new_v4())
+    }
+
+    /// Un id leído de fuera (un parámetro de ruta, una fila) — sin validar: cualquier `Uuid` es un
+    /// id.
+    pub fn from_uuid(valor: Uuid) -> Self {
+        Self(valor)
+    }
+
+    pub fn valor(&self) -> Uuid {
+        self.0
+    }
+}
+
+impl std::fmt::Display for IdCliente {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        self.0.fmt(f)
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct PropsCliente {
+    pub email: Email,
+    pub nombre: String,
+    pub etiquetas: Vec<Etiqueta>,
+}
+
+#[derive(Debug, Clone)]
+pub struct Cliente {
+    pub id: IdCliente,
+    pub creado_en: DateTime<Utc>,
+    pub actualizado_en: DateTime<Utc>,
+    pub borrado: bool,
+    pub borrado_en: Option<DateTime<Utc>>,
+    pub email: Email,
+    pub nombre: String,
+    pub etiquetas: Vec<Etiqueta>,
+}
+
+impl Cliente {
+    pub fn new(props: PropsCliente) -> Result<Self, ErrorCliente> {
+        Self::validar(&props)?;
+        let ahora = chrono::Utc::now();
+        Ok(Self {
+            id: IdCliente::generar(),
+            creado_en: ahora,
+            actualizado_en: ahora,
+            borrado: false,
+            borrado_en: None,
+            email: props.email,
+            nombre: props.nombre,
+            etiquetas: props.etiquetas,
+        })
+    }
+
+    /// Crea cliente y emite `Creado` (ADR-0026 de Puerto). `new` construye sin emitir nada:
+    /// lo usan la madre y los tests.
+    pub fn crear(props: PropsCliente) -> Result<(Self, EventoCliente), ErrorCliente> {
+        let entidad = Self::new(props)?;
+        let evento = EventoCliente::Creado(SnapshotCliente::from_entidad(&entidad));
+        Ok((entidad, evento))
+    }
+
+    /// Cambia los campos propios, con las mismas reglas que `new`, y emite `Actualizado`.
+    pub fn actualizar(&mut self, props: PropsCliente) -> Result<EventoCliente, ErrorCliente> {
+        Self::validar(&props)?;
+        self.email = props.email;
+        self.nombre = props.nombre;
+        self.etiquetas = props.etiquetas;
+        self.actualizado_en = chrono::Utc::now();
+        Ok(EventoCliente::Actualizado(SnapshotCliente::from_entidad(
+            self,
+        )))
+    }
+
+    /// El borrado lógico: la fila se queda, marcada como borrada, y emite `Borrado`.
+    pub fn borrar(&mut self) -> EventoCliente {
+        let ahora = chrono::Utc::now();
+        self.borrado = true;
+        self.borrado_en = Some(ahora);
+        self.actualizado_en = ahora;
+        EventoCliente::Borrado(SnapshotCliente::from_entidad(self))
+    }
+
+    pub fn from_repositorio(datos: Cliente) -> Self {
+        datos
+    }
+
+    /// Las reglas de los campos propios: las comprueban `new` y `actualizar`, así que una regla nueva
+    /// se escribe solo aquí.
+    fn validar(props: &PropsCliente) -> Result<(), ErrorCliente> {
+        if props.nombre.trim().is_empty() {
+            return Err(ErrorCliente::Validacion("nombre_vacio".into()));
+        }
+        Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::pruebas::madres::MadreCliente;
+    use puerto_nucleo::EventoDominio;
+
+    #[test]
+    fn deberia_crear_cliente_cuando_los_campos_son_validos() {
+        let resultado = Cliente::new(MadreCliente::new().construir_props());
+        assert_eq!(
+            resultado.unwrap().nombre,
+            MadreCliente::new().construir_props().nombre
+        );
+    }
+
+    #[test]
+    fn deberia_rechazar_cliente_cuando_nombre_es_una_cadena_vacia() {
+        let resultado = Cliente::new(MadreCliente::new().con_nombre_vacio().construir_props());
+        assert!(resultado.is_err());
+        assert_eq!(
+            resultado.unwrap_err().to_string(),
+            "cliente.validacion.nombre_vacio"
+        );
+    }
+
+    #[test]
+    fn deberia_rechazar_cliente_cuando_nombre_solo_tiene_espacios() {
+        let resultado = Cliente::new(MadreCliente::new().con_nombre("   ").construir_props());
+        assert!(resultado.is_err());
+    }
+
+    #[test]
+    fn deberia_rechazar_actualizar_cliente_cuando_nombre_es_una_cadena_vacia() {
+        let mut entidad = MadreCliente::aleatorio();
+        let resultado =
+            entidad.actualizar(MadreCliente::new().con_nombre_vacio().construir_props());
+        assert_eq!(
+            resultado.unwrap_err().to_string(),
+            "cliente.validacion.nombre_vacio"
+        );
+    }
+
+    #[test]
+    fn deberia_rechazar_cliente_cuando_email_es_una_cadena_vacia() {
+        let resultado = Email::new("".to_string());
+        assert!(resultado.is_err());
+        assert_eq!(resultado.unwrap_err().to_string(), "cliente.email_invalido");
+    }
+
+    #[test]
+    fn deberia_emitir_cliente_creado_cuando_se_crea() {
+        // Preparar
+        let props = MadreCliente::new().construir_props();
+
+        // Actuar
+        let resultado = Cliente::crear(props);
+
+        // Comprobar
+        let (entidad, evento) = match resultado {
+            Ok(creado) => creado,
+            Err(e) => panic!("la creación falló: {e}"),
+        };
+        assert_eq!(evento.tipo_evento(), "cliente_creado");
+        assert_eq!(evento.id_agregado(), entidad.id.valor());
+    }
+
+    #[test]
+    fn deberia_emitir_cliente_actualizado_cuando_se_actualiza() {
+        // Preparar
+        let mut entidad = MadreCliente::aleatorio();
+
+        // Actuar
+        let resultado = entidad.actualizar(MadreCliente::new().construir_props());
+
+        // Comprobar
+        let evento = match resultado {
+            Ok(evento) => evento,
+            Err(e) => panic!("la actualización falló: {e}"),
+        };
+        assert_eq!(evento.tipo_evento(), "cliente_actualizado");
+        assert_eq!(evento.id_agregado(), entidad.id.valor());
+    }
+
+    #[test]
+    fn deberia_marcar_cliente_como_borrado_cuando_se_borra() {
+        // Preparar
+        let mut entidad = MadreCliente::aleatorio();
+
+        // Actuar
+        let evento = entidad.borrar();
+
+        // Comprobar
+        assert!(entidad.borrado);
+        assert!(entidad.borrado_en.is_some());
+        assert_eq!(evento.tipo_evento(), "cliente_borrado");
+        assert_eq!(evento.id_agregado(), entidad.id.valor());
+    }
+}
