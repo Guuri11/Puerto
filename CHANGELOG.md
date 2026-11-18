@@ -1,3 +1,52 @@
+## [0.26.0] - 2026-11-18
+
+Un proyecto nuevo con `web/` se ve como un producto: su marca en un solo sitio, un marco lateral,
+un panel con el total de cada lista y, con auth, una página de acceso y un perfil (PLAN Fase 25,
+ADR-0027). El backend no cambia.
+
+### Added
+
+- **La marca del proyecto**: `web/src/marca/marca.ts` (nombre, eslogan, logo),
+  `web/src/marca/tema.css` (los colores y los radios de la marca sobre los temas claro y oscuro de
+  daisyUI; la app sigue el modo del sistema) y `web/public/logo.svg`, que también es el icono de la
+  pestaña. Los escribe `puerto nuevo` una vez; ningún generador los vuelve a tocar.
+- **El panel** (`paginas/panel.tsx`, en `/`): una tarjeta por entidad con el total de su lista, que
+  sale del `total` de una página de un elemento (`contarTotal`, `PAGINA_DE_UNO` en `api/http.ts`).
+  Con auth, va en `<RequiereAuth>` cuando alguna de las listas que cuenta está protegida.
+- **Con auth**: `MarcoAcceso` (`compartido/ui/marco-acceso.tsx`) para `/login` y `/registro` (o
+  `/auth/callback`), con la marca a un lado y el formulario en una tarjeta; `Avatar` con las
+  iniciales (`compartido/ui/avatar.tsx`); el menú de usuario es un desplegable que lleva a
+  `/perfil` (`paginas/perfil.tsx`), de solo lectura sobre `GET /me`: nombre, email y roles.
+
+### Changed
+
+- **El marco es un lateral** (`drawer` de daisyUI): la marca, «Panel» y una entrada por entidad,
+  la actual marcada; en el móvil se abre desde un botón. Con auth, la barra de arriba lleva el menú
+  de usuario.
+- Cada entrada de `entradasMenu` (`generado/rutas.tsx`) lleva su `total`.
+
+### Breaking
+
+- `paginas/inicio.tsx` (`PaginaInicio`) pasa a `paginas/panel.tsx` (`PaginaPanel`); `Marco` ya no
+  recibe `titulo` (lo da la marca) y `EntradaMenu` exige `total`. Con auth, `generado/rutas.tsx` ya
+  no tiene `/login`, `/registro` ni `/auth/callback`: las monta `main.tsx`. Las rutas del backend,
+  los crates, `puerto.toml` y la API de los crates del runtime no cambian.
+
+### Migration Guide
+
+Un proyecto con `web/` generado con 0.25 regenera `generado/rutas.tsx` en el siguiente scaffold o
+`puerto generar bootstrap`, y ese fichero ya espera los de 0.26. Antes de regenerar, copia de un
+proyecto nuevo (`puerto nuevo` con las mismas opciones):
+
+1. `web/src/marca/`, `web/public/logo.svg` y `web/src/index.css`; añade el
+   `<link rel="icon" …>` de `index.html`.
+2. `web/src/compartido/ui/marco.tsx`, `web/src/paginas/panel.tsx` (+ su test) y `web/src/api/http.ts`
+   (o solo `PAGINA_DE_UNO` y `contarTotal`); borra `web/src/paginas/inicio.tsx` y su test.
+3. Con auth: `web/src/main.tsx` (monta las páginas de acceso), `compartido/ui/marco-acceso.tsx`,
+   `compartido/ui/avatar.tsx` (+ test), `compartido/ui/menu-usuario.tsx` (+ test) y
+   `paginas/perfil.tsx` (+ test).
+4. `puerto generar bootstrap` y `make web/lint web/test`.
+
 ## [0.25.0] - 2026-11-18
 
 Los casos de uso de escritura se quedan en el negocio: la entidad emite sus eventos, la factoría de

@@ -1,0 +1,54 @@
+import { describe, expect, test } from "bun:test";
+import { fireEvent, screen, waitFor } from "@testing-library/react";
+import { MadreUsuarioActual, pasarelaAuthFalsa } from "../pruebas/auth";
+import { renderizarPantalla } from "../pruebas/renderizar";
+import { PaginaPerfil } from "./perfil";
+
+describe("PaginaPerfil", () => {
+  test("debería mostrar el nombre, el email y los roles de quien tiene la sesión", async () => {
+    // Preparar
+    const usuario = MadreUsuarioActual.aleatorio({
+      nombre: "Ana Lozano",
+      email: "ana@example.com",
+      roles: ["admin"],
+    });
+
+    // Actuar
+    renderizarPantalla(<PaginaPerfil />, {}, "/perfil", { usuario });
+
+    // Comprobar
+    expect(await screen.findByText("Ana Lozano")).toBeTruthy();
+    expect(screen.getByText("ana@example.com")).toBeTruthy();
+    expect(screen.getByText("admin")).toBeTruthy();
+  });
+
+  test("debería decirlo cuando quien tiene la sesión no tiene roles", async () => {
+    // Preparar
+    const usuario = MadreUsuarioActual.aleatorio({ roles: [] });
+
+    // Actuar
+    renderizarPantalla(<PaginaPerfil />, {}, "/perfil", { usuario });
+
+    // Comprobar
+    expect(await screen.findByText("Sin roles")).toBeTruthy();
+  });
+
+  test("debería cerrar la sesión cuando se pulsa Cerrar sesión", async () => {
+    // Preparar
+    const usuario = MadreUsuarioActual.aleatorio();
+    let cerrada = false;
+    const auth = {
+      ...pasarelaAuthFalsa({ usuario }),
+      logout: async () => {
+        cerrada = true;
+      },
+    };
+    renderizarPantalla(<PaginaPerfil />, { auth }, "/perfil");
+
+    // Actuar
+    fireEvent.click(await screen.findByText("Cerrar sesión"));
+
+    // Comprobar
+    await waitFor(() => expect(cerrada).toBe(true));
+  });
+});

@@ -1,0 +1,35 @@
+import { Link } from "wouter";
+import { useAuth } from "../../auth/auth";
+import { Avatar } from "./avatar";
+
+/** Quién tiene la sesión iniciada, con su perfil y el botón para cerrarla; o el botón para iniciarla. */
+export function MenuUsuario() {
+  const { usuario, login, logout } = useAuth();
+  if (usuario === null) {
+    return (
+      <button type="button" className="btn btn-primary btn-sm" onClick={() => void login()}>
+        Iniciar sesión
+      </button>
+    );
+  }
+  return (
+    <div className="dropdown dropdown-end">
+      <button type="button" className="btn btn-ghost gap-2 px-2">
+        <Avatar usuario={usuario} />
+        <span className="hidden text-sm sm:inline">
+          {usuario.nombre ?? usuario.email ?? "Con sesión"}
+        </span>
+      </button>
+      <ul className="dropdown-content menu z-30 mt-2 w-52 rounded-box bg-base-100 p-2 shadow-lg">
+        <li>
+          <Link href="/perfil">Perfil</Link>
+        </li>
+        <li>
+          <button type="button" onClick={() => void logout()}>
+            Cerrar sesión
+          </button>
+        </li>
+      </ul>
+    </div>
+  );
+}

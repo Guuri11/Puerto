@@ -1,0 +1,38 @@
+import { describe, expect, test } from "bun:test";
+import { MadreUsuarioActual } from "../../pruebas/auth";
+import { iniciales } from "./avatar";
+
+describe("iniciales", () => {
+  test("debería tomar la primera letra de las dos primeras palabras del nombre", () => {
+    // Preparar
+    const usuario = MadreUsuarioActual.aleatorio({ nombre: "ana lozano pérez" });
+
+    // Actuar
+    const resultado = iniciales(usuario);
+
+    // Comprobar
+    expect(resultado).toBe("AL");
+  });
+
+  test("debería tomar la primera letra del email cuando no hay nombre", () => {
+    // Preparar
+    const usuario = MadreUsuarioActual.aleatorio({ nombre: null, email: "bea@example.com" });
+
+    // Actuar
+    const resultado = iniciales(usuario);
+
+    // Comprobar
+    expect(resultado).toBe("B");
+  });
+
+  test("debería mostrar una interrogación cuando no hay nombre ni email", () => {
+    // Preparar
+    const usuario = MadreUsuarioActual.aleatorio({ nombre: "  ", email: null });
+
+    // Actuar
+    const resultado = iniciales(usuario);
+
+    // Comprobar
+    expect(resultado).toBe("?");
+  });
+});

@@ -1,0 +1,40 @@
+import "./index.css";
+
+import { StrictMode } from "react";
+import { createRoot } from "react-dom/client";
+import { Route, Switch } from "wouter";
+import { ProveedorAuth } from "./auth/auth";
+import { Marco } from "./compartido/ui/marco";
+import { MarcoAcceso } from "./compartido/ui/marco-acceso";
+import { ProveedorDependencias } from "./dependencias";
+import { crearDependencias } from "./generado/dependencias";
+import { entradasMenu, RutasApp } from "./generado/rutas";
+import { marca } from "./marca/marca";
+import { PaginaAuthCallback } from "./paginas/auth-callback";
+
+const raiz = document.getElementById("root");
+if (raiz === null) {
+  throw new Error("index.html no tiene el elemento #root");
+}
+document.title = marca.nombre;
+
+createRoot(raiz).render(
+  <StrictMode>
+    <ProveedorDependencias valor={crearDependencias()}>
+      <ProveedorAuth>
+        <Switch>
+          <Route path="/auth/callback">
+            <MarcoAcceso>
+              <PaginaAuthCallback />
+            </MarcoAcceso>
+          </Route>
+          <Route>
+            <Marco menu={entradasMenu}>
+              <RutasApp />
+            </Marco>
+          </Route>
+        </Switch>
+      </ProveedorAuth>
+    </ProveedorDependencias>
+  </StrictMode>,
+);

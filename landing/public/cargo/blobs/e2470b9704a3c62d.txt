@@ -1,0 +1,28 @@
+/*
+ * Los colores de la marca, sobre los temas claro y oscuro de daisyUI (se usa el del sistema). Lo que
+ * no se cambia aquí sale del tema original. Genera otros en https://daisyui.com/theme-generator/ y
+ * pega sus variables.
+ */
+@plugin "daisyui";
+
+@plugin "daisyui/theme" {
+  name: "light";
+  default: true;
+  --color-primary: oklch(52% 0.12 215);
+  --color-primary-content: oklch(98% 0.01 215);
+  --color-accent: oklch(75% 0.14 70);
+  --color-accent-content: oklch(25% 0.05 70);
+  --radius-box: 1rem;
+  --radius-field: 0.5rem;
+}
+
+@plugin "daisyui/theme" {
+  name: "dark";
+  prefersdark: true;
+  --color-primary: oklch(66% 0.11 215);
+  --color-primary-content: oklch(20% 0.04 215);
+  --color-accent: oklch(78% 0.13 70);
+  --color-accent-content: oklch(25% 0.05 70);
+  --radius-box: 1rem;
+  --radius-field: 0.5rem;
+}
