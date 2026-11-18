@@ -516,10 +516,7 @@ impl BorrarPedido for BorrarPedidoImpl {
             .buscar_por_id(params.id)
             .await?
             .ok_or(ErrorPedido::NoEncontrado)?;
-        let ahora = chrono::Utc::now();
-        entidad.borrado = true;
-        entidad.borrado_en = Some(ahora);
-        entidad.actualizado_en = ahora;
+        entidad.borrar();
         self.repositorio.guardar(&entidad).await?;
         Ok(())
     }
@@ -1142,6 +1139,14 @@ impl Pedido {
         Ok(())
     }
 
+    /// El borrado lógico: la fila se queda, marcada como borrada.
+    pub fn borrar(&mut self) {
+        let ahora = chrono::Utc::now();
+        self.borrado = true;
+        self.borrado_en = Some(ahora);
+        self.actualizado_en = ahora;
+    }
+
     pub fn from_repositorio(datos: Pedido) -> Self {
         datos
     }
@@ -1202,6 +1207,19 @@ mod tests {
         let resultado = "VarianteInvalida".parse::<Status>();
         assert!(resultado.is_err());
         assert_eq!(resultado.unwrap_err().to_string(), "pedido.status_invalido");
+    }
+
+    #[test]
+    fn deberia_marcar_pedido_como_borrado_cuando_se_borra() {
+        // Preparar
+        let mut entidad = MadrePedido::aleatorio();
+
+        // Actuar
+        entidad.borrar();
+
+        // Comprobar
+        assert!(entidad.borrado);
+        assert!(entidad.borrado_en.is_some());
     }
 }
 

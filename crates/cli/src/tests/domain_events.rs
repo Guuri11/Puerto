@@ -211,6 +211,50 @@ fn scaffold_in_an_events_project_leaves_the_repository_read_only() {
     cleanup(&dir);
 }
 
+/// ADR-0026: the entity decides the fact and returns its event; an event nobody saves is a warning.
+#[test]
+fn scaffold_in_an_events_project_has_the_entity_emit_its_events() {
+    let (dir, output) = events_project("events_entity_emits");
+
+    scaffold_producto(&output);
+
+    let model = read(&output, "contextos/producto/dominio/src/modelo.rs");
+    for signature in [
+        "pub fn crear(props: PropsProducto) -> Result<(Self, EventoProducto), ErrorProducto> {",
+        "pub fn actualizar(&mut self, props: PropsProducto) -> Result<EventoProducto, ErrorProducto> {",
+        "pub fn borrar(&mut self) -> EventoProducto {",
+    ] {
+        assert!(model.contains(signature), "{signature}\n{model}");
+    }
+    for event in ["Creado", "Actualizado", "Borrado"] {
+        assert!(
+            model.contains(&format!("EventoProducto::{event}(")),
+            "{event}"
+        );
+    }
+    let events = read(&output, "contextos/producto/dominio/src/eventos.rs");
+    assert!(events.contains("#[must_use = "), "{events}");
+
+    let create = read(
+        &output,
+        "contextos/producto/aplicacion/src/crear_producto.rs",
+    );
+    assert!(
+        create.contains("let (entidad, evento) = Producto::crear("),
+        "{create}"
+    );
+    let delete = read(
+        &output,
+        "contextos/producto/aplicacion/src/borrar_producto.rs",
+    );
+    assert!(
+        delete.contains("let evento = entidad.borrar();"),
+        "{delete}"
+    );
+    assert!(!delete.contains("borrado = true"), "{delete}");
+    cleanup(&dir);
+}
+
 #[test]
 fn scaffold_in_an_events_project_writes_through_the_unit_of_work() {
     let (dir, output) = events_project("events_writes");
@@ -230,14 +274,15 @@ fn scaffold_in_an_events_project_writes_through_the_unit_of_work() {
             uc.contains("pub uow_factory: Arc<dyn UnitOfWorkFactoryProducto>,"),
             "{action}"
         );
-        // ADR-0026: the factory's `guardar` opens, writes, records and commits in one call.
+        // ADR-0026: the entity emits the event; the factory's `guardar` opens, writes, records and
+        // commits in one call.
         assert!(
-            uc.contains("self.uow_factory.guardar(&entidad, "),
+            uc.contains("self.uow_factory.guardar(&entidad, evento)"),
             "{action}: {uc}"
         );
         assert!(
-            uc.contains(&format!("EventoProducto::{event}(")),
-            "{action}"
+            !uc.contains(&format!("EventoProducto::{event}(")),
+            "{action}: {uc}"
         );
         assert!(!uc.contains("begin()"), "{action}");
         assert!(!uc.contains("repository.guardar"), "{action}");

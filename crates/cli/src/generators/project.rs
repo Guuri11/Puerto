@@ -372,8 +372,12 @@ lee.
 
 - **No edites nunca a mano `contextos/<c>/dominio/src/eventos.rs`**: se reescribe a partir de
   `puerto.toml` (el snapshot sigue los campos de la entidad). Añade un evento con
-  `puerto generar evento <Entidad> <nombre>` y guárdalo después desde un caso de uso:
-  `self.uow_factory.guardar(&entidad, EventoProducto::Publicado(SnapshotProducto::from_entidad(&entidad)))`.
+  `puerto generar evento <Entidad> <nombre>`.
+- **La entidad emite sus eventos** (ADR-0026 de Puerto): `Producto::crear(props)` devuelve la
+  entidad y su `Creado`; `actualizar` y `borrar`, su evento. Un evento propio lo emite un método
+  tuyo de la entidad: `pub fn publicar(&mut self) -> EventoProducto { …;
+  EventoProducto::Publicado(SnapshotProducto::from_entidad(self)) }`. Un evento que nadie guarda
+  es un aviso (`#[must_use]`), y `make lint` lo rechaza.
 - Un caso de uso de escritura guarda la entidad y su evento con `uow_factory.guardar(&entidad,
   evento)`: los dos en una transacción, o ninguno. Para escribir más de una vez, la unidad de
   trabajo a mano: `begin()` → `guardar` → `registrar` → `commit`; salir antes con `?`, sin llegar

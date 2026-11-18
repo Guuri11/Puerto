@@ -517,10 +517,7 @@ impl BorrarCategoria for BorrarCategoriaImpl {
             .buscar_por_id(params.id)
             .await?
             .ok_or(ErrorCategoria::NoEncontrado)?;
-        let ahora = chrono::Utc::now();
-        entidad.borrado = true;
-        entidad.borrado_en = Some(ahora);
-        entidad.actualizado_en = ahora;
+        entidad.borrar();
         self.repositorio.guardar(&entidad).await?;
         Ok(())
     }
@@ -1123,6 +1120,14 @@ impl Categoria {
         Ok(())
     }
 
+    /// El borrado lógico: la fila se queda, marcada como borrada.
+    pub fn borrar(&mut self) {
+        let ahora = chrono::Utc::now();
+        self.borrado = true;
+        self.borrado_en = Some(ahora);
+        self.actualizado_en = ahora;
+    }
+
     pub fn from_repositorio(datos: Categoria) -> Self {
         datos
     }
@@ -1153,6 +1158,19 @@ mod tests {
             resultado.unwrap_err().to_string(),
             "categoria.name_invalido"
         );
+    }
+
+    #[test]
+    fn deberia_marcar_categoria_como_borrado_cuando_se_borra() {
+        // Preparar
+        let mut entidad = MadreCategoria::aleatorio();
+
+        // Actuar
+        entidad.borrar();
+
+        // Comprobar
+        assert!(entidad.borrado);
+        assert!(entidad.borrado_en.is_some());
     }
 }
 
@@ -2416,10 +2434,7 @@ impl BorrarProducto for BorrarProductoImpl {
             .buscar_por_id(params.id)
             .await?
             .ok_or(ErrorProducto::NoEncontrado)?;
-        let ahora = chrono::Utc::now();
-        entidad.borrado = true;
-        entidad.borrado_en = Some(ahora);
-        entidad.actualizado_en = ahora;
+        entidad.borrar();
         self.repositorio.guardar(&entidad).await?;
         Ok(())
     }
@@ -3022,6 +3037,14 @@ impl Producto {
         Ok(())
     }
 
+    /// El borrado lógico: la fila se queda, marcada como borrada.
+    pub fn borrar(&mut self) {
+        let ahora = chrono::Utc::now();
+        self.borrado = true;
+        self.borrado_en = Some(ahora);
+        self.actualizado_en = ahora;
+    }
+
     pub fn from_repositorio(datos: Producto) -> Self {
         datos
     }
@@ -3075,6 +3098,19 @@ mod tests {
             resultado.unwrap_err().to_string(),
             "producto.validacion.title_vacio"
         );
+    }
+
+    #[test]
+    fn deberia_marcar_producto_como_borrado_cuando_se_borra() {
+        // Preparar
+        let mut entidad = MadreProducto::aleatorio();
+
+        // Actuar
+        entidad.borrar();
+
+        // Comprobar
+        assert!(entidad.borrado);
+        assert!(entidad.borrado_en.is_some());
     }
 }
 

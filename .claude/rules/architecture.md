@@ -111,6 +111,12 @@ impl Producto {
 }
 ```
 
+Y dos reglas de negocio: `actualizar(&mut self, props)` (las mismas reglas que `new`) y
+`borrar(&mut self)` (el borrado lógico: `borrado`, `borrado_en`, `actualizado_en`). En proyectos con
+eventos la entidad emite sus eventos (ADR-0026): `crear(props) -> Result<(Producto, EventoProducto),
+_>` (`new` + `Creado`; `new` sigue para la madre y los tests), y `actualizar` / `borrar` devuelven
+su `EventoProducto`. `EventoProducto` es `#[must_use]`: un evento que nadie guarda es un aviso.
+
 Con `[[entidad.campos]]` en `puerto.toml`, los structs llevan los campos propios:
 
 ```rust
@@ -290,12 +296,15 @@ dominio/src/
                     #   (Creado/Actualizado/Borrado + propios), impl puerto_nucleo::EventoDominio,
                     #   pub const PRODUCTO_CREADO = "producto_creado"…
   unit_of_work.rs   # UnitOfWorkProducto (guardar / registrar / commit(self: Box<Self>)) y
-                    #   UnitOfWorkFactoryProducto (begin); dobles::UnitOfWorkFactoryGrabadora
+                    #   UnitOfWorkFactoryProducto (begin, guardar(&entidad, evento));
+                    #   dobles::UnitOfWorkFactoryGrabadora
 ```
 
-- El puerto del repositorio **no tiene `guardar`**: solo lee. Las escrituras van `begin()` →
-  `guardar` → `registrar(EventoProducto::X(SnapshotProducto::from_entidad(&e)))` → `commit`.
-  Soltar la unidad de trabajo sin `commit` deshace — un `?` temprano es el rollback
+- El puerto del repositorio **no tiene `guardar`**: solo lee. El evento lo emite la entidad
+  (`let evento = entidad.actualizar(props)?;`) y la escritura es
+  `uow_factory.guardar(&entidad, evento)` (ADR-0026), un método por defecto que hace `begin()` →
+  `guardar` → `registrar` → `commit`. Para escribir más de una vez, esos pasos a mano: soltar la
+  unidad de trabajo sin `commit` deshace — un `?` temprano es el rollback
 - `crear` usa solo la factoría de unidades de trabajo; `obtener`/`listar`, solo el repositorio;
   `actualizar`/`borrar` y cada caso de uso propio, los dos. `cableado` construye el repositorio y
   la factoría una vez por contexto

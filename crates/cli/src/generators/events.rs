@@ -155,7 +155,7 @@ pub fn run_generate_event(
     );
     println!("  {} regenerado.", layout::domain_file(&snake, "eventos"));
     println!(
-        "  Guárdalo desde un caso de uso: self.uow_factory.guardar(&entidad, Evento{pascal}::{}(Snapshot{pascal}::from_entidad(&entidad)))",
+        "  Emítelo desde un método de {pascal} que devuelva Evento{pascal}::{}(Snapshot{pascal}::from_entidad(self)), y guárdalo con self.uow_factory.guardar(&entidad, evento)",
         event_variant(&snake, event)
     );
     Ok(())

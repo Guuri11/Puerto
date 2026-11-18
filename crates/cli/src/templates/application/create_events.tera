@@ -5,7 +5,6 @@ use async_trait::async_trait;
 {% endfor %}
 use dominio_{{ snake }}::{
     errores::Error{{ pascal }},
-    eventos::{{ "{" }}Evento{{ pascal }}, Snapshot{{ pascal }}},
     modelo::{{ "{" }}{{ pascal }}, Props{{ pascal }}},
     unit_of_work::UnitOfWorkFactory{{ pascal }},
 };
@@ -19,10 +18,10 @@ impl Crear{{ pascal }} for Crear{{ pascal }}Impl {
     #[tracing::instrument(name = "crear_{{ snake }}", skip_all, err(level = "warn"))]
     async fn ejecutar(&self, params: ParamsCrear{{ pascal }}) -> Result<{{ pascal }}, Error{{ pascal }}> {
 {% for f in fields | filter(attribute="is_vo", value=true) %}let {{ f.name }}{% if f.is_vec_vo %}: Vec<{{ f.vo }}>{% endif %} = {{ f.from_params }};
-{% endfor %}        let entidad = {{ pascal }}::new(Props{{ pascal }} {
+{% endfor %}        let (entidad, evento) = {{ pascal }}::crear(Props{{ pascal }} {
 {% for f in fields %}            {{ f.name }}{% if not f.is_vo %}: params.{{ f.name }}{% endif %},
 {% endfor %}        })?;
-        self.uow_factory.guardar(&entidad, Evento{{ pascal }}::Creado(Snapshot{{ pascal }}::from_entidad(&entidad))).await?;
+        self.uow_factory.guardar(&entidad, evento).await?;
         Ok(entidad)
     }
 }

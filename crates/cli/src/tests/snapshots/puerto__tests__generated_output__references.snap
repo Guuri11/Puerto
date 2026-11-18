@@ -553,10 +553,7 @@ impl BorrarCliente for BorrarClienteImpl {
             .buscar_por_id(params.id)
             .await?
             .ok_or(ErrorCliente::NoEncontrado)?;
-        let ahora = chrono::Utc::now();
-        entidad.borrado = true;
-        entidad.borrado_en = Some(ahora);
-        entidad.actualizado_en = ahora;
+        entidad.borrar();
         self.repositorio.guardar(&entidad).await?;
         Ok(())
     }
@@ -1185,6 +1182,14 @@ impl Cliente {
         Ok(())
     }
 
+    /// El borrado lógico: la fila se queda, marcada como borrada.
+    pub fn borrar(&mut self) {
+        let ahora = chrono::Utc::now();
+        self.borrado = true;
+        self.borrado_en = Some(ahora);
+        self.actualizado_en = ahora;
+    }
+
     pub fn from_repositorio(datos: Cliente) -> Self {
         datos
     }
@@ -1244,6 +1249,19 @@ mod tests {
         let resultado = Name::new("".to_string());
         assert!(resultado.is_err());
         assert_eq!(resultado.unwrap_err().to_string(), "cliente.name_invalido");
+    }
+
+    #[test]
+    fn deberia_marcar_cliente_como_borrado_cuando_se_borra() {
+        // Preparar
+        let mut entidad = MadreCliente::aleatorio();
+
+        // Actuar
+        entidad.borrar();
+
+        // Comprobar
+        assert!(entidad.borrado);
+        assert!(entidad.borrado_en.is_some());
     }
 }
 
@@ -2559,10 +2577,7 @@ impl BorrarEnvio for BorrarEnvioImpl {
             .buscar_por_id(params.id)
             .await?
             .ok_or(ErrorEnvio::NoEncontrado)?;
-        let ahora = chrono::Utc::now();
-        entidad.borrado = true;
-        entidad.borrado_en = Some(ahora);
-        entidad.actualizado_en = ahora;
+        entidad.borrar();
         self.repositorio.guardar(&entidad).await?;
         Ok(())
     }
@@ -3284,6 +3299,14 @@ impl Envio {
         Ok(())
     }
 
+    /// El borrado lógico: la fila se queda, marcada como borrada.
+    pub fn borrar(&mut self) {
+        let ahora = chrono::Utc::now();
+        self.borrado = true;
+        self.borrado_en = Some(ahora);
+        self.actualizado_en = ahora;
+    }
+
     pub fn from_repositorio(datos: Envio) -> Self {
         datos
     }
@@ -3336,6 +3359,19 @@ mod tests {
             resultado.unwrap_err().to_string(),
             "envio.validacion.carrier_vacio"
         );
+    }
+
+    #[test]
+    fn deberia_marcar_envio_como_borrado_cuando_se_borra() {
+        // Preparar
+        let mut entidad = MadreEnvio::aleatorio();
+
+        // Actuar
+        entidad.borrar();
+
+        // Comprobar
+        assert!(entidad.borrado);
+        assert!(entidad.borrado_en.is_some());
     }
 }
 
@@ -4799,10 +4835,7 @@ impl BorrarPedido for BorrarPedidoImpl {
             .buscar_por_id(params.id)
             .await?
             .ok_or(ErrorPedido::NoEncontrado)?;
-        let ahora = chrono::Utc::now();
-        entidad.borrado = true;
-        entidad.borrado_en = Some(ahora);
-        entidad.actualizado_en = ahora;
+        entidad.borrar();
         self.repositorio.guardar(&entidad).await?;
         Ok(())
     }
@@ -5494,6 +5527,14 @@ impl Pedido {
         Ok(())
     }
 
+    /// El borrado lógico: la fila se queda, marcada como borrada.
+    pub fn borrar(&mut self) {
+        let ahora = chrono::Utc::now();
+        self.borrado = true;
+        self.borrado_en = Some(ahora);
+        self.actualizado_en = ahora;
+    }
+
     pub fn from_repositorio(datos: Pedido) -> Self {
         datos
     }
@@ -5514,6 +5555,19 @@ mod tests {
     fn deberia_crear_pedido_cuando_los_campos_son_validos() {
         let resultado = Pedido::new(MadrePedido::new().construir_props());
         assert!(resultado.is_ok());
+    }
+
+    #[test]
+    fn deberia_marcar_pedido_como_borrado_cuando_se_borra() {
+        // Preparar
+        let mut entidad = MadrePedido::aleatorio();
+
+        // Actuar
+        entidad.borrar();
+
+        // Comprobar
+        assert!(entidad.borrado);
+        assert!(entidad.borrado_en.is_some());
     }
 }
 

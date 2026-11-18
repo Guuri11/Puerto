@@ -28,10 +28,9 @@ entero.
 ```txt
 proceso de la API
   crear_producto
-    uow = uow_factory.begin()
-    uow.guardar(&producto)              ┐
-    uow.registrar(Creado(snapshot))     ├ una transacción:
-    uow.commit()                        ┘ la fila de productos + la fila del outbox
+    (producto, evento) = Producto::crear(props)      la entidad emite Creado
+    uow_factory.guardar(&producto, evento)  ┐ begin, guardar, registrar, commit:
+                                            ┘ la fila de productos + la fila del outbox
 
 proceso worker
   relay         lee el outbox en orden y entrega cada evento al transporte
@@ -67,22 +66,23 @@ compila:
 error[E0599]: no method named `guardar` found for struct `Arc<(dyn RepositorioProducto + 'static)>` in the current scope
 ```
 
-Los casos de uso generados de crear, actualizar y borrar ya escriben por ella:
+El evento lo decide la entidad: `Producto::crear(props)` devuelve el producto y su `Creado`, y
+`actualizar` y `borrar` devuelven su evento. Los casos de uso generados de crear, actualizar y
+borrar lo guardan con la entidad en una llamada:
 
 ```rust title="contextos/producto/aplicacion/src/crear_producto.rs (fragmento)"
-let mut uow = self.uow_factory.begin().await.inspect_err(fallido)?;
-uow.guardar(&entidad).await.inspect_err(fallido)?;
-uow.registrar(EventoProducto::Creado(SnapshotProducto::from_entidad(
-    &entidad,
-)))
-.await
-.inspect_err(fallido)?;
-uow.commit().await.inspect_err(fallido)?;
+let (entidad, evento) = Producto::crear(PropsProducto { nombre, precio, sku })?;
+self.uow_factory.guardar(&entidad, evento).await?;
 ```
 
-Soltar la unidad de trabajo sin `commit` lo deshace todo, así que un `?` temprano es el
-rollback. Un agregado por transacción: un caso de uso que tiene que escribir dos de forma atómica
-se escribe a mano contra un puerto propio.
+`guardar` abre la unidad de trabajo, guarda, registra el evento y confirma. `EventoProducto` es
+`#[must_use]`: un evento emitido que nadie guarda es un aviso, y `make lint` lo rechaza.
+
+Para escribir más de una vez en una transacción, los pasos a mano: `begin()`, `guardar`,
+`registrar`, `commit()`. Soltar la unidad de trabajo sin `commit` lo deshace todo, así que un `?`
+temprano es el rollback. Un agregado por transacción: un caso de uso que tiene que escribir dos de
+forma atómica se escribe a mano contra un puerto propio. El porqué, en la
+[ADR-0026](/docs/decisions/adr/0026-casos-de-uso-sin-fontaneria/).
 
 ## El evento es un contrato, no el modelo
 
@@ -121,15 +121,29 @@ puerto generar evento Producto producto_publicado
 ```txt title="salida"
 ✓ Evento 'producto_publicado' añadido a Producto: EventoProducto::Publicado
   contextos/producto/dominio/src/eventos.rs regenerado.
-  Regístralo desde un caso de uso: uow.registrar(EventoProducto::Publicado(SnapshotProducto::from_entidad(&entidad)))
+  Emítelo desde un método de Producto que devuelva EventoProducto::Publicado(SnapshotProducto::from_entidad(self)), y guárdalo con self.uow_factory.guardar(&entidad, evento)
 ```
 
 Los tipos de evento van en snake_case y en participio: algo que ya pasó.
 
-El evento lo registra un caso de uso que escribes tú. `puerto generar caso-de-uso Producto
-publicar_producto` le da a `PublicarProductoImpl` el repositorio, para leer, y la factoría de
-unidades de trabajo, para escribir. El cuerpo lee el producto, aplica la regla y lo escribe con su
-evento:
+El evento lo emite un método de la entidad que escribes tú: la regla de negocio y el hecho que
+provoca van juntos, en el dominio.
+
+```rust title="contextos/producto/dominio/src/modelo.rs (fragmento)"
+impl Producto {
+    pub fn publicar(&mut self) -> Result<EventoProducto, ErrorProducto> {
+        if self.precio <= 0 {
+            return Err(ErrorProducto::Validacion("precio_no_positivo".into()));
+        }
+        self.actualizado_en = chrono::Utc::now();
+        Ok(EventoProducto::Publicado(SnapshotProducto::from_entidad(self)))
+    }
+}
+```
+
+`puerto generar caso-de-uso Producto publicar_producto` le da a `PublicarProductoImpl` el
+repositorio, para leer, y la factoría de unidades de trabajo, para escribir. El cuerpo lee el
+producto, le pide el evento y lo guarda con él:
 
 ```rust title="contextos/producto/aplicacion/src/publicar_producto.rs (fragmento)"
 pub struct ParamsPublicarProducto {
@@ -138,26 +152,15 @@ pub struct ParamsPublicarProducto {
 
 #[async_trait]
 impl PublicarProducto for PublicarProductoImpl {
+    #[tracing::instrument(name = "publicar_producto", skip_all, fields(id = %params.id), err(level = "warn"))]
     async fn ejecutar(&self, params: ParamsPublicarProducto) -> Result<Producto, ErrorProducto> {
-        tracing::info!(id = %params.id, "publicar_producto: inicio");
         let mut entidad = self
             .repositorio
             .buscar_por_id(params.id)
             .await?
             .ok_or(ErrorProducto::NoEncontrado)?;
-        if entidad.precio <= 0 {
-            return Err(ErrorProducto::Validacion("precio_no_positivo".into()));
-        }
-        entidad.actualizado_en = chrono::Utc::now();
-
-        let mut uow = self.uow_factory.begin().await?;
-        uow.guardar(&entidad).await?;
-        uow.registrar(EventoProducto::Publicado(SnapshotProducto::from_entidad(
-            &entidad,
-        )))
-        .await?;
-        uow.commit().await?;
-        tracing::info!(id = %entidad.id, "publicar_producto: fin");
+        let evento = entidad.publicar()?;
+        self.uow_factory.guardar(&entidad, evento).await?;
         Ok(entidad)
     }
 }

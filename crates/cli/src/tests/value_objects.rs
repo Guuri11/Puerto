@@ -109,7 +109,7 @@ fn generate_model_with_shared_vo_imports() {
         ..Default::default()
     }];
 
-    let result = generate_model("User", "user", &fields, &shared_vos).unwrap();
+    let result = generate_model("User", "user", &fields, &shared_vos, false).unwrap();
     assert!(result.contains("use nucleo::valores::Email"));
     assert!(result.contains("pub email: Email"));
 }
@@ -131,7 +131,7 @@ fn generate_model_local_vo_uses_local_import() {
         ..Default::default()
     }];
 
-    let result = generate_model("User", "user", &fields, &shared_vos).unwrap();
+    let result = generate_model("User", "user", &fields, &shared_vos, false).unwrap();
     assert!(result.contains("use crate::valores::Name"));
     assert!(!result.contains("shared::value_objects::Name"));
 }

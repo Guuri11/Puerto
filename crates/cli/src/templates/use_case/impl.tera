@@ -11,8 +11,8 @@ use dominio_{{ snake }}::{
 
 pub struct {{ uc_pascal }}Impl {
     pub repositorio: Arc<dyn Repositorio{{ pascal }}>,
-{% if uow %}    /// Las escrituras pasan por la unidad de trabajo: `begin`, `guardar`, `registrar` un evento,
-    /// `commit`. El repositorio solo lee.
+{% if uow %}    /// Las escrituras pasan por la unidad de trabajo: un método de la entidad emite el evento y
+    /// `uow_factory.guardar(&entidad, evento)` guarda los dos juntos. El repositorio solo lee.
     pub uow_factory: Arc<dyn UnitOfWorkFactory{{ pascal }}>,
 {% endif %}}
 

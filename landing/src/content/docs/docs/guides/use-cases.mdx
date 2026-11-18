@@ -65,11 +65,11 @@ un importe positivo. Cada fragmento de abajo se compiló y se probó en un proye
    el mismo fichero, debajo del trait y su doble, y empieza como un `todo!()`:
 
    ```rust title="contextos/producto/aplicacion/src/cambiar_precio_producto.rs"
+   #[tracing::instrument(name = "cambiar_precio_producto", skip_all, fields(id = %params.id), err(level = "warn"))]
    async fn ejecutar(
        &self,
        params: ParamsCambiarPrecioProducto,
    ) -> Result<Producto, ErrorProducto> {
-       tracing::info!(id = %params.id, "cambiar_precio_producto: inicio");
        let mut producto = self
            .repositorio
            .buscar_por_id(params.id)
@@ -77,14 +77,15 @@ un importe positivo. Cada fragmento de abajo se compiló y se probó en un proye
            .ok_or(ErrorProducto::NoEncontrado)?;
        producto.cambiar_precio(params.precio)?;
        self.repositorio.guardar(&producto).await?;
-       tracing::info!(id = %producto.id, "cambiar_precio_producto: fin");
        Ok(producto)
    }
    ```
 
    El repositorio responde `Result<_, ErrorRepositorio>`, y `?` lo convierte en un
-   `ErrorProducto` con el `From` generado. Un caso de uso registra `inicio` y `fin` con el id, nunca
-   los params, porque son datos del usuario.
+   `ErrorProducto` con el `From` generado. Los logs los pone el atributo, que viene generado: el
+   span da el nombre del caso de uso a lo que registran el repositorio y el resto, y `err` registra
+   una vez el código del error. `skip_all` deja fuera los params, porque son datos del usuario
+   ([ADR-0026](/docs/decisions/adr/0026-casos-de-uso-sin-fontaneria/)).
 
 5. **Pruébalo.** El test generado lleva `#[ignore = "escribe este test"]` para que no pueda pasar
    por accidente. Sustitúyelo:
@@ -228,23 +229,28 @@ pasos 6 y 7 en Zed y VS Code. Mira [Snippets del IDE](/docs/guides/configuration
 
 ## En un proyecto con eventos de dominio
 
-Ahí el repositorio no tiene `guardar`: las escrituras van por la unidad de trabajo, así que el
-evento se registra en la misma transacción. La implementación generada ya tiene un
-`uow_factory`. El paso 4 queda así:
+Ahí la entidad emite sus eventos y el repositorio no tiene `guardar`: las escrituras van por la
+unidad de trabajo, que guarda la entidad y su evento en la misma transacción. La regla del paso 3
+devuelve el evento que provoca:
 
 ```rust
-let mut uow = self.uow_factory.begin().await?;
-uow.guardar(&producto).await?;
-uow.registrar(EventoProducto::Actualizado(SnapshotProducto::from_entidad(
-    &producto,
-)))
-.await?;
-uow.commit().await?;
+pub fn cambiar_precio(&mut self, precio: i64) -> Result<EventoProducto, ErrorProducto> {
+    // … la misma regla …
+    Ok(EventoProducto::Actualizado(SnapshotProducto::from_entidad(self)))
+}
 ```
 
-con `use dominio_producto::eventos::{EventoProducto, SnapshotProducto};`. Escribir ahí
-`self.repositorio.guardar(…)` es un error de compilación, no un bug que aparece en producción.
-Mira [Eventos de dominio](/docs/guides/events/).
+con `use crate::eventos::{EventoProducto, SnapshotProducto};` (el `modelo.rs` generado ya lo
+tiene). La implementación generada ya tiene un `uow_factory`, y el paso 4 queda así:
+
+```rust
+let evento = producto.cambiar_precio(params.precio)?;
+self.uow_factory.guardar(&producto, evento).await?;
+```
+
+Escribir ahí `self.repositorio.guardar(…)` es un error de compilación, y olvidar el evento, un
+aviso que `make lint` rechaza: `EventoProducto` es `#[must_use]`. Mira
+[Eventos de dominio](/docs/guides/events/).
 
 ## En un proyecto con auth
 

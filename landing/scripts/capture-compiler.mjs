@@ -26,7 +26,6 @@ puerto(['generar', 'caso-de-uso', 'Producto', 'publicar_producto'], project);
 // cambiar y guardar. En un proyecto con eventos el repositorio no tiene `guardar`.
 const FILE = 'contextos/producto/aplicacion/src/publicar_producto.rs';
 const body = `    async fn ejecutar(&self, params: ParamsPublicarProducto) -> Result<Producto, ErrorProducto> {
-        tracing::info!(id = %params.id, "publicar_producto: inicio");
         let mut producto = self
             .repositorio
             .buscar_por_id(params.id)

@@ -226,8 +226,12 @@ lee.
 
 - **No edites nunca a mano `contextos/<c>/dominio/src/eventos.rs`**: se reescribe a partir de
   `puerto.toml` (el snapshot sigue los campos de la entidad). Añade un evento con
-  `puerto generar evento <Entidad> <nombre>` y guárdalo después desde un caso de uso:
-  `self.uow_factory.guardar(&entidad, EventoProducto::Publicado(SnapshotProducto::from_entidad(&entidad)))`.
+  `puerto generar evento <Entidad> <nombre>`.
+- **La entidad emite sus eventos** (ADR-0026 de Puerto): `Producto::crear(props)` devuelve la
+  entidad y su `Creado`; `actualizar` y `borrar`, su evento. Un evento propio lo emite un método
+  tuyo de la entidad: `pub fn publicar(&mut self) -> EventoProducto { …;
+  EventoProducto::Publicado(SnapshotProducto::from_entidad(self)) }`. Un evento que nadie guarda
+  es un aviso (`#[must_use]`), y `make lint` lo rechaza.
 - Un caso de uso de escritura guarda la entidad y su evento con `uow_factory.guardar(&entidad,
   evento)`: los dos en una transacción, o ninguno. Para escribir más de una vez, la unidad de
   trabajo a mano: `begin()` → `guardar` → `registrar` → `commit`; salir antes con `?`, sin llegar
@@ -584,7 +588,6 @@ tokio = { workspace = true }
 === contextos/compra/aplicacion/src/actualizar_compra.rs ===
 use async_trait::async_trait;
 use dominio_compra::errores::ErrorCompra;
-use dominio_compra::eventos::{EventoCompra, SnapshotCompra};
 use dominio_compra::modelo::{Compra, IdCompra, PropsCompra};
 use dominio_compra::repositorio::RepositorioCompra;
 use dominio_compra::unit_of_work::UnitOfWorkFactoryCompra;
@@ -634,17 +637,12 @@ impl ActualizarCompra for ActualizarCompraImpl {
             .buscar_por_id(params.id)
             .await?
             .ok_or(ErrorCompra::NoEncontrado)?;
-        entidad.actualizar(PropsCompra {
+        let evento = entidad.actualizar(PropsCompra {
             proveedor_id: params.proveedor_id,
             approver_id: params.approver_id,
             total: params.total,
         })?;
-        self.uow_factory
-            .guardar(
-                &entidad,
-                EventoCompra::Actualizado(SnapshotCompra::from_entidad(&entidad)),
-            )
-            .await?;
+        self.uow_factory.guardar(&entidad, evento).await?;
         Ok(entidad)
     }
 }
@@ -733,7 +731,6 @@ mod tests {
 === contextos/compra/aplicacion/src/borrar_compra.rs ===
 use async_trait::async_trait;
 use dominio_compra::errores::ErrorCompra;
-use dominio_compra::eventos::{EventoCompra, SnapshotCompra};
 use dominio_compra::modelo::IdCompra;
 use dominio_compra::repositorio::RepositorioCompra;
 use dominio_compra::unit_of_work::UnitOfWorkFactoryCompra;
@@ -779,16 +776,8 @@ impl BorrarCompra for BorrarCompraImpl {
             .buscar_por_id(params.id)
             .await?
             .ok_or(ErrorCompra::NoEncontrado)?;
-        let ahora = chrono::Utc::now();
-        entidad.borrado = true;
-        entidad.borrado_en = Some(ahora);
-        entidad.actualizado_en = ahora;
-        self.uow_factory
-            .guardar(
-                &entidad,
-                EventoCompra::Borrado(SnapshotCompra::from_entidad(&entidad)),
-            )
-            .await?;
+        let evento = entidad.borrar();
+        self.uow_factory.guardar(&entidad, evento).await?;
         Ok(())
     }
 }
@@ -862,7 +851,6 @@ mod tests {
 === contextos/compra/aplicacion/src/crear_compra.rs ===
 use async_trait::async_trait;
 use dominio_compra::errores::ErrorCompra;
-use dominio_compra::eventos::{EventoCompra, SnapshotCompra};
 use dominio_compra::modelo::{Compra, PropsCompra};
 use dominio_compra::unit_of_work::UnitOfWorkFactoryCompra;
 use dominio_proveedor::modelo::IdProveedor;
@@ -904,17 +892,12 @@ pub struct CrearCompraImpl {
 impl CrearCompra for CrearCompraImpl {
     #[tracing::instrument(name = "crear_compra", skip_all, err(level = "warn"))]
     async fn ejecutar(&self, params: ParamsCrearCompra) -> Result<Compra, ErrorCompra> {
-        let entidad = Compra::new(PropsCompra {
+        let (entidad, evento) = Compra::crear(PropsCompra {
             proveedor_id: params.proveedor_id,
             approver_id: params.approver_id,
             total: params.total,
         })?;
-        self.uow_factory
-            .guardar(
-                &entidad,
-                EventoCompra::Creado(SnapshotCompra::from_entidad(&entidad)),
-            )
-            .await?;
+        self.uow_factory.guardar(&entidad, evento).await?;
         Ok(entidad)
     }
 }
@@ -1490,8 +1473,9 @@ impl SnapshotCompra {
     }
 }
 
-/// Lo que le pasa a cada compra. Sus casos de uso de escritura registran uno con su unidad de
-/// trabajo.
+/// Lo que le pasa a cada compra. Lo emiten los métodos de `Compra` (`crear`, `actualizar`,
+/// `borrar`, los tuyos) y lo guarda la unidad de trabajo junto a la entidad (ADR-0026 de Puerto).
+#[must_use = "un evento emitido se guarda con la entidad: `uow_factory.guardar(&entidad, evento)`"]
 #[derive(Debug, Clone, PartialEq)]
 pub enum EventoCompra {
     Creado(SnapshotCompra),
@@ -1605,6 +1589,7 @@ use dominio_proveedor::modelo::IdProveedor;
 use uuid::Uuid;
 
 use crate::errores::ErrorCompra;
+use crate::eventos::{EventoCompra, SnapshotCompra};
 
 /// El id de cada `Compra`: un `Uuid` que no se puede pasar donde se espera el id de otra
 /// entidad.
@@ -1669,14 +1654,33 @@ impl Compra {
         })
     }
 
-    /// Cambia los campos propios, con las mismas reglas que `new`.
-    pub fn actualizar(&mut self, props: PropsCompra) -> Result<(), ErrorCompra> {
+    /// Crea compra y emite `Creado` (ADR-0026 de Puerto). `new` construye sin emitir nada:
+    /// lo usan la madre y los tests.
+    pub fn crear(props: PropsCompra) -> Result<(Self, EventoCompra), ErrorCompra> {
+        let entidad = Self::new(props)?;
+        let evento = EventoCompra::Creado(SnapshotCompra::from_entidad(&entidad));
+        Ok((entidad, evento))
+    }
+
+    /// Cambia los campos propios, con las mismas reglas que `new`, y emite `Actualizado`.
+    pub fn actualizar(&mut self, props: PropsCompra) -> Result<EventoCompra, ErrorCompra> {
         Self::validar(&props)?;
         self.proveedor_id = props.proveedor_id;
         self.approver_id = props.approver_id;
         self.total = props.total;
         self.actualizado_en = chrono::Utc::now();
-        Ok(())
+        Ok(EventoCompra::Actualizado(SnapshotCompra::from_entidad(
+            self,
+        )))
+    }
+
+    /// El borrado lógico: la fila se queda, marcada como borrada, y emite `Borrado`.
+    pub fn borrar(&mut self) -> EventoCompra {
+        let ahora = chrono::Utc::now();
+        self.borrado = true;
+        self.borrado_en = Some(ahora);
+        self.actualizado_en = ahora;
+        EventoCompra::Borrado(SnapshotCompra::from_entidad(self))
     }
 
     pub fn from_repositorio(datos: Compra) -> Self {
@@ -1694,11 +1698,61 @@ impl Compra {
 mod tests {
     use super::*;
     use crate::pruebas::madres::MadreCompra;
+    use puerto_nucleo::EventoDominio;
 
     #[test]
     fn deberia_crear_compra_cuando_los_campos_son_validos() {
         let resultado = Compra::new(MadreCompra::new().construir_props());
         assert!(resultado.is_ok());
+    }
+
+    #[test]
+    fn deberia_emitir_compra_creado_cuando_se_crea() {
+        // Preparar
+        let props = MadreCompra::new().construir_props();
+
+        // Actuar
+        let resultado = Compra::crear(props);
+
+        // Comprobar
+        let (entidad, evento) = match resultado {
+            Ok(creado) => creado,
+            Err(e) => panic!("la creación falló: {e}"),
+        };
+        assert_eq!(evento.tipo_evento(), "compra_creado");
+        assert_eq!(evento.id_agregado(), entidad.id.valor());
+    }
+
+    #[test]
+    fn deberia_emitir_compra_actualizado_cuando_se_actualiza() {
+        // Preparar
+        let mut entidad = MadreCompra::aleatorio();
+
+        // Actuar
+        let resultado = entidad.actualizar(MadreCompra::new().construir_props());
+
+        // Comprobar
+        let evento = match resultado {
+            Ok(evento) => evento,
+            Err(e) => panic!("la actualización falló: {e}"),
+        };
+        assert_eq!(evento.tipo_evento(), "compra_actualizado");
+        assert_eq!(evento.id_agregado(), entidad.id.valor());
+    }
+
+    #[test]
+    fn deberia_marcar_compra_como_borrado_cuando_se_borra() {
+        // Preparar
+        let mut entidad = MadreCompra::aleatorio();
+
+        // Actuar
+        let evento = entidad.borrar();
+
+        // Comprobar
+        assert!(entidad.borrado);
+        assert!(entidad.borrado_en.is_some());
+        assert_eq!(evento.tipo_evento(), "compra_borrado");
+        assert_eq!(evento.id_agregado(), entidad.id.valor());
     }
 }
 
@@ -3418,7 +3472,6 @@ tokio = { workspace = true }
 use async_trait::async_trait;
 use dominio_compra::modelo::IdCompra;
 use dominio_entrega::errores::ErrorEntrega;
-use dominio_entrega::eventos::{EventoEntrega, SnapshotEntrega};
 use dominio_entrega::modelo::{Entrega, IdEntrega, PropsEntrega};
 use dominio_entrega::repositorio::RepositorioEntrega;
 use dominio_entrega::unit_of_work::UnitOfWorkFactoryEntrega;
@@ -3468,17 +3521,12 @@ impl ActualizarEntrega for ActualizarEntregaImpl {
             .buscar_por_id(params.id)
             .await?
             .ok_or(ErrorEntrega::NoEncontrado)?;
-        entidad.actualizar(PropsEntrega {
+        let evento = entidad.actualizar(PropsEntrega {
             compra_id: params.compra_id,
             destinatario_id: params.destinatario_id,
             carrier: params.carrier,
         })?;
-        self.uow_factory
-            .guardar(
-                &entidad,
-                EventoEntrega::Actualizado(SnapshotEntrega::from_entidad(&entidad)),
-            )
-            .await?;
+        self.uow_factory.guardar(&entidad, evento).await?;
         Ok(entidad)
     }
 }
@@ -3604,7 +3652,6 @@ mod tests {
 === contextos/entrega/aplicacion/src/borrar_entrega.rs ===
 use async_trait::async_trait;
 use dominio_entrega::errores::ErrorEntrega;
-use dominio_entrega::eventos::{EventoEntrega, SnapshotEntrega};
 use dominio_entrega::modelo::IdEntrega;
 use dominio_entrega::repositorio::RepositorioEntrega;
 use dominio_entrega::unit_of_work::UnitOfWorkFactoryEntrega;
@@ -3650,16 +3697,8 @@ impl BorrarEntrega for BorrarEntregaImpl {
             .buscar_por_id(params.id)
             .await?
             .ok_or(ErrorEntrega::NoEncontrado)?;
-        let ahora = chrono::Utc::now();
-        entidad.borrado = true;
-        entidad.borrado_en = Some(ahora);
-        entidad.actualizado_en = ahora;
-        self.uow_factory
-            .guardar(
-                &entidad,
-                EventoEntrega::Borrado(SnapshotEntrega::from_entidad(&entidad)),
-            )
-            .await?;
+        let evento = entidad.borrar();
+        self.uow_factory.guardar(&entidad, evento).await?;
         Ok(())
     }
 }
@@ -3735,7 +3774,6 @@ mod tests {
 use async_trait::async_trait;
 use dominio_compra::modelo::IdCompra;
 use dominio_entrega::errores::ErrorEntrega;
-use dominio_entrega::eventos::{EventoEntrega, SnapshotEntrega};
 use dominio_entrega::modelo::{Entrega, PropsEntrega};
 use dominio_entrega::unit_of_work::UnitOfWorkFactoryEntrega;
 use dominio_proveedor::modelo::IdProveedor;
@@ -3777,17 +3815,12 @@ pub struct CrearEntregaImpl {
 impl CrearEntrega for CrearEntregaImpl {
     #[tracing::instrument(name = "crear_entrega", skip_all, err(level = "warn"))]
     async fn ejecutar(&self, params: ParamsCrearEntrega) -> Result<Entrega, ErrorEntrega> {
-        let entidad = Entrega::new(PropsEntrega {
+        let (entidad, evento) = Entrega::crear(PropsEntrega {
             compra_id: params.compra_id,
             destinatario_id: params.destinatario_id,
             carrier: params.carrier,
         })?;
-        self.uow_factory
-            .guardar(
-                &entidad,
-                EventoEntrega::Creado(SnapshotEntrega::from_entidad(&entidad)),
-            )
-            .await?;
+        self.uow_factory.guardar(&entidad, evento).await?;
         Ok(entidad)
     }
 }
@@ -4402,8 +4435,9 @@ impl SnapshotEntrega {
     }
 }
 
-/// Lo que le pasa a cada entrega. Sus casos de uso de escritura registran uno con su unidad de
-/// trabajo.
+/// Lo que le pasa a cada entrega. Lo emiten los métodos de `Entrega` (`crear`, `actualizar`,
+/// `borrar`, los tuyos) y lo guarda la unidad de trabajo junto a la entidad (ADR-0026 de Puerto).
+#[must_use = "un evento emitido se guarda con la entidad: `uow_factory.guardar(&entidad, evento)`"]
 #[derive(Debug, Clone, PartialEq)]
 pub enum EventoEntrega {
     Creado(SnapshotEntrega),
@@ -4518,6 +4552,7 @@ use dominio_proveedor::modelo::IdProveedor;
 use uuid::Uuid;
 
 use crate::errores::ErrorEntrega;
+use crate::eventos::{EventoEntrega, SnapshotEntrega};
 
 /// El id de cada `Entrega`: un `Uuid` que no se puede pasar donde se espera el id de otra
 /// entidad.
@@ -4582,14 +4617,33 @@ impl Entrega {
         })
     }
 
-    /// Cambia los campos propios, con las mismas reglas que `new`.
-    pub fn actualizar(&mut self, props: PropsEntrega) -> Result<(), ErrorEntrega> {
+    /// Crea entrega y emite `Creado` (ADR-0026 de Puerto). `new` construye sin emitir nada:
+    /// lo usan la madre y los tests.
+    pub fn crear(props: PropsEntrega) -> Result<(Self, EventoEntrega), ErrorEntrega> {
+        let entidad = Self::new(props)?;
+        let evento = EventoEntrega::Creado(SnapshotEntrega::from_entidad(&entidad));
+        Ok((entidad, evento))
+    }
+
+    /// Cambia los campos propios, con las mismas reglas que `new`, y emite `Actualizado`.
+    pub fn actualizar(&mut self, props: PropsEntrega) -> Result<EventoEntrega, ErrorEntrega> {
         Self::validar(&props)?;
         self.compra_id = props.compra_id;
         self.destinatario_id = props.destinatario_id;
         self.carrier = props.carrier;
         self.actualizado_en = chrono::Utc::now();
-        Ok(())
+        Ok(EventoEntrega::Actualizado(SnapshotEntrega::from_entidad(
+            self,
+        )))
+    }
+
+    /// El borrado lógico: la fila se queda, marcada como borrada, y emite `Borrado`.
+    pub fn borrar(&mut self) -> EventoEntrega {
+        let ahora = chrono::Utc::now();
+        self.borrado = true;
+        self.borrado_en = Some(ahora);
+        self.actualizado_en = ahora;
+        EventoEntrega::Borrado(SnapshotEntrega::from_entidad(self))
     }
 
     pub fn from_repositorio(datos: Entrega) -> Self {
@@ -4610,6 +4664,7 @@ impl Entrega {
 mod tests {
     use super::*;
     use crate::pruebas::madres::MadreEntrega;
+    use puerto_nucleo::EventoDominio;
 
     #[test]
     fn deberia_crear_entrega_cuando_los_campos_son_validos() {
@@ -4645,6 +4700,55 @@ mod tests {
             resultado.unwrap_err().to_string(),
             "entrega.validacion.carrier_vacio"
         );
+    }
+
+    #[test]
+    fn deberia_emitir_entrega_creado_cuando_se_crea() {
+        // Preparar
+        let props = MadreEntrega::new().construir_props();
+
+        // Actuar
+        let resultado = Entrega::crear(props);
+
+        // Comprobar
+        let (entidad, evento) = match resultado {
+            Ok(creado) => creado,
+            Err(e) => panic!("la creación falló: {e}"),
+        };
+        assert_eq!(evento.tipo_evento(), "entrega_creado");
+        assert_eq!(evento.id_agregado(), entidad.id.valor());
+    }
+
+    #[test]
+    fn deberia_emitir_entrega_actualizado_cuando_se_actualiza() {
+        // Preparar
+        let mut entidad = MadreEntrega::aleatorio();
+
+        // Actuar
+        let resultado = entidad.actualizar(MadreEntrega::new().construir_props());
+
+        // Comprobar
+        let evento = match resultado {
+            Ok(evento) => evento,
+            Err(e) => panic!("la actualización falló: {e}"),
+        };
+        assert_eq!(evento.tipo_evento(), "entrega_actualizado");
+        assert_eq!(evento.id_agregado(), entidad.id.valor());
+    }
+
+    #[test]
+    fn deberia_marcar_entrega_como_borrado_cuando_se_borra() {
+        // Preparar
+        let mut entidad = MadreEntrega::aleatorio();
+
+        // Actuar
+        let evento = entidad.borrar();
+
+        // Comprobar
+        assert!(entidad.borrado);
+        assert!(entidad.borrado_en.is_some());
+        assert_eq!(evento.tipo_evento(), "entrega_borrado");
+        assert_eq!(evento.id_agregado(), entidad.id.valor());
     }
 }
 
@@ -6408,7 +6512,6 @@ tokio = { workspace = true }
 === contextos/proveedor/aplicacion/src/actualizar_proveedor.rs ===
 use async_trait::async_trait;
 use dominio_proveedor::errores::ErrorProveedor;
-use dominio_proveedor::eventos::{EventoProveedor, SnapshotProveedor};
 use dominio_proveedor::modelo::{IdProveedor, PropsProveedor, Proveedor};
 use dominio_proveedor::repositorio::RepositorioProveedor;
 use dominio_proveedor::unit_of_work::UnitOfWorkFactoryProveedor;
@@ -6464,16 +6567,11 @@ impl ActualizarProveedor for ActualizarProveedorImpl {
             .await?
             .ok_or(ErrorProveedor::NoEncontrado)?;
         let name = Name::new(params.name)?;
-        entidad.actualizar(PropsProveedor {
+        let evento = entidad.actualizar(PropsProveedor {
             name,
             email: params.email,
         })?;
-        self.uow_factory
-            .guardar(
-                &entidad,
-                EventoProveedor::Actualizado(SnapshotProveedor::from_entidad(&entidad)),
-            )
-            .await?;
+        self.uow_factory.guardar(&entidad, evento).await?;
         Ok(entidad)
     }
 }
@@ -6629,7 +6727,6 @@ mod tests {
 === contextos/proveedor/aplicacion/src/borrar_proveedor.rs ===
 use async_trait::async_trait;
 use dominio_proveedor::errores::ErrorProveedor;
-use dominio_proveedor::eventos::{EventoProveedor, SnapshotProveedor};
 use dominio_proveedor::modelo::IdProveedor;
 use dominio_proveedor::repositorio::RepositorioProveedor;
 use dominio_proveedor::unit_of_work::UnitOfWorkFactoryProveedor;
@@ -6675,16 +6772,8 @@ impl BorrarProveedor for BorrarProveedorImpl {
             .buscar_por_id(params.id)
             .await?
             .ok_or(ErrorProveedor::NoEncontrado)?;
-        let ahora = chrono::Utc::now();
-        entidad.borrado = true;
-        entidad.borrado_en = Some(ahora);
-        entidad.actualizado_en = ahora;
-        self.uow_factory
-            .guardar(
-                &entidad,
-                EventoProveedor::Borrado(SnapshotProveedor::from_entidad(&entidad)),
-            )
-            .await?;
+        let evento = entidad.borrar();
+        self.uow_factory.guardar(&entidad, evento).await?;
         Ok(())
     }
 }
@@ -6762,7 +6851,6 @@ mod tests {
 === contextos/proveedor/aplicacion/src/crear_proveedor.rs ===
 use async_trait::async_trait;
 use dominio_proveedor::errores::ErrorProveedor;
-use dominio_proveedor::eventos::{EventoProveedor, SnapshotProveedor};
 use dominio_proveedor::modelo::{PropsProveedor, Proveedor};
 use dominio_proveedor::unit_of_work::UnitOfWorkFactoryProveedor;
 use dominio_proveedor::valores::Name;
@@ -6804,16 +6892,11 @@ impl CrearProveedor for CrearProveedorImpl {
     #[tracing::instrument(name = "crear_proveedor", skip_all, err(level = "warn"))]
     async fn ejecutar(&self, params: ParamsCrearProveedor) -> Result<Proveedor, ErrorProveedor> {
         let name = Name::new(params.name)?;
-        let entidad = Proveedor::new(PropsProveedor {
+        let (entidad, evento) = Proveedor::crear(PropsProveedor {
             name,
             email: params.email,
         })?;
-        self.uow_factory
-            .guardar(
-                &entidad,
-                EventoProveedor::Creado(SnapshotProveedor::from_entidad(&entidad)),
-            )
-            .await?;
+        self.uow_factory.guardar(&entidad, evento).await?;
         Ok(entidad)
     }
 }
@@ -7331,8 +7414,9 @@ impl SnapshotProveedor {
     }
 }
 
-/// Lo que le pasa a cada proveedor. Sus casos de uso de escritura registran uno con su unidad de
-/// trabajo.
+/// Lo que le pasa a cada proveedor. Lo emiten los métodos de `Proveedor` (`crear`, `actualizar`,
+/// `borrar`, los tuyos) y lo guarda la unidad de trabajo junto a la entidad (ADR-0026 de Puerto).
+#[must_use = "un evento emitido se guarda con la entidad: `uow_factory.guardar(&entidad, evento)`"]
 #[derive(Debug, Clone, PartialEq)]
 pub enum EventoProveedor {
     Creado(SnapshotProveedor),
@@ -7453,6 +7537,7 @@ use chrono::{DateTime, Utc};
 use uuid::Uuid;
 
 use crate::errores::ErrorProveedor;
+use crate::eventos::{EventoProveedor, SnapshotProveedor};
 
 /// El id de cada `Proveedor`: un `Uuid` que no se puede pasar donde se espera el id de otra
 /// entidad.
@@ -7514,13 +7599,32 @@ impl Proveedor {
         })
     }
 
-    /// Cambia los campos propios, con las mismas reglas que `new`.
-    pub fn actualizar(&mut self, props: PropsProveedor) -> Result<(), ErrorProveedor> {
+    /// Crea proveedor y emite `Creado` (ADR-0026 de Puerto). `new` construye sin emitir nada:
+    /// lo usan la madre y los tests.
+    pub fn crear(props: PropsProveedor) -> Result<(Self, EventoProveedor), ErrorProveedor> {
+        let entidad = Self::new(props)?;
+        let evento = EventoProveedor::Creado(SnapshotProveedor::from_entidad(&entidad));
+        Ok((entidad, evento))
+    }
+
+    /// Cambia los campos propios, con las mismas reglas que `new`, y emite `Actualizado`.
+    pub fn actualizar(&mut self, props: PropsProveedor) -> Result<EventoProveedor, ErrorProveedor> {
         Self::validar(&props)?;
         self.name = props.name;
         self.email = props.email;
         self.actualizado_en = chrono::Utc::now();
-        Ok(())
+        Ok(EventoProveedor::Actualizado(
+            SnapshotProveedor::from_entidad(self),
+        ))
+    }
+
+    /// El borrado lógico: la fila se queda, marcada como borrada, y emite `Borrado`.
+    pub fn borrar(&mut self) -> EventoProveedor {
+        let ahora = chrono::Utc::now();
+        self.borrado = true;
+        self.borrado_en = Some(ahora);
+        self.actualizado_en = ahora;
+        EventoProveedor::Borrado(SnapshotProveedor::from_entidad(self))
     }
 
     pub fn from_repositorio(datos: Proveedor) -> Self {
@@ -7541,6 +7645,7 @@ impl Proveedor {
 mod tests {
     use super::*;
     use crate::pruebas::madres::MadreProveedor;
+    use puerto_nucleo::EventoDominio;
 
     #[test]
     fn deberia_crear_proveedor_cuando_los_campos_son_validos() {
@@ -7586,6 +7691,55 @@ mod tests {
             resultado.unwrap_err().to_string(),
             "proveedor.name_invalido"
         );
+    }
+
+    #[test]
+    fn deberia_emitir_proveedor_creado_cuando_se_crea() {
+        // Preparar
+        let props = MadreProveedor::new().construir_props();
+
+        // Actuar
+        let resultado = Proveedor::crear(props);
+
+        // Comprobar
+        let (entidad, evento) = match resultado {
+            Ok(creado) => creado,
+            Err(e) => panic!("la creación falló: {e}"),
+        };
+        assert_eq!(evento.tipo_evento(), "proveedor_creado");
+        assert_eq!(evento.id_agregado(), entidad.id.valor());
+    }
+
+    #[test]
+    fn deberia_emitir_proveedor_actualizado_cuando_se_actualiza() {
+        // Preparar
+        let mut entidad = MadreProveedor::aleatorio();
+
+        // Actuar
+        let resultado = entidad.actualizar(MadreProveedor::new().construir_props());
+
+        // Comprobar
+        let evento = match resultado {
+            Ok(evento) => evento,
+            Err(e) => panic!("la actualización falló: {e}"),
+        };
+        assert_eq!(evento.tipo_evento(), "proveedor_actualizado");
+        assert_eq!(evento.id_agregado(), entidad.id.valor());
+    }
+
+    #[test]
+    fn deberia_marcar_proveedor_como_borrado_cuando_se_borra() {
+        // Preparar
+        let mut entidad = MadreProveedor::aleatorio();
+
+        // Actuar
+        let evento = entidad.borrar();
+
+        // Comprobar
+        assert!(entidad.borrado);
+        assert!(entidad.borrado_en.is_some());
+        assert_eq!(evento.tipo_evento(), "proveedor_borrado");
+        assert_eq!(evento.id_agregado(), entidad.id.valor());
     }
 }
 

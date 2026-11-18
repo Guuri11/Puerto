@@ -20,11 +20,14 @@ use crate::generators::effective_fields;
 /// imports matching these must not be emitted again.
 const MODEL_TEMPLATE_IMPORTS: &[&str] = &["chrono::{DateTime, Utc}", "uuid::Uuid"];
 
+/// `events`: a CRUD entity of an `events` project, whose methods return the event they cause
+/// (ADR-0026).
 pub fn generate_model(
     pascal: &str,
     snake: &str,
     fields: &[Field],
     shared_vos: &[ValueObjectDefinition],
+    events: bool,
 ) -> Result<String, RenderError> {
     let eff = effective_fields(fields);
 
@@ -59,6 +62,7 @@ pub fn generate_model(
     let mut ctx = entity_ctx(pascal, snake);
     ctx.insert("imports", &imports);
     ctx.insert("fields", &field_ctxs);
+    ctx.insert("events", &events);
     render("domain/model.tera", &ctx)
 }
 
@@ -320,7 +324,10 @@ pub fn write_domain_files(
     let mut repository_ctx = ctx.clone();
     repository_ctx.insert("events", &events);
 
-    write("modelo", generate_model(pascal, snake, fields, shared_vos)?)?;
+    write(
+        "modelo",
+        generate_model(pascal, snake, fields, shared_vos, events)?,
+    )?;
     write("errores", render("domain/errors.tera", &errors_ctx)?)?;
     let valores = base.join(layout::domain_file(snake, "valores"));
     if eff

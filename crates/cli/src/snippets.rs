@@ -263,14 +263,28 @@ pub const SNIPPETS_JSON: &str = r##"{
     ],
     "description": "Test del camino de fallo de un caso de uso: el repositorio doble falla y el código se propaga."
   },
-  "Aplicación — escritura por la unidad de trabajo (eventos)": {
+  "Dominio — método de la entidad que emite un evento (eventos)": {
+    "prefix": "domain-event",
+    "body": [
+      "/// ${1:Publica} el ${2:entidad} y emite `${3:Publicado}`.",
+      "pub fn ${4:publicar}(&mut self) -> Evento${5:Entidad} {",
+      "\tself.actualizado_en = chrono::Utc::now();",
+      "\t$0",
+      "\tEvento${5:Entidad}::${3:Publicado}(Snapshot${5:Entidad}::from_entidad(self))",
+      "}"
+    ],
+    "description": "Proyectos con eventos: un método de la entidad que cambia su estado y devuelve el evento que provoca (declarado con `puerto generar evento`). El caso de uso lo guarda con uow_factory.guardar(&entidad, evento)."
+  },
+  "Aplicación — varias escrituras en una unidad de trabajo (eventos)": {
     "prefix": "uow-write",
     "body": [
-      "self.uow_factory",
-      "\t.guardar(&entidad, Evento${1:Entidad}::${2:Actualizado}(Snapshot${1:Entidad}::from_entidad(&entidad)))",
-      "\t.await?;"
+      "let mut uow = self.uow_factory.begin().await?;",
+      "uow.guardar(&entidad).await?;",
+      "uow.registrar(${1:evento}).await?;",
+      "$0",
+      "uow.commit().await?;"
     ],
-    "description": "Proyectos con eventos: guardar la entidad y su evento en una transacción (la factoría hace begin, guardar, registrar y commit). Para escribir más de una vez, begin y commit a mano."
+    "description": "Proyectos con eventos: más de una escritura en una transacción — begin, guardar, registrar, commit. Soltarla sin commit la deshace. Para una sola, uow_factory.guardar(&entidad, evento)."
   },
   "Aplicación — impl del caso de uso sobre la unidad de trabajo (eventos)": {
     "prefix": "app-use-case-uow",
@@ -281,7 +295,6 @@ pub const SNIPPETS_JSON: &str = r##"{
       "",
       "use dominio_${1:entidad}::{",
       "\terrores::Error${2:Entidad},",
-      "\teventos::{Evento${2:Entidad}, Snapshot${2:Entidad}},",
       "\tmodelo::${2:Entidad},",
       "\trepositorio::Repositorio${2:Entidad},",
       "\tunit_of_work::UnitOfWorkFactory${2:Entidad},",
@@ -297,11 +310,8 @@ pub const SNIPPETS_JSON: &str = r##"{
       "\t#[tracing::instrument(name = \"${3:accion}\", skip_all, fields(id = %params.id), err(level = \"warn\"))]",
       "\tasync fn ejecutar(&self, params: Params${4:Accion}${2:Entidad}) -> Result<${2:Entidad}, Error${2:Entidad}> {",
       "\t\tlet mut entidad = self.repositorio.buscar_por_id(params.id).await?.ok_or(Error${2:Entidad}::NoEncontrado)?;",
-      "\t\t$0",
-      "\t\tentidad.actualizado_en = chrono::Utc::now();",
-      "\t\tself.uow_factory",
-      "\t\t\t.guardar(&entidad, Evento${2:Entidad}::${5:Publicado}(Snapshot${2:Entidad}::from_entidad(&entidad)))",
-      "\t\t\t.await?;",
+      "\t\tlet evento = entidad.${5:publicar}();",
+      "\t\tself.uow_factory.guardar(&entidad, evento).await?;",
       "\t\tOk(entidad)",
       "\t}",
       "}",

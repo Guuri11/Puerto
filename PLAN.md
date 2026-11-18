@@ -3431,7 +3431,7 @@ subcomandos o flags.
 
 ## Fase 24 — Casos de uso de escritura sin fontanería (ADR-0026)
 
-**Estado:** especificada (2026-11-18). Decidido por Sergio el 2026-11-18, tras comparar eShop
+**Estado:** hecha (2026-11-18), sin publicar. Decidido por Sergio el 2026-11-18, tras comparar eShop
 (MediatR + EF Core), Wolverine y `cqrs-es`: sin bus ni middleware. La entidad emite sus eventos,
 la factoría de unidades de trabajo los guarda en una llamada y `tracing::instrument` hace los logs.
 Un `actualizar_<e>` con eventos pasa de ~25 líneas a 5:
@@ -3485,7 +3485,7 @@ span lleva el nombre y el `id`; `err` registra el código en `warn`); `entidad.a
 - Tests: `unit_of_work.rs` declara `guardar`; los tres casos de uso CRUD de escritura lo llaman y
   no contienen `begin()`; el compile matrix ejecuta sus tests contra la grabadora.
 
-### 24.3 — La entidad emite sus eventos
+### 24.3 — La entidad emite sus eventos ✅
 
 - Proyectos con eventos, entidades CRUD: los métodos de dominio devuelven el evento que provocan.
   - `Producto::crear(props) -> Result<(Producto, EventoProducto), ErrorProducto>`: `new` + `Creado`.

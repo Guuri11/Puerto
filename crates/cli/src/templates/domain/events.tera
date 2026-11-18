@@ -28,8 +28,9 @@ impl Snapshot{{ pascal }} {
     }
 }
 
-/// Lo que le pasa a cada {{ snake }}. Sus casos de uso de escritura registran uno con su unidad de
-/// trabajo.
+/// Lo que le pasa a cada {{ snake }}. Lo emiten los métodos de `{{ pascal }}` (`crear`, `actualizar`,
+/// `borrar`, los tuyos) y lo guarda la unidad de trabajo junto a la entidad (ADR-0026 de Puerto).
+#[must_use = "un evento emitido se guarda con la entidad: `uow_factory.guardar(&entidad, evento)`"]
 #[derive(Debug, Clone, PartialEq)]
 pub enum Evento{{ pascal }} {
 {% for e in events %}    {{ e.variant }}(Snapshot{{ pascal }}),

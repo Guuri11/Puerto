@@ -2,7 +2,8 @@ use chrono::{DateTime, Utc};
 use uuid::Uuid;{% for import in imports %}
 use {{ import }};{% endfor %}
 
-use crate::errores::Error{{ pascal }};
+use crate::errores::Error{{ pascal }};{% if events %}
+use crate::eventos::{{ "{" }}Evento{{ pascal }}, Snapshot{{ pascal }}};{% endif %}
 
 /// El id de cada `{{ pascal }}`: un `Uuid` que no se puede pasar donde se espera el id de otra
 /// entidad.
@@ -60,13 +61,30 @@ impl {{ pascal }} {
 {% for f in fields %}            {{ f.name }}: props.{{ f.name }},
 {% endfor %}        })
     }
-
-    /// Cambia los campos propios, con las mismas reglas que `new`.
-    pub fn actualizar(&mut self, props: Props{{ pascal }}) -> Result<(), Error{{ pascal }}> {
+{% if events %}
+    /// Crea {{ snake }} y emite `Creado` (ADR-0026 de Puerto). `new` construye sin emitir nada:
+    /// lo usan la madre y los tests.
+    pub fn crear(props: Props{{ pascal }}) -> Result<(Self, Evento{{ pascal }}), Error{{ pascal }}> {
+        let entidad = Self::new(props)?;
+        let evento = Evento{{ pascal }}::Creado(Snapshot{{ pascal }}::from_entidad(&entidad));
+        Ok((entidad, evento))
+    }
+{% endif %}
+    /// Cambia los campos propios, con las mismas reglas que `new`{% if events %}, y emite `Actualizado`{% endif %}.
+    pub fn actualizar(&mut self, props: Props{{ pascal }}) -> Result<{% if events %}Evento{{ pascal }}{% else %}(){% endif %}, Error{{ pascal }}> {
         Self::validar(&props)?;
 {% for f in fields %}        self.{{ f.name }} = props.{{ f.name }};
 {% endfor %}        self.actualizado_en = chrono::Utc::now();
-        Ok(())
+        {% if events %}Ok(Evento{{ pascal }}::Actualizado(Snapshot{{ pascal }}::from_entidad(self))){% else %}Ok(()){% endif %}
+    }
+
+    /// El borrado lógico: la fila se queda, marcada como borrada{% if events %}, y emite `Borrado`{% endif %}.
+    pub fn borrar(&mut self){% if events %} -> Evento{{ pascal }}{% endif %} {
+        let ahora = chrono::Utc::now();
+        self.borrado = true;
+        self.borrado_en = Some(ahora);
+        self.actualizado_en = ahora;{% if events %}
+        Evento{{ pascal }}::Borrado(Snapshot{{ pascal }}::from_entidad(self)){% endif %}
     }
 
     pub fn from_repositorio(datos: {{ pascal }}) -> Self {
@@ -86,7 +104,8 @@ impl {{ pascal }} {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::pruebas::madres::Madre{{ pascal }};
+    use crate::pruebas::madres::Madre{{ pascal }};{% if events %}
+    use puerto_nucleo::EventoDominio;{% endif %}
 
     #[test]
     fn deberia_crear_{{ snake }}_cuando_{% if fields | length == 1 and required | length == 1 and fields.0.name == "nombre" %}el_nombre_es_valido{% else %}los_campos_son_validos{% endif %}() {
@@ -144,4 +163,54 @@ mod tests {
             "{% if f.is_shared_vo %}nucleo.{{ f.vo_snake }}_invalido{% else %}{{ snake }}.{{ f.vo_snake }}_invalido{% endif %}"
         );
     }{% endfor %}
+{% if events %}
+
+    #[test]
+    fn deberia_emitir_{{ snake }}_creado_cuando_se_crea() {
+        // Preparar
+        let props = Madre{{ pascal }}::new().construir_props();
+
+        // Actuar
+        let resultado = {{ pascal }}::crear(props);
+
+        // Comprobar
+        let (entidad, evento) = match resultado {
+            Ok(creado) => creado,
+            Err(e) => panic!("la creación falló: {e}"),
+        };
+        assert_eq!(evento.tipo_evento(), "{{ snake }}_creado");
+        assert_eq!(evento.id_agregado(), entidad.id.valor());
+    }
+
+    #[test]
+    fn deberia_emitir_{{ snake }}_actualizado_cuando_se_actualiza() {
+        // Preparar
+        let mut entidad = Madre{{ pascal }}::aleatorio();
+
+        // Actuar
+        let resultado = entidad.actualizar(Madre{{ pascal }}::new().construir_props());
+
+        // Comprobar
+        let evento = match resultado {
+            Ok(evento) => evento,
+            Err(e) => panic!("la actualización falló: {e}"),
+        };
+        assert_eq!(evento.tipo_evento(), "{{ snake }}_actualizado");
+        assert_eq!(evento.id_agregado(), entidad.id.valor());
+    }{% endif %}
+
+    #[test]
+    fn deberia_marcar_{{ snake }}_como_borrado_cuando_se_borra() {
+        // Preparar
+        let mut entidad = Madre{{ pascal }}::aleatorio();
+
+        // Actuar
+        {% if events %}let evento = {% endif %}entidad.borrar();
+
+        // Comprobar
+        assert!(entidad.borrado);
+        assert!(entidad.borrado_en.is_some());{% if events %}
+        assert_eq!(evento.tipo_evento(), "{{ snake }}_borrado");
+        assert_eq!(evento.id_agregado(), entidad.id.valor());{% endif %}
+    }
 }

@@ -500,6 +500,7 @@ fn snippets_cover_events_projects_and_custom_endpoints() {
     let s = snippet_bodies(crate::snippets::SNIPPETS_JSON);
 
     for prefix in [
+        "domain-event",
         "uow-write",
         "app-use-case-uow",
         "consumer-arm",
@@ -512,8 +513,12 @@ fn snippets_cover_events_projects_and_custom_endpoints() {
     // project the port has none.
     assert!(!s["app-use-case-uow"].contains("repository.guardar"));
     // ADR-0026: the entity and its event are saved by the factory, in one transaction.
-    assert!(s["app-use-case-uow"].contains(".guardar(&entidad, Evento"));
-    assert!(s["uow-write"].contains(".guardar(&entidad, Evento"));
+    assert!(s["app-use-case-uow"].contains(".guardar(&entidad, evento)"));
+    // The event comes from the entity: the use case names no event type (an unused import fails
+    // the generated project's `-D warnings`).
+    assert!(!s["app-use-case-uow"].contains("eventos::"));
+    assert!(s["domain-event"].contains("-> Evento"));
+    assert!(s["uow-write"].contains("uow.commit()"));
 }
 
 /// Replaces the first occurrence of `from` in the file at `rel`, which must contain it.
@@ -568,7 +573,21 @@ fn compose_publish_from_snippets(output: &Path) {
         ("entidades", "productos"),
         ("verbo", "publish"),
         ("se_publica", "published"),
+        ("publicar", "publish"),
+        ("Publica", "Publishes"),
     ];
+
+    // The entity's method that emits `Published` (ADR-0026), from `domain-event`.
+    let model = "contextos/producto/dominio/src/modelo.rs";
+    replace_in(
+        output,
+        model,
+        "impl Producto {\n",
+        &format!(
+            "impl Producto {{\n{}\n",
+            indent(&expand_snippet(&s["domain-event"], publish), 1)
+        ),
+    );
 
     // The use case acts on one producto: its params are the id (the step a user does by hand). Its
     // file is the contract, then the implementation (ADR-0023 § 4).
@@ -584,13 +603,13 @@ fn compose_publish_from_snippets(output: &Path) {
     )
     .unwrap();
 
-    // `uow-write` in place of the generated write block of update_producto.
+    // `uow-write` in place of the generated write of update_producto: the same write, by hand.
     let update = "contextos/producto/aplicacion/src/actualizar_producto.rs";
     let src = fs::read_to_string(output.join(update)).unwrap();
     let start = src.find("        self.uow_factory").unwrap();
     let end_marker = ".await?;\n";
     let end = start + src[start..].find(end_marker).unwrap() + end_marker.len();
-    let write = expand_snippet(&s["uow-write"], &[("Entidad", "Producto")]);
+    let write = expand_snippet(&s["uow-write"], &[("evento", "evento")]);
     fs::write(
         output.join(update),
         format!("{}{}{}", &src[..start], indent(&write, 2), &src[end..]),

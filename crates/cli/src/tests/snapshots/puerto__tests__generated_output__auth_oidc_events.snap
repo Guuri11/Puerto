@@ -242,8 +242,12 @@ lee.
 
 - **No edites nunca a mano `contextos/<c>/dominio/src/eventos.rs`**: se reescribe a partir de
   `puerto.toml` (el snapshot sigue los campos de la entidad). Añade un evento con
-  `puerto generar evento <Entidad> <nombre>` y guárdalo después desde un caso de uso:
-  `self.uow_factory.guardar(&entidad, EventoProducto::Publicado(SnapshotProducto::from_entidad(&entidad)))`.
+  `puerto generar evento <Entidad> <nombre>`.
+- **La entidad emite sus eventos** (ADR-0026 de Puerto): `Producto::crear(props)` devuelve la
+  entidad y su `Creado`; `actualizar` y `borrar`, su evento. Un evento propio lo emite un método
+  tuyo de la entidad: `pub fn publicar(&mut self) -> EventoProducto { …;
+  EventoProducto::Publicado(SnapshotProducto::from_entidad(self)) }`. Un evento que nadie guarda
+  es un aviso (`#[must_use]`), y `make lint` lo rechaza.
 - Un caso de uso de escritura guarda la entidad y su evento con `uow_factory.guardar(&entidad,
   evento)`: los dos en una transacción, o ninguno. Para escribir más de una vez, la unidad de
   trabajo a mano: `begin()` → `guardar` → `registrar` → `commit`; salir antes con `?`, sin llegar
@@ -660,7 +664,6 @@ tokio = { workspace = true }
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
 use dominio_producto::errores::ErrorProducto;
-use dominio_producto::eventos::{EventoProducto, SnapshotProducto};
 use dominio_producto::modelo::{IdProducto, Producto, PropsProducto};
 use dominio_producto::repositorio::RepositorioProducto;
 use dominio_producto::unit_of_work::UnitOfWorkFactoryProducto;
@@ -722,7 +725,7 @@ impl ActualizarProducto for ActualizarProductoImpl {
         let name = Name::new(params.name)?;
         let sku = Sku::new(params.sku)?;
         let status = params.status.parse::<Status>()?;
-        entidad.actualizar(PropsProducto {
+        let evento = entidad.actualizar(PropsProducto {
             name,
             sku,
             price: params.price,
@@ -731,12 +734,7 @@ impl ActualizarProducto for ActualizarProductoImpl {
             released_at: params.released_at,
             meta: params.meta,
         })?;
-        self.uow_factory
-            .guardar(
-                &entidad,
-                EventoProducto::Actualizado(SnapshotProducto::from_entidad(&entidad)),
-            )
-            .await?;
+        self.uow_factory.guardar(&entidad, evento).await?;
         Ok(entidad)
     }
 }
@@ -903,7 +901,6 @@ mod tests {
 === contextos/producto/aplicacion/src/borrar_producto.rs ===
 use async_trait::async_trait;
 use dominio_producto::errores::ErrorProducto;
-use dominio_producto::eventos::{EventoProducto, SnapshotProducto};
 use dominio_producto::modelo::IdProducto;
 use dominio_producto::repositorio::RepositorioProducto;
 use dominio_producto::unit_of_work::UnitOfWorkFactoryProducto;
@@ -953,16 +950,8 @@ impl BorrarProducto for BorrarProductoImpl {
             .buscar_por_id(params.id)
             .await?
             .ok_or(ErrorProducto::NoEncontrado)?;
-        let ahora = chrono::Utc::now();
-        entidad.borrado = true;
-        entidad.borrado_en = Some(ahora);
-        entidad.actualizado_en = ahora;
-        self.uow_factory
-            .guardar(
-                &entidad,
-                EventoProducto::Borrado(SnapshotProducto::from_entidad(&entidad)),
-            )
-            .await?;
+        let evento = entidad.borrar();
+        self.uow_factory.guardar(&entidad, evento).await?;
         Ok(())
     }
 }
@@ -1043,7 +1032,6 @@ mod tests {
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
 use dominio_producto::errores::ErrorProducto;
-use dominio_producto::eventos::{EventoProducto, SnapshotProducto};
 use dominio_producto::modelo::{Producto, PropsProducto};
 use dominio_producto::unit_of_work::UnitOfWorkFactoryProducto;
 use dominio_producto::valores::{Name, Sku, Status};
@@ -1097,7 +1085,7 @@ impl CrearProducto for CrearProductoImpl {
         let name = Name::new(params.name)?;
         let sku = Sku::new(params.sku)?;
         let status = params.status.parse::<Status>()?;
-        let entidad = Producto::new(PropsProducto {
+        let (entidad, evento) = Producto::crear(PropsProducto {
             name,
             sku,
             price: params.price,
@@ -1106,12 +1094,7 @@ impl CrearProducto for CrearProductoImpl {
             released_at: params.released_at,
             meta: params.meta,
         })?;
-        self.uow_factory
-            .guardar(
-                &entidad,
-                EventoProducto::Creado(SnapshotProducto::from_entidad(&entidad)),
-            )
-            .await?;
+        self.uow_factory.guardar(&entidad, evento).await?;
         Ok(entidad)
     }
 }
@@ -1619,8 +1602,8 @@ pub mod dobles {
 
 pub struct PublishProductoImpl {
     pub repositorio: Arc<dyn RepositorioProducto>,
-    /// Las escrituras pasan por la unidad de trabajo: `begin`, `guardar`, `registrar` un evento,
-    /// `commit`. El repositorio solo lee.
+    /// Las escrituras pasan por la unidad de trabajo: un método de la entidad emite el evento y
+    /// `uow_factory.guardar(&entidad, evento)` guarda los dos juntos. El repositorio solo lee.
     pub uow_factory: Arc<dyn UnitOfWorkFactoryProducto>,
 }
 
@@ -1793,8 +1776,9 @@ impl SnapshotProducto {
     }
 }
 
-/// Lo que le pasa a cada producto. Sus casos de uso de escritura registran uno con su unidad de
-/// trabajo.
+/// Lo que le pasa a cada producto. Lo emiten los métodos de `Producto` (`crear`, `actualizar`,
+/// `borrar`, los tuyos) y lo guarda la unidad de trabajo junto a la entidad (ADR-0026 de Puerto).
+#[must_use = "un evento emitido se guarda con la entidad: `uow_factory.guardar(&entidad, evento)`"]
 #[derive(Debug, Clone, PartialEq)]
 pub enum EventoProducto {
     Creado(SnapshotProducto),
@@ -1934,6 +1918,7 @@ use std::collections::HashMap;
 use uuid::Uuid;
 
 use crate::errores::ErrorProducto;
+use crate::eventos::{EventoProducto, SnapshotProducto};
 
 /// El id de cada `Producto`: un `Uuid` que no se puede pasar donde se espera el id de otra
 /// entidad.
@@ -2010,8 +1995,16 @@ impl Producto {
         })
     }
 
-    /// Cambia los campos propios, con las mismas reglas que `new`.
-    pub fn actualizar(&mut self, props: PropsProducto) -> Result<(), ErrorProducto> {
+    /// Crea producto y emite `Creado` (ADR-0026 de Puerto). `new` construye sin emitir nada:
+    /// lo usan la madre y los tests.
+    pub fn crear(props: PropsProducto) -> Result<(Self, EventoProducto), ErrorProducto> {
+        let entidad = Self::new(props)?;
+        let evento = EventoProducto::Creado(SnapshotProducto::from_entidad(&entidad));
+        Ok((entidad, evento))
+    }
+
+    /// Cambia los campos propios, con las mismas reglas que `new`, y emite `Actualizado`.
+    pub fn actualizar(&mut self, props: PropsProducto) -> Result<EventoProducto, ErrorProducto> {
         Self::validar(&props)?;
         self.name = props.name;
         self.sku = props.sku;
@@ -2021,7 +2014,18 @@ impl Producto {
         self.released_at = props.released_at;
         self.meta = props.meta;
         self.actualizado_en = chrono::Utc::now();
-        Ok(())
+        Ok(EventoProducto::Actualizado(SnapshotProducto::from_entidad(
+            self,
+        )))
+    }
+
+    /// El borrado lógico: la fila se queda, marcada como borrada, y emite `Borrado`.
+    pub fn borrar(&mut self) -> EventoProducto {
+        let ahora = chrono::Utc::now();
+        self.borrado = true;
+        self.borrado_en = Some(ahora);
+        self.actualizado_en = ahora;
+        EventoProducto::Borrado(SnapshotProducto::from_entidad(self))
     }
 
     pub fn from_repositorio(datos: Producto) -> Self {
@@ -2039,6 +2043,7 @@ impl Producto {
 mod tests {
     use super::*;
     use crate::pruebas::madres::MadreProducto;
+    use puerto_nucleo::EventoDominio;
 
     #[test]
     fn deberia_crear_producto_cuando_los_campos_son_validos() {
@@ -2068,6 +2073,55 @@ mod tests {
             resultado.unwrap_err().to_string(),
             "producto.status_invalido"
         );
+    }
+
+    #[test]
+    fn deberia_emitir_producto_creado_cuando_se_crea() {
+        // Preparar
+        let props = MadreProducto::new().construir_props();
+
+        // Actuar
+        let resultado = Producto::crear(props);
+
+        // Comprobar
+        let (entidad, evento) = match resultado {
+            Ok(creado) => creado,
+            Err(e) => panic!("la creación falló: {e}"),
+        };
+        assert_eq!(evento.tipo_evento(), "producto_creado");
+        assert_eq!(evento.id_agregado(), entidad.id.valor());
+    }
+
+    #[test]
+    fn deberia_emitir_producto_actualizado_cuando_se_actualiza() {
+        // Preparar
+        let mut entidad = MadreProducto::aleatorio();
+
+        // Actuar
+        let resultado = entidad.actualizar(MadreProducto::new().construir_props());
+
+        // Comprobar
+        let evento = match resultado {
+            Ok(evento) => evento,
+            Err(e) => panic!("la actualización falló: {e}"),
+        };
+        assert_eq!(evento.tipo_evento(), "producto_actualizado");
+        assert_eq!(evento.id_agregado(), entidad.id.valor());
+    }
+
+    #[test]
+    fn deberia_marcar_producto_como_borrado_cuando_se_borra() {
+        // Preparar
+        let mut entidad = MadreProducto::aleatorio();
+
+        // Actuar
+        let evento = entidad.borrar();
+
+        // Comprobar
+        assert!(entidad.borrado);
+        assert!(entidad.borrado_en.is_some());
+        assert_eq!(evento.tipo_evento(), "producto_borrado");
+        assert_eq!(evento.id_agregado(), entidad.id.valor());
     }
 }
 

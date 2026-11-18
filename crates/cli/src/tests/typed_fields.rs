@@ -166,7 +166,7 @@ fn type_registry_rejects_unknown() {
 fn generate_model_backward_compat_no_fields() {
     use crate::generators::domain::generate_model;
 
-    let result = generate_model("Producto", "producto", &[], &[]).unwrap();
+    let result = generate_model("Producto", "producto", &[], &[], false).unwrap();
     assert!(result.contains("pub struct PropsProducto"));
     assert!(result.contains("pub nombre: String,"));
     assert!(result.contains("pub struct Producto"));
@@ -204,7 +204,7 @@ fn generate_model_with_custom_fields() {
             ..Default::default()
         },
     ];
-    let result = generate_model("Producto", "producto", &fields, &[]).unwrap();
+    let result = generate_model("Producto", "producto", &fields, &[], false).unwrap();
 
     assert!(result.contains("pub struct PropsProducto"));
     assert!(result.contains("pub title: String,"));
@@ -257,7 +257,7 @@ fn generate_model_with_uuid_field() {
         unique: false,
         ..Default::default()
     }];
-    let result = generate_model("Item", "item", &fields, &[]).unwrap();
+    let result = generate_model("Item", "item", &fields, &[], false).unwrap();
 
     assert!(result.contains("use uuid::Uuid;"));
     assert!(result.contains("pub categoria_id: Uuid,"));
@@ -275,7 +275,7 @@ fn generate_model_with_hashmap_field() {
         unique: false,
         ..Default::default()
     }];
-    let result = generate_model("Config", "config", &fields, &[]).unwrap();
+    let result = generate_model("Config", "config", &fields, &[], false).unwrap();
 
     assert!(result.contains("use std::collections::HashMap;"));
     assert!(result.contains("pub metadata: HashMap<String, String>,"));
@@ -306,7 +306,7 @@ fn generate_model_multiple_string_fields_has_validations() {
             ..Default::default()
         },
     ];
-    let result = generate_model("Producto", "producto", &fields, &[]).unwrap();
+    let result = generate_model("Producto", "producto", &fields, &[], false).unwrap();
 
     assert!(result.contains("if props.name.trim().is_empty()"));
     assert!(result.contains("name_vacio"));
@@ -590,6 +590,29 @@ fn generate_create_use_case_impl_with_custom_fields() {
     assert!(result.contains(
         "#[tracing::instrument(name = \"crear_producto\", skip_all, err(level = \"warn\"))]"
     ));
+}
+
+/// ADR-0026: the soft delete is the entity's own rule, not the use case's.
+#[test]
+fn model_without_events_marks_its_own_soft_delete() {
+    use crate::generators::domain::generate_model;
+
+    let model = generate_model("Producto", "producto", &[], &[], false).unwrap();
+
+    assert!(model.contains("pub fn borrar(&mut self) {"), "{model}");
+    assert!(model.contains("self.borrado = true;"), "{model}");
+    assert!(!model.contains("pub fn crear("), "{model}");
+    assert!(!model.contains("Evento"), "{model}");
+
+    let delete = crate::generators::application::generate_delete_use_case_impl(
+        "Producto",
+        "producto",
+        &[],
+        &[],
+    )
+    .unwrap();
+    assert!(delete.contains("entidad.borrar();"), "{delete}");
+    assert!(!delete.contains("borrado = true"), "{delete}");
 }
 
 #[test]

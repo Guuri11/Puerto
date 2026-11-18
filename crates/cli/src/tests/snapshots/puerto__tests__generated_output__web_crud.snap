@@ -582,10 +582,7 @@ impl BorrarLineaPedido for BorrarLineaPedidoImpl {
             .buscar_por_id(params.id)
             .await?
             .ok_or(ErrorLineaPedido::NoEncontrado)?;
-        let ahora = chrono::Utc::now();
-        entidad.borrado = true;
-        entidad.borrado_en = Some(ahora);
-        entidad.actualizado_en = ahora;
+        entidad.borrar();
         self.repositorio.guardar(&entidad).await?;
         Ok(())
     }
@@ -1281,6 +1278,14 @@ impl LineaPedido {
         Ok(())
     }
 
+    /// El borrado lógico: la fila se queda, marcada como borrada.
+    pub fn borrar(&mut self) {
+        let ahora = chrono::Utc::now();
+        self.borrado = true;
+        self.borrado_en = Some(ahora);
+        self.actualizado_en = ahora;
+    }
+
     pub fn from_repositorio(datos: LineaPedido) -> Self {
         datos
     }
@@ -1346,6 +1351,19 @@ mod tests {
             resultado.unwrap_err().to_string(),
             "linea_pedido.sku_invalido"
         );
+    }
+
+    #[test]
+    fn deberia_marcar_linea_pedido_como_borrado_cuando_se_borra() {
+        // Preparar
+        let mut entidad = MadreLineaPedido::aleatorio();
+
+        // Actuar
+        entidad.borrar();
+
+        // Comprobar
+        assert!(entidad.borrado);
+        assert!(entidad.borrado_en.is_some());
     }
 }
 
