@@ -1,51 +1,51 @@
 ---
-title: Layer by layer
-description: Generate an entity one layer at a time, domain first, to design the model before the plumbing or to keep a coding agent's context small.
+title: Capa a capa
+description: Genera una entidad capa a capa, empezando por el dominio, para diseñar el modelo antes que la fontanería o para mantener pequeño el contexto de un agente.
 ---
 
 import { Steps } from '@astrojs/starlight/components';
 
-`puerto generar scaffold` is four generators run in order, one crate each. Run them yourself when
-you want to stop between layers: to get the domain right before anything depends on it, or to
-give an agent one layer to work on at a time.
+`puerto generar scaffold` son cuatro generadores ejecutados en orden, un crate cada uno.
+Ejecútalos tú cuando quieras pararte entre capas: para dejar bien el dominio antes de que nada
+dependa de él, o para darle a un agente una capa cada vez.
 
 <Steps>
 
-1. **The domain**, with its fields. They are written to `puerto.toml`, so the next commands pick
-   them up.
+1. **El dominio**, con sus campos. Se escriben en `puerto.toml`, así que los comandos siguientes
+   los ven.
 
    ```bash
    puerto generar dominio Factura -- numero:String! total:i64 vence_en:DateTime
    ```
 
-   The `dominio_factura` crate in `contextos/factura/dominio/`: the model, its errors, the
-   repository port with its double, and the Object Mother. This is the moment to write the rules
-   in `Factura::new` and run `cargo test -p dominio_factura`: nothing else exists yet that could
-   break.
+   El crate `dominio_factura` en `contextos/factura/dominio/`: el modelo, sus errores, el puerto
+   del repositorio con su doble y la madre. Este es el momento de escribir las reglas en
+   `Factura::new` y ejecutar `cargo test -p dominio_factura`: aún no existe nada más que se pueda
+   romper.
 
-2. **The application**: the `aplicacion_factura` crate, five use cases, one file each with its
-   params, trait, double, implementation and tests.
+2. **La aplicación**: el crate `aplicacion_factura`, cinco casos de uso, un fichero cada uno con
+   sus params, trait, doble, implementación y tests.
 
    ```bash
    puerto generar aplicacion Factura
    ```
 
-3. **The repository**: the `infra_factura` crate, in memory, or Postgres with its row and
-   migration in a `--db` project.
+3. **El repositorio**: el crate `infra_factura`, en memoria, o Postgres con su fila y su migración
+   en un proyecto `--db`.
 
    ```bash
    puerto generar repositorio Factura
    ```
 
-4. **The presentation**: the `rest_factura` crate, with its routes, DTOs, responses and error
-   mapping. It regenerates `presentacion/cableado/` and `bootstrap.rs`, so this is when the
-   entity is wired and served.
+4. **La presentación**: el crate `rest_factura`, con sus rutas, DTO, respuestas y errores HTTP.
+   Regenera `presentacion/cableado/` y `bootstrap.rs`, así que es ahora cuando la entidad se
+   cablea y se sirve.
 
    ```bash
    puerto generar presentacion Factura
    ```
 
-5. **The screens**, in a web project.
+5. **Las pantallas**, en un proyecto con web.
 
    ```bash
    puerto generar web Factura
@@ -54,18 +54,18 @@ give an agent one layer to work on at a time.
 
 </Steps>
 
-`aplicacion`, `repositorio`, `presentacion` and `web` refuse an entity that is not in
-`puerto.toml` yet, `presentacion` also refuses one without its application crate, and each one
-prints the next command.
+`aplicacion`, `repositorio`, `presentacion` y `web` rechazan una entidad que aún no está en
+`puerto.toml`, `presentacion` rechaza además una sin su crate de aplicación, y cada uno imprime el
+comando siguiente.
 
-## When the wiring is out of date
+## Regenerar el cableado
 
-`presentacion/cableado/` and `bootstrap.rs` wire what `puerto.toml` declares. If the manifest
-lists an entity whose files are not on disk yet, `puerto generar bootstrap` refuses rather than
-write Rust that does not compile; `--permitir-faltantes` writes it anyway, for the middle of a
-layer-by-layer session.
+`presentacion/cableado/` y `bootstrap.rs` cablean lo que declara `puerto.toml`. Si el manifiesto
+lista una entidad cuyos ficheros aún no están en disco, `puerto generar bootstrap` se niega en
+lugar de escribir Rust que no compila; `--permitir-faltantes` lo escribe igualmente, para mitad de
+una sesión capa a capa.
 
 ```bash
-puerto validar              # what puerto.toml says against what is on disk
-puerto generar bootstrap    # rewrite cableado/ and bootstrap.rs (and eventos.rs, registro.rs, the web's generated files)
+puerto validar              # lo que dice puerto.toml contra lo que hay en disco
+puerto generar bootstrap    # reescribe cableado/ y bootstrap.rs (y eventos.rs, registro.rs, los ficheros generados de la web)
 ```

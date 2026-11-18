@@ -1,117 +1,117 @@
 ---
-title: Field types
-description: Every field type Puerto generates, with its CLI syntax and what it becomes in Rust, in Postgres, on the wire and in the generated form.
+title: Tipos de campo
+description: Todos los tipos de campo que genera Puerto, con su sintaxis en la CLI y en qué se convierten en Rust, en Postgres, en el JSON y en el formulario generado.
 ---
 
-A field is declared once, as `name:Type` after the `--` of `generar scaffold` or `generar
-dominio`, and Puerto carries its type through every layer. The decision for each type is made in
-one place in the generator, `generators/types.rs`
+Un campo se declara una vez, como `nombre:Tipo` tras el `--` de `generar scaffold` o de `generar
+dominio`, y Puerto lleva su tipo por todas las capas. La decisión de cada tipo se toma en un solo
+sitio del generador, `generators/types.rs`
 ([ADR-0011](/docs/decisions/adr/0011-templates-own-shape-types-own-decisions/)).
 
-## Primitives
+## Primitivos
 
-| CLI | Rust | Postgres | TypeScript | Form control |
+| CLI | Rust | Postgres | TypeScript | Control del formulario |
 |---|---|---|---|---|
-| `titulo:String` | `String` | `TEXT NOT NULL` | `string` | text input, `required` |
-| `cantidad:i64` | `i64` | `BIGINT NOT NULL` | `number` | number input |
-| `valoracion:f64` | `f64` | `DOUBLE PRECISION NOT NULL` | `number` | number input, `step=any` |
+| `titulo:String` | `String` | `TEXT NOT NULL` | `string` | input de texto, `required` |
+| `cantidad:i64` | `i64` | `BIGINT NOT NULL` | `number` | input numérico |
+| `valoracion:f64` | `f64` | `DOUBLE PRECISION NOT NULL` | `number` | input numérico, `step=any` |
 | `activo:bool` | `bool` | `BOOLEAN NOT NULL` | `boolean` | checkbox |
-| `id_externo:Uuid` | `Uuid` | `UUID NOT NULL` | `string` | text input, `required` |
+| `id_externo:Uuid` | `Uuid` | `UUID NOT NULL` | `string` | input de texto, `required` |
 | `vence_en:DateTime` | `DateTime<Utc>` | `TIMESTAMPTZ NOT NULL` | `string` (ISO 8601) | `datetime-local` |
-| `meta:map` | `HashMap<String, String>` | `JSONB NOT NULL DEFAULT '{}'` | `Record<string, string>` | textarea, `key=value` per line |
+| `meta:map` | `HashMap<String, String>` | `JSONB NOT NULL DEFAULT '{}'` | `Record<string, string>` | textarea, una línea `clave=valor` por entrada |
 
-`DateTime` and `map` are shorthands: the manifest stores `DateTime<Utc>` and
-`HashMap<String, String>`.
+`DateTime` y `map` son atajos: el manifiesto guarda `DateTime<Utc>` y `HashMap<String, String>`.
 
-## Optional and repeated
+## Opcionales y repetidos
 
 | CLI | Rust | Postgres | TypeScript |
 |---|---|---|---|
-| `nota:opt:String` | `Option<String>` | `TEXT` (nullable) | `string \| null` |
-| `stock:opt:i64` | `Option<i64>` | `BIGINT` | `number \| null` |
-| `puntuacion:opt:f64` | `Option<f64>` | `DOUBLE PRECISION` | `number \| null` |
-| `hecho:opt:bool` | `Option<bool>` | `BOOLEAN` | `boolean \| null` |
-| `visto_en:opt:DateTime` | `Option<DateTime<Utc>>` | `TIMESTAMPTZ` | `string \| null` |
+| `nota:opt:String` | `Option<String>` | `TEXT` (admite nulos) | `string`, opcional |
+| `stock:opt:i64` | `Option<i64>` | `BIGINT` | `number`, opcional |
+| `puntuacion:opt:f64` | `Option<f64>` | `DOUBLE PRECISION` | `number`, opcional |
+| `hecho:opt:bool` | `Option<bool>` | `BOOLEAN` | `boolean`, opcional |
+| `visto_en:opt:DateTime` | `Option<DateTime<Utc>>` | `TIMESTAMPTZ` | `string`, opcional |
 | `etiquetas:vec:String` | `Vec<String>` | `TEXT[] NOT NULL DEFAULT '{}'` | `string[]` |
 | `cantidades:vec:i64` | `Vec<i64>` | `BIGINT[] NOT NULL DEFAULT '{}'` | `number[]` |
 
-An optional field is not `required` in the form, and an empty input is sent as `null`. A vector
-is a comma-separated text input.
+Un campo opcional no es `required` en el formulario, y un input vacío no se manda; cuando falta,
+la API lo devuelve como `null`. Un vector es un input de texto separado por comas.
 
-## Value objects
+## Objetos valor
 
-A value object wraps a primitive in a type of its own, so the domain can validate it once and
-nothing can pass a raw string where an `Email` goes. See [Value objects](/docs/guides/value-objects/).
+Un objeto valor envuelve un primitivo en un tipo propio, así que el dominio puede validarlo una vez
+y nada puede pasar una cadena suelta donde va un `Email`. Mira
+[Objetos valor](/docs/guides/value-objects/).
 
-| CLI | Rust (domain) | On the wire |
+| CLI | Rust (dominio) | En el JSON |
 |---|---|---|
 | `email:Email:String` | `Email(String)` | `string` |
 | `importe:Importe:f64` | `Importe(f64)` | `number` |
-| `apodo:Apodo:opt:String` | `Option<Apodo>` | `string \| null` |
+| `apodo:Apodo:opt:String` | `Option<Apodo>` | `string`, opcional |
 | `etiquetas:Etiqueta:vec:String` | `Vec<Etiqueta>` | `string[]` |
-| `estado:Estado:enum:Borrador/Pagado` | `enum Estado { Borrador, Pagado }` | `"Borrador" \| "Pagado"` (a `<select>`) |
-| `email:Email` | the shared `Email` | its inner type |
+| `estado:Estado:enum:Borrador/Pagado` | `enum Estado { Borrador, Pagado }` | `string` (un `<select>` con `Borrador` y `Pagado`) |
+| `email:Email` | el `Email` compartido | su tipo interno |
 
-The last row uses a **shared** value object, declared once with
-`puerto generar objeto-valor Email String` and reused by any entity.
+La última fila usa un objeto valor **compartido**, declarado una vez con
+`puerto generar objeto-valor Email String` y que cualquier entidad puede usar.
 
-## References
+## Referencias
 
-A field can hold another entity's id
-([ADR-0022](/docs/decisions/adr/0022-references-are-typed-ids-checked-by-foreign-keys/)): an
-`Pedido` (order) that belongs to a `Cliente` (customer) keeps the customer's id, never the
-customer.
+Un campo puede guardar el id de otra entidad
+([ADR-0022](/docs/decisions/adr/0022-references-are-typed-ids-checked-by-foreign-keys/)): un
+`Pedido` que pertenece a un `Cliente` guarda el id del cliente, nunca el cliente.
 
-| CLI | Rust (domain) | Postgres | On the wire | Form control |
+| CLI | Rust (dominio) | Postgres | En el JSON | Control del formulario |
 |---|---|---|---|---|
-| `cliente_id:ref:Cliente` | `IdCliente` | `UUID NOT NULL REFERENCES clientes (id)` | `string` (uuid) | `<select>` of customers |
-| `revisor_id:ref:opt:Cliente` | `Option<IdCliente>` | `UUID REFERENCES clientes (id)` | `string \| null` | `<select>` with an empty option |
+| `cliente_id:ref:Cliente` | `IdCliente` | `UUID NOT NULL REFERENCES clientes (id)` | `string` (uuid) | `<select>` de clientes |
+| `revisor_id:ref:opt:Cliente` | `Option<IdCliente>` | `UUID REFERENCES clientes (id)` | `string`, opcional | `<select>` con una opción vacía |
 
-- The target must be a CRUD entity already scaffolded, and not the entity itself. `!` (one-to-one)
-  is allowed on `ref:`, not on `ref:opt:`.
-- The domain holds the target's id type, so an `IdProducto` cannot go where an `IdCliente` is
-  expected, and `dominio_pedido` depends on `dominio_cliente`. Rows and DTOs hold a `Uuid`.
-  Two contexts that reference each other would be a cycle between crates, so `scaffold` refuses
-  the reference that closes one.
-- In `--db` projects the foreign key checks that the target exists: a write naming a missing one
-  is `422` with `<entidad>.validacion.cliente_id_no_encontrado`, shown under the field. The
-  use case does not look the customer up first. In-memory projects check nothing.
-- The list filters by each reference: `GET /pedidos?clienteId=…`.
-- Deletes are soft, so an order keeps pointing at its deleted customer: refusing or cascading
-  the delete is the project's decision.
+- El objetivo tiene que ser una entidad CRUD ya generada, y no la propia entidad. `!` (uno a uno)
+  vale en `ref:`, no en `ref:opt:`.
+- El dominio guarda el tipo de id del objetivo, así que un `IdProducto` no puede ir donde se
+  espera un `IdCliente`, y `dominio_pedido` depende de `dominio_cliente`. Las filas y los DTO
+  guardan un `Uuid`. Dos contextos que se referencian entre sí serían un ciclo entre crates, así
+  que `scaffold` rechaza la referencia que lo cierra.
+- En los proyectos `--db` la clave foránea comprueba que el objetivo existe: una escritura que
+  nombra uno que no existe es un `422` con `<entidad>.validacion.cliente_id_no_encontrado`, que se
+  muestra bajo el campo. El caso de uso no busca antes el cliente. Los proyectos en memoria no
+  comprueban nada.
+- La lista filtra por cada referencia: `GET /pedidos?clienteId=…`.
+- El borrado es lógico, así que un pedido sigue apuntando a su cliente borrado: rechazar el
+  borrado o propagarlo es decisión del proyecto.
 
-Not yet: a reference to the entity itself, many-to-many (`vec:ref:`), and `ref:Usuario`.
+Todavía no: una referencia a la propia entidad, muchos a muchos (`vec:ref:`) y `ref:Usuario`.
 
-## Unique
+## Únicos
 
-Append `!` to any field: `sku:String!`, `email:Email:String!`. In Postgres it becomes a named
-**partial** unique index, so a soft-deleted row does not keep its value taken
-([ADR-0003](/docs/decisions/adr/0003-unique-indexes-are-partial/)):
+Añade `!` a cualquier campo: `sku:String!`, `email:Email:String!`. En Postgres se convierte en un
+índice único **parcial** con nombre, así que una fila borrada de forma lógica no sigue ocupando su
+valor ([ADR-0003](/docs/decisions/adr/0003-unique-indexes-are-partial/)):
 
 ```sql
 CREATE UNIQUE INDEX productos_sku_key ON productos (sku) WHERE borrado = false;
 ```
 
-A duplicate is `409` with `<entidad>.duplicado`, from Postgres and from the in-memory repository
-alike.
+Un duplicado es un `409` con `<entidad>.duplicado`, venga de Postgres o del repositorio en memoria.
 
-## Columns every entity has
+## Las columnas que tiene toda entidad
 
-`id` (`UUID PRIMARY KEY`, the entity's own `Id<Entidad>` in the domain), `creado_en`,
-`actualizado_en`, `borrado` and `borrado_en`. Deletes are soft: every generated query filters
+`id` (`UUID PRIMARY KEY`, el `Id<Entidad>` propio de la entidad en el dominio), `creado_en`,
+`actualizado_en`, `borrado` y `borrado_en`. El borrado es lógico: toda consulta generada filtra
 `WHERE borrado = false`.
 
-## Names that are refused
+## Los nombres que se rechazan
 
-Puerto refuses a name when it would not compile or not migrate, at the command that introduced it
-rather than at `cargo build`:
+Puerto rechaza un nombre cuando no compilaría o no migraría, en el comando que lo introduce y no en
+`cargo build`:
 
-- Field names that every entity already has (`id`, `creado_en`, `actualizado_en`, `borrado`,
-  `borrado_en`) and Rust keywords (`type`, `match`…). Field names are snake_case.
-- In `--db` projects, PostgreSQL reserved words as field names (`order`, `user`, `desc`…). A
-  project without a database may use them
+- Los nombres de campo que ya tiene toda entidad (`id`, `creado_en`, `actualizado_en`, `borrado`,
+  `borrado_en`) y las palabras clave de Rust (`type`, `match`…). Los nombres de campo van en
+  snake_case.
+- En los proyectos `--db`, las palabras reservadas de PostgreSQL como nombre de campo (`order`,
+  `user`, `desc`…). Un proyecto sin base de datos puede usarlas
   ([ADR-0005](/docs/decisions/adr/0005-sql-reserved-words-only-in-db-projects/)).
-- Entity names that would collide with a type the generated code already uses (`Error`,
-  `String`, `Option`, `Uuid`…) or with a context the project already has: `Correo`, the
-  context of mails, and in auth projects `Usuario`, `Me` and `Auth`. Entity names are
+- Los nombres de entidad que chocarían con un tipo que ya usa el código generado (`Error`,
+  `String`, `Option`, `Uuid`…) o con un contexto que el proyecto ya tiene: `Correo`, el contexto de
+  los correos, y en los proyectos con auth `Usuario`, `Me` y `Auth`. Los nombres de entidad van en
   PascalCase.

@@ -1,72 +1,74 @@
 ---
-title: Error contract
-description: The error contract of every Puerto API - machine-readable codes in codigo, which HTTP status each error maps to, and how a new error variant gets one.
+title: El contrato de errores
+description: El contrato de errores de toda API Puerto - códigos legibles por máquina en codigo, el estado HTTP de cada error y cómo recibe el suyo una variante nueva.
 ---
 
-Every error a Puerto API answers has the same body, `RespuestaError` from `puerto-web`:
+Todo error que responde una API Puerto tiene el mismo cuerpo, `RespuestaError` de `puerto-web`:
 
 ```json
 { "codigo": "producto.validacion.nombre_vacio", "mensaje": "producto.validacion.nombre_vacio" }
 ```
 
-- **`codigo` is the code**, machine-readable and stable: clients branch on it. For domain
-  errors, `mensaje` is the same code. Errors are never sentences in the backend; turning a code
-  into a sentence is the client's job (the generated frontend does it in `messages.ts`).
-- Codes are `<entidad>.<error>`, all lowercase: `producto.no_encontrado`,
+- **`codigo` es el código**, legible por máquina y estable: los clientes deciden según él. En los
+  errores de dominio, `mensaje` es el mismo código. En el backend los errores nunca son frases;
+  convertir un código en una frase es cosa del cliente (el frontend generado lo hace en
+  `mensajes.ts`).
+- Los códigos son `<entidad>.<error>`, todo en minúsculas: `producto.no_encontrado`,
   `producto.validacion.<detalle>`, `cliente.email_invalido`.
 
-## Status by error
+## El estado de cada error
 
-Each entity's error enum, `Error<Entidad>` in `contextos/<c>/dominio/src/errores.rs`, and the
-status `a_respuesta_error` in `contextos/<c>/rest/src/errores.rs` gives each variant:
+El enum de errores de cada entidad, `Error<Entidad>` en `contextos/<c>/dominio/src/errores.rs`, y
+el estado que da `a_respuesta_error` en `contextos/<c>/rest/src/errores.rs` a cada variante:
 
-| Variant | Code | Status |
+| Variante | Código | Estado |
 |---|---|---|
 | `Validacion(detalle)` | `<entidad>.validacion.<detalle>` | `422` |
-| `<Vo>Invalido` (one per value object) | `<entidad>.<vo>_invalido` | `422` |
+| `<Vo>Invalido` (una por objeto valor) | `<entidad>.<vo>_invalido` | `422` |
 | `NoEncontrado` | `<entidad>.no_encontrado` | `404` |
 | `Duplicado` | `<entidad>.duplicado` | `409` |
-| `Prohibido` (auth projects) | `<entidad>.prohibido` | `403` |
+| `Prohibido` (proyectos con auth) | `<entidad>.prohibido` | `403` |
 | `Repositorio` | `<entidad>.repositorio` | `500` |
 | `Desconocido` | `<entidad>.desconocido` | `500` |
 
-`400` is left to poem, for a body it cannot parse. So a client can tell "malformed JSON" (400)
-from "the name is empty" (422) by the status alone
+El `400` se deja a poem, para un cuerpo que no puede leer. Así, un cliente distingue «JSON mal
+formado» (400) de «el nombre está vacío» (422) solo por el estado
 ([ADR-0007](/docs/decisions/adr/0007-error-contract-code-in-name-422/)).
 
-## Errors that are not the entity's
+## Errores que no son de la entidad
 
-| Status | Code | From |
+| Estado | Código | De dónde |
 |---|---|---|
-| `401` | `auth.no_autenticado` | `BearerAuth`: no token, or an invalid or expired one |
-| `401` | `auth.credenciales_invalidas` | local login |
+| `401` | `auth.no_autenticado` | `BearerAuth`: sin token, o con uno inválido o caducado |
+| `401` | `auth.credenciales_invalidas` | el login local |
 | `403` | `auth.prohibido` | `#[requiere_rol]` |
-| `503` | `auth.no_disponible` | the token could not be checked: the OIDC provider or the database is down |
-| `500` | `auth.no_configurado` | a protected route with no `Autenticador` registered |
+| `503` | `auth.no_disponible` | no se pudo comprobar el token: el proveedor OIDC o la base de datos están caídos |
+| `500` | `auth.no_configurado` | una ruta protegida sin ningún `Autenticador` registrado |
 
-## Repository failures
+## Los fallos del repositorio
 
-Repositories answer one `ErrorRepositorio` from `puerto-nucleo`, with one variant per outcome a
-use case treats differently. Each entity error converts from it
+Los repositorios responden un solo `ErrorRepositorio` de `puerto-nucleo`, con una variante por cada
+resultado que un caso de uso trata de forma distinta. Cada error de entidad se convierte desde él
 ([ADR-0015](/docs/decisions/adr/0015-repositories-return-one-repository-error/)):
 
-| `ErrorRepositorio` | Becomes | Status |
+| `ErrorRepositorio` | Pasa a ser | Estado |
 |---|---|---|
 | `Duplicado` | `<entidad>.duplicado` | `409` |
-| `ReferenciaInexistente(campo)` (a foreign key refused the write) | `<entidad>.validacion.<campo>_no_encontrado` | `422` |
-| `DatosInvalidos` (a stored row the domain rejects) | `<entidad>.repositorio` | `500` |
-| `NoDisponible` (the store failed) | `<entidad>.repositorio` | `500` |
+| `ReferenciaInexistente(campo)` (una clave foránea rechazó la escritura) | `<entidad>.validacion.<campo>_no_encontrado` | `422` |
+| `DatosInvalidos` (una fila guardada que el dominio rechaza) | `<entidad>.repositorio` | `500` |
+| `NoDisponible` (el almacén falló) | `<entidad>.repositorio` | `500` |
 
-`ReferenciaInexistente` only becomes a validation error in an entity with
-[references](/docs/reference/field-types/#references); elsewhere it is `<entidad>.repositorio`.
-"Not found" is not a repository error: `buscar_por_id` answers `Ok(None)` and the use case
-decides.
+`ReferenciaInexistente` solo pasa a ser un error de validación en una entidad con
+[referencias](/docs/reference/field-types/#referencias); en las demás es `<entidad>.repositorio`.
+«No encontrado» no es un error de repositorio: `buscar_por_id` responde `Ok(None)` y decide el caso
+de uso.
 
-## Adding an error
+## Añadir un error
 
-Add the variant to the entity's error enum with its `#[error("…")]` code. `a_respuesta_error` in
-`contextos/<c>/rest/src/errores.rs` has no catch-all arm, so the project does not compile until
-you give the new variant a status. Add its test next to the others, one per arm:
+Añade la variante al enum de errores de la entidad con su código en `#[error("…")]`.
+`a_respuesta_error` en `contextos/<c>/rest/src/errores.rs` no tiene brazo comodín, así que el
+proyecto no compila hasta que le das un estado a la variante nueva. Añade su test junto a los
+demás, uno por brazo:
 
 ```rust
 #[test]

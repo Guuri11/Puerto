@@ -11,32 +11,32 @@ import { test, expect } from '@playwright/test';
 const DOMINIO = 'https://puerto-rs.vercel.app';
 
 const PAGINAS = [
-  { ruta: '/', h1: 'Scaffold. Structure. Ship.' },
-  { ruta: '/docs/', h1: 'What Puerto is' },
-  { ruta: '/docs/start/installation/', h1: 'Installation' },
-  { ruta: '/docs/start/quick-start/', h1: 'Quick start' },
-  { ruta: '/docs/start/anatomy/', h1: 'Anatomy of a project' },
-  { ruta: '/docs/start/architecture/', h1: 'The architecture' },
-  { ruta: '/docs/guides/entities/', h1: 'Entities and fields' },
-  { ruta: '/docs/guides/value-objects/', h1: 'Value objects' },
-  { ruta: '/docs/guides/use-cases/', h1: 'Use cases' },
-  { ruta: '/docs/guides/database/', h1: 'Database and migrations' },
-  { ruta: '/docs/guides/events/', h1: 'Domain events' },
-  { ruta: '/docs/guides/mail/', h1: 'Mail' },
-  { ruta: '/docs/guides/auth/', h1: 'Authentication' },
-  { ruta: '/docs/guides/web/', h1: 'The web frontend' },
-  { ruta: '/docs/guides/layer-by-layer/', h1: 'Layer by layer' },
-  { ruta: '/docs/guides/testing/', h1: 'Testing' },
-  { ruta: '/docs/guides/agents/', h1: 'Working with agents' },
-  { ruta: '/docs/guides/configuration/', h1: 'Configuration and running' },
-  { ruta: '/docs/guides/upgrading/', h1: 'Upgrading' },
+  { ruta: '/', h1: 'Genera. Ordena. Zarpa.' },
+  { ruta: '/docs/', h1: 'Qué es Puerto' },
+  { ruta: '/docs/start/installation/', h1: 'Instalación' },
+  { ruta: '/docs/start/quick-start/', h1: 'Inicio rápido' },
+  { ruta: '/docs/start/anatomy/', h1: 'Anatomía de un proyecto' },
+  { ruta: '/docs/start/architecture/', h1: 'La arquitectura' },
+  { ruta: '/docs/guides/entities/', h1: 'Entidades y campos' },
+  { ruta: '/docs/guides/value-objects/', h1: 'Objetos valor' },
+  { ruta: '/docs/guides/use-cases/', h1: 'Casos de uso' },
+  { ruta: '/docs/guides/database/', h1: 'Base de datos y migraciones' },
+  { ruta: '/docs/guides/events/', h1: 'Eventos de dominio' },
+  { ruta: '/docs/guides/mail/', h1: 'Correo' },
+  { ruta: '/docs/guides/auth/', h1: 'Autenticación' },
+  { ruta: '/docs/guides/web/', h1: 'El frontend web' },
+  { ruta: '/docs/guides/layer-by-layer/', h1: 'Capa a capa' },
+  { ruta: '/docs/guides/testing/', h1: 'Tests' },
+  { ruta: '/docs/guides/agents/', h1: 'Trabajar con agentes' },
+  { ruta: '/docs/guides/configuration/', h1: 'Configuración y arranque' },
+  { ruta: '/docs/guides/upgrading/', h1: 'Actualizar' },
   { ruta: '/docs/reference/cli/', h1: 'CLI' },
-  { ruta: '/docs/reference/puerto-toml/', h1: 'The puerto.toml manifest' },
-  { ruta: '/docs/reference/field-types/', h1: 'Field types' },
-  { ruta: '/docs/reference/errors/', h1: 'Error contract' },
-  { ruta: '/docs/reference/runtime-crates/', h1: 'Runtime crates' },
-  { ruta: '/docs/reference/make/', h1: 'Make targets' },
-  { ruta: '/docs/decisions/', h1: 'Why decisions are written down' },
+  { ruta: '/docs/reference/puerto-toml/', h1: 'El manifiesto puerto.toml' },
+  { ruta: '/docs/reference/field-types/', h1: 'Tipos de campo' },
+  { ruta: '/docs/reference/errors/', h1: 'El contrato de errores' },
+  { ruta: '/docs/reference/runtime-crates/', h1: 'Crates del runtime' },
+  { ruta: '/docs/reference/make/', h1: 'Targets de make' },
+  { ruta: '/docs/decisions/', h1: 'Por qué se escriben las decisiones' },
   { ruta: '/docs/decisions/adr/0018-domain-events-outbox-pluggable-transport/', h1: '0018' },
   { ruta: '/docs/changelog/', h1: 'Changelog' },
 ];
@@ -99,7 +99,7 @@ test('ningún enlace interno de la home ni de las docs está roto', async ({ pag
 test('una ruta que no existe responde 404 con salidas', async ({ page }) => {
   const respuesta = await page.goto('/no-such-berth/');
   expect(respuesta?.status()).toBe(404);
-  await expect(page.locator('h1')).toContainText('docked');
+  await expect(page.locator('h1')).toContainText('atracado');
   await expect(page.locator('main a[href="/docs/start/quick-start/"]')).toBeVisible();
 });
 

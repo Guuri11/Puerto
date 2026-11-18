@@ -1,17 +1,18 @@
 ---
-title: Value objects
-description: Wrap primitive fields in types of their own, validate them once in the domain, and share them across entities with puerto generar objeto-valor.
+title: Objetos valor
+description: Envuelve los campos primitivos en tipos propios, valídalos una vez en el dominio y compártelos entre entidades con puerto generar objeto-valor.
 ---
 
 import { Aside } from '@astrojs/starlight/components';
 
-A value object is a value with a meaning and a rule: an `Email` is a string, but not every string
-is an email. Giving it its own type means the rule is checked once, when the value is built,
-and nothing downstream can hand a raw string to code that expects an email.
+Un objeto valor es un valor con un significado y una regla: un `Email` es una cadena, pero no
+cualquier cadena es un email. Darle su propio tipo hace que la regla se compruebe una vez, al
+construir el valor, y que nada más adelante pueda pasarle una cadena suelta a un código que espera
+un email.
 
-## Declaring one on a field
+## Declararlo en un campo
 
-The second part of the field is the value object's name:
+La segunda parte del campo es el nombre del objeto valor:
 
 ```bash
 puerto generar scaffold Pedido -- importe:Importe:f64 estado:Estado:enum:Pendiente/Confirmado/Cancelado
@@ -32,7 +33,7 @@ impl Importe {
 }
 ```
 
-`new` is where the rule goes, and it starts empty because only you know it:
+`new` es donde va la regla, y empieza vacío porque solo tú la conoces:
 
 ```rust
 pub fn new(valor: f64) -> Result<Self, ErrorPedido> {
@@ -43,36 +44,35 @@ pub fn new(valor: f64) -> Result<Self, ErrorPedido> {
 }
 ```
 
-`ErrorPedido::ImporteInvalido` is already generated, along with its `422` mapping. The API answers
-`pedido.importe_invalido`, and the web form shows "Importe is not valid" under the amount input.
+`ErrorPedido::ImporteInvalido` ya está generado, con su `422`. La API responde
+`pedido.importe_invalido`, y el formulario web muestra «Importe: no válido» bajo el campo.
 
 ## Enums
 
-`estado:Estado:enum:Pendiente/Confirmado/Cancelado` generates a Rust `enum` with `FromStr` and
+`estado:Estado:enum:Pendiente/Confirmado/Cancelado` genera un `enum` de Rust con `FromStr` y
 `as_str()`:
 
 ```rust
-let estado: Estado = "Confirmado".parse()?;   // Err(ErrorPedido::EstadoInvalido) for anything else
+let estado: Estado = "Confirmado".parse()?;   // Err(ErrorPedido::EstadoInvalido) con cualquier otro
 estado.as_str();                                // "Confirmado"
 ```
 
-It implements `FromStr` rather than an inherent `from_str`, so clippy stays quiet and `.parse()`
-needs no import ([ADR-0001](/docs/decisions/adr/0001-enum-value-objects-implement-fromstr/)). On
-the wire it is a string. The frontend narrows it to a union, `"Pendiente" | "Confirmado" |
-"Cancelado"`, and renders a `<select>`.
+Implementa `FromStr` y no un `from_str` propio, así que clippy no se queja y `.parse()` no necesita
+import ([ADR-0001](/docs/decisions/adr/0001-enum-value-objects-implement-fromstr/)). En el JSON es
+una cadena, y el formulario web ofrece sus variantes en un `<select>`.
 
-## Optional and repeated
+## Opcionales y repetidos
 
 ```bash
 puerto generar scaffold Cliente -- apodo:Apodo:opt:String etiquetas:Etiqueta:vec:String
 ```
 
-`apodo` is an `Option<Apodo>` and `etiquetas` a `Vec<Etiqueta>`. Each element is validated by the
-same `new`.
+`apodo` es un `Option<Apodo>` y `etiquetas` un `Vec<Etiqueta>`. Cada elemento lo valida el mismo
+`new`.
 
-## Shared value objects
+## Objetos valor compartidos
 
-When several entities use the same concept, declare it once:
+Cuando varias entidades usan el mismo concepto, se declara una vez:
 
 ```bash
 puerto generar objeto-valor Email String
@@ -80,9 +80,9 @@ puerto generar scaffold Cliente -- email:Email! nombre:String
 puerto generar scaffold Proveedor -- email:Email nombre:String
 ```
 
-The type is inferred from the declaration, so `email:Email` is enough. Shared value objects live
-in the `nucleo` crate (`nucleo/src/valores.rs`), with their own error in `nucleo/src/errores.rs`,
-and `puerto.toml` records them:
+El tipo sale de la declaración, así que basta con `email:Email`. Los objetos valor compartidos
+viven en el crate `nucleo` (`nucleo/src/valores.rs`), con su propio error en
+`nucleo/src/errores.rs`, y `puerto.toml` los registra:
 
 ```toml
 [[objeto_valor]]
@@ -90,8 +90,8 @@ nombre = "Email"
 tipo = "String"
 ```
 
-A shared value object starts with a real rule, a non-empty trimmed value, which you can tighten
-in one place for every entity:
+Un objeto valor compartido empieza con una regla de verdad, un valor recortado y no vacío, que
+puedes endurecer en un solo sitio para todas las entidades:
 
 ```rust title="nucleo/src/valores.rs"
 impl Email {
@@ -105,18 +105,18 @@ impl Email {
 }
 ```
 
-Each entity still reports it in its own terms: a bad email in a customer is
-`cliente.email_invalido`, in a supplier `proveedor.email_invalido`.
+Cada entidad lo sigue contando en sus términos: un email inválido en un cliente es
+`cliente.email_invalido`, y en un proveedor `proveedor.email_invalido`.
 
-## Where value objects stop
+## Hasta dónde llegan los objetos valor
 
-Value objects live in the domain. Infrastructure and the REST crate see the primitive: the row
-has a `String` column and the DTO a `String` field. The conversion happens at the boundary, in
-code Puerto generates: the use case builds the value object from the params, and the row and the
-DTO unwrap it with `.valor()`.
+Los objetos valor viven en el dominio. La infraestructura y el crate REST ven el primitivo: la
+fila tiene una columna `String` y el DTO un campo `String`. La conversión se hace en el borde, en
+código que genera Puerto: el caso de uso construye el objeto valor desde los params, y la fila y el
+DTO lo deshacen con `.valor()`.
 
 <Aside type="note">
-A value object never reaches serde. Event snapshots, which do, carry the primitive
-([ADR-0018](/docs/decisions/adr/0018-domain-events-outbox-pluggable-transport/) § 3), so the
-domain model stays free to change without changing a public contract.
+Un objeto valor nunca llega a serde. Los snapshots de los eventos, que sí llegan, llevan el
+primitivo ([ADR-0018](/docs/decisions/adr/0018-domain-events-outbox-pluggable-transport/) § 3),
+así que el modelo de dominio puede cambiar sin cambiar un contrato público.
 </Aside>

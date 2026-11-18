@@ -1,23 +1,23 @@
 ---
-title: Why decisions are written down
-description: Puerto's architecture decision records - every trade-off that is not visible in the code, with its context, the alternatives and the consequences.
+title: Por qué se escriben las decisiones
+description: Los registros de decisiones de arquitectura de Puerto - cada compromiso que no se ve en el código, con su contexto, las alternativas y las consecuencias.
 ---
 
 import { adrs } from '@/lib/repo';
 
-The code says *what*. An architecture decision record says *why*: the context, the options that
-were weighed, the one that was taken and what it costs. Puerto keeps one for every decision that
-is not visible in the code, so that a later session, a person's or an agent's, inherits the
-reason instead of re-deriving it or quietly reverting it.
+El código dice *qué*. Un registro de decisión de arquitectura (ADR) dice *por qué*: el contexto,
+las opciones que se sopesaron, la que se tomó y lo que cuesta. Puerto guarda uno por cada decisión
+que no se ve en el código, para que una sesión posterior, de una persona o de un agente, herede el
+motivo en lugar de volver a deducirlo o de deshacerlo sin darse cuenta.
 
-An accepted ADR is never rewritten. When a decision changes, a new ADR supersedes it, and both
-link to each other. These pages are the files in
-[`docs/adr/`](https://github.com/Guuri11/Puerto/tree/main/docs/adr), published as they are:
-in English up to 0022, and in Spanish from 0023 on, like the code Puerto generates.
+Una ADR aceptada no se reescribe. Cuando una decisión cambia, otra ADR la sustituye, y las dos se
+enlazan. Estas páginas son los ficheros de
+[`docs/adr/`](https://github.com/Guuri11/Puerto/tree/main/docs/adr), publicados tal cual: en
+inglés hasta la 0022, y en castellano desde la 0023, como el código que genera Puerto.
 
 <table>
   <thead>
-    <tr><th>#</th><th>Decision</th><th>Accepted</th></tr>
+    <tr><th>#</th><th>Decisión</th><th>Aceptada</th></tr>
   </thead>
   <tbody>
     {adrs.map((adr) => (
@@ -30,19 +30,21 @@ in English up to 0022, and in Spanish from 0023 on, like the code Puerto generat
   </tbody>
 </table>
 
-## Where to start
+## Por dónde empezar
 
-- [0023: One crate per context and layer](/docs/decisions/adr/0023-crates-por-contexto-y-capa/)
-  is the layout of a generated project, with the measurements behind it.
-- [0024: Everything generated is in Spanish](/docs/decisions/adr/0024-lo-generado-en-castellano/)
-  is the language rule and its exceptions; the vocabulary is the
-  [glossary](https://github.com/Guuri11/Puerto/blob/main/docs/glosario.md).
-- [0017: Runtime crates next to the generator](/docs/decisions/adr/0017-runtime-crates-next-to-the-generator/)
-  draws the line between what Puerto generates and what it ships as a dependency, and compares
-  Loco, Pavex, Laravel, Rails and Spring Boot.
-- [0018: Domain events](/docs/decisions/adr/0018-domain-events-outbox-pluggable-transport/) is the
-  outbox, the unit of work and the worker.
-- [0021: Auth](/docs/decisions/adr/0021-auth-one-authenticator-port-oidc-or-local/) is one port
-  with two adapters, OIDC or local sessions.
-- [0010: Generated agent rules are tested](/docs/decisions/adr/0010-generated-agent-rules-are-tested/)
-  is why `AGENTS.md` cannot drift.
+- [0023: Un crate por contexto y capa](/docs/decisions/adr/0023-crates-por-contexto-y-capa/) es la
+  estructura de un proyecto generado, con las medidas que la respaldan.
+- [0024: Todo lo generado en castellano](/docs/decisions/adr/0024-lo-generado-en-castellano/) es
+  la regla del idioma y sus excepciones; el vocabulario está en el
+  [glosario](https://github.com/Guuri11/Puerto/blob/main/docs/glosario.md).
+- [0017: Los crates del runtime junto al generador](/docs/decisions/adr/0017-runtime-crates-next-to-the-generator/)
+  traza la línea entre lo que Puerto genera y lo que publica como dependencia, y lo compara con
+  Loco, Pavex, Laravel, Rails y Spring Boot.
+- [0018: Eventos de dominio](/docs/decisions/adr/0018-domain-events-outbox-pluggable-transport/) es
+  el outbox, la unidad de trabajo y el worker.
+- [0021: Auth](/docs/decisions/adr/0021-auth-one-authenticator-port-oidc-or-local/) es un puerto
+  con dos adaptadores, OIDC o sesiones locales.
+- [0010: Las reglas para agentes tienen tests](/docs/decisions/adr/0010-generated-agent-rules-are-tested/)
+  es por qué `AGENTS.md` no se puede desfasar.
+- [0025: El frontend es presentación](/docs/decisions/adr/0025-el-frontend-es-presentacion/) es por
+  qué `web/` no tiene dominio, casos de uso ni adaptadores propios.

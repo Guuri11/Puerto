@@ -11,10 +11,10 @@ export const site = {
   /** El dominio definitivo (CLAUDE.md). Si cambia, cambia aquí y en astro.config.mjs. */
   url: 'https://puerto-rs.vercel.app',
   description:
-    'Puerto is a Rust framework that generates a Domain-Driven Design project: API, ' +
-    'database, events, auth and a typed React frontend, from one manifest.',
-  tagline: 'Scaffold. Structure. Ship.',
-  language: 'en',
+    'Puerto es un framework en Rust que genera un proyecto Domain-Driven Design: API, ' +
+    'base de datos, eventos, auth y frontend React tipado, desde un manifiesto.',
+  tagline: 'Genera. Ordena. Zarpa.',
+  language: 'es',
 
   repo: 'https://github.com/Guuri11/Puerto',
   crate: 'https://crates.io/crates/puerto',
@@ -28,9 +28,9 @@ export const site = {
 
   nav: [
     { text: 'Docs', href: '/docs/' },
-    { text: 'Guides', href: '/docs/guides/entities/' },
-    { text: 'Reference', href: '/docs/reference/cli/' },
-    { text: 'Decisions', href: '/docs/decisions/' },
+    { text: 'Guías', href: '/docs/guides/entities/' },
+    { text: 'Referencia', href: '/docs/reference/cli/' },
+    { text: 'Decisiones', href: '/docs/decisions/' },
   ],
 
   /**
@@ -42,10 +42,10 @@ export const site = {
     webId: 'https://puerto-rs.vercel.app/#web',
     authorId: 'https://puerto-rs.vercel.app/#author',
     keywords: [
-      'Rust web framework',
+      'framework web en Rust',
       'Domain-Driven Design',
       'Clean Architecture',
-      'code generator',
+      'generador de código',
       'poem-openapi',
       'SQLx',
       'transactional outbox',

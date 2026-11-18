@@ -17,96 +17,96 @@ import nightTheme from '@/themes/puerto-night.json';
 
 const manifest = [
   {
-    what: 'Entities',
+    what: 'Entidades',
     command: 'puerto generar scaffold Producto -- nombre:String sku:String!',
-    gets: 'A model with its own id type, five use cases, five routes, the wiring and the screens. Every piece with its tests.',
+    gets: 'Un modelo con su propio tipo de id, cinco casos de uso, cinco rutas, el cableado y las pantallas. Cada pieza con sus tests.',
     href: '/docs/guides/entities/',
   },
   {
-    what: 'Value objects',
+    what: 'Objetos valor',
     command: 'email:Email:String  estado:Estado:enum:Borrador/Pagado',
-    gets: 'A type per concept, validated once in the domain, unwrapped at the edges.',
+    gets: 'Un tipo por concepto, validado una vez en el dominio y deshecho en los bordes.',
     href: '/docs/guides/value-objects/',
   },
   {
     what: 'Postgres',
     command: 'puerto nuevo --db',
-    gets: 'SQLx queries checked at compile time, migrations written for you, unique indexes that respect soft deletes.',
+    gets: 'Consultas SQLx comprobadas al compilar, migraciones escritas por ti y únicos que respetan el borrado lógico.',
     href: '/docs/guides/database/',
   },
   {
-    what: 'Domain events',
+    what: 'Eventos de dominio',
     command: 'puerto nuevo --db --eventos db|kafka',
-    gets: 'A transactional outbox and a worker. At-least-once delivery, retries with backoff, nothing dropped without a dead letter.',
+    gets: 'Un outbox transaccional y un worker. Entrega al menos una vez, reintentos con espera, nada se retira sin dejar constancia.',
     href: '/docs/guides/events/',
   },
   {
-    what: 'Mail',
+    what: 'Correo',
     command: 'puerto generar correo bienvenida --tras cliente_creado --para email',
-    gets: 'A port, three templates, and a consumer that sends it once per event.',
+    gets: 'Un puerto, tres plantillas y un consumidor que lo envía una vez por evento.',
     href: '/docs/guides/mail/',
   },
   {
     what: 'Auth',
     command: 'puerto nuevo --auth oidc|local',
-    gets: 'Auth0, Keycloak or your own accounts. Routes protected by default, roles in one attribute.',
+    gets: 'Auth0, Keycloak o tus propias cuentas. Rutas protegidas por defecto, roles en un atributo.',
     href: '/docs/guides/auth/',
   },
   {
     what: 'Frontend',
     command: 'web/',
-    gets: 'React typed from the OpenAPI spec, with the same dependency rule as the backend.',
+    gets: 'React tipado desde la especificación OpenAPI, con la misma regla de dependencias que el backend.',
     href: '/docs/guides/web/',
   },
   {
-    what: 'In Spanish',
+    what: 'En castellano',
     command: 'RepositorioProducto · crear_producto · /productos',
-    gets: 'Everything generated is written in Spanish, from types to routes and error codes. One glossary names it all.',
+    gets: 'Todo lo generado va en castellano, de los tipos a las rutas y los códigos de error. Un glosario le pone nombre a todo.',
     href: '/docs/start/anatomy/',
   },
   {
-    what: 'Agent rules',
+    what: 'Reglas para agentes',
     command: 'AGENTS.md',
-    gets: 'Architecture, commands and review tiers for every coding agent, tested against the generator.',
+    gets: 'Arquitectura, comandos y niveles de revisión para cualquier agente, comprobados contra el generador.',
     href: '/docs/guides/agents/',
   },
 ];
 
 const steps = [
-  { command: site.install, says: 'Install the CLI.' },
-  { command: 'puerto nuevo --nombre tienda --db', says: 'A workspace with a crate per layer, a frontend and Postgres.' },
+  { command: site.install, says: 'Instala la CLI.' },
+  { command: 'puerto nuevo --nombre tienda --db', says: 'Un workspace con un crate por capa, un frontend y Postgres.' },
   {
     command: 'puerto generar scaffold Producto -- nombre:String precio:i64 sku:String!',
-    says: 'Every layer of an entity. Then make run.',
+    says: 'Todas las capas de una entidad. Después, make run.',
   },
 ];
 ---
 
 <BaseLayout
-  title="Puerto: the Rust framework for DDD backends"
+  title="Puerto: el framework en Rust para backends DDD"
   description={site.description}
   path="/"
 >
   <!-- ── Hero ──────────────────────────────────────────────────────────── -->
   <section class="hero frame" aria-labelledby="hero-title">
     <h1 class="display hero__title" id="hero-title">
-      <span class="hero__line" data-hero-line>Scaffold.</span>{' '}
-      <span class="hero__line" data-hero-line>Structure.</span>{' '}
-      <span class="hero__line" data-hero-line>Ship.</span>
+      <span class="hero__line" data-hero-line>Genera.</span>{' '}
+      <span class="hero__line" data-hero-line>Ordena.</span>{' '}
+      <span class="hero__line" data-hero-line>Zarpa.</span>
     </h1>
 
     <div class="hero__side">
       <p class="lede hero__lede" data-hero-line>
-        A Rust framework that generates a Domain-Driven Design backend, with its database,
-        events, auth and frontend, from one manifest.
+        Un framework en Rust que genera un backend Domain-Driven Design, con su base de datos,
+        sus eventos, su auth y su frontend, desde un solo manifiesto.
       </p>
       <div class="hero__install" data-hero-line>
-        <CopyCommand command={site.install} label="Copy the install command" />
+        <CopyCommand command={site.install} label="Copiar el comando de instalación" />
         <p class="hero__meta mono">puerto {version} · {site.license} · Rust {rustVersion}+</p>
       </div>
       <div class="hero__ctas" data-hero-line>
-        <a href="/docs/start/quick-start/" class="btn btn-primary">Read the quick start</a>
-        <a href={site.repo} class="btn btn-secondary" rel="noopener">Source on GitHub</a>
+        <a href="/docs/start/quick-start/" class="btn btn-primary">Lee el inicio rápido</a>
+        <a href={site.repo} class="btn btn-secondary" rel="noopener">El código en GitHub</a>
       </div>
     </div>
   </section>
@@ -121,18 +121,18 @@ const steps = [
   <!-- ── La regla de dependencias ──────────────────────────────────────── -->
   <section class="section frame rule" aria-labelledby="rule-title">
     <div class="rule__text">
-      <h2 class="h2" id="rule-title" data-reveal>Same shape,<br />every project.</h2>
+      <h2 class="h2" id="rule-title" data-reveal>La misma forma,<br />en cada proyecto.</h2>
       <p class="measure" data-reveal>
-        Shipping got fast when every container became the same size. Puerto does that to your
-        code: four crates per context, one dependency rule, the same files in the same places.
-        Whoever opens a Puerto project, a new hire or an agent, knows where everything is on day
-        one.
+        El transporte marítimo se volvió rápido cuando todos los contenedores tuvieron el mismo
+        tamaño. Puerto le hace eso a tu código: cuatro crates por contexto, una regla de
+        dependencias, los mismos ficheros en los mismos sitios. Quien abre un proyecto Puerto, sea
+        alguien recién llegado o un agente, sabe dónde está todo desde el primer día.
       </p>
       <p class="measure" data-reveal>
-        The rule is not a convention you keep. Each layer is a crate, so a domain model that
-        reaches for the database does not compile.
+        La regla no es una convención que tengas que recordar. Cada capa es un crate, así que un
+        modelo de dominio que intenta tocar la base de datos no compila.
       </p>
-      <a class="link rule__link" href="/docs/start/architecture/" data-reveal>How the layers fit together</a>
+      <a class="link rule__link" href="/docs/start/architecture/" data-reveal>Cómo encajan las capas</a>
     </div>
     <div class="rule__stack">
       <LayerStack animate />
@@ -144,18 +144,18 @@ const steps = [
   <!-- ── El manifiesto ─────────────────────────────────────────────────── -->
   <section class="section frame" aria-labelledby="manifest-title">
     <div class="manifest__head">
-      <h2 class="h2" id="manifest-title" data-reveal>What comes<br />on board.</h2>
+      <h2 class="h2" id="manifest-title" data-reveal>Lo que va<br />a bordo.</h2>
       <p class="lede manifest__lede" data-reveal>
-        Each line is a flag or a command, and a guide. What a project does not ask for, it
-        does not compile.
+        Cada línea es un flag o un comando, y una guía. Lo que un proyecto no pide, no lo
+        compila.
       </p>
     </div>
     <table class="manifest">
       <thead>
         <tr>
-          <th scope="col">Cargo</th>
-          <th scope="col">Command</th>
-          <th scope="col">What you get</th>
+          <th scope="col">Carga</th>
+          <th scope="col">Comando</th>
+          <th scope="col">Lo que recibes</th>
         </tr>
       </thead>
       <tbody>
@@ -181,18 +181,19 @@ const steps = [
   <!-- ── Agentes ───────────────────────────────────────────────────────── -->
   <section class="section frame agents" aria-labelledby="agents-title">
     <div class="agents__text">
-      <h2 class="h2" id="agents-title" data-reveal>Written by agents.<br />Reviewed by rustc.</h2>
+      <h2 class="h2" id="agents-title" data-reveal>Lo escriben agentes.<br />Lo revisa rustc.</h2>
       <p class="measure" data-reveal>
-        An agent that has used repositories elsewhere reaches for <code>guardar</code>, save. In a
-        Puerto project with domain events, the repository has none: writes go through a unit of work
-        that records the event. So the mistake is not a bug found in production. It is this,
-        captured from a real <code>cargo check</code> on a generated project.
+        Un agente que ha usado repositorios en otros proyectos busca <code>guardar</code>. En un
+        proyecto Puerto con eventos de dominio, el repositorio no lo tiene: las escrituras pasan por
+        una unidad de trabajo que registra el evento. Así que el error no es un bug que aparece en
+        producción. Es esto, capturado de un <code>cargo check</code> real sobre un proyecto
+        generado.
       </p>
       <p class="measure" data-reveal>
-        Every project also ships an <code>AGENTS.md</code> with its architecture, its commands and
-        which changes a person must read, and Puerto’s own tests keep it true.
+        Cada proyecto trae además un <code>AGENTS.md</code> con su arquitectura, sus comandos y qué
+        cambios tiene que leer una persona, y los propios tests de Puerto lo mantienen al día.
       </p>
-      <a class="link" href="/docs/guides/agents/" data-reveal>Working with agents</a>
+      <a class="link" href="/docs/guides/agents/" data-reveal>Trabajar con agentes</a>
     </div>
     <div class="agents__code" data-reveal>
       <Code code={compiler.code} lang="rust" theme={nightTheme as never} />
@@ -207,13 +208,13 @@ const steps = [
   <!-- ── Decisiones ────────────────────────────────────────────────────── -->
   <section class="section frame decisions" aria-labelledby="decisions-title">
     <div class="decisions__head">
-      <h2 class="h2" id="decisions-title" data-reveal>{adrs.length} decisions,<br />written down.</h2>
+      <h2 class="h2" id="decisions-title" data-reveal>{adrs.length} decisiones,<br />por escrito.</h2>
       <p class="measure" data-reveal>
-        Every trade-off that the code cannot show has a record: the context, the alternatives,
-        what it costs. So the next person, or the next agent, inherits the reason instead of
-        undoing it.
+        Cada compromiso que el código no puede mostrar tiene su registro: el contexto, las
+        alternativas, lo que cuesta. Así, la siguiente persona, o el siguiente agente, hereda el
+        motivo en lugar de deshacerlo.
       </p>
-      <a class="link" href="/docs/decisions/" data-reveal>Read the decisions</a>
+      <a class="link" href="/docs/decisions/" data-reveal>Lee las decisiones</a>
     </div>
     <ol class="decisions__list">
       {
@@ -233,7 +234,7 @@ const steps = [
   <section class="start" aria-labelledby="start-title">
     <div class="start__hazard" aria-hidden="true"></div>
     <div class="section frame start__inner">
-      <h2 class="h2" id="start-title" data-reveal>Three commands<br />to a running API.</h2>
+      <h2 class="h2" id="start-title" data-reveal>Tres comandos<br />hasta una API en marcha.</h2>
       <ol class="start__steps">
         {
           steps.map((s, i) => (
@@ -245,7 +246,7 @@ const steps = [
           ))
         }
       </ol>
-      <a href="/docs/start/quick-start/" class="btn btn-primary start__cta">Follow the quick start</a>
+      <a href="/docs/start/quick-start/" class="btn btn-primary start__cta">Sigue el inicio rápido</a>
     </div>
   </section>
 </BaseLayout>

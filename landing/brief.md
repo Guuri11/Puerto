@@ -74,8 +74,11 @@ Nada se escribe dos veces si se puede leer del repo:
 
 ## Idioma
 
-Solo inglés: la comunidad de Rust es global. Los documentos internos (`brief`, `DESIGN`,
-`CLAUDE`, `PENDIENTE`, `CAMBIOS`) en español, como el resto del marco.
+Solo castellano, desde el 2026-11-18 (Sergio; `PLAN.md` § Fase 23): lo que genera Puerto y su
+CLI ya iban en castellano (ADR-0024), y la web los sigue. Se acepta perder alcance fuera de la
+comunidad hispanohablante. Antes era solo inglés, porque la comunidad de Rust es global. Las ADR
+anteriores a la 0023 y el changelog se publican tal cual, en inglés: son historia. Los documentos
+internos (`brief`, `DESIGN`, `CLAUDE`, `PENDIENTE`, `CAMBIOS`), en castellano.
 
 ## Módulos del kit
 

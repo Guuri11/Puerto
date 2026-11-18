@@ -1,49 +1,52 @@
 ---
-title: Domain events
-description: Record an event with every write through a transactional outbox, react to it in a separate worker process, and choose Postgres or Kafka as the transport.
+title: Eventos de dominio
+description: Registra un evento con cada escritura mediante un outbox transaccional, reacciona a él en un proceso worker aparte y elige Postgres o Kafka como transporte.
 ---
 
 import { Steps, Aside, Tabs, TabItem } from '@astrojs/starlight/components';
 
-Sooner or later something has to happen *because* something else happened: send a welcome mail
-when a customer signs up, update a projection when an order is paid, tell another service. If
-each reaction is a call inside the use case, every new reaction means editing a use case that
-already works, and a failure halfway leaves the database and the world disagreeing.
+Tarde o temprano algo tiene que pasar *porque* pasó otra cosa: enviar un correo de bienvenida
+cuando un cliente se registra, actualizar una proyección cuando se paga un pedido, avisar a otro
+servicio. Si cada reacción es una llamada dentro del caso de uso, cada reacción nueva obliga a
+editar un caso de uso que ya funciona, y un fallo a medias deja a la base de datos y al mundo en
+desacuerdo.
 
-Puerto solves it with the **transactional outbox**. Every write records an event in the same
-database transaction as the data, and a second process delivers it, at least once, to whoever
-subscribed. The use case does not know who listens.
+Puerto lo resuelve con el **outbox transaccional**. Cada escritura registra un evento en la misma
+transacción que los datos, y un segundo proceso lo entrega, al menos una vez, a quien se haya
+suscrito. El caso de uso no sabe quién escucha.
 
 ```bash
-puerto nuevo --nombre tienda --db --eventos db      # or --eventos kafka
+puerto nuevo --nombre tienda --db --eventos db      # o --eventos kafka
 ```
 
-Events need `--db`: the guarantee comes from the transaction.
-[ADR-0018](/docs/decisions/adr/0018-domain-events-outbox-pluggable-transport/) has the whole design.
+Los eventos necesitan `--db`: la garantía sale de la transacción.
+[ADR-0018](/docs/decisions/adr/0018-domain-events-outbox-pluggable-transport/) tiene el diseño
+entero.
 
-## How it flows
+## Cómo fluye
 
 ```txt
-API process
+proceso de la API
   crear_producto
     uow = uow_factory.begin()
     uow.guardar(&producto)              ┐
-    uow.registrar(Creado(snapshot))     ├ one transaction:
-    uow.commit()                        ┘ the productos row + the outbox row
+    uow.registrar(Creado(snapshot))     ├ una transacción:
+    uow.commit()                        ┘ la fila de productos + la fila del outbox
 
-worker process
-  relay         reads the outbox in order and hands each event to the transport
-                  db:    one entregas_eventos row per subscribed consumer
-                  kafka: topic tienda.producto, keyed by the product id
+proceso worker
+  relay         lee el outbox en orden y entrega cada evento al transporte
+                  db:    una fila de entregas_eventos por consumidor suscrito
+                  kafka: topic tienda.producto, con el id del producto como clave
   consumidores  manejar(evento) → Ack | Reintentar | Descartar
 ```
 
-If the process dies before `commit`, neither the product nor the event exists. If it dies after,
-both do, and the worker will deliver the event when it runs.
+Si el proceso muere antes del `commit`, no existen ni el producto ni el evento. Si muere después,
+existen los dos, y el worker entregará el evento cuando arranque.
 
-## Writes go through the unit of work
+## Las escrituras van por la unidad de trabajo
 
-In an events project each entity gets a unit of work, and **its repository loses `guardar`**:
+En un proyecto con eventos cada entidad recibe una unidad de trabajo, y **su repositorio pierde
+`guardar`**:
 
 ```rust title="contextos/producto/dominio/src/repositorio.rs"
 pub trait RepositorioProducto: Send + Sync {
@@ -57,15 +60,16 @@ pub trait RepositorioProducto: Send + Sync {
 }
 ```
 
-So a write that skips the outbox is not a bug you find in production. It does not compile:
+Así que una escritura que se salta el outbox no es un bug que encuentras en producción. No
+compila:
 
 ```txt
 error[E0599]: no method named `guardar` found for struct `Arc<(dyn RepositorioProducto + 'static)>` in the current scope
 ```
 
-The generated create, update and delete use cases already write through it:
+Los casos de uso generados de crear, actualizar y borrar ya escriben por ella:
 
-```rust title="contextos/producto/aplicacion/src/crear_producto.rs (excerpt)"
+```rust title="contextos/producto/aplicacion/src/crear_producto.rs (fragmento)"
 let mut uow = self.uow_factory.begin().await.inspect_err(fallido)?;
 uow.guardar(&entidad).await.inspect_err(fallido)?;
 uow.registrar(EventoProducto::Creado(SnapshotProducto::from_entidad(
@@ -76,17 +80,17 @@ uow.registrar(EventoProducto::Creado(SnapshotProducto::from_entidad(
 uow.commit().await.inspect_err(fallido)?;
 ```
 
-Dropping the unit of work without `commit` rolls everything back, so an early `?` is the
-rollback. One aggregate per transaction: a use case that must write two atomically is written by
-hand against a port of your own.
+Soltar la unidad de trabajo sin `commit` lo deshace todo, así que un `?` temprano es el
+rollback. Un agregado por transacción: un caso de uso que tiene que escribir dos de forma atómica
+se escribe a mano contra un puerto propio.
 
-## The event is a contract, not the model
+## El evento es un contrato, no el modelo
 
-`contextos/producto/dominio/src/eventos.rs` is regenerated from `puerto.toml`. It holds the
-event enum and a **snapshot**: the entity as the API shows it, primitives only, with value
-objects unwrapped.
+`contextos/producto/dominio/src/eventos.rs` se regenera desde `puerto.toml`. Tiene el enum de
+eventos y un **snapshot**: la entidad tal como la muestra la API, solo primitivos, con los objetos
+valor deshechos.
 
-```rust title="contextos/producto/dominio/src/eventos.rs (excerpt)"
+```rust title="contextos/producto/dominio/src/eventos.rs (fragmento)"
 pub const PRODUCTO_CREADO: &str = "producto_creado";
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -105,28 +109,29 @@ pub enum EventoProducto {
 }
 ```
 
-The domain model never touches serde. Consumers decode the snapshot, so renaming a field
-changes a public contract, and it shows up in `eventos.rs`, where it can be reviewed.
+El modelo de dominio nunca toca serde. Los consumidores decodifican el snapshot, así que
+renombrar un campo cambia un contrato público, y se ve en `eventos.rs`, donde se puede revisar.
 
-## Your own events
+## Tus propios eventos
 
 ```bash
 puerto generar evento Producto producto_publicado
 ```
 
-```txt title="output"
-✓ Event 'producto_publicado' added to Producto: EventoProducto::Publicado
-  contextos/producto/dominio/src/eventos.rs regenerated.
-  Record it from a use case: uow.registrar(EventoProducto::Publicado(SnapshotProducto::from_entidad(&entidad)))
+```txt title="salida"
+✓ Evento 'producto_publicado' añadido a Producto: EventoProducto::Publicado
+  contextos/producto/dominio/src/eventos.rs regenerado.
+  Regístralo desde un caso de uso: uow.registrar(EventoProducto::Publicado(SnapshotProducto::from_entidad(&entidad)))
 ```
 
-Event types are snake_case and past tense: something that already happened.
+Los tipos de evento van en snake_case y en participio: algo que ya pasó.
 
-The event is recorded by a use case you write. `puerto generar caso-de-uso Producto
-publicar_producto` gives `PublicarProductoImpl` the repository, to read, and the unit of work
-factory, to write. The body reads the product, applies the rule, and writes it with its event:
+El evento lo registra un caso de uso que escribes tú. `puerto generar caso-de-uso Producto
+publicar_producto` le da a `PublicarProductoImpl` el repositorio, para leer, y la factoría de
+unidades de trabajo, para escribir. El cuerpo lee el producto, aplica la regla y lo escribe con su
+evento:
 
-```rust title="contextos/producto/aplicacion/src/publicar_producto.rs (excerpt)"
+```rust title="contextos/producto/aplicacion/src/publicar_producto.rs (fragmento)"
 pub struct ParamsPublicarProducto {
     pub id: IdProducto,
 }
@@ -158,11 +163,11 @@ impl PublicarProducto for PublicarProductoImpl {
 }
 ```
 
-Its tests need no database. `UnitOfWorkFactoryGrabadora`, next to the port in
-`dominio_producto::unit_of_work::dobles`, records what each unit of work saved and recorded, and
-whether it committed:
+Sus tests no necesitan base de datos. `UnitOfWorkFactoryGrabadora`, junto al puerto en
+`dominio_producto::unit_of_work::dobles`, graba lo que cada unidad de trabajo guardó y registró, y
+si confirmó:
 
-```rust title="contextos/producto/aplicacion/src/publicar_producto.rs (excerpt)"
+```rust title="contextos/producto/aplicacion/src/publicar_producto.rs (fragmento)"
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -207,30 +212,30 @@ mod tests {
 }
 ```
 
-For the error paths, `UnitOfWorkFactoryGrabadora::fallando_en(FallarEn::Guardar,
-ErrorRepositorio::Duplicado)` fails at the step you name; a rejected write leaves
-`grabado().eventos` empty and `confirmado` false.
+Para los caminos de error, `UnitOfWorkFactoryGrabadora::fallando_en(FallarEn::Guardar,
+ErrorRepositorio::Duplicado)` falla en el paso que nombres; una escritura rechazada deja
+`grabado().eventos` vacío y `confirmado` en false.
 
-## Consumers
+## Consumidores
 
 <Steps>
 
-1. **Generate one.**
+1. **Genera uno.**
 
    ```bash
    puerto generar consumidor avisar_producto_nuevo --tras producto_creado,producto_publicado
    ```
 
-   ```txt title="output"
-   ✓ Consumer 'avisar_producto_nuevo' added, on: producto_creado, producto_publicado
-     presentacion/worker/src/consumidores/avisar_producto_nuevo.rs — yours: make it idempotent, it can see an event twice.
-     presentacion/worker/src/generado/registro.rs regenerated. Run it with `make worker`.
+   ```txt title="salida"
+   ✓ Consumidor 'avisar_producto_nuevo' añadido, tras: producto_creado, producto_publicado
+     presentacion/worker/src/consumidores/avisar_producto_nuevo.rs es tuyo: hazlo idempotente, puede recibir un evento dos veces.
+     presentacion/worker/src/generado/registro.rs regenerado. Arráncalo con `make worker`.
    ```
 
-2. **Write what it does.** The stub is a `ManejadorEvento` that decodes the snapshot and
-   acknowledges:
+2. **Escribe lo que hace.** El esqueleto es un `ManejadorEvento` que decodifica el snapshot y
+   confirma:
 
-   ```rust title="presentacion/worker/src/consumidores/avisar_producto_nuevo.rs (excerpt)"
+   ```rust title="presentacion/worker/src/consumidores/avisar_producto_nuevo.rs (fragmento)"
    #[async_trait]
    impl ManejadorEvento for AvisarProductoNuevo {
        async fn manejar(&self, evento: &SobreEvento) -> ResultadoManejo {
@@ -253,13 +258,14 @@ ErrorRepositorio::Duplicado)` fails at the step you name; a rejected write leave
    }
    ```
 
-   Answer `ResultadoManejo::Ack` when done, `Reintentar` for a failure that may pass (a timeout,
-   a service that is down), and `ResultadoManejo::descartar(…)` for one that never will.
+   Responde `ResultadoManejo::Ack` al terminar, `Reintentar` ante un fallo que puede pasar (un
+   timeout, un servicio caído) y `ResultadoManejo::descartar(…)` ante uno que no pasará nunca.
 
-3. **Give it what it needs.** The worker builds each consumer once, with its database pool, through
-   the `construir` in the consumer's own file. Keep what it needs in the struct's fields:
+3. **Dale lo que necesita.** El worker construye cada consumidor una vez, con su pool de base de
+   datos, mediante el `construir` del propio fichero del consumidor. Guarda lo que necesita en los
+   campos del struct:
 
-   ```rust title="presentacion/worker/src/consumidores/actualizar_clasificacion.rs (excerpt)"
+   ```rust title="presentacion/worker/src/consumidores/actualizar_clasificacion.rs (fragmento)"
    pub struct ActualizarClasificacion {
        recalcular: Arc<dyn RecalcularClasificacion>,
    }
@@ -273,87 +279,88 @@ ErrorRepositorio::Duplicado)` fails at the step you name; a rejected write leave
    }
    ```
 
-   `cableado::<context>::construir(pool)` gives a context's use cases, the ones the API serves.
-   Add `cableado = { workspace = true }` to `presentacion/worker/Cargo.toml` the first time; the
-   stub does not depend on it, so a project without such a consumer gets no unused-dependency
-   warning. Tests build the struct with the use case's double instead.
+   `cableado::<contexto>::construir(pool)` da los casos de uso de un contexto, los mismos que
+   sirve la API. Añade `cableado = { workspace = true }` a `presentacion/worker/Cargo.toml` la
+   primera vez; el esqueleto no depende de él, así que un proyecto sin un consumidor así no recibe
+   el aviso de dependencia sin usar. Los tests construyen el struct con el doble del caso de uso.
 
-4. **Make it idempotent.** Delivery is **at least once**: after a crash or a redeploy the same
-   event can arrive twice, with the same `evento.id`. Check whether the work was already done,
-   keyed on `evento.id`, before doing it again. The generated tests deliver the same envelope
-   twice for that reason.
+4. **Hazlo idempotente.** La entrega es **al menos una vez**: tras una caída o un despliegue, el
+   mismo evento puede llegar dos veces, con el mismo `evento.id`. Comprueba si el trabajo ya se
+   hizo, con `evento.id` como clave, antes de volver a hacerlo. Por eso los tests generados
+   entregan el mismo sobre dos veces.
 
-5. **Run the worker.**
+5. **Arranca el worker.**
 
    ```bash
-   make worker      # relays the outbox, runs the consumers; health on :8081
+   make worker      # saca los eventos del outbox y ejecuta los consumidores; salud en :8081
    ```
 
 </Steps>
 
-`presentacion/worker/src/generado/registro.rs` wires the relay and one loop per consumer from
-the `[[consumidor]]` blocks in `puerto.toml`; it is regenerated, never edited. Event types are
-generated constants, so removing an event that a consumer listens to breaks the worker's build
-instead of silently starving the consumer.
+`presentacion/worker/src/generado/registro.rs` cablea el relay y un bucle por consumidor desde los
+bloques `[[consumidor]]` de `puerto.toml`; se regenera, nunca se edita. Los tipos de evento son
+constantes generadas, así que quitar un evento que escucha un consumidor rompe la compilación del
+worker en lugar de dejar al consumidor sin eventos en silencio.
 
-## Retries and dead letters
+## Reintentos y descartados
 
-Every transport applies the same delivery policy, from `puerto-nucleo`:
+Todos los transportes aplican la misma política de entrega, de `puerto-nucleo`:
 
-| Delivery that failed | 1st | 2nd | 3rd | 4th | 5th |
+| Entrega fallida | 1.ª | 2.ª | 3.ª | 4.ª | 5.ª |
 |---|---|---|---|---|---|
-| Then | wait 1 s | wait 5 s | wait 15 s | wait 60 s | dead letter |
+| Después | espera 1 s | espera 5 s | espera 15 s | espera 60 s | descartado |
 
-A `Reintentar` on the last allowed delivery (`MAX_DELIVERIES`, 5 by default) retires the event
-with a row in `descartados`; raise the cap and the waits continue at 300 s. Nothing is dropped
-without a dead letter, and if writing it fails, the event is delivered again. A handler that
-panics counts as a `Reintentar`.
+Un `Reintentar` en la última entrega permitida (`MAX_DELIVERIES`, 5 por defecto) retira el evento
+con una fila en `descartados`; sube el tope y las esperas siguen en 300 s. Nada se retira sin una
+fila en descartados, y si escribirla falla, el evento se vuelve a entregar. Un manejador que hace
+panic cuenta como un `Reintentar`.
 
 ```bash
-make eventos/descartados     # the 20 most recent: consumer, event type, attempts, reason
+make eventos/descartados     # los 20 más recientes: consumidor, tipo de evento, intentos, motivo
 ```
 
-## Transports
+## Transportes
 
 <Tabs>
 <TabItem label="db">
-No broker. The relay inserts one `entregas_eventos` row per subscribed consumer in the same
-transaction that marks the outbox row published, and each consumer claims its rows with
-`FOR UPDATE SKIP LOCKED`. Order per aggregate holds with one worker replica per consumer.
-A consumer added later receives the events relayed after it is deployed.
+Sin broker. El relay inserta una fila de `entregas_eventos` por consumidor suscrito en la misma
+transacción que marca como publicada la fila del outbox, y cada consumidor reclama sus filas con
+`FOR UPDATE SKIP LOCKED`. El orden por agregado se mantiene con una réplica del worker por
+consumidor. Un consumidor añadido más tarde recibe los eventos que salen después de desplegarlo.
 </TabItem>
 <TabItem label="kafka">
-The relay produces to the topic `<project>.<aggregate>` (`tienda.producto`), keyed by the
-aggregate id, with the envelope fields as headers. Each consumer is a consumer group named
-`<project>.<consumer>`, and offsets are committed after the outcome. A retry is held in process,
-which stops the subscription and keeps the order. The outbox and the dead letters stay in
-Postgres.
+El relay publica en el topic `<proyecto>.<agregado>` (`tienda.producto`), con el id del agregado
+como clave y los campos del sobre como cabeceras. Cada consumidor es un grupo de consumidores
+llamado `<proyecto>.<consumidor>`, y los offsets se confirman tras el resultado. Un reintento se
+retiene en el proceso, lo que para la suscripción y mantiene el orden. El outbox y los descartados
+se quedan en Postgres.
 
-The transport is the `puerto-kafka` crate. `ConfigKafka::from_env` reads `KAFKA_BROKERS` and
-`KAFKA_TOPIC_PREFIX` (the project name by default), and the worker calls
-`asegurar_topics(&["producto"])` at startup, so the topics exist before the relay publishes.
-`docker-compose.yml` runs Redpanda for development, and building needs `cmake` and the libcurl
-headers.
+El transporte es el crate `puerto-kafka`. `ConfigKafka::from_env` lee `KAFKA_BROKERS` y
+`KAFKA_TOPIC_PREFIX` (por defecto, el nombre del proyecto), y el worker llama a
+`asegurar_topics(&["producto"])` al arrancar, así que los topics existen antes de que el relay
+publique. `docker-compose.yml` arranca Redpanda para desarrollo, y compilar pide `cmake` y las
+cabeceras de libcurl.
 </TabItem>
 </Tabs>
 
-## Running more than one worker
+## Varios workers
 
-The relay takes a Postgres advisory lock, so with several replicas exactly one relays and the
-outbox order holds. Consumers scale with replicas. Each worker serves `/health` and
-`/health/ready` on `WORKER_PORT`: it is ready while every loop has finished a pass that did not
-fail within its interval, so a database that is down shows up as not ready.
+El relay toma un advisory lock de Postgres, así que con varias réplicas solo una saca los eventos
+y el orden del outbox se mantiene. Los consumidores escalan con las réplicas. Cada worker sirve
+`/health` y `/health/ready` en `WORKER_PORT`: está listo mientras cada bucle haya terminado una
+pasada sin fallar dentro de su intervalo, así que una base de datos caída se ve como no listo.
 
-| Variable | Default | |
+| Variable | Por defecto | |
 |---|---|---|
-| `WORKER_PORT` | `8081` | health probes |
-| `RELAY_BATCH_SIZE` | `100` | outbox rows per relay pass |
-| `RELAY_POLL_INTERVAL_MS` | `500` | relay sleep when idle |
-| `CONSUMER_POLL_INTERVAL_MS` | `500` | consumer sleep when idle |
-| `MAX_DELIVERIES` | `5` | attempts before the dead letter |
-| `RETRY_MAX_DELAY_MS` | the policy's | caps the backoff (tests use `0`) |
+| `WORKER_PORT` | `8081` | sondas de salud |
+| `RELAY_BATCH_SIZE` | `100` | filas del outbox por pasada del relay |
+| `RELAY_POLL_INTERVAL_MS` | `500` | espera del relay cuando no hay nada |
+| `CONSUMER_POLL_INTERVAL_MS` | `500` | espera de un consumidor cuando no hay nada |
+| `MAX_DELIVERIES` | `5` | intentos antes de descartar |
+| `RETRY_MAX_DELAY_MS` | la de la política | acota la espera (los tests usan `0`) |
 
 <Aside type="tip">
-Mail is the first consumer most projects need, and Puerto writes it for you:
-`puerto generar correo bienvenida --tras cliente_creado --para email`. See [Mail](/docs/guides/mail/).
+El correo es el primer consumidor que necesitan casi todos los proyectos, y Puerto te lo escribe:
+`puerto generar correo bienvenida --tras cliente_creado --para email`. Mira
+[Correo](/docs/guides/mail/).
 </Aside>

@@ -48,7 +48,7 @@ export function groupFiles<F extends { path: string }>(files: F[]): Group<F>[] {
   const groups = new Map<string, Group<F> & { order: string }>();
   for (const f of files) {
     const { dir, ring, order } = place(f.path);
-    if (!groups.has(dir)) groups.set(dir, { dir, label: dir ? `${dir}/` : 'project root', ring, order, files: [] });
+    if (!groups.has(dir)) groups.set(dir, { dir, label: dir ? `${dir}/` : 'raíz del proyecto', ring, order, files: [] });
     groups.get(dir)!.files.push(f);
   }
   return [...groups.values()]

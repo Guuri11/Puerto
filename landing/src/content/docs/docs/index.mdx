@@ -1,86 +1,89 @@
 ---
-title: What Puerto is
-description: Puerto generates Rust projects with Domain-Driven Design and Clean Architecture. One manifest, every layer, compiled, linted and tested.
+title: Qué es Puerto
+description: Puerto genera proyectos en Rust con Domain-Driven Design y Clean Architecture. Un manifiesto, todas las capas, compiladas, con lint y con tests.
 ---
 
 import { LinkCard } from '@astrojs/starlight/components';
 
-Puerto is a Rust framework for building backends the way Rails and Laravel let you build them:
-one command gives you the whole piece, wired and tested. The difference is the shape of what you
-get. Instead of models and controllers, Puerto generates a **Domain-Driven Design** project with
-**Clean Architecture**: your business rules live in crates that depend on no framework, and
-everything else is an adapter around it.
+Puerto es un framework en Rust para construir backends como te dejan construirlos Rails y Laravel:
+un comando te da la pieza entera, cableada y con tests. La diferencia está en la forma de lo que
+recibes. En lugar de modelos y controladores, Puerto genera un proyecto **Domain-Driven Design**
+con **Clean Architecture**: tus reglas de negocio viven en crates que no dependen de ningún
+framework, y todo lo demás es un adaptador a su alrededor.
 
 ```bash
 puerto nuevo --nombre tienda --db
 cd tienda
 puerto generar scaffold Producto -- nombre:String precio:i64 sku:String!
-make run    # Swagger UI on http://localhost:8080
+make run    # Swagger UI en http://localhost:8080
 ```
 
-That `scaffold` writes a `Producto` entity with its own id type, a validated model, an error enum,
-a repository port and its Postgres adapter, a migration with a partial unique index, five use
-cases with their unit tests, five routes with their route tests, the DTOs, the error mapping, the
-dependency wiring and a React screen for each action. Then it formats everything with
-`cargo fmt`. Nothing is left as `todo!()`.
+Ese `scaffold` escribe una entidad `Producto` con su propio tipo de id, un modelo validado, un
+enum de errores, un puerto de repositorio y su adaptador Postgres, una migración con un índice
+único parcial, cinco casos de uso con sus tests unitarios, cinco rutas con sus tests de rutas, los
+DTO, los errores HTTP, el cableado de dependencias y una pantalla React por acción. Después lo
+formatea todo con `cargo fmt`. Nada se queda en `todo!()`.
 
-What Puerto generates is in Spanish: the commands, the manifest, the code, the routes and the
-error codes (`contextos/producto/`, `crear_producto`, `producto.no_encontrado`).
-[Reading a generated project](/docs/start/anatomy/#reading-a-generated-project) glosses the
-names you will meet first.
+Lo que genera Puerto está en castellano: los comandos, el manifiesto, el código, las rutas y los
+códigos de error (`contextos/producto/`, `crear_producto`, `producto.no_encontrado`).
+[Leer un proyecto generado](/docs/start/anatomy/#leer-un-proyecto-generado) explica los nombres que
+verás primero.
 
-## Two halves
+## Dos mitades
 
-**A generator.** The `puerto` CLI writes code from `puerto.toml`, the manifest that describes
-your entities, their fields and their use cases. Generated code is yours: plain Rust in your
-repository, with no macro hiding the wiring, so you, your editor and your agent can follow every
-call.
+**Un generador.** La CLI `puerto` escribe código desde `puerto.toml`, el manifiesto que describe
+tus entidades, sus campos y sus casos de uso. El código generado es tuyo: Rust normal en tu
+repositorio, sin macros que escondan el cableado, así que tú, tu editor y tu agente podéis seguir
+cada llamada.
 
-**A runtime.** What is identical in every project and not meant to be edited is not copied in. It
-lives in crates (`puerto-nucleo`, `puerto-web`, `puerto-sqlx` and the rest) released in lockstep
-with the CLI, so a fix reaches your project through `cargo update`.
-[ADR-0017](/docs/decisions/adr/0017-runtime-crates-next-to-the-generator/) draws the line.
+**Un runtime.** Lo que es idéntico en todos los proyectos y no está pensado para editarse no se
+copia. Vive en crates (`puerto-nucleo`, `puerto-web`, `puerto-sqlx` y los demás) que se publican a
+la vez que la CLI, así que un arreglo llega a tu proyecto con `cargo update`.
+[ADR-0017](/docs/decisions/adr/0017-runtime-crates-next-to-the-generator/) traza la línea.
 
-## Three principles
+## Tres principios
 
-**Convention over configuration.** Directory layout, error codes, dependency injection, logging,
-tests and module declarations are decided once, so every Puerto project looks the same. Whoever
-opens one, a teammate or an agent, already knows where everything is.
+**Convención antes que configuración.** La estructura de directorios, los códigos de error, la
+inyección de dependencias, los logs, los tests y las declaraciones de módulos se deciden una vez,
+así que todos los proyectos Puerto se parecen. Quien abre uno, sea alguien del equipo o un agente,
+ya sabe dónde está cada cosa.
 
-**The compiler is the reviewer.** Puerto prefers a compile error to a convention you have to
-remember. Each entity's id is its own type, so passing a customer id where an order id goes does
-not compile. In a project with domain events the repository has no `guardar` (save), so a write that skips
-the outbox does not compile. Error mappers have no catch-all arm, so a new error variant does not
-compile until it has an HTTP status.
+**El compilador es quien revisa.** Puerto prefiere un error de compilación a una convención que
+tengas que recordar. El id de cada entidad es su propio tipo, así que pasar el id de un cliente
+donde va el de un pedido no compila. En un proyecto con eventos de dominio el repositorio no tiene
+`guardar`, así que una escritura que se salta el outbox no compila. Los traductores de errores no
+tienen brazo comodín, así que una variante de error nueva no compila hasta que tiene su estado
+HTTP.
 
-**AI-ready.** Every project ships an `AGENTS.md`, and a `CLAUDE.md` that imports it, describing
-its architecture, commands and conventions. Puerto's tests check it against the generator, so it
-cannot drift. Add the compiler's precise errors, and an agent working on a Puerto project gets
-corrected in seconds instead of in review. See [Working with agents](/docs/guides/agents/).
+**Listo para la IA.** Cada proyecto trae un `AGENTS.md`, y un `CLAUDE.md` que lo importa, con su
+arquitectura, sus comandos y sus convenciones. Los tests de Puerto lo comprueban contra el
+generador, así que no se desfasa. Súmale los errores precisos del compilador, y un agente que
+trabaja en un proyecto Puerto se corrige en segundos y no en la revisión. Mira
+[Trabajar con agentes](/docs/guides/agents/).
 
-## Who it is for
+## Para quién es
 
-Rust developers who miss the productivity of Rails, Laravel or Django and do not want to design
-an architecture from scratch for every service. And teams that write much of their code with
-coding agents, and want a structure that keeps that code honest.
+Para quien programa en Rust y echa de menos la productividad de Rails, Laravel o Django, y no
+quiere diseñar una arquitectura desde cero para cada servicio. Y para equipos que escriben buena
+parte de su código con agentes, y quieren una estructura que mantenga ese código en su sitio.
 
-## What it is not
+## Lo que no es
 
-- **Not a web framework.** HTTP is [poem](https://github.com/poem-web/poem) with poem-openapi, and
-  the database is [SQLx](https://github.com/launchbadge/sqlx) on Postgres. Puerto decides how they
-  fit together; it does not replace them.
-- **Not an ORM.** Repositories are written-out SQL that you can read and change.
-- **Not stable yet.** Puerto is `0.x`. Breaking changes are listed in the
-  [changelog](/docs/changelog/), with a migration guide when there are projects to migrate. 0.21,
-  which changed the layout and the language of everything generated, has none.
+- **No es un framework web.** El HTTP es [poem](https://github.com/poem-web/poem) con
+  poem-openapi, y la base de datos es [SQLx](https://github.com/launchbadge/sqlx) sobre Postgres.
+  Puerto decide cómo encajan; no los sustituye.
+- **No es un ORM.** Los repositorios son SQL escrito, que puedes leer y cambiar.
+- **Aún no es estable.** Puerto está en `0.x`. Los cambios incompatibles están en el
+  [changelog](/docs/changelog/), con una guía de migración cuando hay proyectos que migrar. La
+  0.21, que cambió la estructura y el idioma de todo lo generado, no la tiene.
 
 <LinkCard
-  title="Install Puerto"
-  description="One cargo command."
+  title="Instala Puerto"
+  description="Un comando de cargo."
   href="/docs/start/installation/"
 />
 <LinkCard
-  title="Build your first entity"
-  description="From an empty directory to a CRUD API with its frontend."
+  title="Construye tu primera entidad"
+  description="De un directorio vacío a una API CRUD con su frontend."
   href="/docs/start/quick-start/"
 />

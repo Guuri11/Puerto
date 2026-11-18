@@ -1,67 +1,67 @@
 ---
-title: Quick start
-description: Create a Puerto project, scaffold a Producto entity across every layer, call its API and open its screens, in about five minutes.
+title: Inicio rápido
+description: Crea un proyecto Puerto, genera una entidad Producto en todas las capas, llama a su API y abre sus pantallas, en unos cinco minutos.
 ---
 
 import { Steps, Aside } from '@astrojs/starlight/components';
 
-This page builds a small catalogue: a `Producto` (product) with a name, a price and a unique SKU,
-served as a REST API with its own React screens. It runs in memory, so you need nothing but Rust
-and, for the screens, [Bun](https://bun.sh). Every output on this page was captured from a real
-run.
+Esta página construye un catálogo pequeño: un `Producto` con un nombre, un precio y un SKU único,
+servido como API REST con sus propias pantallas React. Funciona en memoria, así que solo necesitas
+Rust y, para las pantallas, [Bun](https://bun.sh). Cada salida de esta página se capturó de una
+ejecución real.
 
 <Steps>
 
-1. **Create the project.**
+1. **Crea el proyecto.**
 
    ```bash
    puerto nuevo --nombre tienda --sin-db --sin-demo
    ```
 
-   ```txt title="output"
-   ├── nucleo/          (shared value objects)
-   ├── contextos/       (one crate per context and layer)
-   ├── presentacion/    (the binaries and their wiring)
-   ├── web/             (React frontend)
+   ```txt title="salida"
+   ├── nucleo/          (objetos valor compartidos)
+   ├── contextos/       (un crate por contexto y capa)
+   ├── presentacion/    (los binarios y su cableado)
+   ├── web/             (el frontend React)
    └── Cargo.toml
-   ✓ Project 'tienda' created.
+   ✓ Proyecto 'tienda' creado.
    ```
 
-   `--sin-db` keeps the data in memory, and `--sin-demo` leaves out the `Saludo` example entity.
-   Leave both flags out and `puerto nuevo` asks.
+   `--sin-db` guarda los datos en memoria, y `--sin-demo` deja fuera la entidad de ejemplo
+   `Saludo`. Sin esos dos flags, `puerto nuevo` pregunta.
 
-2. **Scaffold an entity.**
+2. **Genera una entidad.**
 
    ```bash
    cd tienda
    puerto generar scaffold Producto -- nombre:String precio:i64 sku:String!
    ```
 
-   ```txt title="output"
-   ✓ contextos/producto/dominio/         — model, errors, repository port, MadreProducto
-   ✓ contextos/producto/aplicacion/      — create, get, list, update, delete
-   ✓ contextos/producto/infraestructura/ — RepositorioProductoEnMemoria
-   ✓ contextos/producto/rest/            — routes, dto, responses, errors
-   ✓ web/ — list, detail and form screens, HTTP repository
-   ✓ Done. Zero manual wiring.
+   ```txt title="salida"
+   ✓ contextos/producto/dominio/         modelo, errores, puerto del repositorio, MadreProducto
+   ✓ contextos/producto/aplicacion/      crear, obtener, listar, actualizar, borrar
+   ✓ contextos/producto/infraestructura/ RepositorioProductoEnMemoria
+   ✓ contextos/producto/rest/            rutas, dto, respuestas, errores
+   ✓ web/                                pantallas de lista, detalle y formulario
+   ✓ Hecho. Sin cablear nada a mano.
 
-   The API changed. Next: make web/sync   (exports the spec, regenerates the web types)
+   La API cambió. Siguiente: make web/sync   (exporta la especificación y regenera los tipos de la web)
    ```
 
-   Fields come after `--` as `name:Type`. The `!` makes `sku` unique: a second product with the
-   same SKU is refused with `409 Conflict`. [Entities and fields](/docs/guides/entities/) lists
-   every type.
+   Los campos van tras `--` como `nombre:Tipo`. El `!` hace único a `sku`: un segundo producto
+   con el mismo SKU se rechaza con `409 Conflict`. [Entidades y campos](/docs/guides/entities/)
+   lista todos los tipos.
 
-3. **Run the API.**
+3. **Arranca la API.**
 
    ```bash
    make run
    ```
 
-   The server starts on port 8080: the Swagger UI on `/`, the API under `/api`, and the health
-   probes on `/health` and `/health/ready`.
+   El servidor arranca en el puerto 8080: la Swagger UI en `/`, la API bajo `/api` y las sondas de
+   salud en `/health` y `/health/ready`.
 
-4. **Call it.**
+4. **Llámala.**
 
    ```bash
    curl -X POST localhost:8080/api/productos \
@@ -73,7 +73,7 @@ run.
    {"id":"1f1d2bb9-a92d-48c4-ab78-f56cfcccdcd7","nombre":"Lampara","precio":4900,"sku":"LMP-01"}
    ```
 
-   The same SKU again, then an empty name:
+   El mismo SKU otra vez, y después un nombre vacío:
 
    ```json title="409 Conflict"
    {"codigo":"producto.duplicado","mensaje":"producto.duplicado"}
@@ -83,8 +83,9 @@ run.
    {"codigo":"producto.validacion.nombre_vacio","mensaje":"producto.validacion.nombre_vacio"}
    ```
 
-   Errors are machine-readable codes in `codigo`, and domain validation is a 422. That is the
-   [error contract](/docs/reference/errors/), the same in every Puerto project. Lists are paged:
+   Los errores son códigos legibles por máquina en `codigo`, y la validación del dominio es un
+   422. Ese es [el contrato de errores](/docs/reference/errors/), el mismo en todo proyecto
+   Puerto. Las listas van paginadas:
 
    ```bash
    curl 'localhost:8080/api/productos?limite=10'
@@ -94,47 +95,48 @@ run.
    {"desplazamiento":0,"elementos":[{"id":"1f1d2bb9-a92d-48c4-ab78-f56cfcccdcd7","nombre":"Lampara","precio":4900,"sku":"LMP-01"}],"limite":10,"total":1}
    ```
 
-5. **Open the screens.** In another terminal:
+5. **Abre las pantallas.** En otra terminal:
 
    ```bash
-   make web/sync                      # export the OpenAPI spec, regenerate the frontend's types
+   make web/sync                      # exporta la especificación OpenAPI, regenera los tipos del frontend
    make web/install && make web/dev   # http://localhost:5173
    ```
 
-   `/productos` lists them, `/productos/new` creates one, and a rejected form shows the message
-   next to the field it is about.
+   `/productos` los lista, `/productos/nuevo` crea uno, y un formulario rechazado muestra el
+   mensaje junto al campo al que se refiere.
 
-6. **Check it.**
+6. **Compruébalo.**
 
    ```bash
-   make setup     # once: cargo-nextest and cargo-audit
-   make test      # every generated test: model, use cases, routes, mappers, screens
+   make setup     # una vez: cargo-nextest y cargo-audit
+   make test      # todos los tests generados: modelo, casos de uso, rutas, errores, pantallas
    make lint      # clippy -D warnings
    make format    # rustfmt --check
    ```
 
-   All three pass on a fresh scaffold. That is the baseline you keep while you build.
+   Los tres pasan en un scaffold recién hecho. Esa es la base que mantienes mientras construyes.
 
 </Steps>
 
-## What you have now
+## Lo que tienes ahora
 
-- `contextos/producto/dominio/src/modelo.rs` holds `Producto` and its id type, `IdProducto`. The
-  rules go in `Producto::new`: it already refuses an empty `nombre` and an empty `sku`.
-- `contextos/producto/aplicacion/src/` holds the five use cases, one file each, with unit tests
-  against a mocked repository.
-- `contextos/producto/rest/src/rutas.rs` holds the five endpoints. Their tests drive the real
-  `OpenApiService` with mocked use cases.
-- `presentacion/cableado/` and `presentacion/api/src/generado/bootstrap.rs` wire all of it. You
-  never edit them.
+- `contextos/producto/dominio/src/modelo.rs` tiene `Producto` y su tipo de id, `IdProducto`. Las
+  reglas van en `Producto::new`: ya rechaza un `nombre` vacío y un `sku` vacío.
+- `contextos/producto/aplicacion/src/` tiene los cinco casos de uso, un fichero cada uno, con
+  tests unitarios contra un repositorio doblado.
+- `contextos/producto/rest/src/rutas.rs` tiene los cinco endpoints. Sus tests usan el
+  `OpenApiService` real con casos de uso doblados.
+- `presentacion/cableado/` y `presentacion/api/src/generado/bootstrap.rs` lo cablean todo. Nunca
+  los editas.
 
 <Aside type="tip">
-Run `git diff` after any `puerto generar` command. Every change it made is there, formatted.
+Ejecuta `git diff` tras cualquier comando `puerto generar`. Ahí está cada cambio que hizo, ya
+formateado.
 </Aside>
 
-## Next
+## Siguiente
 
-- Keep the data: [Database and migrations](/docs/guides/database/) (`puerto nuevo --db`).
-- Add a rule that is not CRUD: [Use cases](/docs/guides/use-cases/).
-- React to writes: [Domain events](/docs/guides/events/).
-- Understand why it is laid out this way: [The architecture](/docs/start/architecture/).
+- Guarda los datos: [Base de datos y migraciones](/docs/guides/database/) (`puerto nuevo --db`).
+- Añade una regla que no es CRUD: [Casos de uso](/docs/guides/use-cases/).
+- Reacciona a las escrituras: [Eventos de dominio](/docs/guides/events/).
+- Entiende por qué está organizado así: [La arquitectura](/docs/start/architecture/).

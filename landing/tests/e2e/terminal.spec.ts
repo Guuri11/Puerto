@@ -12,7 +12,7 @@ test.describe('La terminal', () => {
     await pagina.goto('/');
     const terminal = pagina.locator('[data-terminal]');
     await expect(terminal).toContainText('puerto generar scaffold Producto');
-    await expect(terminal).toContainText('Zero manual wiring');
+    await expect(terminal).toContainText('Sin cablear nada a mano');
     await contexto.close();
   });
 
@@ -52,7 +52,7 @@ test.describe('La terminal', () => {
     await page.goto('/');
     if (await page.locator('[data-tab="tree"]').isVisible()) await page.locator('[data-tab="tree"]').click();
     await expect(page.locator('[data-tree]')).not.toContainText('rust-toolchain.toml');
-    await page.locator('.term__pill', { hasText: 'Whole project' }).click();
+    await page.locator('.term__pill', { hasText: 'Todo el proyecto' }).click();
     await expect(page.locator('[data-tree]')).toContainText('rust-toolchain.toml');
   });
 

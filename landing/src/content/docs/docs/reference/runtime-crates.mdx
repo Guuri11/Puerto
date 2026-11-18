@@ -1,37 +1,38 @@
 ---
-title: Runtime crates
-description: The puerto-* crates a generated project depends on, what each one owns, which layer may use it, and how they are versioned with the CLI.
+title: Crates del runtime
+description: Los crates puerto-* de los que depende un proyecto generado, de qué se encarga cada uno, qué capa puede usarlo y cómo se versionan con la CLI.
 ---
 
-What is the same in every project and not meant to be edited is not generated: it is a crate. The
-runtime follows the same dependency rule as your project, so it is split by layer instead of being
-one crate with features ([ADR-0017](/docs/decisions/adr/0017-runtime-crates-next-to-the-generator/)).
-The framework is hexagonal too: `puerto-nucleo` holds the ports, and the other crates are
-adapters. Their API is in Spanish, like the code that calls it.
+Lo que es igual en todos los proyectos y no está pensado para editarse no se genera: es un crate.
+El runtime sigue la misma regla de dependencias que tu proyecto, así que está partido por capas en
+lugar de ser un solo crate con features
+([ADR-0017](/docs/decisions/adr/0017-runtime-crates-next-to-the-generator/)). El framework también
+es hexagonal: `puerto-nucleo` tiene los puertos, y los demás crates son adaptadores. Su API está en
+castellano, como el código que la llama.
 
-| Crate | Owns | Used by | Present when |
+| Crate | Se encarga de | Lo usan | Está cuando |
 |---|---|---|---|
-| [`puerto-nucleo`](https://docs.rs/puerto-nucleo) | `ErrorRepositorio`, `PeticionPagina` / `Pagina<T>`; the event envelope (`SobreEvento`), `ManejadorEvento`, the delivery policy and the transport ports; the mail ports (`Correo`, `EnviadorCorreo`, `CorreosEnviados`); the auth port (`Autenticador`) and `Principal` | every crate, the domain included: no driver, no runtime, no I/O | always |
-| [`puerto-web`](https://docs.rs/puerto-web) | the server (`App`), `Config`, CORS, health probes, graceful shutdown, `RespuestaError`, `BearerAuth`, `BearerAuthOpcional`, `#[requiere_rol]` | the `rest_<c>` crates and `api` | always |
-| [`puerto-sqlx`](https://docs.rs/puerto-sqlx) | the pool, migrations at startup, the readiness ping, `mapear_error_sqlx`; the unit of work, outbox and `db` transport; the sent-mail log; local sessions and credentials | the `infra_<c>` crates and the binaries | `--db` |
-| [`puerto-eventos`](https://docs.rs/puerto-eventos) | the worker: the outbox relay, the consume loops, their health probes and shutdown | `worker` | `--eventos` |
-| [`puerto-kafka`](https://docs.rs/puerto-kafka) | the Kafka publisher and subscription | `worker` | `--eventos kafka` |
-| [`puerto-correo`](https://docs.rs/puerto-correo) | the SMTP adapter, the template renderer, `enviar_una_vez` | `infra_correo`, `worker` | a mail |
-| [`puerto-auth`](https://docs.rs/puerto-auth) | feature `oidc`: `AutenticadorOidc`; feature `local`: argon2id hashing | `api` | `--auth` |
-| [`puerto-macros`](https://docs.rs/puerto-macros) | `#[requiere_rol]` | through `puerto-web` | `--auth` |
+| [`puerto-nucleo`](https://docs.rs/puerto-nucleo) | `ErrorRepositorio`, `PeticionPagina` / `Pagina<T>`; el sobre de los eventos (`SobreEvento`), `ManejadorEvento`, la política de entrega y los puertos del transporte; los puertos del correo (`Correo`, `EnviadorCorreo`, `CorreosEnviados`); el puerto de auth (`Autenticador`) y `Principal` | todos los crates, también el dominio: sin driver, sin runtime, sin E/S | siempre |
+| [`puerto-web`](https://docs.rs/puerto-web) | el servidor (`App`), `Config`, CORS, las sondas de salud, el apagado ordenado, `RespuestaError`, `BearerAuth`, `BearerAuthOpcional`, `#[requiere_rol]` | los crates `rest_<c>` y `api` | siempre |
+| [`puerto-sqlx`](https://docs.rs/puerto-sqlx) | el pool, las migraciones al arrancar, la sonda de disponibilidad, `mapear_error_sqlx`; la unidad de trabajo, el outbox y el transporte `db`; el registro de correos enviados; las sesiones y credenciales locales | los crates `infra_<c>` y los binarios | `--db` |
+| [`puerto-eventos`](https://docs.rs/puerto-eventos) | el worker: el relay del outbox, los bucles de consumo, sus sondas de salud y su apagado | `worker` | `--eventos` |
+| [`puerto-kafka`](https://docs.rs/puerto-kafka) | el publicador y la suscripción de Kafka | `worker` | `--eventos kafka` |
+| [`puerto-correo`](https://docs.rs/puerto-correo) | el adaptador SMTP, el renderizador de plantillas, `enviar_una_vez` | `infra_correo`, `worker` | un correo |
+| [`puerto-auth`](https://docs.rs/puerto-auth) | feature `oidc`: `AutenticadorOidc`; feature `local`: el hash argon2id | `api` | `--auth` |
+| [`puerto-macros`](https://docs.rs/puerto-macros) | `#[requiere_rol]` | a través de `puerto-web` | `--auth` |
 
-## How a project depends on them
+## Cómo depende de ellos un proyecto
 
-Once, in the root `Cargo.toml`, on the minor that generated the project:
+Una vez, en el `Cargo.toml` raíz, en la minor que generó el proyecto:
 
 ```toml title="Cargo.toml"
 [workspace.dependencies]
-puerto-nucleo = "0.21"
-puerto-web = "0.21"
-puerto-sqlx = "0.21"
+puerto-nucleo = "0.23"
+puerto-web = "0.23"
+puerto-sqlx = "0.23"
 ```
 
-Then each crate inherits what its layer may use:
+Y cada crate hereda lo que su capa puede usar:
 
 ```toml title="contextos/producto/rest/Cargo.toml"
 [dependencies]
@@ -42,21 +43,22 @@ puerto-web = { workspace = true }
 puerto-nucleo = { workspace = true, features = ["pruebas"] }
 ```
 
-`pruebas` exposes test doubles (`MockAutenticador`, `MadrePrincipal`, `EnviadorCorreoGrabador`,
-`CorreosEnviadosEnMemoria`) to a project's tests and keeps them out of its binaries.
+`pruebas` expone dobles de test (`MockAutenticador`, `MadrePrincipal`, `EnviadorCorreoGrabador`,
+`CorreosEnviadosEnMemoria`) a los tests de un proyecto y los deja fuera de sus binarios.
 
-## The contract
+## El contrato
 
-- **Lockstep.** The CLI and every runtime crate share one version. `puerto 0.21` generates
-  projects that ask for `0.21`, and `puerto validar` warns when they drift apart.
-- **The app calls the runtime.** There is no `Hooks` trait to implement and no container that
-  calls into your code: `main.rs` and `bootstrap.rs` call runtime building blocks, in plain Rust
-  you can follow.
-- **`#[non_exhaustive]` from day one.** Every public enum and struct you may receive can grow
-  without a breaking change.
-- **Ports in `puerto-nucleo`, adapters in their crates.** To swap an adapter, implement the port.
-  A project only compiles the adapters it uses: a project without Kafka never builds `rdkafka`.
-- **Traits you implement for your own types stay in your project.** Rust's orphan rule keeps a
-  `rest_<c>` crate from implementing `puerto-web`'s `IntoRespuestaError` for its domain's error,
-  so each `errores.rs` exports a free function, `a_respuesta_error`, instead
-  ([ADR-0023](/docs/decisions/adr/0023-crates-por-contexto-y-capa/)).
+- **A la par.** La CLI y todos los crates del runtime comparten una versión. `puerto 0.23` genera
+  proyectos que piden la `0.23`, y `puerto validar` avisa cuando se separan.
+- **La app llama al runtime.** No hay un trait `Hooks` que implementar ni un contenedor que llame a
+  tu código: `main.rs` y `bootstrap.rs` llaman a piezas del runtime, en Rust normal que puedes
+  seguir.
+- **`#[non_exhaustive]` desde el primer día.** Todo enum y struct público que puedas recibir puede
+  crecer sin un cambio incompatible.
+- **Los puertos en `puerto-nucleo`, los adaptadores en sus crates.** Para cambiar un adaptador,
+  implementa el puerto. Un proyecto solo compila los adaptadores que usa: un proyecto sin Kafka
+  nunca compila `rdkafka`.
+- **Los traits que implementas para tus tipos se quedan en tu proyecto.** La orphan rule de Rust
+  impide que un crate `rest_<c>` implemente el `IntoRespuestaError` de `puerto-web` para el error
+  de su dominio, así que cada `errores.rs` exporta en su lugar una función libre,
+  `a_respuesta_error` ([ADR-0023](/docs/decisions/adr/0023-crates-por-contexto-y-capa/)).

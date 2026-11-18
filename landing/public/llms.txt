@@ -1,35 +1,35 @@
 # Puerto
 
-> Puerto is an open-source (MIT) Rust framework that generates Domain-Driven Design and Clean Architecture backends from one manifest, puerto.toml: a Cargo workspace with one crate per context and layer (`contextos/<c>/{dominio,aplicacion,infraestructura,rest}`, plus `nucleo` and `presentacion/{cableado,api,worker}`), and a React frontend typed from the API's OpenAPI spec. Everything it generates is written in Spanish (`RepositorioProducto`, `crear_producto`, `/productos`); the glossary is https://github.com/Guuri11/Puerto/blob/main/docs/glosario.md. It is a code generator (the `puerto` CLI, whose commands are Spanish too: `puerto nuevo`, `puerto generar scaffold`) and a set of runtime crates (puerto-nucleo, puerto-macros, puerto-web, puerto-sqlx, puerto-eventos, puerto-kafka, puerto-correo, puerto-auth) updated with `cargo update`.
+> Puerto es un framework en Rust, de código abierto (MIT), que genera backends con Domain-Driven Design y Clean Architecture desde un solo manifiesto, puerto.toml: un workspace de Cargo con un crate por contexto y capa (`contextos/<c>/{dominio,aplicacion,infraestructura,rest}`, más `nucleo` y `presentacion/{cableado,api,worker}`), y un frontend React tipado desde la especificación OpenAPI de la API. Todo lo que genera va en castellano (`RepositorioProducto`, `crear_producto`, `/productos`); el glosario está en https://github.com/Guuri11/Puerto/blob/main/docs/glosario.md. Es un generador de código (la CLI `puerto`, también en castellano: `puerto nuevo`, `puerto generar scaffold`) y un conjunto de crates de runtime (puerto-nucleo, puerto-macros, puerto-web, puerto-sqlx, puerto-eventos, puerto-kafka, puerto-correo, puerto-auth) que se actualizan con `cargo update`.
 
-Install with `cargo install puerto --locked`. HTTP is poem with poem-openapi; the database is Postgres through SQLx. Puerto is pre-1.0: minor versions can change generated code, and breaking changes are listed in the changelog.
+Se instala con `cargo install puerto --locked`. El HTTP es poem con poem-openapi; la base de datos, Postgres con SQLx. Puerto aún no ha llegado a la 1.0: una minor puede cambiar el código generado, y los cambios incompatibles están en el changelog.
 
-## Start
+## Empezar
 
-- [What Puerto is](https://puerto-rs.vercel.app/docs/): the two halves (generator and runtime) and the three principles.
-- [Quick start](https://puerto-rs.vercel.app/docs/start/quick-start/): from an empty directory to a CRUD API with screens.
-- [The architecture](https://puerto-rs.vercel.app/docs/start/architecture/): the dependency rule, a request end to end, and what the compiler enforces.
+- [Qué es Puerto](https://puerto-rs.vercel.app/docs/): las dos mitades (generador y runtime) y los tres principios.
+- [Inicio rápido](https://puerto-rs.vercel.app/docs/start/quick-start/): de un directorio vacío a una API CRUD con pantallas.
+- [La arquitectura](https://puerto-rs.vercel.app/docs/start/architecture/): la regla de dependencias, una petición de punta a punta y lo que impone el compilador.
 
-## Guides
+## Guías
 
-- [Entities and fields](https://puerto-rs.vercel.app/docs/guides/entities/): `puerto generar scaffold`.
-- [Use cases](https://puerto-rs.vercel.app/docs/guides/use-cases/): custom use cases, endpoints and their tests.
-- [Database and migrations](https://puerto-rs.vercel.app/docs/guides/database/): `--db`, SQLx offline cache, migrations.
-- [Domain events](https://puerto-rs.vercel.app/docs/guides/events/): transactional outbox, worker, consumers, Postgres or Kafka transport.
-- [Mail](https://puerto-rs.vercel.app/docs/guides/mail/): mail ports, templates, sent once per event.
-- [Authentication](https://puerto-rs.vercel.app/docs/guides/auth/): OIDC (Auth0, Keycloak) or local accounts, roles per route.
-- [The web frontend](https://puerto-rs.vercel.app/docs/guides/web/): React + daisyUI on Bun, typed from OpenAPI.
-- [Working with agents](https://puerto-rs.vercel.app/docs/guides/agents/): AGENTS.md, compiler feedback, review tiers.
+- [Entidades y campos](https://puerto-rs.vercel.app/docs/guides/entities/): `puerto generar scaffold`.
+- [Casos de uso](https://puerto-rs.vercel.app/docs/guides/use-cases/): casos de uso propios, sus endpoints y sus tests.
+- [Base de datos y migraciones](https://puerto-rs.vercel.app/docs/guides/database/): `--db`, la caché offline de SQLx, las migraciones.
+- [Eventos de dominio](https://puerto-rs.vercel.app/docs/guides/events/): outbox transaccional, worker, consumidores, transporte Postgres o Kafka.
+- [Correo](https://puerto-rs.vercel.app/docs/guides/mail/): puertos de correo, plantillas, un envío por evento.
+- [Autenticación](https://puerto-rs.vercel.app/docs/guides/auth/): OIDC (Auth0, Keycloak) o cuentas locales, roles por ruta.
+- [El frontend web](https://puerto-rs.vercel.app/docs/guides/web/): React + daisyUI sobre Bun, tipado desde OpenAPI.
+- [Trabajar con agentes](https://puerto-rs.vercel.app/docs/guides/agents/): AGENTS.md, la respuesta del compilador, los niveles de revisión.
 
-## Reference
+## Referencia
 
 - [CLI](https://puerto-rs.vercel.app/docs/reference/cli/)
 - [puerto.toml](https://puerto-rs.vercel.app/docs/reference/puerto-toml/)
-- [Error contract](https://puerto-rs.vercel.app/docs/reference/errors/)
-- [Decisions (ADRs)](https://puerto-rs.vercel.app/docs/decisions/)
+- [El contrato de errores](https://puerto-rs.vercel.app/docs/reference/errors/)
+- [Decisiones (ADR)](https://puerto-rs.vercel.app/docs/decisions/)
 
-## What Puerto is not
+## Lo que Puerto no es
 
-- Not a web framework or an ORM: it decides how poem, SQLx and the rest fit together.
-- Not MVC: business rules live in `dominio_<c>` and `aplicacion_<c>` crates that depend on no framework.
-- Source: https://github.com/Guuri11/Puerto · Author: Sergio Gurillo
+- Ni un framework web ni un ORM: decide cómo encajan poem, SQLx y el resto.
+- Ni MVC: las reglas de negocio viven en los crates `dominio_<c>` y `aplicacion_<c>`, que no dependen de ningún framework.
+- Código: https://github.com/Guuri11/Puerto · Autor: Sergio Gurillo

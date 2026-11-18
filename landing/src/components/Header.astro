@@ -7,11 +7,11 @@ const current = Astro.url.pathname;
 
 <header class="header" data-header>
   <div class="frame header__inner">
-    <a href="/" class="header__brand" aria-label="Puerto, home">
+    <a href="/" class="header__brand" aria-label="Puerto, portada">
       <Logo />
     </a>
 
-    <nav class="header__nav" aria-label="Main">
+    <nav class="header__nav" aria-label="Principal">
       <ul>
         {
           site.nav.map((l) => (
@@ -35,14 +35,14 @@ const current = Astro.url.pathname;
       aria-controls="mobile-menu"
       data-menu-button
     >
-      <span class="visually-hidden" data-menu-label>Open menu</span>
+      <span class="visually-hidden" data-menu-label>Abrir menú</span>
       <span class="toggle__bar" aria-hidden="true"></span>
       <span class="toggle__bar" aria-hidden="true"></span>
     </button>
   </div>
 
   <div class="mobile-menu" id="mobile-menu" hidden data-menu>
-    <nav class="frame" aria-label="Main, mobile">
+    <nav class="frame" aria-label="Principal, móvil">
       <ul>
         {
           site.nav.map((l) => (
@@ -202,7 +202,7 @@ const current = Astro.url.pathname;
       const open = button.getAttribute('aria-expanded') === 'true';
       button.setAttribute('aria-expanded', String(!open));
       menu.hidden = open;
-      if (label) label.textContent = open ? 'Open menu' : 'Close menu';
+      if (label) label.textContent = open ? 'Abrir menú' : 'Cerrar menú';
     });
 
     document.addEventListener('keydown', (e) => {

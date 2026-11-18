@@ -1,75 +1,75 @@
 ---
-title: Entities and fields
-description: Scaffold a DDD entity across every layer with puerto generar scaffold, choose its fields, and understand each file it writes and what you change afterwards.
+title: Entidades y campos
+description: Genera una entidad DDD en todas las capas con puerto generar scaffold, elige sus campos y entiende cada fichero que escribe y lo que cambias después.
 ---
 
 import { FileTree, Aside } from '@astrojs/starlight/components';
 
-An entity is a thing your business cares about that has an identity over time: a `Producto`, a
-`Pedido`, a `Cliente`. In Puerto, an entity is also the unit of generation. One command writes
-it in every layer.
+Una entidad es algo que le importa a tu negocio y tiene identidad a lo largo del tiempo: un
+`Producto`, un `Pedido`, un `Cliente`. En Puerto, una entidad es además la unidad de generación.
+Un comando la escribe en todas las capas.
 
 ```bash
 puerto generar scaffold Pedido -- importe:Importe:f64 estado:Estado:enum:Pendiente/Confirmado/Cancelado nota:opt:String
 ```
 
-The name is PascalCase; Puerto derives `pedido` for the context, the crates and the modules,
-`pedidos` for the table and the routes, and `IdPedido` for the id. Fields go after `--`. The
-[field types reference](/docs/reference/field-types/) lists every type and what it becomes in each
-layer.
+El nombre va en PascalCase; Puerto deriva `pedido` para el contexto, los crates y los módulos,
+`pedidos` para la tabla y las rutas, e `IdPedido` para el id. Los campos van tras `--`. La
+[referencia de tipos de campo](/docs/reference/field-types/) lista todos los tipos y en qué se
+convierten en cada capa.
 
-## What it writes
+## Lo que escribe
 
-Each entity is a context, `contextos/pedido/`, with one crate per layer: `dominio_pedido`
-(domain), `aplicacion_pedido` (application), `infra_pedido` (infrastructure) and `rest_pedido`
-(the HTTP API), so Cargo enforces the dependency rule
-([ADR-0023](/docs/decisions/adr/0023-crates-por-contexto-y-capa/)).
+Cada entidad es un contexto, `contextos/pedido/`, con un crate por capa: `dominio_pedido`,
+`aplicacion_pedido`, `infra_pedido` y `rest_pedido` (la API HTTP), así que la regla de
+dependencias la impone Cargo ([ADR-0023](/docs/decisions/adr/0023-crates-por-contexto-y-capa/)).
 
 <FileTree>
 - contextos/pedido/
   - dominio/src/
     - modelo.rs **Pedido**, **IdPedido**, **PropsPedido**, Pedido::new
     - valores.rs Importe, Estado
-    - errores.rs ErrorPedido, with From&lt;ErrorRepositorio&gt;
-    - repositorio.rs the port, RepositorioPedido, and its double
+    - errores.rs ErrorPedido, con From&lt;ErrorRepositorio&gt;
+    - repositorio.rs el puerto, RepositorioPedido, y su doble
     - pruebas/madres.rs MadrePedido
-  - aplicacion/src/ crear_pedido, obtener_pedido, listar_pedidos, actualizar_pedido, borrar_pedido: one file each, with its tests
+  - aplicacion/src/ crear_pedido, obtener_pedido, listar_pedidos, actualizar_pedido, borrar_pedido: un fichero cada uno, con sus tests
   - infraestructura/src/
-    - repositorio.rs RepositorioPedidoEnMemoria, or RepositorioPedidoPostgres
-    - fila.rs the row, with --db
-    - pruebas/siembra.rs seeds for the Postgres tests, with --db
+    - repositorio.rs RepositorioPedidoEnMemoria, o RepositorioPedidoPostgres
+    - fila.rs la fila, con --db
+    - pruebas/siembra.rs la siembra de los tests de Postgres, con --db
   - rest/src/
-    - rutas.rs five endpoints, with route tests
+    - rutas.rs cinco endpoints, con tests de rutas
     - dto.rs
     - respuestas.rs
     - errores.rs
-- migraciones/…_crear_tabla_pedido.sql with --db
-- web/src/…/pedido/ list, detail and form screens, with web projects
+- migraciones/…_crear_tabla_pedido.sql con --db
+- web/src/contextos/pedido/ pantallas de lista, detalle y formulario, en los proyectos con web
 </FileTree>
 
-Each crate gets its own `Cargo.toml` and a flat `lib.rs`. The scaffold also adds the crates to the
-root `Cargo.toml` and to `presentacion/api/Cargo.toml`, adds the entity to `puerto.toml`,
-regenerates `presentacion/cableado/` and `presentacion/api/src/generado/bootstrap.rs` and, in a
-web project, the frontend's route table. Then it runs `cargo fmt`.
+Cada crate tiene su `Cargo.toml` y un `lib.rs` plano. El scaffold también añade los crates al
+`Cargo.toml` raíz y a `presentacion/api/Cargo.toml`, añade la entidad a `puerto.toml`, regenera
+`presentacion/cableado/` y `presentacion/api/src/generado/bootstrap.rs` y, en un proyecto con web,
+la tabla de rutas del frontend. Después ejecuta `cargo fmt`.
 
-## The five endpoints
+## Los cinco endpoints
 
-| Use case | Route | Success |
+| Caso de uso | Ruta | Éxito |
 |---|---|---|
-| `crear_pedido` | `POST /api/pedidos` | `201` + the order |
-| `obtener_pedido` | `GET /api/pedidos/:id` | `200` + the order |
-| `listar_pedidos` | `GET /api/pedidos?limite=&desplazamiento=` | `200` + a page |
-| `actualizar_pedido` | `PUT /api/pedidos/:id` | `200` + the order |
+| `crear_pedido` | `POST /api/pedidos` | `201` + el pedido |
+| `obtener_pedido` | `GET /api/pedidos/:id` | `200` + el pedido |
+| `listar_pedidos` | `GET /api/pedidos?limite=&desplazamiento=` | `200` + una página |
+| `actualizar_pedido` | `PUT /api/pedidos/:id` | `200` + el pedido |
 | `borrar_pedido` | `DELETE /api/pedidos/:id` | `204` |
 
-Lists are pages, `{ elementos, total, limite, desplazamiento }`: 20 items by default, never more
-than 100. The cap is a rule of the domain (`PeticionPagina`), so no route or adapter can ask for
-more ([ADR-0016](/docs/decisions/adr/0016-lists-are-offset-pages/)). Deletes are soft.
+Las listas son páginas, `{ elementos, total, limite, desplazamiento }`: 20 elementos por defecto,
+nunca más de 100. El tope es una regla del dominio (`PeticionPagina`), así que ninguna ruta ni
+adaptador puede pedir más ([ADR-0016](/docs/decisions/adr/0016-lists-are-offset-pages/)). El
+borrado es lógico.
 
-## The model is where the rules go
+## Las reglas van en el modelo
 
-`Producto::new` creates one and `Producto::actualizar` changes one. Both run `validar`, so a rule
-is written once and holds on create and on update:
+`Producto::new` crea uno y `Producto::actualizar` lo cambia. Los dos ejecutan `validar`, así que
+una regla se escribe una vez y vale al crear y al actualizar:
 
 ```rust title="contextos/producto/dominio/src/modelo.rs"
 impl Producto {
@@ -98,16 +98,16 @@ impl Producto {
 }
 ```
 
-Required `String` fields already refuse an empty value. Add your own checks to `validar`: return
-a `Validacion` with a snake_case code, and the API answers `422` with
-`producto.validacion.<code>`. The web form shows it next to the field when the code names one.
-If a new rule rejects one of the Object Mother's defaults, change the default in the mother: the
-generated tests take their values from it (see [Testing](/docs/guides/testing/#object-mothers)).
+Los campos `String` obligatorios ya rechazan un valor vacío. Añade tus comprobaciones a
+`validar`: devuelve una `Validacion` con un código en snake_case, y la API responde `422` con
+`producto.validacion.<codigo>`. El formulario web lo muestra junto al campo cuando el código nombra
+uno. Si una regla nueva rechaza uno de los valores por defecto de la madre, cambia el valor en la
+madre: los tests generados sacan sus valores de ella (mira [Tests](/docs/guides/testing/#las-madres)).
 
-## Uniques over several fields, and the order of the list
+## Únicos sobre varios campos, y el orden de la lista
 
-A field ending in `!` is unique on its own. A unique over several fields, and the order of
-the list, are flags of the scaffold:
+Un campo que termina en `!` es único por sí solo. Un único sobre varios campos, y el orden de la
+lista, son flags del scaffold:
 
 ```bash
 puerto generar scaffold Linea \
@@ -116,51 +116,52 @@ puerto generar scaffold Linea \
   -- jugador_id:ref:Jugador partido_id:ref:Partido puntos:i64
 ```
 
-`--unico` (repeatable) is one partial unique index per group in Postgres,
-`lineas_jugador_id_partido_id_key … WHERE borrado = false`, and a `Duplicado` from the
-in-memory repository too: a second row with the same player and game answers `409`.
-`--orden` lists by those fields (`-` for descending), then the newest first:
-`ORDER BY puntos DESC, jugador_id, creado_en DESC, id`. Both land in the `[[entidad]]` block
-(`unicos`, `orden`), and a re-scaffold without the flag keeps what the block says.
+`--unico` (se puede repetir) es un índice único parcial por grupo en Postgres,
+`lineas_jugador_id_partido_id_key … WHERE borrado = false`, y también un `Duplicado` del
+repositorio en memoria: una segunda fila con el mismo jugador y el mismo partido responde `409`.
+`--orden` lista por esos campos (`-` para descendente) y después lo más nuevo primero:
+`ORDER BY puntos DESC, jugador_id, creado_en DESC, id`. Los dos quedan en el bloque `[[entidad]]`
+(`unicos`, `orden`), y un re-scaffold sin el flag conserva lo que dice el bloque.
 
-## Each entity has its own id type
+## Cada entidad tiene su propio tipo de id
 
 ```rust
 pub struct IdProducto(Uuid);
 ```
 
-`IdProducto::generar()` makes a new one, `IdProducto::from_uuid(u)` wraps one read from a path or
-a row, and `.valor()` unwraps it at the edges. An `IdCliente` cannot be passed where an
-`IdProducto` goes. The newtype stops at the boundary: routes take `Path<Uuid>`, and DTOs and rows
-keep a `Uuid`, so the OpenAPI contract stays `string(uuid)`
+`IdProducto::generar()` crea uno nuevo, `IdProducto::from_uuid(u)` envuelve uno leído de una ruta
+o de una fila, y `.valor()` lo deshace en los bordes. Un `IdCliente` no se puede pasar donde va un
+`IdProducto`. El newtype se queda en el borde: las rutas reciben `Path<Uuid>`, y los DTO y las
+filas guardan un `Uuid`, así que el contrato OpenAPI sigue siendo `string(uuid)`
 ([ADR-0014](/docs/decisions/adr/0014-entity-ids-are-generated-newtypes/)).
 
-## Referring to another entity
+## Referenciar otra entidad
 
-An entity that belongs to another holds its id:
+Una entidad que pertenece a otra guarda su id:
 
 ```bash
 puerto generar scaffold Cliente -- nombre:String email:String!
 puerto generar scaffold Pedido -- cliente_id:ref:Cliente revisor_id:ref:opt:Cliente total:i64
 ```
 
-`Pedido.cliente_id` is an `IdCliente`, not a `Cliente`: there is no navigation and no lazy
-loading, and a use case that needs the customer asks its repository. The reference is also a
-dependency between crates: `dominio_pedido` depends on `dominio_cliente`, which owns `IdCliente`,
-so Cargo refuses a cycle. In a `--db` project the column has a foreign key, so an order for a
-customer that does not exist is rejected by Postgres and answered `422` with
-`pedido.validacion.cliente_id_no_encontrado`. `GET /pedidos?clienteId=` lists one customer's
-orders, and the web form picks the customer from a `<select>`
-([ADR-0022](/docs/decisions/adr/0022-references-are-typed-ids-checked-by-foreign-keys/)). The
-target has to be scaffolded first. See [References](/docs/reference/field-types/#references).
+`Pedido.cliente_id` es un `IdCliente`, no un `Cliente`: no hay navegación ni carga perezosa, y un
+caso de uso que necesita el cliente se lo pide a su repositorio. La referencia es además una
+dependencia entre crates: `dominio_pedido` depende de `dominio_cliente`, dueño de `IdCliente`, así
+que Cargo rechaza un ciclo. En un proyecto `--db` la columna tiene una clave foránea, así que un
+pedido de un cliente que no existe lo rechaza Postgres y se responde `422` con
+`pedido.validacion.cliente_id_no_encontrado`. `GET /pedidos?clienteId=` lista los pedidos de un
+cliente, y el formulario web elige el cliente en un `<select>`
+([ADR-0022](/docs/decisions/adr/0022-references-are-typed-ids-checked-by-foreign-keys/)). El
+objetivo tiene que estar generado antes. Mira [Referencias](/docs/reference/field-types/#referencias).
 
-## After the scaffold, the files are yours
+## Tras el scaffold, los ficheros son tuyos
 
-Everything except the regenerated files is written once and then belongs to you. Change the
-model, add methods, rewrite a use case. Running `scaffold` again for the same entity is refused:
+Todo salvo los ficheros regenerados se escribe una vez y desde entonces es tuyo. Cambia el
+modelo, añade métodos, reescribe un caso de uso. Volver a ejecutar `scaffold` para la misma
+entidad se rechaza:
 
 ```txt
-'producto' is already generated — this would overwrite 30 file(s):
+'producto' ya está generada: esto sobrescribiría 30 fichero(s):
   contextos/producto/dominio/src/modelo.rs
   contextos/producto/dominio/src/errores.rs
   contextos/producto/dominio/src/repositorio.rs
@@ -171,23 +172,23 @@ model, add methods, rewrite a use case. Running `scaffold` again for the same en
   contextos/producto/aplicacion/src/actualizar_producto.rs
   contextos/producto/aplicacion/src/borrar_producto.rs
   contextos/producto/infraestructura/src/repositorio.rs
-  … and 20 more
+  … y 20 más
 
-Error: refusing to overwrite existing files for 'producto'. Re-run with --forzar to overwrite, or remove the files first. Nothing was written.
+Error: no se sobrescriben los ficheros de 'producto'. Vuelve a ejecutarlo con --forzar para sobrescribirlos, o borra antes los ficheros. No se ha escrito nada.
 ```
 
-`--forzar` regenerates the entity and **discards your changes** in its files. It exists for the
-moment right after a scaffold, when you got a field wrong.
+`--forzar` regenera la entidad y **descarta tus cambios** en sus ficheros. Existe para el momento
+justo después de un scaffold, cuando te has equivocado en un campo.
 
 <Aside type="tip">
-To add a field later, add it to the entity's `[[entidad.campos]]` in `puerto.toml`, then update
-the model, the DTO, the row and a new migration by hand, or `--forzar` the scaffold if you have
-not changed anything yet. The [IDE snippets](/docs/guides/configuration/#ide-snippets) cover the
-usual shapes.
+Para añadir un campo más tarde, añádelo al `[[entidad.campos]]` de la entidad en `puerto.toml`, y
+actualiza a mano el modelo, el DTO, la fila y una migración nueva, o usa `--forzar` en el scaffold
+si aún no has cambiado nada. Los [snippets del IDE](/docs/guides/configuration/#snippets-del-ide)
+cubren las formas habituales.
 </Aside>
 
-## Building one layer at a time
+## Una capa cada vez
 
-`scaffold` is a shortcut for four commands, one crate each. When you want to design the domain
-first, or keep an agent's context small, run them one by one. See
-[Layer by layer](/docs/guides/layer-by-layer/).
+`scaffold` es un atajo de cuatro comandos, un crate cada uno. Cuando quieras diseñar primero el
+dominio, o mantener pequeño el contexto de un agente, ejecútalos uno a uno. Mira
+[Capa a capa](/docs/guides/layer-by-layer/).

@@ -124,8 +124,8 @@ Stencil 800.
   tinta. Hover: se desplaza 2 px arriba-izquierda y deja una sombra dura de tinta
   (`4px 4px 0`). Foco: contorno de 3 px tinta con 2 px de separación.
 - **Botón secundario:** transparente, borde de 2 px tinta, mismo hover.
-- **Comando copiable:** bloque mono sobre noche, prompt `$` en muted, botón «Copy» que
-  cambia a «Copied» durante 1,6 s (`aria-live`).
+- **Comando copiable:** bloque mono sobre noche, prompt `$` en muted, botón «Copiar» que
+  cambia a «Copiado» durante 1,6 s (`aria-live`).
 - **Etiqueta de contenedor:** rectángulo con el color de la capa, texto stencil en surface,
   y a la derecha un código mono (`BUS`, `INF`, `PRE`).
 - **Tabla de manifiesto:** filas separadas por filete de 1 px `--color-rule`, cabecera en
@@ -157,8 +157,8 @@ Radios: **cero en todo** (candado 2). También en Starlight.
 - El código de color de capas, siempre igual, en toda la web.
 - Salida real del CLI, capturada. El contenido técnico es la imagen de esta web.
 - Los números que se leen del repo (versión, ADRs) en build. Nunca escritos a mano.
-- Copy corto, declarativo, con verbos. Como el de los commits de Puerto: «a write that
-  skips the outbox does not compile».
+- Copy corto, declarativo, con verbos. Como el de los commits de Puerto: «una escritura que
+  se salta el outbox no compila».
 
 **No**
 - Naranja. Es el color de Rust y de todos los proyectos de Rust.

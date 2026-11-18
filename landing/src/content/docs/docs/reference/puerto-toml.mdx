@@ -1,14 +1,14 @@
 ---
-title: The puerto.toml manifest
-description: The full schema of puerto.toml, the manifest every Puerto generator reads and updates - project flags, entities, fields, value objects, consumers and mails.
+title: El manifiesto puerto.toml
+description: El esquema completo de puerto.toml, el manifiesto que leen y actualizan los generadores - proyecto, entidades, campos, objetos valor, consumidores y correos.
 ---
 
-`puerto.toml` is the source of truth of a project. The generators write it; `cableado`,
-`bootstrap.rs`, `eventos.rs`, `registro.rs` and the frontend's generated files are derived from
-it; and `puerto validar` checks the code against it. You can edit it by hand; run
-`puerto generar bootstrap` and `puerto validar` afterwards.
+`puerto.toml` es la fuente de verdad de un proyecto. Lo escriben los generadores; `cableado`,
+`bootstrap.rs`, `eventos.rs`, `registro.rs` y los ficheros generados del frontend salen de él; y
+`puerto validar` comprueba el código contra él. Puedes editarlo a mano; ejecuta después
+`puerto generar bootstrap` y `puerto validar`.
 
-A complete example, from a project with a database, events, auth and a mail:
+Un ejemplo completo, de un proyecto con base de datos, eventos, auth y un correo:
 
 ```toml title="puerto.toml"
 [proyecto]
@@ -112,65 +112,67 @@ tras = ["cliente_creado"]
 
 ## `[proyecto]`
 
-| Key | Type | Set by | Meaning |
+| Clave | Tipo | La pone | Significa |
 |---|---|---|---|
-| `nombre` | string | `nuevo --nombre` | The project's name: crates, database, topics |
-| `db` | bool | `nuevo --db` | Postgres through SQLx. Absent means `false` |
-| `web` | bool | `nuevo` (default), `--sin-web` | The React frontend in `web/` |
-| `eventos` | `"db"` \| `"kafka"` | `nuevo --eventos` | Domain events and their transport. Needs `db` |
-| `auth` | `"oidc"` \| `"local"` | `nuevo --auth` | Authentication mode. `local` needs `db` |
+| `nombre` | string | `nuevo --nombre` | El nombre del proyecto: crates, base de datos, topics |
+| `db` | bool | `nuevo --db` | Postgres con SQLx. Si falta, `false` |
+| `web` | bool | `nuevo` (por defecto), `--sin-web` | El frontend React en `web/` |
+| `eventos` | `"db"` \| `"kafka"` | `nuevo --eventos` | Los eventos de dominio y su transporte. Necesita `db` |
+| `auth` | `"oidc"` \| `"local"` | `nuevo --auth` | El modo de autenticación. `local` necesita `db` |
 
 ## `[[entidad]]`
 
-| Key | Type | Set by | Meaning |
+| Clave | Tipo | La pone | Significa |
 |---|---|---|---|
-| `nombre` | string | `scaffold`, `dominio` | PascalCase. Each entity is a context, `contextos/<snake>/` |
-| `casos_de_uso` | string[] | `scaffold`, `caso-de-uso` | Every use case `cableado` builds. The five CRUD ones make it a CRUD entity, with routes and screens |
-| `db` | bool | `scaffold` in a `db` project | Postgres repository instead of in memory |
-| `publicos` | string[] | `scaffold --publico` | Auth projects: use cases whose routes need no token |
-| `roles` | table | `scaffold --rol` | Auth projects: `caso_de_uso = ["rol", …]`; the caller needs all of them |
-| `eventos` | string[] | `generar evento` | Custom event types, beyond `_creado`, `_actualizado`, `_borrado` |
-| `unicos` | string[][] | `scaffold --unico`, `dominio --unico` | Uniques over several fields: one partial unique index each, checked by the in-memory repository too |
-| `orden` | string[] | `scaffold --orden`, `dominio --orden` | The list's order: own fields, `-` for descending; then the newest first |
+| `nombre` | string | `scaffold`, `dominio` | En PascalCase. Cada entidad es un contexto, `contextos/<snake>/` |
+| `casos_de_uso` | string[] | `scaffold`, `caso-de-uso` | Cada caso de uso que construye `cableado`. Con los cinco CRUD es una entidad CRUD, con rutas y pantallas |
+| `db` | bool | `scaffold` en un proyecto `db` | Repositorio Postgres en lugar de en memoria |
+| `publicos` | string[] | `scaffold --publico` | Proyectos con auth: los casos de uso cuyas rutas no piden token |
+| `roles` | tabla | `scaffold --rol` | Proyectos con auth: `caso_de_uso = ["rol", …]`; quien llama necesita todos |
+| `eventos` | string[] | `generar evento` | Tipos de evento propios, además de `_creado`, `_actualizado`, `_borrado` |
+| `unicos` | string[][] | `scaffold --unico`, `dominio --unico` | Únicos sobre varios campos: un índice único parcial cada uno, que también comprueba el repositorio en memoria |
+| `orden` | string[] | `scaffold --orden`, `dominio --orden` | El orden de la lista: campos propios, `-` para descendente; después, lo más nuevo primero |
 
 ## `[[entidad.campos]]`
 
-| Key | Type | Meaning |
+| Clave | Tipo | Significa |
 |---|---|---|
-| `nombre` | string | snake_case |
-| `tipo` | string | `String`, `i64`, `f64`, `bool`, `Uuid`, `DateTime<Utc>`, `HashMap<String, String>`, or `Option<…>` / `Vec<…>` of them. See [Field types](/docs/reference/field-types/) |
-| `unico` | bool | A partial unique index, and `409` on a duplicate |
-| `privado` | bool | Auth projects, text fields: public routes give it only to a caller with a session (`scaffold --privado`) |
-| `objeto_valor` | string | The value object wrapping it, local or shared |
-| `clase_objeto_valor` | `"enum"` | An enum value object; `tipo` is then `String` |
-| `variantes` | string[] | Its PascalCase variants |
-| `referencia` | string | Another CRUD entity whose id this field holds; `tipo` is then `Uuid` or `Option<Uuid>`. A foreign key in `db` projects. See [References](/docs/reference/field-types/#references) |
+| `nombre` | string | En snake_case |
+| `tipo` | string | `String`, `i64`, `f64`, `bool`, `Uuid`, `DateTime<Utc>`, `HashMap<String, String>`, o `Option<…>` / `Vec<…>` de ellos. Mira [Tipos de campo](/docs/reference/field-types/) |
+| `unico` | bool | Un índice único parcial, y un `409` ante un duplicado |
+| `privado` | bool | Proyectos con auth, campos de texto: las rutas públicas solo lo dan a quien tiene sesión (`scaffold --privado`) |
+| `objeto_valor` | string | El objeto valor que lo envuelve, local o compartido |
+| `clase_objeto_valor` | `"enum"` | Un objeto valor enum; entonces `tipo` es `String` |
+| `variantes` | string[] | Sus variantes en PascalCase |
+| `referencia` | string | Otra entidad CRUD cuyo id guarda este campo; entonces `tipo` es `Uuid` u `Option<Uuid>`. Una clave foránea en los proyectos `db`. Mira [Referencias](/docs/reference/field-types/#referencias) |
 
 ## `[[objeto_valor]]`
 
-Shared value objects, declared by `generar objeto-valor`: `nombre` (PascalCase) and `tipo` (its
-inner primitive). They live in the `nucleo` crate. A field that names one without a type uses
-this one.
+Los objetos valor compartidos, que declara `generar objeto-valor`: `nombre` (en PascalCase) y
+`tipo` (su primitivo interno). Viven en el crate `nucleo`. Un campo que nombra uno sin tipo usa
+este.
 
 ## `[[consumidor]]`
 
-Events projects. Written by `generar consumidor`: `nombre` (snake_case, the handler's file and
-its consumer group) and `eventos` (the event types it handles). A consumer whose file is missing
-makes `validar` fail and `generar bootstrap` refuse.
+Proyectos con eventos. Lo escribe `generar consumidor`: `nombre` (en snake_case, el fichero del
+manejador y su grupo de consumidores) y `eventos` (los tipos de evento que maneja). Un consumidor
+cuyo fichero falta hace fallar `validar` y que `generar bootstrap` se niegue.
 
 ## `[[correo]]`
 
-Written by `generar correo`: `nombre`, and `tras` when the worker sends it after events.
+Lo escribe `generar correo`: `nombre`, y `tras` cuando el worker lo envía tras unos eventos.
 
-## What `puerto validar` checks
+## Lo que comprueba `puerto validar`
 
-- Names: PascalCase entities, snake_case fields and use cases, no Rust keywords, no SQL reserved
-  words in `db` projects, no names the generated code or another context already uses.
-- Types: every field type is one Puerto generates, and every shared value object exists.
-- Consistency: `eventos` and `auth = "local"` need `db`; every declared entity, consumer and mail
-  has its files; in web projects, every CRUD entity has its screens; in auth projects, each
-  route's `BearerAuth` and `#[requiere_rol]` match `publicos` and `roles`; every `referencia`
-  names another declared CRUD entity, is a `Uuid` or `Option<Uuid>`, and closes no cycle between
-  contexts; every `unicos` group and `orden` key names plain, required fields of the entity;
-  `privado` only on text fields of an auth project.
-- The runtime: a warning for each `puerto-*` crate on another minor than the CLI.
+- Los nombres: entidades en PascalCase, campos y casos de uso en snake_case, ninguna palabra clave
+  de Rust, ninguna palabra reservada de SQL en los proyectos `db`, ningún nombre que ya usen el
+  código generado u otro contexto.
+- Los tipos: cada tipo de campo es uno que genera Puerto, y cada objeto valor compartido existe.
+- La coherencia: `eventos` y `auth = "local"` necesitan `db`; cada entidad, consumidor y correo
+  declarados tiene sus ficheros; en los proyectos con web, cada entidad CRUD tiene sus pantallas;
+  en los proyectos con auth, el `BearerAuth` y el `#[requiere_rol]` de cada ruta coinciden con
+  `publicos` y `roles`; cada `referencia` nombra otra entidad CRUD declarada, es un `Uuid` u
+  `Option<Uuid>` y no cierra un ciclo entre contextos; cada grupo de `unicos` y cada clave de
+  `orden` nombran campos simples y obligatorios de la entidad; `privado` solo en campos de texto
+  de un proyecto con auth.
+- El runtime: un aviso por cada crate `puerto-*` que esté en otra minor que la CLI.

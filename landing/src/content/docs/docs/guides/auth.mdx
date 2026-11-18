@@ -1,32 +1,33 @@
 ---
-title: Authentication
-description: "Protect a Puerto API with OpenID Connect (Auth0, Keycloak) or with accounts in its own database, require roles per route, sign in from the frontend."
+title: Autenticación
+description: "Protege una API Puerto con OpenID Connect (Auth0, Keycloak) o con cuentas en su propia base de datos, exige roles por ruta e inicia sesión desde el frontend."
 ---
 
 import { Tabs, TabItem, Aside } from '@astrojs/starlight/components';
 
-Auth is one decision at `puerto nuevo`, and the rest follows from it.
+La auth es una decisión en `puerto nuevo`, y el resto sale de ella.
 
 ```bash
-puerto nuevo --nombre tienda --db --auth oidc     # Auth0, Keycloak or any OpenID Connect provider
-puerto nuevo --nombre tienda --db --auth local    # accounts and sessions in this database
+puerto nuevo --nombre tienda --db --auth oidc     # Auth0, Keycloak o cualquier proveedor OpenID Connect
+puerto nuevo --nombre tienda --db --auth local    # cuentas y sesiones en esta base de datos
 ```
 
-Both modes share one port, `Autenticador`, and one `Usuario` entity in its own context,
-`contextos/usuario/`, so the routes, the use cases and the screens are the same either way.
-`GET /api/me` answers the caller as the API resolved them. Moving from local accounts to a
-provider does not touch your domain
+Los dos modos comparten un puerto, `Autenticador`, y una entidad `Usuario` en su propio
+contexto, `contextos/usuario/`, así que las rutas, los casos de uso y las pantallas son los mismos
+en los dos casos. `GET /api/me` responde quién llama, tal como lo resolvió la API. Pasar de
+cuentas locales a un proveedor no toca tu dominio
 ([ADR-0021](/docs/decisions/adr/0021-auth-one-authenticator-port-oidc-or-local/)).
 
 <Tabs>
 <TabItem label="oidc">
-The API is an OAuth2 **resource server**: it verifies the provider's JWT access tokens (RS256 or
-ES256, `iss`, `aud`, `exp`/`nbf`) against its JWKS, which is cached and refetched at most once a
-minute when an unknown `kid` appears. Auth0 and Keycloak are configuration, not adapters.
+La API es un **resource server** de OAuth2: comprueba los access tokens JWT del proveedor (RS256 o
+ES256, `iss`, `aud`, `exp`/`nbf`) contra su JWKS, que se guarda en caché y se vuelve a pedir como
+mucho una vez por minuto cuando aparece un `kid` desconocido. Auth0 y Keycloak son configuración,
+no adaptadores.
 
-The first request of a caller creates their `Usuario` row (just-in-time provisioning, cached for
-60 seconds, in `contextos/usuario/infraestructura/src/aprovisionamiento.rs`). **Roles come from
-the token only**, from the claim `AUTH_ROLES_CLAIM` names.
+La primera petición de quien llama crea su fila de `Usuario` (aprovisionamiento al vuelo, con una
+caché de 60 segundos, en `contextos/usuario/infraestructura/src/aprovisionamiento.rs`). **Los
+roles salen solo del token**, del claim que nombra `AUTH_ROLES_CLAIM`.
 
 ```ini title=".env"
 AUTH_ISSUER=http://localhost:8180/realms/tienda
@@ -34,56 +35,55 @@ AUTH_AUDIENCE=api
 AUTH_ROLES_CLAIM=realm_access.roles
 ```
 
-For Auth0: `AUTH_ISSUER=https://<tenant>.auth0.com/`, `AUTH_AUDIENCE` set to the API identifier,
-and `AUTH_ROLES_CLAIM` set to `permissions` or to the claim an Action adds.
+Para Auth0: `AUTH_ISSUER=https://<tenant>.auth0.com/`, `AUTH_AUDIENCE` con el identificador de la
+API, y `AUTH_ROLES_CLAIM` con `permissions` o con el claim que añada una Action.
 
-In development, `docker-compose.yml` runs Keycloak with a realm of its own: a public `web`
-client with PKCE, `admin@tienda.localhost` with the `admin` role, and `user@tienda.localhost`
-without it.
+En desarrollo, `docker-compose.yml` arranca Keycloak con un realm propio: un cliente público
+`web` con PKCE, `admin@tienda.localhost` con el rol `admin`, y `user@tienda.localhost` sin él.
 
 ```bash
-make auth/ui                                         # where the Keycloak console is, and how to sign in
-make -s auth/token EMAIL=user@tienda.localhost       # an access token, for curl
+make auth/ui                                         # dónde está la consola de Keycloak, y cómo entrar
+make -s auth/token EMAIL=user@tienda.localhost       # un access token, para curl
 ```
 
-`--auth oidc` works without `--db` too; then the users are kept in memory.
+`--auth oidc` también funciona sin `--db`; entonces los usuarios se guardan en memoria.
 </TabItem>
 <TabItem label="local">
-The API **is** the identity provider. It needs `--db`.
+La API **es** el proveedor de identidad. Necesita `--db`.
 
-| Route | Does |
+| Ruta | Qué hace |
 |---|---|
-| `POST /api/auth/registro` | creates an account from `email`, `contrasena` (12 characters at least) and an optional `nombre`; `201` with the user |
-| `POST /api/auth/login` | takes `email` and `contrasena`, answers an opaque session: `token` and `expiraEn` |
-| `POST /api/auth/logout` | revokes the session the request is signed with; `204` |
-| `GET /api/me` | the caller, as the API resolved them: `id`, `email`, `nombre`, `roles` |
+| `POST /api/auth/registro` | crea una cuenta con `email`, `contrasena` (12 caracteres como mínimo) y un `nombre` opcional; `201` con el usuario |
+| `POST /api/auth/login` | recibe `email` y `contrasena`, y responde una sesión opaca: `token` y `expiraEn` |
+| `POST /api/auth/logout` | revoca la sesión con la que va firmada la petición; `204` |
+| `GET /api/me` | quién llama, tal como lo resolvió la API: `id`, `email`, `nombre`, `roles` |
 
-Passwords are argon2id hashes in `credenciales`, so `Usuario` carries no secret. A session token
-is 256 random bits, and `sesiones` keeps only its SHA-256. Revoking one is a `DELETE`, and there
-is no signing key to rotate. An unknown email and a wrong password get the same
-`401 auth.credenciales_invalidas`, in the same time.
+Las contraseñas son hashes argon2id en `credenciales`, así que `Usuario` no lleva ningún secreto.
+Un token de sesión son 256 bits aleatorios, y `sesiones` solo guarda su SHA-256. Revocar uno es un
+`DELETE`, y no hay clave de firma que rotar. Un email desconocido y una contraseña equivocada
+reciben el mismo `401 auth.credenciales_invalidas`, en el mismo tiempo.
 
 ```ini title=".env"
 AUTH_SESSION_TTL=30d      # 30d, 12h, 90m
 ```
 
-Roles are the `usuarios.roles` column, and they apply from the next request:
+Los roles son la columna `usuarios.roles`, y valen desde la siguiente petición:
 
 ```bash
 make auth/conceder EMAIL=ada@example.com ROL=admin
 ```
 
-Registration is open. `registrar_usuario`, `login` and `logout`
-(`contextos/usuario/aplicacion/src/`) and `contextos/usuario/rest/src/auth/` are yours: close
-registration or add rules there.
+El registro está abierto. `registrar_usuario`, `login` y `logout`
+(`contextos/usuario/aplicacion/src/`) y `contextos/usuario/rest/src/auth/` son tuyos: cierra ahí
+el registro o añade reglas.
 </TabItem>
 </Tabs>
 
-## Protected by default
+## Protegido por defecto
 
-In an auth project every scaffolded route is protected. A handler that takes `auth: BearerAuth`
-answers `401 auth.no_autenticado` before it runs when the token is missing, unknown or expired.
-Open routes and role checks are flags of the scaffold:
+En un proyecto con auth, toda ruta del scaffold está protegida. Un handler que recibe
+`auth: BearerAuth` responde `401 auth.no_autenticado` antes de ejecutarse cuando el token falta,
+es desconocido o ha caducado. Las rutas abiertas y los roles son flags del scaffold:
 
 ```bash
 puerto generar scaffold Producto \
@@ -92,7 +92,7 @@ puerto generar scaffold Producto \
   -- nombre:String precio:i64 sku:String!
 ```
 
-```rust title="contextos/producto/rest/src/rutas.rs (excerpt)"
+```rust title="contextos/producto/rest/src/rutas.rs (fragmento)"
 /// Borra: Producto
 #[oai(path = "/productos/:id", method = "delete", tag = "ApiTags::Producto")]
 #[requiere_rol("admin")]
@@ -107,8 +107,9 @@ async fn borrar(&self, auth: BearerAuth, id: Path<Uuid>) -> RespuestaBorrarProdu
     // …
 ```
 
-`#[requiere_rol("admin")]` adds a `403 auth.prohibido` check at the top of the handler. Two
-roles on one route mean the caller needs both. The flags land in `puerto.toml`:
+`#[requiere_rol("admin")]` añade una comprobación `403 auth.prohibido` al principio del handler.
+Dos roles en una ruta significan que quien llama necesita los dos. Los flags quedan en
+`puerto.toml`:
 
 ```toml
 [[entidad]]
@@ -119,13 +120,13 @@ publicos = ["listar_productos", "obtener_producto"]
 borrar_producto = ["admin"]
 ```
 
-`puerto validar` checks that `rutas.rs` still says the same as the manifest. Change both
-together.
+`puerto validar` comprueba que `rutas.rs` sigue diciendo lo mismo que el manifiesto. Cambia los
+dos a la vez.
 
-## Private fields
+## Campos privados
 
-A public route answers everyone, so a player's email in a public list is everyone's. Mark it
-private:
+Una ruta pública responde a todo el mundo, así que el email de un jugador en una lista pública es
+de todo el mundo. Márcalo como privado:
 
 ```bash
 puerto generar scaffold Jugador \
@@ -134,19 +135,19 @@ puerto generar scaffold Jugador \
   -- nombre:String email:String dorsal:i64
 ```
 
-The field is optional in `DtoJugador`. A public route that answers the entity takes
-`auth: BearerAuthOpcional`: a caller with a session gets the whole entity, a caller without one
-gets `DtoJugador::from_dominio_publico`, without the field. `BearerAuthOpcional` never answers
-`401`: no token, a token the authenticator rejects or one it cannot check all mean no caller.
-Protected routes answer the whole entity, as their caller always has a session. Private fields
-are text (`String`, `Option<String>`, or a value object over one); the flag lands in
-`[[entidad.campos]] privado = true`.
+El campo es opcional en `DtoJugador`. Una ruta pública que responde la entidad recibe
+`auth: BearerAuthOpcional`: quien llama con sesión recibe la entidad entera, y quien llama sin ella
+recibe `DtoJugador::from_dominio_publico`, sin el campo. `BearerAuthOpcional` nunca responde `401`:
+sin token, con un token que el autenticador rechaza o con uno que no puede comprobar, no hay
+llamante. Las rutas protegidas responden la entidad entera, porque quien las llama siempre tiene
+sesión. Los campos privados son texto (`String`, `Option<String>` o un objeto valor sobre uno de
+ellos); el flag queda en `[[entidad.campos]] privado = true`.
 
-## Rules that depend on data
+## Reglas que dependen de los datos
 
-"Only the owner can edit it" is not an attribute: it depends on the row. Protected use cases
-receive the caller as `actor: Principal` (`id_usuario`, `sujeto`, `email`, `nombre`, `roles`) and
-decide. With a `propietario:Uuid` field on the entity:
+«Solo puede editarlo quien lo creó» no es un atributo: depende de la fila. Los casos de uso
+protegidos reciben a quien llama como `actor: Principal` (`id_usuario`, `sujeto`, `email`,
+`nombre`, `roles`) y deciden. Con un campo `propietario:Uuid` en la entidad:
 
 ```rust
 if producto.propietario != params.actor.id_usuario {
@@ -154,34 +155,36 @@ if producto.propietario != params.actor.id_usuario {
 }
 ```
 
-The domain sees a `Principal`, never a token. Tests build one with
-`puerto_nucleo::auth::dobles::MadrePrincipal`, and route tests sign in with a `MockAutenticador`.
+El dominio ve un `Principal`, nunca un token. Los tests construyen uno con
+`puerto_nucleo::auth::dobles::MadrePrincipal`, y los tests de rutas inician sesión con un
+`MockAutenticador`.
 
-## The frontend
+## El frontend
 
-`useAuth()` gives `{ user, can(role), login, logout }`, where `user` comes from `GET /me`. The
-generated route table wraps every non-public screen in `<RequireAuth>`, which sends whoever is
-not signed in to sign in, as a `401` from any call does. Generated screens hide the actions the
-user's roles do not allow, but the API decides: its `403` reaches the alert as `auth.prohibido`.
+`useAuth()` da `{ usuario, puede(rol), login, logout }`, donde `usuario` sale de `GET /me`. La
+tabla de rutas generada envuelve cada pantalla no pública en `<RequiereAuth>`, que manda a iniciar
+sesión a quien no la tiene, como hace un `401` de cualquier llamada. Las pantallas generadas
+ocultan las acciones que los roles del usuario no permiten, pero decide la API: su `403` llega a la
+alerta como `auth.prohibido`.
 
 | | OIDC | Local |
 |---|---|---|
-| Sign in | Authorization Code + PKCE (`oidc-client-ts`) | `/login` and `/register` pages |
-| Token kept | in memory; a reload goes back through the provider | `localStorage`; Sign out revokes it |
+| Inicio de sesión | Authorization Code + PKCE (`oidc-client-ts`) | las páginas `/login` y `/registro` |
+| Dónde va el token | en memoria; una recarga vuelve a pasar por el proveedor | `localStorage`; Cerrar sesión lo revoca |
 
 <Aside type="caution" title="Tier 1">
-Authentication and authorization checks are in the generated `AGENTS.md`'s Tier 1: a person reads
-the whole diff before it is committed, however green the tests are.
+Las comprobaciones de autenticación y autorización están en el Tier 1 del `AGENTS.md` generado:
+una persona lee el diff entero antes del commit, por muy verdes que estén los tests.
 </Aside>
 
-## Errors
+## Errores
 
-| Status | Code | When |
+| Estado | Código | Cuándo |
 |---|---|---|
-| 401 | `auth.no_autenticado` | no token, or an invalid or expired one |
-| 401 | `auth.credenciales_invalidas` | local login with a wrong email or password |
-| 403 | `auth.prohibido` | the caller lacks a role `#[requiere_rol]` asks for |
-| 403 | `<entidad>.prohibido` | a use case's own rule refused the caller (`producto.prohibido`) |
-| 409 | `usuario.duplicado` | local registration with an email that already has an account |
-| 422 | `usuario.validacion.email_invalido`, `usuario.validacion.contrasena_demasiado_corta` | local registration with a bad email or a password under 12 characters |
-| 503 | `auth.no_disponible` | the provider could not be reached |
+| 401 | `auth.no_autenticado` | sin token, o con uno inválido o caducado |
+| 401 | `auth.credenciales_invalidas` | login local con un email o una contraseña equivocados |
+| 403 | `auth.prohibido` | a quien llama le falta un rol que pide `#[requiere_rol]` |
+| 403 | `<entidad>.prohibido` | una regla del propio caso de uso rechazó a quien llama (`producto.prohibido`) |
+| 409 | `usuario.duplicado` | registro local con un email que ya tiene cuenta |
+| 422 | `usuario.validacion.email_invalido`, `usuario.validacion.contrasena_demasiado_corta` | registro local con un email incorrecto o una contraseña de menos de 12 caracteres |
+| 503 | `auth.no_disponible` | no se pudo llegar al proveedor |

@@ -32,11 +32,11 @@ const data = {
 
 <section class="try" id="try" aria-labelledby="try-title">
   <div class="frame try__head">
-    <h2 class="h2" id="try-title" data-reveal>One command.<br />Every layer.</h2>
+    <h2 class="h2" id="try-title" data-reveal>Un comando.<br />Todas las capas.</h2>
     <p class="lede try__lede" data-reveal>
-      Pick an entity and the flags of <code>puerto nuevo</code>. Every file below was written
-      by <code>puerto {harvestVersion}</code> itself, captured when this site was built.
-      Nothing is typed for the page.
+      Elige una entidad y los flags de <code>puerto nuevo</code>. Cada fichero de abajo lo
+      escribió el propio <code>puerto {harvestVersion}</code>, capturado al construir esta web.
+      Nada está escrito a mano para la página.
     </p>
   </div>
 
@@ -45,25 +45,25 @@ const data = {
       <script type="application/json" data-terminal-data set:html={JSON.stringify(data)} />
 
       <div class="term__bar">
-        <span class="term__manifest">Manifest</span>
+        <span class="term__manifest">Manifiesto</span>
         <span class="term__cargo" data-summary>
-          Cargo <b>{entities.find((e) => e.id === DEFAULT.entity)?.name}</b> ·
-          <b>{written.filter((f) => f.status === 'added').length}</b> files written ·
-          <b>{written.filter((f) => f.status === 'changed').length}</b> patched ·
-          {initial.files.length} in the project
+          Carga <b>{entities.find((e) => e.id === DEFAULT.entity)?.name}</b> ·
+          <b>{written.filter((f) => f.status === 'added').length}</b> ficheros escritos ·
+          <b>{written.filter((f) => f.status === 'changed').length}</b> parcheados ·
+          {initial.files.length} en el proyecto
         </span>
       </div>
 
-      <div class="term__tabs" role="tablist" aria-label="Terminal panels">
-        <button type="button" role="tab" aria-selected="true" aria-controls="term-compose" data-tab="compose">Compose</button>
-        <button type="button" role="tab" aria-selected="false" aria-controls="term-tree" data-tab="tree">Files</button>
-        <button type="button" role="tab" aria-selected="false" aria-controls="term-file" data-tab="file">Code</button>
+      <div class="term__tabs" role="tablist" aria-label="Paneles de la terminal">
+        <button type="button" role="tab" aria-selected="true" aria-controls="term-compose" data-tab="compose">Componer</button>
+        <button type="button" role="tab" aria-selected="false" aria-controls="term-tree" data-tab="tree">Ficheros</button>
+        <button type="button" role="tab" aria-selected="false" aria-controls="term-file" data-tab="file">Código</button>
       </div>
 
       <div class="term__grid" data-active="compose">
-        <form class="term__compose" id="term-compose" role="tabpanel" data-panel="compose" aria-label="What to generate">
+        <form class="term__compose" id="term-compose" role="tabpanel" data-panel="compose" aria-label="Qué generar">
           <fieldset class="term__set">
-            <legend class="term__legend">Cargo</legend>
+            <legend class="term__legend">Carga</legend>
             {
               entities.map((e) => (
                 <label class="term__cargo-option">
@@ -79,17 +79,17 @@ const data = {
             <legend class="term__legend">puerto nuevo</legend>
             <label class="term__flag">
               <input type="checkbox" name="db" checked={DEFAULT.db} />
-              <span><code>--db</code> Postgres and SQLx</span>
+              <span><code>--db</code> Postgres y SQLx</span>
             </label>
             <label class="term__flag">
               <input type="checkbox" name="web" checked={DEFAULT.web} />
-              <span><code>web/</code> React frontend <small>(off: <code>--sin-web</code>)</small></span>
+              <span><code>web/</code> Frontend React <small>(sin él: <code>--sin-web</code>)</small></span>
             </label>
-            <div class="term__choice" role="radiogroup" aria-label="Domain events">
+            <div class="term__choice" role="radiogroup" aria-label="Eventos de dominio">
               <span class="term__choice-label"><code>--eventos</code></span>
               {
                 [
-                  ['', 'none'],
+                  ['', 'ninguno'],
                   ['db', 'db'],
                   ['kafka', 'kafka'],
                 ].map(([v, t]) => (
@@ -100,11 +100,11 @@ const data = {
                 ))
               }
             </div>
-            <div class="term__choice" role="radiogroup" aria-label="Authentication">
+            <div class="term__choice" role="radiogroup" aria-label="Autenticación">
               <span class="term__choice-label"><code>--auth</code></span>
               {
                 [
-                  ['', 'none'],
+                  ['', 'ninguna'],
                   ['oidc', 'oidc'],
                   ['local', 'local'],
                 ].map(([v, t]) => (
@@ -115,36 +115,36 @@ const data = {
                 ))
               }
             </div>
-            <p class="term__hint" data-hint>Events and local accounts need <code>--db</code>.</p>
+            <p class="term__hint" data-hint>Los eventos y las cuentas locales necesitan <code>--db</code>.</p>
           </fieldset>
 
           <div class="term__commands">
             <div class="term__commands-head">
-              <span class="term__legend">Run</span>
-              <button type="button" class="term__copy" data-copy-commands aria-live="polite">Copy</button>
+              <span class="term__legend">Ejecuta</span>
+              <button type="button" class="term__copy" data-copy-commands aria-live="polite">Copiar</button>
             </div>
             <pre class="term__cmd" data-commands>{initial.commands.map((c) => `$ ${c}`).join('\n')}</pre>
           </div>
         </form>
 
-        <div class="term__tree" id="term-tree" role="tabpanel" aria-label="Files" data-panel="tree">
+        <div class="term__tree" id="term-tree" role="tabpanel" aria-label="Ficheros" data-panel="tree">
           <div class="term__tree-head">
-            <span class="term__legend">Files</span>
-            <div class="term__scope" role="radiogroup" aria-label="Which files">
+            <span class="term__legend">Ficheros</span>
+            <div class="term__scope" role="radiogroup" aria-label="Qué ficheros">
               <label class="term__pill">
                 <input type="radio" name="scope" value="written" checked />
-                <span>Scaffold wrote</span>
+                <span>Lo que escribió scaffold</span>
               </label>
               <label class="term__pill">
                 <input type="radio" name="scope" value="all" />
-                <span>Whole project</span>
+                <span>Todo el proyecto</span>
               </label>
             </div>
           </div>
           <div class="term__tree-body" data-tree>
             <button type="button" class="term__row term__row--stdout" data-stdout aria-current="true">
               <span class="term__row-name">stdout</span>
-              <span class="term__row-meta">what the CLI printed</span>
+              <span class="term__row-meta">lo que imprimió la CLI</span>
             </button>
             {
               groupFiles(written).map((g) => (
@@ -177,12 +177,12 @@ const data = {
           </div>
         </div>
 
-        <div class="term__file" id="term-file" role="tabpanel" aria-label="Code" data-panel="file">
+        <div class="term__file" id="term-file" role="tabpanel" aria-label="Código" data-panel="file">
           <div class="term__file-head">
             <span class="term__file-path" data-file-path aria-live="polite">stdout</span>
             <span class="term__file-meta" data-file-meta></span>
           </div>
-          <div class="term__file-body" data-file-body tabindex="0" aria-label="File contents">
+          <div class="term__file-body" data-file-body tabindex="0" aria-label="Contenido del fichero">
             <pre class="term__stdout">{initial.commands.map((c, i) => `$ ${c}\n${i === 0 ? initial.stdout.new : initial.stdout.scaffold}`).join('\n')}</pre>
           </div>
         </div>
@@ -846,7 +846,7 @@ const data = {
       const entity = data.entities.find((e) => current.id.endsWith(`__${e.id}`));
       const added = current.files.filter((f) => f.status === 'added').length;
       const changed = current.files.filter((f) => f.status === 'changed').length;
-      summary.innerHTML = `Cargo <b>${esc(entity?.name ?? '')}</b> · <b>${added}</b> files written · <b>${changed}</b> patched · ${current.files.length} in the project`;
+      summary.innerHTML = `Carga <b>${esc(entity?.name ?? '')}</b> · <b>${added}</b> ficheros escritos · <b>${changed}</b> parcheados · ${current.files.length} en el proyecto`;
       commandsEl.textContent = current.commands.map((c) => `$ ${c}`).join('\n');
     };
 
@@ -855,7 +855,7 @@ const data = {
       const before = shown;
       shown = new Set(files.map((f) => f.path));
       const html = [
-        `<button type="button" class="term__row term__row--stdout" data-stdout aria-current="${selected === null}"><span class="term__row-name">stdout</span><span class="term__row-meta">what the CLI printed</span></button>`,
+        `<button type="button" class="term__row term__row--stdout" data-stdout aria-current="${selected === null}"><span class="term__row-name">stdout</span><span class="term__row-meta">lo que imprimió la CLI</span></button>`,
       ];
       for (const g of groupFiles(files)) {
         html.push(
@@ -897,15 +897,15 @@ const data = {
       selected = hash;
       const f = current.files.find((x) => x.hash === hash && x.path === path);
       filePath.textContent = path;
-      fileMeta.textContent = f ? `${f.lines} lines · ${f.status === 'added' ? 'written' : f.status === 'changed' ? 'patched' : 'from puerto new'}` : '';
+      fileMeta.textContent = f ? `${f.lines} líneas · ${f.status === 'added' ? 'escrito' : f.status === 'changed' ? 'parcheado' : 'de puerto nuevo'}` : '';
       fileBody.setAttribute('aria-busy', 'true');
-      fileBody.innerHTML = '<p class="term__note">Loading…</p>';
+      fileBody.innerHTML = '<p class="term__note">Cargando…</p>';
       let html: string;
       try {
         html = await loadCode(hash);
       } catch {
         codeCache.delete(hash);
-        fileBody.innerHTML = '<p class="term__note">This file did not load. Check your connection and pick it again.</p>';
+        fileBody.innerHTML = '<p class="term__note">Este fichero no se ha cargado. Revisa tu conexión y vuelve a elegirlo.</p>';
         fileBody.removeAttribute('aria-busy');
         return;
       }
@@ -933,7 +933,7 @@ const data = {
         next = await loadCargo(id);
       } catch {
         cargoCache.delete(id);
-        fileBody.innerHTML = '<p class="term__note">This combination did not load. Check your connection and change a flag again.</p>';
+        fileBody.innerHTML = '<p class="term__note">Esta combinación no se ha cargado. Revisa tu conexión y vuelve a cambiar un flag.</p>';
         return;
       }
       if (comboId(state()) !== id) return; // llegó tarde: ya se eligió otra cosa
@@ -968,11 +968,11 @@ const data = {
     copy.addEventListener('click', async () => {
       try {
         await navigator.clipboard.writeText(current.commands.join('\n'));
-        copy.textContent = 'Copied';
+        copy.textContent = 'Copiado';
       } catch {
-        copy.textContent = 'Select and copy';
+        copy.textContent = 'Selecciónalo y cópialo';
       }
-      setTimeout(() => (copy.textContent = 'Copy'), 1600);
+      setTimeout(() => (copy.textContent = 'Copiar'), 1600);
     });
 
     if (fromUrl()) void update();

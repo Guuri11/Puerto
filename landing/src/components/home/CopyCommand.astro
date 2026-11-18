@@ -5,13 +5,13 @@ interface Props {
   label?: string;
 }
 
-const { command, label = 'Copy command' } = Astro.props;
+const { command, label = 'Copiar comando' } = Astro.props;
 ---
 
 <div class="cmd" data-copy-block>
   <code class="cmd__text"><span class="cmd__prompt" aria-hidden="true">$</span> {command}</code>
   <button type="button" class="cmd__btn" data-copy={command} aria-label={label}>
-    <span data-copy-label aria-live="polite">Copy</span>
+    <span data-copy-label aria-live="polite">Copiar</span>
   </button>
 </div>
 
@@ -67,11 +67,11 @@ const { command, label = 'Copy command' } = Astro.props;
     btn.addEventListener('click', async () => {
       try {
         await navigator.clipboard.writeText(btn.dataset.copy!);
-        label.textContent = 'Copied';
+        label.textContent = 'Copiado';
       } catch {
-        label.textContent = 'Select it';
+        label.textContent = 'Selecciónalo';
       }
-      setTimeout(() => (label.textContent = 'Copy'), 1600);
+      setTimeout(() => (label.textContent = 'Copiar'), 1600);
     });
   });
 </script>

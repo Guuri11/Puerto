@@ -3390,12 +3390,12 @@ La internacionalización (un catálogo de textos, varios idiomas); el género de
 
 ## Fase 23 — La CLI, el README y la web en castellano (ADR-0024)
 
-**Estado:** en curso (2026-11-18). La ADR-0024 dejó para una pasada aparte "la documentación de
+**Estado:** hecha (2026-11-18), sin publicar. La ADR-0024 dejó para una pasada aparte "la documentación de
 Puerto, la web, el README y los mensajes de la CLI". Decidido por Sergio el 2026-11-18: los
 mensajes de la CLI, el README y la web pasan al castellano; `PLAN.md`, el `CHANGELOG.md` y las ADR
 anteriores a la 0023 se quedan como están (son historia: el changelog sale de los commits).
 
-### 23.1 — Los mensajes de la CLI
+### 23.1 — Los mensajes de la CLI ✅
 
 - Todo lo que `puerto` escribe: la ayuda de clap (`about`, cada argumento, los nombres de los
   valores: `<NOMBRE>`, `<CAMPOS>`, `<ENTIDAD>`…), las preguntas de `puerto nuevo` (también el
@@ -3409,14 +3409,18 @@ anteriores a la 0023 se quedan como están (son historia: el changelog sale de l
 - Tests: los que comparaban con un mensaje lo hacen con el castellano; uno nuevo comprueba que la
   ayuda de la raíz y de `generar scaffold` y dos errores de clap no dejan ninguna pieza en inglés.
 
-### 23.2 — El README
+### 23.2 — El README ✅
 
-### 23.3 — La web (`landing/`)
+- `README.md` y `crates/cli/README.md` (el de crates.io) en castellano, y la `description` de cada
+  crate publicado.
+
+### 23.3 — La web (`landing/`) ✅
 
 - Las páginas de `landing/src/content/docs/` que no se copian del repo, la portada, la cabecera,
   el pie y el 404; Starlight con `lang: 'es'` (sus propios textos: buscar, en esta página…).
 - `make site/data` vuelve a cosechar la ayuda de la CLI; los tests e2e de `landing/` buscan los
   textos nuevos.
+- El lema pasa a «Genera. Ordena. Zarpa.» (la home, `og.png`, la marca del repositorio).
 
 ### Fuera de alcance (Fase 23)
 

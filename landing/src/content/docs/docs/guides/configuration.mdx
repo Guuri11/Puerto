@@ -1,51 +1,53 @@
 ---
-title: Configuration and running
-description: "The environment a Puerto project reads, its health probes and graceful shutdown, where your own middleware goes, logging, and its IDE snippets."
+title: Configuración y arranque
+description: "El entorno que lee un proyecto Puerto, sus sondas de salud y su apagado ordenado, dónde va tu propio middleware, los logs y sus snippets del IDE."
 ---
 
 import { Aside } from '@astrojs/starlight/components';
 
-## Environment
+## El entorno
 
-Configuration is read once at startup, from the environment and from `.env` (a variable already
-set wins). A value that is set but invalid stops the server with a message. It never falls back
-to a default: a typo in `SERVICE_PORT` would otherwise start the server on a port nobody routes
-to.
+La configuración se lee una vez al arrancar, del entorno y de `.env` (gana una variable que ya
+esté puesta). Un valor puesto pero inválido para el servidor con un mensaje. Nunca vuelve a un
+valor por defecto: una errata en `SERVICE_PORT` arrancaría el servidor en un puerto al que nadie
+envía tráfico.
 
-| Variable | Default | |
+| Variable | Por defecto | |
 |---|---|---|
-| `SERVICE_PORT` | `8080` | the port the API listens on |
-| `CORS_ALLOWED_ORIGINS` | any origin | comma-separated; `.env` lists the dev servers |
-| `RUST_LOG` | `info` | the `tracing` filter |
-| `PUERTO_BANNER` | `true` | `false` hides the startup banner |
-| `DATABASE_URL` | — | `--db` projects |
-| `WORKER_PORT` and the worker's variables | `8081` | [Running more than one worker](/docs/guides/events/#running-more-than-one-worker) |
-| `AUTH_*` | — | [Authentication](/docs/guides/auth/) |
-| `SMTP_URL`, `MAIL_FROM` | — | [Mail](/docs/guides/mail/#development-and-production) |
+| `SERVICE_PORT` | `8080` | el puerto en el que escucha la API |
+| `CORS_ALLOWED_ORIGINS` | cualquier origen | separados por comas; `.env` lista los servidores de desarrollo |
+| `RUST_LOG` | `info` | el filtro de `tracing` |
+| `PUERTO_BANNER` | `true` | `false` oculta el banner de arranque |
+| `DATABASE_URL` | — | proyectos `--db` |
+| `WORKER_PORT` y las variables del worker | `8081` | [Varios workers](/docs/guides/events/#varios-workers) |
+| `AUTH_*` | — | [Autenticación](/docs/guides/auth/) |
+| `SMTP_URL`, `MAIL_FROM` | — | [Correo](/docs/guides/mail/#mailpit-y-smtp) |
 
-`.env.example` documents every variable the project uses, and `.env` is its development copy.
+`.env.example` documenta cada variable que usa el proyecto, y `.env` es su copia de desarrollo.
 
-## What the server gives you
+## Lo que te da el servidor
 
-`presentacion/api/src/main.rs` is four lines: it reads `Config` and hands `bootstrap.rs`'s routes
-to `puerto-web`'s `App`, which serves:
+`presentacion/api/src/main.rs` son cuatro líneas: lee `Config` y le entrega las rutas de
+`bootstrap.rs` a la `App` de `puerto-web`, que sirve:
 
-| Path | |
+| Ruta | |
 |---|---|
-| `/api/…` | the API |
-| `/` | the Swagger UI |
-| `/health` | liveness: `200 ok` while the process answers |
-| `/health/ready` | readiness: `200 ready`, or `503` when a dependency does not answer (`SELECT 1` with `--db`) |
+| `/api/…` | la API |
+| `/` | la Swagger UI |
+| `/health` | vida: `200 ok` mientras el proceso responde |
+| `/health/ready` | disponibilidad: `200 ready`, o `503` cuando una dependencia no responde (`SELECT 1` con `--db`) |
 
-On Ctrl-C or SIGTERM it stops accepting connections and gives in-flight requests 8 seconds to
-finish, below `docker stop`'s default of 10
-([ADR-0008](/docs/decisions/adr/0008-liveness-readiness-graceful-shutdown/)). A failure at
-startup, such as a database that is down, is an error message and exit code 1, never a panic.
+Con Ctrl-C o SIGTERM deja de aceptar conexiones y les da 8 segundos a las peticiones en curso para
+terminar, por debajo de los 10 de `docker stop`
+([ADR-0008](/docs/decisions/adr/0008-liveness-readiness-graceful-shutdown/)). Un fallo al
+arrancar, como una base de datos caída, es un mensaje de error y el código de salida 1, nunca un
+panic.
 
-## Your own middleware and routes
+## Tu propio middleware y tus rutas
 
-`presentacion/api/src/app.rs` is written once by `puerto nuevo` and never touched again.
-`generado/bootstrap.rs` hands it every route, the API, the Swagger UI and the health probes, last:
+`presentacion/api/src/app.rs` lo escribe una vez `puerto nuevo` y no se vuelve a tocar.
+`generado/bootstrap.rs` le entrega todas las rutas, la API, la Swagger UI y las sondas de salud, lo
+último:
 
 ```rust title="presentacion/api/src/app.rs"
 //! Lo escribe una vez `puerto nuevo`; desde entonces es tuyo y ningún generador vuelve a tocarlo.
@@ -61,47 +63,47 @@ pub fn configurar(rutas: Route) -> impl Endpoint {
 }
 ```
 
-Add middleware with `rutas.with(…)` and routes of your own with `rutas.at(…)`.
+Añade middleware con `rutas.with(…)` y rutas propias con `rutas.at(…)`.
 
-Rate limiting, request ids, a webhook endpoint outside the OpenAPI service: they go here, and
-regenerating `bootstrap.rs` never loses them.
+Límites de peticiones, ids de petición, un endpoint de webhook fuera del servicio OpenAPI: van
+aquí, y regenerar `bootstrap.rs` nunca los pierde.
 
-## Logging
+## Logs
 
-Plain `tracing`, with no logger to inject
-([ADR-0006](/docs/decisions/adr/0006-logging-through-tracing-not-a-logger-port/)). Every request
-is logged with its method, path, status and duration, and every use case logs `inicio` and `fin`
-with its id. Never log the params or a request body: they are user data.
+`tracing` a secas, sin logger que inyectar
+([ADR-0006](/docs/decisions/adr/0006-logging-through-tracing-not-a-logger-port/)). Cada petición
+se registra con su método, su ruta, su estado y su duración, y cada caso de uso registra `inicio` y
+`fin` con su id. Nunca registres los params ni el cuerpo de una petición: son datos del usuario.
 
 ```rust
 tracing::info!(id = %producto.id, "cambiar_precio_producto: fin");
 ```
 
-## The toolchain
+## La toolchain
 
-`rust-toolchain.toml` pins Rust `1.95.0` with `rustfmt` and `clippy`, and every crate uses
-edition 2024. Clippy gains lints between releases, so pinning is what makes `make lint` answer the
-same on every machine and in CI. Bump it on purpose, then fix what the new clippy reports
-([ADR-0009](/docs/decisions/adr/0009-generated-projects-pin-their-toolchain/)).
+`rust-toolchain.toml` fija Rust `1.95.0` con `rustfmt` y `clippy`, y todos los crates usan la
+edition 2024. Clippy gana lints entre versiones, así que fijarla es lo que hace que `make lint`
+responda lo mismo en todas las máquinas y en CI. Súbela a propósito, y arregla después lo que diga
+el clippy nuevo ([ADR-0009](/docs/decisions/adr/0009-generated-projects-pin-their-toolchain/)).
 
-## IDE snippets
+## Snippets del IDE
 
-`puerto nuevo` writes snippets for Zed (`.zed/snippets/`, loaded automatically) and VS Code
-(`.vscode/*.code-snippets`). Neovim with LuaSnip can load the VS Code ones:
+`puerto nuevo` escribe snippets para Zed (`.zed/snippets/`, que carga solo) y VS Code
+(`.vscode/*.code-snippets`). Neovim con LuaSnip puede cargar los de VS Code:
 
 ```lua
 require("luasnip.loaders.from_vscode").lazy_load({ paths = { "./.vscode" } })
 ```
 
-They follow the generator's own shapes: `domain-model`, `repository-trait`, `app-use-case`,
+Siguen las mismas formas que el generador: `domain-model`, `repository-trait`, `app-use-case`,
 `uow-write`, `poem-endpoint-action`, `poem-response-enum`, `poem-route-test`, `consumer-arm`,
-`object-mother`, `sqlx-test`, `vo-enum` and more for Rust; `migration-create-table`,
-`migration-unique-index` and `sql-soft-delete` for SQL; `web-container`, `web-repo-method`,
-`web-form-field` and `web-route` for the frontend. The prefixes are English; what they write
-follows the project's Spanish names (`deberia_…_cuando_…`, `// Preparar`, `ejecutar`…). Rewrite
-them with `puerto generar snippets [--ide zed|vscode]`.
+`object-mother`, `sqlx-test`, `vo-enum` y más para Rust; `migration-create-table`,
+`migration-unique-index` y `sql-soft-delete` para SQL; `web-container`, `web-container-test`,
+`web-form-field` y `web-route` para el frontend. Los prefijos están en inglés; lo que escriben sigue
+los nombres en castellano del proyecto (`deberia_…_cuando_…`, `// Preparar`, `ejecutar`…).
+Reescríbelos con `puerto generar snippets [--ide zed|vscode]`.
 
 <Aside type="tip">
-The snippets are tested in Puerto's own suite: an entity is built from them alone and run
-through clippy and the tests, so a snippet cannot fall behind the generator.
+Los snippets tienen tests en la batería de Puerto: se construye una entidad solo con ellos y se
+pasa por clippy y por los tests, así que un snippet no se puede quedar atrás del generador.
 </Aside>

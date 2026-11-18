@@ -2,6 +2,20 @@
 
 Log de modificaciones. Lo más reciente arriba.
 
+## 2026-11-18 — La web en castellano (Fase 23)
+
+- Las 22 páginas de docs, la home, la terminal, la cabecera, el pie, el 404 y `llms.txt`, en
+  castellano. Los slugs de las URL no cambian. Starlight con `lang: 'es'` (sus propios textos).
+- El lema pasa a «Genera. Ordena. Zarpa.»: la home, el pie, `og.png` (`pnpm brand:images`) y la
+  marca del repositorio (`pnpm brand:repo`). La imagen social de GitHub hay que volver a subirla
+  a mano (`PENDIENTE.md`).
+- `sync-repo-docs.mjs` lee la ayuda de la CLI en castellano (`Uso:`, `Argumentos:`, `Opciones:`,
+  `[valores posibles: …]`) y escribe las referencias de la CLI y de `make` en castellano.
+- La cosecha (`pnpm harvest`), con los mensajes de la CLI en castellano.
+- Arreglado de paso lo que se había quedado atrás tras las Fases 21 y 22: la arquitectura del
+  frontend, `/productos/nuevo`, `mensajes.ts`, los enums como `string` y el `<select>`, los
+  snippets web, `useAuth()` (`usuario`, `puede`), `/registro`.
+
 ## 2026-11-17 — Puerto 0.22: lo que encontró canasta
 
 - *Entities*: las reglas del modelo viven en `validar` (la llaman `new` y `actualizar`), y una

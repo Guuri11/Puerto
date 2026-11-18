@@ -1,64 +1,66 @@
 ---
-title: The web frontend
-description: "The React frontend every Puerto project gets: containers over the typed API client, props-only views, in Spanish, and a CRUD screen per entity."
+title: El frontend web
+description: "El frontend React de cada proyecto Puerto: contenedores sobre el cliente tipado, vistas que solo reciben props, en castellano, y pantallas CRUD por entidad."
 ---
 
 import { FileTree, Aside } from '@astrojs/starlight/components';
 
-`puerto nuevo` includes `web/` unless you pass `--sin-web`: a React 19 app with daisyUI on
-Tailwind, run by Bun. `scaffold` writes each entity's screens (list, detail, and a form for
-create and edit), so the first thing you scaffold already works in a browser.
+`puerto nuevo` incluye `web/` salvo que pases `--sin-web`: una app React 19 con daisyUI sobre
+Tailwind, que corre con Bun. `scaffold` escribe las pantallas de cada entidad (lista, detalle y un
+formulario para crear y editar), así que lo primero que generas ya funciona en un navegador.
 
 ```bash
-make web/install     # once
-make web/dev         # http://localhost:5173, /api proxied to :8080
+make web/install     # una vez
+make web/dev         # http://localhost:5173, con /api redirigido a :8080
 ```
 
-The frontend is the presentation layer and little else
-([ADR-0025](/docs/decisions/adr/0025-el-frontend-es-presentacion/)): containers call the API
-through its typed client, views render what they are given. It has no domain model, no ports and
-no adapters of its own; the rules live in the backend. Like the backend, it is written in Spanish
-(`ContenedorListaProducto`, `useCarga`, `desenvolver`), and its screens use neutral phrases
-(`Crear producto`, `¿Borrar producto?`), because Puerto cannot know an entity's gender.
+El frontend es la capa de presentación y poco más
+([ADR-0025](/docs/decisions/adr/0025-el-frontend-es-presentacion/)): los contenedores llaman a la
+API con su cliente tipado, y las vistas pintan lo que reciben. No tiene modelo de dominio, ni
+puertos, ni adaptadores propios; las reglas viven en el backend. Como el backend, está en
+castellano (`ContenedorListaProducto`, `useCarga`, `desenvolver`), y sus pantallas usan frases
+neutras (`Crear producto`, `¿Borrar producto?`), porque Puerto no puede saber el género de una
+entidad.
 
-## The contract is the OpenAPI spec
+## El contrato es la especificación OpenAPI
 
-The backend's routes are poem-openapi, so the API describes itself. A test in `bootstrap.rs`
-exports the spec to `docs/api/openapi.json`, and the frontend's types are generated from it with
-`openapi-typescript`. The screens use them directly: `Esquemas["DtoProducto"]`,
-`Esquemas["PeticionCrearProducto"]`.
+Las rutas del backend son poem-openapi, así que la API se describe sola. Un test de
+`bootstrap.rs` exporta la especificación a `docs/api/openapi.json`, y los tipos del frontend se
+generan desde ella con `openapi-typescript`. Las pantallas los usan directamente:
+`Esquemas["DtoProducto"]`, `Esquemas["PeticionCrearProducto"]`.
 
 ```bash
-make web/sync    # after a scaffold, and after touching a route or a DTO
+make web/sync    # tras un scaffold, y tras tocar una ruta o un DTO
 ```
 
-It re-exports the spec, regenerates `web/src/api/esquema.d.ts`, and formats `web/`. Commit both.
-Until you run it, `make test` fails, right in the screen that no longer matches the API. That
-failure is the drift check: the frontend cannot silently disagree with the API.
+Vuelve a exportar la especificación, regenera `web/src/api/esquema.d.ts` y formatea `web/`. Haz
+commit de los dos. Hasta que lo ejecutes, `make test` falla, justo en la pantalla que ya no encaja
+con la API. Ese fallo es la comprobación de deriva: el frontend no puede llevarle la contraria a la
+API en silencio.
 
-## One folder per kind of thing
+## Una carpeta por clase de cosa
 
 <FileTree>
 - web/src/
   - api/
-    - cliente.ts crearClienteApi, ClienteApi, Esquemas (the DTOs by name)
+    - cliente.ts crearClienteApi, ClienteApi, Esquemas (los DTO por nombre)
     - http.ts desenvolver, ErrorApi, TAMANO_PAGINA
-    - esquema.d.ts **generated** by make web/sync
+    - esquema.d.ts **generado** por make web/sync
   - contextos/producto/
-    - contenedores/ lista, detalle, formulario: calls and state, with tests
-    - vistas/ lista, detalle, formulario: props only
-    - mensajes.ts what each error code says, and to which field
+    - contenedores/ lista, detalle, formulario: llamadas y estado, con tests
+    - vistas/ lista, detalle, formulario: solo props
+    - mensajes.ts qué dice cada código de error, y en qué campo
   - paginas/ inicio, no-encontrada
-  - compartido/ formularios.ts, use-carga.ts, ui/ (marco, alerts, pagination, field errors)
-  - generado/ **generated**: composition root and route table
-  - rutas.tsx yours: routes of your own
-  - pruebas/ renderizarPantalla, the fake API, MadreProducto
+  - compartido/ formularios.ts, use-carga.ts, ui/ (marco, alertas, paginación, errores de campo)
+  - generado/ **generado**: la raíz de composición y la tabla de rutas
+  - rutas.tsx tuyo: rutas propias
+  - pruebas/ renderizarPantalla, la API falsa, MadreProducto
 </FileTree>
 
-A container gets the client from `useDependencias()` and unwraps each call with `desenvolver`,
-which rejects with an `ErrorApi` carrying the API's `codigo`:
+Un contenedor recibe el cliente de `useDependencias()` y desenvuelve cada llamada con
+`desenvolver`, que rechaza con un `ErrorApi` que lleva el `codigo` de la API:
 
-```tsx title="web/src/contextos/producto/contenedores/detalle-producto.tsx (excerpt)"
+```tsx title="web/src/contextos/producto/contenedores/detalle-producto.tsx (fragmento)"
 const { api } = useDependencias();
 const producto = useCarga(
   () => desenvolver(api.GET("/productos/{id}", { params: { path: { id } } })),
@@ -66,56 +68,57 @@ const producto = useCarga(
 );
 ```
 
-`dependency-cruiser` keeps the split honest in `make web/lint`, with the type check and Biome: a
-view cannot import the client, `useDependencias` or `useCarga`, and only `generado/dependencias.ts`
-and the tests build the client. When real client logic arrives, a rule or an orchestration, write
-it by hand where it belongs.
+`dependency-cruiser` mantiene la separación en `make web/lint`, junto al chequeo de tipos y
+Biome: una vista no puede importar el cliente, `useDependencias` ni `useCarga`, y solo
+`generado/dependencias.ts` y los tests construyen el cliente. Cuando llegue lógica de cliente de
+verdad, una regla o una orquestación, escríbela a mano donde corresponda.
 
-## Fields become controls
+## Los campos se convierten en controles
 
-| Field | API type | Control |
+| Campo | Tipo en la API | Control |
 |---|---|---|
-| `String`, `Uuid` | `string` | text input, `required` |
-| `i64`, `f64` | `number` | number input (`step=any` for `f64`) |
+| `String`, `Uuid` | `string` | input de texto, `required` |
+| `i64`, `f64` | `number` | input numérico (`step=any` para `f64`) |
 | `bool` | `boolean` | checkbox |
 | `DateTime` | `string` (ISO 8601) | `datetime-local` |
-| `opt:T` | `T`, optional; `null` when absent | as `T`, not required; an empty input is left out |
-| `vec:T` | `T[]` | text, comma-separated |
-| `map` | `Record<string, string>` | textarea, `clave=valor` per line |
-| enum VO | `string` | `<select>` of its variants |
-| `ref:Cliente` | `string` | `<select>` of the first 100 clientes; on the detail, a link named by the cliente's label, loaded by the container |
+| `opt:T` | `T`, opcional; `null` cuando falta | como `T`, no obligatorio; un input vacío no se manda |
+| `vec:T` | `T[]` | texto, separado por comas |
+| `map` | `Record<string, string>` | textarea, una línea `clave=valor` por entrada |
+| objeto valor enum | `string` | `<select>` con sus variantes |
+| `ref:Cliente` | `string` | `<select>` con los 100 primeros clientes; en el detalle, un enlace con la etiqueta del cliente, que carga el contenedor |
 
-## Errors land next to their field
+## Los errores aparecen junto a su campo
 
-The frontend does not copy the domain's validation: the server is the authority. A `422` comes
-back with its `codigo`, and `mensajes.ts`, generated from the same list as `errores.rs`, turns
-it into a sentence and a field:
+El frontend no copia la validación del dominio: la autoridad es el servidor. Un `422` vuelve con
+su `codigo`, y `mensajes.ts`, generado de la misma lista que `errores.rs`, lo convierte en una
+frase y un campo:
 
-```ts title="web/src/contextos/cliente/mensajes.ts (excerpt)"
+```ts title="web/src/contextos/cliente/mensajes.ts (fragmento)"
 "cliente.email_invalido": "Email: no válido",
 "cliente.validacion.nombre_vacio": "Nombre: obligatorio",
 ```
 
-`cliente.validacion.nombre_vacio` marks the `nombre` input. `cliente.duplicado` ("Estos valores
-ya están en uso") goes to the form's alert. A code nobody wrote a message for shows the code
-itself.
+`cliente.validacion.nombre_vacio` marca el input `nombre`. `cliente.duplicado` («Estos valores ya
+están en uso») va a la alerta del formulario. Un código para el que nadie escribió un mensaje se
+muestra tal cual.
 
-## Routes
+## Rutas
 
-`/productos`, `/productos/nuevo`, `/productos/:id` and `/productos/:id/editar`. The list's page
-lives in the URL (`?pagina=2`), so reload and back keep it. Add your own routes in `rutas.tsx`,
-never in `generado/`, which is rewritten.
+`/productos`, `/productos/nuevo`, `/productos/:id` y `/productos/:id/editar`. La página de la lista
+va en la URL (`?pagina=2`), así que recargar y volver atrás la conservan. Añade tus rutas en
+`rutas.tsx`, nunca en `generado/`, que se reescribe.
 
 ## Tests
 
-`bun test` with happy-dom and Testing Library. Each container is tested against `apiFalsa`, one
-in-memory fake of the generated API for every entity: it answers pages, `404` with
-`<entidad>.no_encontrado`, `201`, `200` and `204`, and the error code a test asks for
-(`{ "POST /productos": "producto.duplicado" }`). The tests speak HTTP, so they exercise the real
-routes and parameters. `make test` and `make lint` include `web/` whenever the directory exists.
+`bun test` con happy-dom y Testing Library. Cada contenedor se prueba contra `apiFalsa`, un único
+falso en memoria de la API generada para todas las entidades: responde páginas, `404` con
+`<entidad>.no_encontrado`, `201`, `200` y `204`, y el código de error que le pida un test
+(`{ "POST /productos": "producto.duplicado" }`). Los tests hablan HTTP, así que ejercitan las
+rutas y los parámetros reales. `make test` y `make lint` incluyen `web/` siempre que exista el
+directorio.
 
-<Aside type="note" title="The stack, pinned">
-React 19 · daisyUI 5 on Tailwind 4 · wouter for routing · openapi-fetch · Vite · Bun · Biome ·
-dependency-cruiser. Exact versions, chosen for what an agent writes well and what Puerto can keep
-green in its test matrix.
+<Aside type="note" title="La pila, fijada">
+React 19 · daisyUI 5 sobre Tailwind 4 · wouter para las rutas · openapi-fetch · Vite · Bun · Biome ·
+dependency-cruiser. Versiones exactas, elegidas por lo que un agente escribe bien y lo que Puerto
+puede mantener en verde en su matriz de tests.
 </Aside>

@@ -100,6 +100,6 @@ test.describe('La verdad de los datos', () => {
       .filter((f) => /^\d{4}-.+\.md$/.test(f)).length;
     await page.goto('/');
     await expect(page.locator('.hero__meta')).toContainText(`puerto ${version}`);
-    await expect(page.locator('#decisions-title')).toContainText(`${adrs} decisions`);
+    await expect(page.locator('#decisions-title')).toContainText(`${adrs} decisiones`);
   });
 });

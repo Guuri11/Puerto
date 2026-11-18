@@ -1,19 +1,20 @@
 ---
-title: Database and migrations
-description: Start a Puerto project with Postgres and SQLx, run its migrations, keep the SQLx offline cache, and test repositories against a real database.
+title: Base de datos y migraciones
+description: Empieza un proyecto Puerto con Postgres y SQLx, ejecuta sus migraciones, mantén la caché offline de SQLx y prueba los repositorios contra un Postgres real.
 ---
 
 import { Steps, Aside } from '@astrojs/starlight/components';
 
-`puerto nuevo --db` gives a project a Postgres database through [SQLx](https://github.com/launchbadge/sqlx):
-checked SQL, written out in each repository, with no ORM in between. A project without `--db`
-keeps its data in memory, which is good enough to try an idea and is lost on restart.
+`puerto nuevo --db` le da a un proyecto una base de datos Postgres con
+[SQLx](https://github.com/launchbadge/sqlx): SQL comprobado, escrito en cada repositorio, sin ORM
+por medio. Un proyecto sin `--db` guarda sus datos en memoria, que basta para probar una idea y se
+pierde al reiniciar.
 
-## Starting a database project
+## Empezar un proyecto con base de datos
 
 <Steps>
 
-1. **Create it and add an entity.**
+1. **Créalo y añade una entidad.**
 
    ```bash
    puerto nuevo --nombre tienda --db
@@ -21,32 +22,33 @@ keeps its data in memory, which is good enough to try an idea and is lost on res
    puerto generar scaffold Producto -- nombre:String precio:i64 sku:String!
    ```
 
-   ```txt title="output (end)"
-   ✓ Migration 'crear_tabla_producto' created in migraciones/
-     Schema pre-filled — run: make sqlx/migrate && make sqlx/prepare
+   ```txt title="salida (el final)"
+   ✓ Migración 'crear_tabla_producto' creada en migraciones/
+     Esquema ya escrito; ejecuta: make sqlx/migrate && make sqlx/prepare
    ```
 
-2. **Install the tools, once.**
+2. **Instala las herramientas, una vez.**
 
    ```bash
    make setup    # cargo-nextest, sqlx-cli, cargo-audit
    ```
 
-3. **Migrate and prepare.** Both start Postgres in Docker first (`docker-compose.yml`, `postgres:16`).
+3. **Migra y prepara.** Los dos arrancan antes Postgres en Docker (`docker-compose.yml`,
+   `postgres:16`).
 
    ```bash
-   make sqlx/migrate     # apply the migrations
-   make sqlx/prepare     # write .sqlx/, the offline query cache
+   make sqlx/migrate     # aplica las migraciones
+   make sqlx/prepare     # escribe .sqlx/, la caché offline de las consultas
    ```
 
-4. **Run it.**
+4. **Arráncalo.**
 
    ```bash
    make run
    ```
 
-   On startup the API connects, runs pending migrations and serves. If the database is down it
-   says so and exits, instead of panicking:
+   Al arrancar, la API se conecta, ejecuta las migraciones pendientes y sirve. Si la base de
+   datos está caída lo dice y sale, en lugar de hacer panic:
 
    ```txt
    … — ¿está arrancada la base de datos? `make docker-compose/up`
@@ -54,17 +56,17 @@ keeps its data in memory, which is good enough to try an idea and is lost on res
 
 </Steps>
 
-## What `--db` changes
+## Lo que cambia `--db`
 
-| | In memory | `--db` |
+| | En memoria | `--db` |
 |---|---|---|
-| Repository | `RepositorioProductoEnMemoria` | `RepositorioProductoPostgres` + `fila.rs` (the row, `FilaProducto`) |
-| Migration | none | `migraciones/…_crear_tabla_producto.sql`, schema pre-filled from the fields |
-| `/health/ready` | always ready | runs `SELECT 1`; `503` when Postgres does not answer |
-| Tests | unit | unit + `#[sqlx::test]` integration tests per repository |
-| Files | | `docker-compose.yml`, `.cargo/config.toml`, `DATABASE_URL` in `.env`, `migraciones/`, the `migrador` crate |
+| Repositorio | `RepositorioProductoEnMemoria` | `RepositorioProductoPostgres` + `fila.rs` (la fila, `FilaProducto`) |
+| Migración | ninguna | `migraciones/…_crear_tabla_producto.sql`, con el esquema escrito desde los campos |
+| `/health/ready` | siempre listo | ejecuta `SELECT 1`; `503` cuando Postgres no responde |
+| Tests | unitarios | unitarios + tests de integración `#[sqlx::test]` por repositorio |
+| Ficheros | | `docker-compose.yml`, `.cargo/config.toml`, `DATABASE_URL` en `.env`, `migraciones/`, el crate `migrador` |
 
-The scaffold writes the whole table, so there is nothing to fill in:
+El scaffold escribe la tabla entera, así que no hay nada que rellenar:
 
 ```sql title="migraciones/…_crear_tabla_producto.sql"
 -- Migración de Puerto: crear_tabla_producto
@@ -84,79 +86,80 @@ CREATE TABLE productos (
 CREATE UNIQUE INDEX productos_sku_key ON productos (sku) WHERE borrado = false;
 ```
 
-Deletes are soft, so the unique index is partial: a deleted product does not keep its SKU taken
-([ADR-0003](/docs/decisions/adr/0003-unique-indexes-are-partial/)).
+El borrado es lógico, así que el índice único es parcial: un producto borrado no sigue ocupando su
+SKU ([ADR-0003](/docs/decisions/adr/0003-unique-indexes-are-partial/)).
 
-A reference is a foreign key. `puerto generar scaffold Pedido -- cliente_id:ref:Cliente` writes
-the constraint and an index for the list's filter:
+Una referencia es una clave foránea. `puerto generar scaffold Pedido -- cliente_id:ref:Cliente`
+escribe la restricción y un índice para el filtro de la lista:
 
-```sql title="migraciones/…_crear_tabla_pedido.sql (excerpt)"
+```sql title="migraciones/…_crear_tabla_pedido.sql (fragmento)"
 cliente_id UUID NOT NULL CONSTRAINT pedidos_cliente_id_fkey REFERENCES clientes (id),
 -- …
 CREATE INDEX pedidos_cliente_id_idx ON pedidos (cliente_id);
 ```
 
-The database checks that the customer exists, not the use case
+Que el cliente existe lo comprueba la base de datos, no el caso de uso
 ([ADR-0022](/docs/decisions/adr/0022-references-are-typed-ids-checked-by-foreign-keys/)).
 
-Every context's migrations live in one directory, `migraciones/` at the root, because they all
-build one database. The `migrador` crate embeds them at compile time as
-`migrador::MIGRADOR` (`sqlx::migrate!("../migraciones")`), and its `build.rs` tells Cargo to
-rebuild when that directory changes, so a new migration is picked up even when no `.rs` file
-changed. The API runs `MIGRADOR` at startup, and every Postgres test runs on it.
+Las migraciones de todos los contextos viven en un solo directorio, `migraciones/` en la raíz,
+porque todas construyen una misma base de datos. El crate `migrador` las embebe al compilar como
+`migrador::MIGRADOR` (`sqlx::migrate!("../migraciones")`), y su `build.rs` le dice a Cargo que
+recompile cuando cambia ese directorio, así que una migración nueva se ve aunque no cambie ningún
+`.rs`. La API ejecuta `MIGRADOR` al arrancar, y todos los tests de Postgres corren sobre él.
 
-## Writing a migration
+## Escribir una migración
 
 ```bash
 puerto generar migracion anadir_stock_a_productos
 ```
 
-```txt title="output"
-✓ Migration 'anadir_stock_a_productos' created in migraciones/
-  Edit the file, then run: make sqlx/migrate && make sqlx/prepare
+```txt title="salida"
+✓ Migración 'anadir_stock_a_productos' creada en migraciones/
+  Edita el fichero y ejecuta: make sqlx/migrate && make sqlx/prepare
 ```
 
-Puerto writes the file itself (no `sqlx` CLI needed for this step) with a version that is unique
-even within the same second. The command is refused in a project without `--db`.
+Puerto escribe el fichero él mismo (este paso no necesita la CLI de `sqlx`), con una versión que es
+única aunque sea en el mismo segundo. El comando se rechaza en un proyecto sin `--db`.
 
-<Aside type="caution" title="Read every migration">
-A migration fails slowly and expensively: the generated `AGENTS.md` lists migrations as Tier 1,
-where a person reads the whole diff before it is committed, however green the tests are.
+<Aside type="caution" title="Lee cada migración">
+Una migración falla despacio y cuesta cara: el `AGENTS.md` generado pone las migraciones en el
+Tier 1, donde una persona lee el diff entero antes del commit, por muy verdes que estén los tests.
 </Aside>
 
-## The offline cache
+## La caché offline
 
-`query_as!` checks every query against the database **at compile time**. So that the project
-builds without a running Postgres (in CI, on a fresh clone), `.cargo/config.toml` sets
-`SQLX_OFFLINE=true` and SQLx reads the answers from `.sqlx/`. Commit that directory.
+`query_as!` comprueba cada consulta contra la base de datos **al compilar**. Para que el proyecto
+compile sin un Postgres en marcha (en CI, en un clon nuevo), `.cargo/config.toml` pone
+`SQLX_OFFLINE=true` y SQLx lee las respuestas de `.sqlx/`. Haz commit de ese directorio.
 
-After changing a query or a migration:
+Tras cambiar una consulta o una migración:
 
 ```bash
-make sqlx/prepare     # regenerate .sqlx/ against the live database
-make sqlx/check       # verify .sqlx/ matches the queries (for CI)
+make sqlx/prepare     # regenera .sqlx/ contra la base de datos en marcha
+make sqlx/check       # comprueba que .sqlx/ coincide con las consultas (para CI)
 ```
 
-`make sqlx/online` and `make sqlx/offline` switch the mode for local work.
+`make sqlx/online` y `make sqlx/offline` cambian el modo para trabajar en local.
 
-## Errors from the driver
+## Los errores del driver
 
-Every Postgres repository maps driver errors through one function, `mapear_error_sqlx`, from
-`puerto-sqlx`: a unique violation becomes `ErrorRepositorio::Duplicado` (`409`), and anything
-else `NoDisponible`. A row the domain rejects (stored data gone bad) is logged and reported as
-`DatosInvalidos`, a `500`, never a `422` that would blame the caller
+Cada repositorio Postgres traduce los errores del driver con una sola función,
+`mapear_error_sqlx`, de `puerto-sqlx`: un único violado pasa a ser `ErrorRepositorio::Duplicado`
+(`409`), y cualquier otra cosa `NoDisponible`. Una fila que el dominio rechaza (datos guardados que
+se estropearon) se registra y se devuelve como `DatosInvalidos`, un `500`, nunca un `422` que
+culparía a quien llama
 ([ADR-0015](/docs/decisions/adr/0015-repositories-return-one-repository-error/)).
 
-An entity with references maps through `mapear_error_sqlx_con`, which knows its foreign keys by
-constraint name. A write that names a customer who does not exist violates
-`pedidos_cliente_id_fkey` and becomes `ErrorRepositorio::ReferenciaInexistente("cliente_id")`,
-which the entity's error turns into `pedido.validacion.cliente_id_no_encontrado`, a `422` on that
-field.
+Una entidad con referencias traduce con `mapear_error_sqlx_con`, que conoce sus claves foráneas por
+el nombre de la restricción. Una escritura que nombra un cliente que no existe viola
+`pedidos_cliente_id_fkey` y pasa a ser `ErrorRepositorio::ReferenciaInexistente("cliente_id")`,
+que el error de la entidad convierte en `pedido.validacion.cliente_id_no_encontrado`, un `422`
+sobre ese campo.
 
-## Integration tests
+## Tests de integración
 
-Each Postgres repository comes with `#[sqlx::test]` tests: SQLx creates a fresh database per test,
-applies the migrations of `migrador::MIGRADOR`, and drops it afterwards.
+Cada repositorio Postgres trae tests `#[sqlx::test]`: SQLx crea una base de datos nueva por test,
+aplica las migraciones de `migrador::MIGRADOR` y la borra después.
 
 ```rust
 #[sqlx::test(migrator = "migrador::MIGRADOR")]
@@ -177,15 +180,15 @@ async fn deberia_guardar_y_recuperar_por_id(pool: PgPool) {
 }
 ```
 
-`sembrar` comes from `infra_producto::pruebas::siembra`, public behind the `pruebas` feature, so
-the tests of a context that references `Producto` can seed one too. The tests need `DATABASE_URL`
-and a running Postgres: `make test/infraestructura`, or `make test` with `make docker-compose/up`
-first.
+`sembrar` sale de `infra_producto::pruebas::siembra`, público tras la feature `pruebas`, así que los
+tests de un contexto que referencia `Producto` también pueden sembrar uno. Los tests necesitan
+`DATABASE_URL` y un Postgres en marcha: `make test/infraestructura`, o `make test` tras
+`make docker-compose/up`.
 
-## Housekeeping
+## Mantenimiento
 
-| Command | Does |
+| Comando | Qué hace |
 |---|---|
-| `make db/arrancar` / `make db/parar` | Start or stop the containers |
-| `make db/reiniciar` | Drop everything and re-run the migrations. Asks you to type `DESTRUIR` |
-| `make generar/migracion NOMBRE=…` | The same as `puerto generar migracion` |
+| `make db/arrancar` / `make db/parar` | Arranca o para los contenedores |
+| `make db/reiniciar` | Lo borra todo y vuelve a ejecutar las migraciones. Te pide que escribas `DESTRUIR` |
+| `make generar/migracion NOMBRE=…` | Lo mismo que `puerto generar migracion` |

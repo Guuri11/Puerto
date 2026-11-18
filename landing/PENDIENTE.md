@@ -25,7 +25,8 @@ Nada. Desplegado por la integración de Git de Vercel (push a `main`), y el buil
 ## 🔵 Técnico
 
 - [x] Marca del README rehecha (2026-10-13): `pnpm brand:repo` genera `../assets/brand/`.
-- [ ] **Subir `assets/brand/github-social.png`** en GitHub → *Settings → Social preview*. Es manual:
+- [ ] **Subir `assets/brand/github-social.png`** en GitHub → *Settings → Social preview* (otra vez:
+      el lema cambió a «Genera. Ordena. Zarpa.» el 2026-11-18). Es manual:
       GitHub no la lee del repositorio.
 - [ ] El banner ASCII de arranque (`puerto-web`) ya dibuja tres pilas de contenedores: encaja con
       la marca nueva, no hay que tocarlo.

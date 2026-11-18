@@ -1,44 +1,45 @@
 ---
-title: Mail
-description: Generate a mail as a domain port with its templates, send it exactly once per event from the worker, and see every mail in development with Mailpit.
+title: Correo
+description: Genera un correo como puerto del dominio con sus plantillas, envíalo una sola vez por evento desde el worker y mira cada correo en desarrollo con Mailpit.
 ---
 
 import { FileTree, Aside } from '@astrojs/starlight/components';
 
-In Puerto a mail is a domain concept with a port, like a repository. The code that decides to
-send it depends on `EnviadorCorreoBienvenida`, never on SMTP, and its text lives in three
-template files you edit like any other file.
+En Puerto un correo es un concepto del dominio con un puerto, como un repositorio. El código que
+decide enviarlo depende de `EnviadorCorreoBienvenida`, nunca de SMTP, y su texto vive en tres
+ficheros de plantilla que editas como cualquier otro.
 
 ```bash
 puerto generar correo bienvenida -- nombre:String plan:opt:String
 ```
 
-```txt title="output"
-✓ Mail 'bienvenida' added — yours from here on:
-  contextos/correo/dominio/src/bienvenida.rs  CorreoBienvenida + the port EnviadorCorreoBienvenida
-  contextos/correo/infraestructura/src/bienvenida.rs  EnviadorCorreoBienvenidaPlantilla, with its tests
+```txt title="salida"
+✓ Correo 'bienvenida' añadido; desde aquí es tuyo:
+  contextos/correo/dominio/src/bienvenida.rs  CorreoBienvenida y el puerto EnviadorCorreoBienvenida
+  contextos/correo/infraestructura/src/bienvenida.rs  EnviadorCorreoBienvenidaPlantilla, con sus tests
   contextos/correo/infraestructura/plantillas/bienvenida/  asunto.txt, cuerpo.html, cuerpo.txt
-  Mailpit added to docker-compose.yml; SMTP_URL and MAIL_FROM to .env. See the mails with `make correo/ui`.
+  Mailpit añadido a docker-compose.yml; SMTP_URL y MAIL_FROM, a .env. Mira los correos con `make correo/ui`.
 ```
 
-The fields after `--` are the values the text shows. They are primitives or `opt:<type>`, and
-the recipient `para` is always there. Every mail lives in one context, `correo`, with a
-`dominio` and an `infraestructura` crate and no use cases, so no entity can be called `Correo`.
+Los campos tras `--` son los valores que muestra el texto. Son primitivos u `opt:<tipo>`, y el
+destinatario `para` siempre está. Todos los correos viven en un contexto, `correo`, con un crate
+`dominio` y otro `infraestructura` y sin casos de uso, así que ninguna entidad puede llamarse
+`Correo`.
 
-## The three pieces
+## Las tres piezas
 
 <FileTree>
 - contextos/correo/
-  - dominio/src/bienvenida.rs **CorreoBienvenida** and the port **EnviadorCorreoBienvenida**
+  - dominio/src/bienvenida.rs **CorreoBienvenida** y el puerto **EnviadorCorreoBienvenida**
   - infraestructura/
-    - src/bienvenida.rs **EnviadorCorreoBienvenidaPlantilla**: renders, then sends
+    - src/bienvenida.rs **EnviadorCorreoBienvenidaPlantilla**: renderiza y envía
     - plantillas/bienvenida/
       - asunto.txt
       - cuerpo.html
       - cuerpo.txt
 </FileTree>
 
-```rust title="contextos/correo/dominio/src/bienvenida.rs (excerpt)"
+```rust title="contextos/correo/dominio/src/bienvenida.rs (fragmento)"
 #[derive(Debug, Clone, PartialEq)]
 pub struct CorreoBienvenida {
     pub para: String,
@@ -52,8 +53,9 @@ pub trait EnviadorCorreoBienvenida: Send + Sync {
 }
 ```
 
-The templates are [minijinja](https://github.com/mitsuhiko/minijinja), in strict mode: an
-unknown variable is an error, not an empty string. Wrap an optional field in a check:
+Las plantillas son [minijinja](https://github.com/mitsuhiko/minijinja), en modo estricto: una
+variable desconocida es un error, no una cadena vacía. Envuelve un campo opcional en una
+comprobación:
 
 ```jinja title="contextos/correo/infraestructura/plantillas/bienvenida/cuerpo.txt"
 Bienvenida
@@ -63,24 +65,24 @@ Nombre: {{ nombre }}
 {% endif %}
 ```
 
-`EnviadorCorreoBienvenidaPlantilla`'s tests render every template, so a typo in one fails
-`make test`, not a customer's inbox.
+Los tests de `EnviadorCorreoBienvenidaPlantilla` renderizan cada plantilla, así que una errata
+hace fallar `make test`, no la bandeja de entrada de un cliente.
 
-## Sending it when something happens
+## Enviarlo cuando pasa algo
 
-In a project with [domain events](/docs/guides/events/), tie the mail to an event and Puerto
-writes the consumer that sends it:
+En un proyecto con [eventos de dominio](/docs/guides/events/), ata el correo a un evento y Puerto
+escribe el consumidor que lo envía:
 
 ```bash
 puerto generar correo bienvenida --tras cliente_creado --para email
 ```
 
-`--para` names the snapshot's `String` field that holds the address. The fields come from the
-event's snapshot, so you do not list them. The worker gets
-`presentacion/worker/src/consumidores/correo_bienvenida.rs`, which builds the mail from the
-snapshot and sends it **once per event**:
+`--para` nombra el campo `String` del snapshot que guarda la dirección. Los campos salen del
+snapshot del evento, así que no los listas. El worker recibe
+`presentacion/worker/src/consumidores/correo_bienvenida.rs`, que construye el correo con el
+snapshot y lo envía **una vez por evento**:
 
-```rust title="presentacion/worker/src/consumidores/correo_bienvenida.rs (excerpt)"
+```rust title="presentacion/worker/src/consumidores/correo_bienvenida.rs (fragmento)"
 let correo = match evento.tipo_evento.as_str() {
     CLIENTE_CREADO => match evento.decodificar::<SnapshotCliente>() {
         Ok(cliente) => CorreoBienvenida {
@@ -95,35 +97,35 @@ let correo = match evento.tipo_evento.as_str() {
 };
 ```
 
-Events are delivered at least once, so `puerto_correo::enviar_una_vez` keeps a
-`correos_enviados` row per event: a redelivered event does not send the mail again. A crash
-between the send and that row sends it twice, never zero times. A permanent SMTP failure (`5xx`)
-is dead-lettered, and a temporary one (`4xx`, a server that is down) is retried
-([ADR-0020](/docs/decisions/adr/0020-mail-port-per-mail-sent-from-the-worker/)). The first mail
-tied to an event adds the `correos_enviados` migration.
+Los eventos se entregan al menos una vez, así que `puerto_correo::enviar_una_vez` guarda una fila
+de `correos_enviados` por evento: un evento que se vuelve a entregar no vuelve a enviar el correo.
+Una caída entre el envío y esa fila lo envía dos veces, nunca cero. Un fallo SMTP permanente
+(`5xx`) se descarta, y uno temporal (`4xx`, un servidor caído) se reintenta
+([ADR-0020](/docs/decisions/adr/0020-mail-port-per-mail-sent-from-the-worker/)). El primer correo
+atado a un evento añade la migración de `correos_enviados`.
 
 <Aside type="caution">
-Keep the consumer's `CORREO` constant as it is. It is the key in `correos_enviados`, and renaming
-it sends every past mail again on the next redelivery.
+Deja la constante `CORREO` del consumidor como está. Es la clave en `correos_enviados`, y
+renombrarla vuelve a enviar todos los correos pasados en la siguiente reentrega.
 </Aside>
 
-## Sending from a use case
+## Enviarlo desde un caso de uso
 
-Without events, the port is there and the implementation is there, but Puerto does not wire a
-mailer into a use case yet. Hold an `Arc<dyn EnviadorCorreoBienvenida>` in the use case and test
-it with `dominio_correo::bienvenida::dobles::MockEnviadorCorreoBienvenida`. That is the piece
-the next phases add, for password resets.
+Sin eventos, el puerto está y la implementación está, pero Puerto aún no cablea un enviador en un
+caso de uso. Guarda un `Arc<dyn EnviadorCorreoBienvenida>` en el caso de uso y pruébalo con
+`dominio_correo::bienvenida::dobles::MockEnviadorCorreoBienvenida`. Esa es la pieza que añadirán
+las próximas fases, para el restablecimiento de contraseñas.
 
-## Development and production
+## Mailpit y SMTP
 
-`docker-compose.yml` runs [Mailpit](https://mailpit.axllent.org), which catches every mail sent
-in development. Nothing reaches a real inbox.
+`docker-compose.yml` arranca [Mailpit](https://mailpit.axllent.org), que recoge todos los correos
+enviados en desarrollo. Nada llega a una bandeja real.
 
 ```bash
-make correo/ui      # starts the containers, prints Mailpit's address: http://localhost:8025
+make correo/ui      # arranca los contenedores e imprime la dirección de Mailpit: http://localhost:8025
 ```
 
-| Variable | Development | Production |
+| Variable | Desarrollo | Producción |
 |---|---|---|
-| `SMTP_URL` | `smtp://localhost:1025` (Mailpit) | your provider's SMTP URL |
-| `MAIL_FROM` | `no-reply@<project>.localhost` | a sender your domain authorizes |
+| `SMTP_URL` | `smtp://localhost:1025` (Mailpit) | la URL SMTP de tu proveedor |
+| `MAIL_FROM` | `no-reply@<proyecto>.localhost` | un remitente que autorice tu dominio |

@@ -88,7 +88,7 @@ writeFileSync(
   [
     '---',
     'title: Changelog',
-    `description: ${yaml('Every Puerto release, newest first: what was added, changed and fixed in the CLI and the runtime crates, and how to migrate a generated project.')}`,
+    `description: ${yaml('Cada release de Puerto, de la más nueva a la más antigua: lo añadido, cambiado y arreglado en la CLI y el runtime, y cómo migrar un proyecto generado.')}`,
     `editUrl: ${yaml('https://github.com/Guuri11/Puerto/edit/main/CHANGELOG.md')}`,
     'tableOfContents:',
     '  maxHeadingLevel: 2',
@@ -102,12 +102,12 @@ writeFileSync(
 // ── Referencia del CLI, desde la ayuda real (src/data/harvest/cli.json, `pnpm harvest`) ─────
 const cli = JSON.parse(readFileSync(join(LANDING, 'src/data/harvest/cli.json'), 'utf8'));
 
-/** La ayuda de clap: descripción, `Usage:` y las secciones `Arguments:` / `Options:`. */
+/** La ayuda de clap (en castellano): descripción, `Uso:` y las secciones `Argumentos:` / `Opciones:`. */
 function parseHelp(text) {
   const lines = text.split('\n');
-  const usageAt = lines.findIndex((l) => l.startsWith('Usage: '));
+  const usageAt = lines.findIndex((l) => l.startsWith('Uso: '));
   const about = lines.slice(0, usageAt).join(' ').replace(/\s+/g, ' ').trim();
-  const usage = lines[usageAt].replace('Usage: ', '');
+  const usage = lines[usageAt].replace('Uso: ', '');
   const sections = {};
   let current = null;
   for (const line of lines.slice(usageAt + 1)) {
@@ -132,48 +132,48 @@ const codeify = (s) =>
     // `name:String`, `opt:<type>`: lo que se escribe en la terminal, como código (y sin que el
     // `<type>` se lea como HTML).
     .replace(/(^|[\s(])([a-z_]+:[\w:<>/!]+|--[a-z][a-z-]*)(?=[\s.,;)]|$)/g, '$1`$2`')
-    .replace(/\s*\[possible values: ([^\]]+)\]/, (_, v) =>
-      `. Possible values: ${v.split(', ').map((x) => `\`${x}\``).join(', ')}.`,
+    .replace(/\s*\[valores posibles: ([^\]]+)\]/, (_, v) =>
+      `. Valores posibles: ${v.split(', ').map((x) => `\`${x}\``).join(', ')}.`,
     )
-    .replace(/\.\. Possible/, '. Possible');
+    .replace(/\.\. Valores/, '. Valores');
 
 const GUIDES = {
-  nuevo: ['Quick start', '/docs/start/quick-start/'],
-  'generar scaffold': ['Entities and fields', '/docs/guides/entities/'],
-  'generar caso-de-uso': ['Use cases', '/docs/guides/use-cases/'],
-  'generar objeto-valor': ['Value objects', '/docs/guides/value-objects/'],
-  'generar migracion': ['Database and migrations', '/docs/guides/database/'],
-  'generar evento': ['Domain events', '/docs/guides/events/'],
-  'generar consumidor': ['Consumers', '/docs/guides/events/#consumers'],
-  'generar correo': ['Mail', '/docs/guides/mail/'],
-  'generar web': ['The web frontend', '/docs/guides/web/'],
-  'generar dominio': ['Layer by layer', '/docs/guides/layer-by-layer/'],
-  'generar aplicacion': ['Layer by layer', '/docs/guides/layer-by-layer/'],
-  'generar repositorio': ['Layer by layer', '/docs/guides/layer-by-layer/'],
-  'generar presentacion': ['Layer by layer', '/docs/guides/layer-by-layer/'],
-  'generar bootstrap': ['When the wiring is out of date', '/docs/guides/layer-by-layer/#when-the-wiring-is-out-of-date'],
-  'generar snippets': ['IDE snippets', '/docs/guides/configuration/#ide-snippets'],
+  nuevo: ['Inicio rápido', '/docs/start/quick-start/'],
+  'generar scaffold': ['Entidades y campos', '/docs/guides/entities/'],
+  'generar caso-de-uso': ['Casos de uso', '/docs/guides/use-cases/'],
+  'generar objeto-valor': ['Objetos valor', '/docs/guides/value-objects/'],
+  'generar migracion': ['Base de datos y migraciones', '/docs/guides/database/'],
+  'generar evento': ['Eventos de dominio', '/docs/guides/events/'],
+  'generar consumidor': ['Consumidores', '/docs/guides/events/#consumidores'],
+  'generar correo': ['Correo', '/docs/guides/mail/'],
+  'generar web': ['El frontend web', '/docs/guides/web/'],
+  'generar dominio': ['Capa a capa', '/docs/guides/layer-by-layer/'],
+  'generar aplicacion': ['Capa a capa', '/docs/guides/layer-by-layer/'],
+  'generar repositorio': ['Capa a capa', '/docs/guides/layer-by-layer/'],
+  'generar presentacion': ['Capa a capa', '/docs/guides/layer-by-layer/'],
+  'generar bootstrap': ['Regenerar el cableado', '/docs/guides/layer-by-layer/#regenerar-el-cableado'],
+  'generar snippets': ['Snippets del IDE', '/docs/guides/configuration/#snippets-del-ide'],
   listar: ['puerto.toml', '/docs/reference/puerto-toml/'],
-  validar: ['What puerto validar checks', '/docs/reference/puerto-toml/#what-puerto-validar-checks'],
+  validar: ['Lo que comprueba puerto validar', '/docs/reference/puerto-toml/#lo-que-comprueba-puerto-validar'],
 };
 
 const commandDoc = ({ command, help }) => {
   const { about, usage, sections } = parseHelp(help);
   const out = [`## \`puerto ${command}\``, '', about.endsWith('.') ? about : `${about}.`, ''];
   out.push('```bash', usage, '```', '');
-  const args = sections.Arguments ?? [];
+  const args = sections.Argumentos ?? [];
   if (args.length) {
-    out.push('| Argument | |', '|---|---|');
+    out.push('| Argumento | |', '|---|---|');
     for (const a of args) out.push(`| \`${cell(a.name)}\` | ${codeify(a.text)} |`);
     out.push('');
   }
-  const opts = (sections.Options ?? []).filter((o) => !o.name.startsWith('-h'));
+  const opts = (sections.Opciones ?? []).filter((o) => !o.name.startsWith('-h'));
   if (opts.length) {
-    out.push('| Option | |', '|---|---|');
+    out.push('| Opción | |', '|---|---|');
     for (const o of opts) out.push(`| \`${cell(o.name)}\` | ${codeify(o.text)} |`);
     out.push('');
   }
-  if (GUIDES[command]) out.push(`See the guide: [${GUIDES[command][0]}](${GUIDES[command][1]}).`, '');
+  if (GUIDES[command]) out.push(`Ver la guía: [${GUIDES[command][0]}](${GUIDES[command][1]}).`, '');
   return out.join('\n');
 };
 
@@ -184,13 +184,13 @@ writeFileSync(
   [
     '---',
     'title: CLI',
-    `description: ${yaml('Every puerto command and option, generated from the help of the released CLI: nuevo, the generators, listar, validar and completions.')}`,
+    `description: ${yaml('Todos los comandos y opciones de puerto, generados desde la ayuda de la CLI publicada: nuevo, los generadores, listar, validar y completions.')}`,
     'tableOfContents:',
     '  maxHeadingLevel: 2',
     '---',
     '',
-    `Generated from the \`--help\` of \`puerto ${cli.version}\`, so it says exactly what the CLI says.`,
-    'Every command that writes Rust ends by running `cargo fmt` on the project.',
+    `Generada desde el \`--help\` de \`puerto ${cli.version}\`, así que dice exactamente lo que dice la CLI.`,
+    'Todo comando que escribe Rust termina ejecutando `cargo fmt` en el proyecto.',
     '',
     '```bash',
     'cargo install puerto --locked',
@@ -198,11 +198,11 @@ writeFileSync(
     '```',
     '',
     ...project.map(commandDoc),
-    '## Generators',
+    '## Generadores',
     '',
-    'Every generator reads and updates `puerto.toml`, refuses to overwrite files that already',
-    'exist (`scaffold --forzar` and `web --forzar` are the explicit exceptions) and prints the next',
-    'step.',
+    'Todo generador lee y actualiza `puerto.toml`, se niega a sobrescribir ficheros que ya',
+    'existen (`scaffold --forzar` y `web --forzar` son las excepciones explícitas) e imprime el',
+    'siguiente paso.',
     '',
     ...generators.map((c) => commandDoc(c).replace(/^## /, '### ')),
   ].join('\n'),
@@ -222,21 +222,21 @@ for (const m of meta.matrix) {
   }
 }
 const CONDITIONS = [
-  ['every project', () => true],
+  ['todo proyecto', () => true],
   ['`web/`', (f) => f.web],
   ['`--db`', (f) => f.db],
   ['`--eventos`', (f) => !!f.events],
   ['`--auth`', (f) => !!f.auth],
   ['`--auth oidc`', (f) => f.auth === 'oidc'],
   ['`--auth local`', (f) => f.auth === 'local'],
-  ['`--db` or `--auth oidc`', (f) => f.db || f.auth === 'oidc'],
+  ['`--db` o `--auth oidc`', (f) => f.db || f.auth === 'oidc'],
 ];
 const when = ({ combos }) => {
   for (const [label, test] of CONDITIONS) {
     const expected = meta.matrix.filter((m) => test(m.flags)).map((m) => m.id);
     if (expected.length === combos.size && expected.every((id) => combos.has(id))) return label;
   }
-  return 'some projects';
+  return 'algunos proyectos';
 };
 const makeRows = [...targetsIn]
   .filter(([t]) => t !== 'help')
@@ -245,23 +245,23 @@ writeFileSync(
   join(OUT, 'reference/make.md'),
   [
     '---',
-    'title: Make targets',
-    `description: ${yaml('Every make target of a generated Puerto project, what it does and which projects have it, read from the Makefiles the CLI writes.')}`,
+    'title: Targets de make',
+    `description: ${yaml('Todos los targets de make de un proyecto Puerto generado, qué hacen y qué proyectos los tienen, leídos de los Makefiles que escribe la CLI.')}`,
     '---',
     '',
-    "A generated project's `Makefile` is its command line. `make help` lists the targets of that",
-    'project; this page lists them all, read from the Makefiles of every combination of',
-    `\`puerto nuevo\` flags that \`puerto ${meta.version}\` generates.`,
+    'El `Makefile` de un proyecto generado es su línea de comandos. `make help` lista los targets de',
+    'ese proyecto; esta página los lista todos, leídos de los Makefiles de cada combinación de flags',
+    `de \`puerto nuevo\` que genera \`puerto ${meta.version}\`.`,
     '',
-    '| Target | Does | In |',
+    '| Target | Qué hace | En |',
     '|---|---|---|',
     ...makeRows,
-    '| `make correo/ui` | Dónde llegan los correos enviados en desarrollo (Mailpit) | after `puerto generar correo` |',
+    '| `make correo/ui` | Dónde llegan los correos enviados en desarrollo (Mailpit) | tras `puerto generar correo` |',
     '',
-    'Targets that need a service (`sqlx/migrate`, `worker`, `test/infraestructura`…) start',
-    '`docker compose` first. `make test` and `make lint` include `web/` whenever the directory exists.',
+    'Los targets que necesitan un servicio (`sqlx/migrate`, `worker`, `test/infraestructura`…)',
+    'arrancan antes `docker compose`. `make test` y `make lint` incluyen `web/` siempre que exista el directorio.',
     '',
   ].join('\n'),
 );
 
-console.log(`sync-repo-docs: ${files.length} ADRs, the changelog, the CLI and make references.`);
+console.log(`sync-repo-docs: ${files.length} ADR, el changelog, las referencias de la CLI y de make.`);

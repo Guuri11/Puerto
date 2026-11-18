@@ -1,40 +1,41 @@
 ---
-title: Use cases
-description: Add a use case that is not CRUD with puerto generar caso-de-uso, put its rule in the domain, test it, and expose it through an endpoint with its own route test.
+title: Casos de uso
+description: Añade un caso de uso que no es CRUD con puerto generar caso-de-uso, pon su regla en el dominio, pruébalo y exponlo con un endpoint con su propio test de ruta.
 ---
 
 import { Steps, Aside } from '@astrojs/starlight/components';
 
-A use case is one thing your application does: create a product, publish an order, close an
-account. The five CRUD use cases come with the scaffold. Everything else is a use case you add.
+Un caso de uso es una cosa que hace tu aplicación: crear un producto, publicar un pedido, cerrar
+una cuenta. Los cinco casos de uso CRUD vienen con el scaffold. Todo lo demás es un caso de uso que
+añades tú.
 
-This guide adds `cambiar_precio_producto`: change a product's price, refusing anything that is not
-a positive amount. Every snippet below was compiled and tested in a generated project.
+Esta guía añade `cambiar_precio_producto`: cambia el precio de un producto y rechaza lo que no sea
+un importe positivo. Cada fragmento de abajo se compiló y se probó en un proyecto generado.
 
 <Steps>
 
-1. **Generate it.**
+1. **Genéralo.**
 
    ```bash
    puerto generar caso-de-uso Producto cambiar_precio_producto
    ```
 
-   ```txt title="output"
-   ✓ Use case CambiarPrecioProducto added to Producto: contextos/producto/aplicacion/src/cambiar_precio_producto.rs
-     puerto.toml updated + bootstrap.rs regenerated.
-     ApiProducto now holds `cambiar_precio_producto` — call it from an endpoint in contextos/producto/rest/src/rutas.rs.
+   ```txt title="salida"
+   ✓ Caso de uso CambiarPrecioProducto añadido a Producto: contextos/producto/aplicacion/src/cambiar_precio_producto.rs
+     puerto.toml actualizado y bootstrap.rs regenerado.
+     ApiProducto ya tiene `cambiar_precio_producto`: llámalo desde un endpoint en contextos/producto/rest/src/rutas.rs.
    ```
 
-   It writes one file in the `aplicacion_producto` crate,
-   `contextos/producto/aplicacion/src/cambiar_precio_producto.rs`, with everything the use case
-   is: the params, the trait, its double (`dobles::MockCambiarPrecioProducto`), the implementation
-   and its tests. It adds the `pub mod` to the crate's `lib.rs` and the action to `puerto.toml`,
-   regenerates the wiring (`presentacion/cableado/` and `bootstrap.rs`) and adds the field to
-   `ApiProducto`. The action must be snake_case. Naming one that exists is refused, and nothing is
-   overwritten ([ADR-0004](/docs/decisions/adr/0004-generate-use-case-never-overwrites/)).
+   Escribe un fichero en el crate `aplicacion_producto`,
+   `contextos/producto/aplicacion/src/cambiar_precio_producto.rs`, con todo lo que es el caso de
+   uso: los params, el trait, su doble (`dobles::MockCambiarPrecioProducto`), la implementación y
+   sus tests. Añade el `pub mod` al `lib.rs` del crate y la acción a `puerto.toml`, regenera el
+   cableado (`presentacion/cableado/` y `bootstrap.rs`) y añade el campo a `ApiProducto`. La acción
+   va en snake_case. Nombrar una que ya existe se rechaza, y no se sobrescribe nada
+   ([ADR-0004](/docs/decisions/adr/0004-generate-use-case-never-overwrites/)).
 
-2. **Say what it takes.** The params are a guess (`nombre: String`). Make them what the use case
-   needs:
+2. **Di qué recibe.** Los params son una suposición (`nombre: String`). Haz que sean lo que
+   necesita el caso de uso:
 
    ```rust title="contextos/producto/aplicacion/src/cambiar_precio_producto.rs"
    use dominio_producto::modelo::{IdProducto, Producto};
@@ -46,8 +47,8 @@ a positive amount. Every snippet below was compiled and tested in a generated pr
    }
    ```
 
-3. **Put the rule in the domain.** Not in the use case and not in the route: on the entity, where
-   every use case that changes a price goes through it.
+3. **Pon la regla en el dominio.** Ni en el caso de uso ni en la ruta: en la entidad, por donde
+   pasa todo caso de uso que cambia un precio.
 
    ```rust title="contextos/producto/dominio/src/modelo.rs"
    pub fn cambiar_precio(&mut self, precio: i64) -> Result<(), ErrorProducto> {
@@ -60,8 +61,8 @@ a positive amount. Every snippet below was compiled and tested in a generated pr
    }
    ```
 
-4. **Write the use case.** It orchestrates: load, apply the rule, save. The implementation is in
-   the same file, below the trait and its double, and starts as a `todo!()`:
+4. **Escribe el caso de uso.** Orquesta: carga, aplica la regla, guarda. La implementación está en
+   el mismo fichero, debajo del trait y su doble, y empieza como un `todo!()`:
 
    ```rust title="contextos/producto/aplicacion/src/cambiar_precio_producto.rs"
    async fn ejecutar(
@@ -81,12 +82,12 @@ a positive amount. Every snippet below was compiled and tested in a generated pr
    }
    ```
 
-   The repository answers `Result<_, ErrorRepositorio>`, and `?` turns that into an
-   `ErrorProducto` through the generated `From` impl. A use case logs `inicio` and `fin` with the
-   id, never the params, because they are user data.
+   El repositorio responde `Result<_, ErrorRepositorio>`, y `?` lo convierte en un
+   `ErrorProducto` con el `From` generado. Un caso de uso registra `inicio` y `fin` con el id, nunca
+   los params, porque son datos del usuario.
 
-5. **Test it.** The generated test is marked `#[ignore = "escribe este test"]` so it cannot pass by
-   accident. Replace it:
+5. **Pruébalo.** El test generado lleva `#[ignore = "escribe este test"]` para que no pueda pasar
+   por accidente. Sustitúyelo:
 
    ```rust
    #[tokio::test]
@@ -116,14 +117,14 @@ a positive amount. Every snippet below was compiled and tested in a generated pr
    }
    ```
 
-   `MadreProducto` lives in the domain crate, behind its `pruebas` feature
-   (`use dominio_producto::pruebas::madres::MadreProducto;`); the generated test module already
-   imports `MockRepositorioProducto`.
+   `MadreProducto` vive en el crate de dominio, tras su feature `pruebas`
+   (`use dominio_producto::pruebas::madres::MadreProducto;`); el módulo de tests generado ya
+   importa `MockRepositorioProducto`.
 
-6. **Expose it.** Puerto does not generate the endpoint: an action name says nothing about the
-   method, the path or the body. Add a request DTO and a response enum next to the generated
-   ones, then the route. The `cambiar_precio_producto` field in `ApiProducto` carries
-   `#[allow(dead_code)]` until a route calls it; delete the attribute now.
+6. **Exponlo.** Puerto no genera el endpoint: el nombre de una acción no dice nada del método, la
+   ruta o el cuerpo. Añade un DTO de petición y un enum de respuesta junto a los generados, y
+   después la ruta. El campo `cambiar_precio_producto` de `ApiProducto` lleva
+   `#[allow(dead_code)]` hasta que una ruta lo llama; quita ahora el atributo.
 
    ```rust title="contextos/producto/rest/src/rutas.rs"
    /// Cambia el precio de un Producto
@@ -189,8 +190,8 @@ a positive amount. Every snippet below was compiled and tested in a generated pr
    }
    ```
 
-7. **Test the route.** The route tests already have a `Dobles` struct with a double for your use
-   case. Drive the real `OpenApiService`:
+7. **Prueba la ruta.** Los tests de rutas ya tienen un struct `Dobles` con un doble de tu caso de
+   uso. Usa el `OpenApiService` real:
 
    ```rust
    #[tokio::test]
@@ -217,19 +218,19 @@ a positive amount. Every snippet below was compiled and tested in a generated pr
 
 </Steps>
 
-Run `make test`, `make lint` and `make format`, and in a web project `make web/sync`, because the
-API changed.
+Ejecuta `make test`, `make lint` y `make format`, y en un proyecto con web `make web/sync`, porque
+la API cambió.
 
 <Aside type="tip">
-The snippets `poem-endpoint-action`, `poem-response-enum` and `poem-route-test` write steps 6
-and 7 for you in Zed and VS Code. See [IDE snippets](/docs/guides/configuration/#ide-snippets).
+Los snippets `poem-endpoint-action`, `poem-response-enum` y `poem-route-test` te escriben los
+pasos 6 y 7 en Zed y VS Code. Mira [Snippets del IDE](/docs/guides/configuration/#snippets-del-ide).
 </Aside>
 
-## In a project with domain events
+## En un proyecto con eventos de dominio
 
-The repository has no `guardar` there: writes go through the unit of work, so the event is
-recorded in the same transaction. The generated implementation already holds a `uow_factory`.
-Step 4 becomes:
+Ahí el repositorio no tiene `guardar`: las escrituras van por la unidad de trabajo, así que el
+evento se registra en la misma transacción. La implementación generada ya tiene un
+`uow_factory`. El paso 4 queda así:
 
 ```rust
 let mut uow = self.uow_factory.begin().await?;
@@ -241,12 +242,12 @@ uow.registrar(EventoProducto::Actualizado(SnapshotProducto::from_entidad(
 uow.commit().await?;
 ```
 
-with `use dominio_producto::eventos::{EventoProducto, SnapshotProducto};`. Writing
-`self.repositorio.guardar(…)` there is a compile error, not a bug found in production. See
-[Domain events](/docs/guides/events/).
+con `use dominio_producto::eventos::{EventoProducto, SnapshotProducto};`. Escribir ahí
+`self.repositorio.guardar(…)` es un error de compilación, no un bug que aparece en producción.
+Mira [Eventos de dominio](/docs/guides/events/).
 
-## In a project with auth
+## En un proyecto con auth
 
-A protected use case's params carry `actor: Principal`, which the handler fills with `auth.0`.
-Rules that depend on who is asking ("only the owner edits") go in the use case, returning
-`ErrorProducto::Prohibido`. See [Authentication](/docs/guides/auth/).
+Los params de un caso de uso protegido llevan `actor: Principal`, que el handler rellena con
+`auth.0`. Las reglas que dependen de quién pregunta («solo edita quien lo creó») van en el caso de
+uso, y devuelven `ErrorProducto::Prohibido`. Mira [Autenticación](/docs/guides/auth/).

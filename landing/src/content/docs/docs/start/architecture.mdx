@@ -1,85 +1,85 @@
 ---
-title: The architecture
-description: "Why Puerto generates Domain-Driven Design instead of MVC, how a request flows through the layers, and what keeps the dependency rule from eroding."
+title: La arquitectura
+description: "Por qué Puerto genera Domain-Driven Design y no MVC, cómo recorre una petición las capas y qué impide que la regla de dependencias se erosione."
 ---
 
 import { Aside } from '@astrojs/starlight/components';
 import LayerStack from '@/components/LayerStack.astro';
 
-## Why not MVC
+## Por qué no MVC
 
-MVC is a good way to start and a hard way to grow. Business rules end up wherever it was
-convenient to write them: a callback on the model, a check in the controller, a query scope.
-Testing a rule then means a database and an HTTP request, and changing the database means
-touching the rules.
+MVC es una buena forma de empezar y una mala forma de crecer. Las reglas de negocio acaban donde
+era cómodo escribirlas: un callback del modelo, una comprobación en el controlador, un scope de
+consulta. Probar una regla pasa a pedir una base de datos y una petición HTTP, y cambiar la base de
+datos obliga a tocar las reglas.
 
-Puerto generates the alternative from the first command. **Domain-Driven Design** gives the
-vocabulary (entities, value objects, repositories, domain events) and **Clean Architecture**,
-also known as hexagonal or ports and adapters, gives the rule that keeps it clean.
+Puerto genera la alternativa desde el primer comando. **Domain-Driven Design** pone el vocabulario
+(entidades, objetos valor, repositorios, eventos de dominio) y **Clean Architecture**, también
+llamada hexagonal o de puertos y adaptadores, pone la regla que lo mantiene limpio.
 
-## The dependency rule
+## La regla de dependencias
 
 <LayerStack />
 
-Each entity is a context with four crates, and dependencies point inward only:
+Cada entidad es un contexto con cuatro crates, y las dependencias solo apuntan hacia dentro:
 
 ```txt
 rest_<c> → aplicacion_<c> → dominio_<c> → nucleo, puerto-nucleo
 infra_<c> → dominio_<c>
-presentacion/ (cableado, api, worker) → all of them
+presentacion/ (cableado, api, worker) → todos ellos
 ```
 
-- **`dominio_<c>`** (domain) holds the model, value objects, errors and the repository **port**.
-  It depends on `nucleo` (the shared value objects) and `puerto-nucleo`, and on no database
-  driver and no HTTP framework. Its tests need nothing but `cargo test`.
-- **`aplicacion_<c>`** (application) holds the use cases, one file each: params, trait,
-  implementation, mock and tests. It knows its domain and nothing else.
-- **`infra_<c>`** (infrastructure) holds the **adapters** that implement the domain's ports: an
-  in-memory or Postgres repository, a unit of work. It knows the domain, never the use cases or
-  the routes.
-- **`rest_<c>`** is HTTP: routes, DTOs, response enums, error mapping. It is just another
-  adapter, the one that turns requests into use case calls. It knows the application and the
-  domain, never `infra_<c>`.
-- **`presentacion/`** is the composition root. `cableado` builds each context's repositories and
-  use cases; `api`, and `worker` in projects with events, are the binaries. Only they depend on
-  the `infra_*` crates.
+- **`dominio_<c>`** tiene el modelo, los objetos valor, los errores y el **puerto** del
+  repositorio. Depende de `nucleo` (los objetos valor compartidos) y de `puerto-nucleo`, y de
+  ningún driver de base de datos ni framework HTTP. Sus tests solo necesitan `cargo test`.
+- **`aplicacion_<c>`** tiene los casos de uso, un fichero cada uno: params, trait,
+  implementación, doble y tests. Conoce su dominio y nada más.
+- **`infra_<c>`** tiene los **adaptadores** que implementan los puertos del dominio: un
+  repositorio en memoria o Postgres, una unidad de trabajo. Conoce el dominio, nunca los casos de
+  uso ni las rutas.
+- **`rest_<c>`** es el HTTP: rutas, DTO, enums de respuesta, errores HTTP. Es un adaptador más,
+  el que convierte peticiones en llamadas a casos de uso. Conoce la aplicación y el dominio, nunca
+  `infra_<c>`.
+- **`presentacion/`** es la raíz de composición. `cableado` construye los repositorios y los
+  casos de uso de cada contexto; `api`, y `worker` en los proyectos con eventos, son los
+  binarios. Solo ellos dependen de los crates `infra_*`.
 
-This is not a guideline you keep by discipline: each layer of each context is its own crate, and
-a crate cannot import what it does not depend on. A domain model that tries to use `sqlx` does
-not compile, and neither does a route that reaches for the Postgres repository. A reference
-between entities (`cliente_id:ref:Cliente`) makes `dominio_pedido` depend on `dominio_cliente`,
-and Cargo refuses a cycle, so the map between contexts is checked by the compiler too
-([ADR-0023](/docs/decisions/adr/0023-crates-por-contexto-y-capa/)).
+No es una pauta que se mantiene a base de disciplina: cada capa de cada contexto es su propio
+crate, y un crate no puede importar aquello de lo que no depende. Un modelo de dominio que intenta
+usar `sqlx` no compila, y tampoco una ruta que intenta llegar al repositorio Postgres. Una
+referencia entre entidades (`cliente_id:ref:Cliente`) hace que `dominio_pedido` dependa de
+`dominio_cliente`, y Cargo rechaza un ciclo, así que el mapa entre contextos también lo comprueba
+el compilador ([ADR-0023](/docs/decisions/adr/0023-crates-por-contexto-y-capa/)).
 
-## A request, end to end
+## Una petición, de punta a punta
 
-`POST /api/productos` with `{"nombre":"Lampara","precio":4900,"sku":"LMP-01"}`, in a `--db`
-project:
+`POST /api/productos` con `{"nombre":"Lampara","precio":4900,"sku":"LMP-01"}`, en un proyecto
+`--db`:
 
-1. **`rest_producto`**. `ApiProducto::crear` receives `Json<PeticionCrearProducto>`, a DTO. It
-   builds `ParamsCrearProducto` and calls `self.crear_producto.ejecutar(params)`.
-   `crear_producto` is an `Arc<dyn CrearProducto>`: the route depends on a port, not an
-   implementation ([ADR-0012](/docs/decisions/adr/0012-presentation-holds-use-case-ports/)).
-2. **`aplicacion_producto`**. `CrearProductoImpl` builds the entity with `Producto::new(props)`,
-   where the domain's rules run, and calls `self.repositorio.guardar(&entidad)` on an
-   `Arc<dyn RepositorioProducto>`.
-3. **`infra_producto`**. `RepositorioProductoPostgres::guardar` writes the row. A unique
-   violation comes back from Postgres as `ErrorRepositorio::Duplicado`, converted once in
+1. **`rest_producto`**. `ApiProducto::crear` recibe `Json<PeticionCrearProducto>`, un DTO.
+   Construye `ParamsCrearProducto` y llama a `self.crear_producto.ejecutar(params)`.
+   `crear_producto` es un `Arc<dyn CrearProducto>`: la ruta depende de un puerto, no de una
+   implementación ([ADR-0012](/docs/decisions/adr/0012-presentation-holds-use-case-ports/)).
+2. **`aplicacion_producto`**. `CrearProductoImpl` construye la entidad con
+   `Producto::new(props)`, donde se ejecutan las reglas del dominio, y llama a
+   `self.repositorio.guardar(&entidad)` sobre un `Arc<dyn RepositorioProducto>`.
+3. **`infra_producto`**. `RepositorioProductoPostgres::guardar` escribe la fila. Un único violado
+   vuelve de Postgres como `ErrorRepositorio::Duplicado`, convertido una sola vez en
    `puerto-sqlx` ([ADR-0015](/docs/decisions/adr/0015-repositories-return-one-repository-error/)).
-4. **Back up.** `ErrorProducto::Duplicado` reaches the route, and `a_respuesta_error` in
-   `errores.rs` maps it to `409` with `{"codigo":"producto.duplicado"}`. It has no catch-all
-   arm: a new error variant does not compile until someone decides its status
+4. **De vuelta.** `ErrorProducto::Duplicado` llega a la ruta, y `a_respuesta_error` en
+   `errores.rs` lo convierte en un `409` con `{"codigo":"producto.duplicado"}`. No tiene brazo
+   comodín: una variante de error nueva no compila hasta que alguien decide su estado
    ([ADR-0007](/docs/decisions/adr/0007-error-contract-code-in-name-422/)).
 
-The domain never sees JSON, and the route never sees SQL.
+El dominio nunca ve JSON, y la ruta nunca ve SQL.
 
-## Wiring without a container
+## Cablear sin contenedor
 
-Who decides that `ApiProducto::crear_producto` is a `CrearProductoImpl` backed by a
-`RepositorioProductoPostgres`? One crate: `presentacion/cableado`, the **composition root**.
-Puerto generates it from `puerto.toml`, as plain Rust you can read:
+¿Quién decide que `ApiProducto::crear_producto` es un `CrearProductoImpl` sobre un
+`RepositorioProductoPostgres`? Un crate: `presentacion/cableado`, la **raíz de composición**.
+Puerto lo genera desde `puerto.toml`, como Rust normal que puedes leer:
 
-```rust title="presentacion/cableado/src/lib.rs (excerpt, --db)"
+```rust title="presentacion/cableado/src/lib.rs (fragmento, --db)"
 pub fn construir(pool: &sqlx::PgPool) -> CasosDeUso {
     let repositorio: Arc<dyn RepositorioProducto> =
         Arc::new(RepositorioProductoPostgres::new(pool.clone()));
@@ -90,41 +90,43 @@ pub fn construir(pool: &sqlx::PgPool) -> CasosDeUso {
         obtener_producto: Arc::new(ObtenerProductoImpl {
             repositorio: Arc::clone(&repositorio),
         }),
-        // listar_productos, actualizar_producto, borrar_producto: the same
+        // listar_productos, actualizar_producto, borrar_producto: lo mismo
     }
 }
 ```
 
-`cableado` knows nothing about HTTP. `presentacion/api/src/generado/bootstrap.rs` calls
-`cableado::producto::construir(&pool)` and hands each use case to `ApiProducto`, then mounts the
-routes. There is no runtime container, no reflection, and no macro that registers routes behind
-your back. "Go to definition" works everywhere, for you and for an agent. The price is that you
-never edit these files by hand: change `puerto.toml` and run `puerto generar bootstrap`.
+`cableado` no sabe nada de HTTP. `presentacion/api/src/generado/bootstrap.rs` llama a
+`cableado::producto::construir(&pool)`, le da cada caso de uso a `ApiProducto` y monta las rutas.
+No hay contenedor en ejecución, ni reflexión, ni macros que registren rutas a tus espaldas. «Ir a
+la definición» funciona en todas partes, para ti y para un agente. El precio es que nunca editas
+estos ficheros a mano: cambia `puerto.toml` y ejecuta `puerto generar bootstrap`.
 
-Your own wiring, extra middleware or routes outside the OpenAPI service goes in
-`presentacion/api/src/app.rs`, a file Puerto writes once and never touches again.
+Tu propio cableado, middleware de más o rutas fuera del servicio OpenAPI va en
+`presentacion/api/src/app.rs`, un fichero que Puerto escribe una vez y no vuelve a tocar.
 
-## The frontend follows the same rule
+## El frontend es presentación
 
-`web/` has the same layers: `domain` (types and the repository port) ← `application` ←
-`infrastructure` (the HTTP adapter) ← `presentation` (screens). The rule is checked by
-`dependency-cruiser` in `make web/lint`, and the OpenAPI spec is the contract between the two
-halves. See [The web frontend](/docs/guides/web/).
+`web/` es la capa de presentación y nada más
+([ADR-0025](/docs/decisions/adr/0025-el-frontend-es-presentacion/)): las reglas viven en el
+backend. Un contenedor llama al cliente tipado de la API y le pasa a su vista los DTO de la
+especificación OpenAPI; una vista solo recibe props. dependency-cruiser comprueba esa frontera en
+`make web/lint`: una vista que llama a la API no pasa. La especificación OpenAPI es el contrato
+entre las dos mitades. Mira [El frontend web](/docs/guides/web/).
 
-<Aside type="note" title="Not everything is a layer">
-Puerto does not generate a layer that would be empty. A CRUD use case on the frontend only
-delegates to the API, so `web/src/application/` stays empty until there is real logic to put
-there ([ADR-0013](/docs/decisions/adr/0013-web-frontend-react-daisyui-bun/)).
+<Aside type="note" title="No todo es una capa">
+Puerto no genera una capa que estaría vacía. Un caso de uso CRUD en el frontend solo delegaría en
+la API, así que no hay dominio, casos de uso ni adaptadores en `web/`: la lógica de cliente que
+aparezca se escribe a mano donde haga falta.
 </Aside>
 
-## What the compiler enforces for you
+## Lo que el compilador impone por ti
 
-| If someone… | …then | Because |
+| Si alguien… | …entonces | Porque |
 |---|---|---|
-| imports `sqlx` in a domain model | it does not compile | `dominio_<c>` does not depend on it |
-| uses the Postgres repository in a route | it does not compile | `rest_<c>` does not depend on `infra_<c>` ([ADR-0023](/docs/decisions/adr/0023-crates-por-contexto-y-capa/)) |
-| passes an `IdCliente` where an `IdProducto` goes | it does not compile | ids are generated newtypes ([ADR-0014](/docs/decisions/adr/0014-entity-ids-are-generated-newtypes/)) |
-| writes through the repository in an events project | it does not compile | the repository has no `guardar`; writes go through the unit of work ([ADR-0018](/docs/decisions/adr/0018-domain-events-outbox-pluggable-transport/)) |
-| adds an error variant without a status | it does not compile | `a_respuesta_error` is exhaustive ([ADR-0007](/docs/decisions/adr/0007-error-contract-code-in-name-422/)) |
-| removes an event a consumer listens to | the worker does not compile | consumers match on generated constants |
-| changes a DTO without `make web/sync` | `make test` fails | the exported spec is compared in a test |
+| importa `sqlx` en un modelo de dominio | no compila | `dominio_<c>` no depende de él |
+| usa el repositorio Postgres en una ruta | no compila | `rest_<c>` no depende de `infra_<c>` ([ADR-0023](/docs/decisions/adr/0023-crates-por-contexto-y-capa/)) |
+| pasa un `IdCliente` donde va un `IdProducto` | no compila | los ids son newtypes generados ([ADR-0014](/docs/decisions/adr/0014-entity-ids-are-generated-newtypes/)) |
+| escribe por el repositorio en un proyecto con eventos | no compila | el repositorio no tiene `guardar`; las escrituras van por la unidad de trabajo ([ADR-0018](/docs/decisions/adr/0018-domain-events-outbox-pluggable-transport/)) |
+| añade una variante de error sin estado | no compila | `a_respuesta_error` es exhaustivo ([ADR-0007](/docs/decisions/adr/0007-error-contract-code-in-name-422/)) |
+| quita un evento que escucha un consumidor | el worker no compila | los consumidores comparan con constantes generadas |
+| cambia un DTO sin `make web/sync` | `make test` falla | un test compara la especificación exportada |

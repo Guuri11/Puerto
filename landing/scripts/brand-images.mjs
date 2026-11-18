@@ -52,9 +52,9 @@ const OG = `<!doctype html><html><head><style>${FONTS}
     background: repeating-linear-gradient(-45deg, #f5b700 0 20px, #15171a 20px 40px); }
 </style></head><body>
   <div class="brand">${symbol(64)}<span class="word">PUERTO</span></div>
-  <h1>Scaffold.<br>Structure.<br>Ship.</h1>
+  <h1>Genera.<br>Ordena.<br>Zarpa.</h1>
   <div class="side">
-    <p>The Rust framework that generates Domain-Driven Design backends.</p>
+    <p>El framework en Rust que genera backends Domain-Driven Design.</p>
     <div class="cmd"><span>$</span> cargo install puerto</div>
   </div>
   <div class="hazard"></div>

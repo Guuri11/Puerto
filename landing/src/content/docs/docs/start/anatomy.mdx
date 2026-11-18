@@ -1,118 +1,106 @@
 ---
-title: Anatomy of a project
-description: Every file a Puerto project contains, which ones are regenerated from puerto.toml, and which ones are yours from the moment they are written.
+title: Anatomía de un proyecto
+description: Todos los ficheros de un proyecto Puerto, cuáles se regeneran desde puerto.toml y cuáles son tuyos desde el momento en que se escriben.
 ---
 
 import { FileTree, Aside } from '@astrojs/starlight/components';
 
-A Puerto project is a Cargo workspace with four crates per entity, one per layer, plus the
-binaries that wire them and a React frontend. Each entity is a context, under `contextos/`. This
-is `tienda`, with one entity, after `puerto generar scaffold Producto`:
+Un proyecto Puerto es un workspace de Cargo con cuatro crates por entidad, uno por capa, más los
+binarios que los cablean y un frontend React. Cada entidad es un contexto, bajo `contextos/`. Esto
+es `tienda`, con una entidad, tras `puerto generar scaffold Producto`:
 
 <FileTree>
-- puerto.toml the manifest: entities, fields, use cases
-- AGENTS.md rules for coding agents (CLAUDE.md imports it)
-- Makefile run, test, lint, format, migrate…
-- rust-toolchain.toml Rust 1.95.0, pinned
-- Cargo.toml the workspace: members by glob, every crate in workspace.dependencies
-- nucleo/ **shared value objects**: no I/O
+- puerto.toml el manifiesto: entidades, campos, casos de uso
+- AGENTS.md reglas para agentes (CLAUDE.md lo importa)
+- Makefile arrancar, probar, lint, formatear, migrar…
+- rust-toolchain.toml Rust 1.95.0, fijado
+- Cargo.toml el workspace: miembros por glob, cada crate en workspace.dependencies
+- nucleo/ **objetos valor compartidos**: sin E/S
 - contextos/
-  - producto/ **one context**: four crates
-    - dominio/ **dominio_producto**: the domain, no framework
+  - producto/ **un contexto**: cuatro crates
+    - dominio/ **dominio_producto**: el dominio, sin framework
       - src/
-        - lib.rs one pub mod per file
-        - modelo.rs Producto, IdProducto, PropsProducto, the rules
-        - errores.rs ErrorProducto: machine-readable codes
-        - repositorio.rs RepositorioProducto, the port, + its mock
-        - valores.rs when a field has a value object
-        - pruebas/madres.rs MadreProducto, for tests in every crate
-    - aplicacion/ **aplicacion_producto**: the use cases
+        - lib.rs un pub mod por fichero
+        - modelo.rs Producto, IdProducto, PropsProducto, las reglas
+        - errores.rs ErrorProducto: códigos legibles por máquina
+        - repositorio.rs RepositorioProducto, el puerto, + su doble
+        - valores.rs cuando un campo tiene objeto valor
+        - pruebas/madres.rs MadreProducto, para los tests de todos los crates
+    - aplicacion/ **aplicacion_producto**: los casos de uso
       - src/
-        - crear_producto.rs params, trait, mock, implementation and tests
+        - crear_producto.rs params, trait, doble, implementación y tests
         - …
-    - infraestructura/ **infra_producto**: adapters of the domain's ports
-      - src/repositorio.rs RepositorioProductoEnMemoria, or …Postgres with --db
-    - rest/ **rest_producto**: the HTTP API, poem-openapi
+    - infraestructura/ **infra_producto**: adaptadores de los puertos del dominio
+      - src/repositorio.rs RepositorioProductoEnMemoria, o …Postgres con --db
+    - rest/ **rest_producto**: la API HTTP, poem-openapi
       - src/
-        - rutas.rs ApiProducto: five endpoints, with route tests
-        - dto.rs the wire types
-        - respuestas.rs one response enum per endpoint
-        - errores.rs a_respuesta_error: ErrorProducto → HTTP status
+        - rutas.rs ApiProducto: cinco endpoints, con tests de rutas
+        - dto.rs los tipos que viajan
+        - respuestas.rs un enum de respuesta por endpoint
+        - errores.rs a_respuesta_error: ErrorProducto → estado HTTP
 - presentacion/
-  - cableado/ the composition root: repositories and use cases, regenerated
-  - api/ **the binary**
+  - cableado/ la raíz de composición: repositorios y casos de uso, regenerada
+  - api/ **el binario**
     - src/
-      - main.rs starts the server from puerto-web
-      - app.rs yours: middleware and routes of your own
-      - generado/bootstrap.rs mounts the APIs on cableado, regenerated
-- web/ **React + daisyUI on Bun**: the presentation layer, in Spanish, see The web frontend
-- docs/api/openapi.json the API contract, exported by a test
+      - main.rs arranca el servidor de puerto-web
+      - app.rs tuyo: middleware y rutas propias
+      - generado/bootstrap.rs monta las API sobre cableado, regenerado
+- web/ **React + daisyUI sobre Bun**: la capa de presentación, en castellano; mira El frontend web
+- docs/api/openapi.json el contrato de la API, que exporta un test
 </FileTree>
 
-`--db` adds `migraciones/` (the SQL of the whole database), the `migrador` crate,
-`docker-compose.yml` and a Postgres repository per entity. `--eventos` adds a second binary,
-`presentacion/worker/`. `--auth` adds the `usuario` context and its routes. Each has its own guide.
+`--db` añade `migraciones/` (el SQL de toda la base de datos), el crate `migrador`,
+`docker-compose.yml` y un repositorio Postgres por entidad. `--eventos` añade un segundo binario,
+`presentacion/worker/`. `--auth` añade el contexto `usuario` y sus rutas. Cada uno tiene su guía.
 
-## Reading a generated project
+## Leer un proyecto generado
 
-Puerto is built for its author's own projects, which are written in Spanish, so everything it
-generates is in Spanish too
-([ADR-0024](/docs/decisions/adr/0024-lo-generado-en-castellano/)). Puerto's own source and this
-site stay in English. The names you will meet first:
+Todo lo que genera Puerto está en castellano, sin tildes ni eñes en los identificadores (`anio`,
+`Autorizacion`) ([ADR-0024](/docs/decisions/adr/0024-lo-generado-en-castellano/)). El concepto
+va delante de la entidad (`RepositorioProducto`, `IdProducto`, `ErrorProducto`), y los tests se
+llaman `deberia_…_cuando_…`, con `// Preparar`, `// Actuar` y `// Comprobar`. El código fuente de
+Puerto sigue en inglés.
 
-| In the code | Means |
-|---|---|
-| `contextos/`, `nucleo` | contexts, core (the shared value objects) |
-| `dominio`, `aplicacion`, `infraestructura` (`infra_<c>`), `presentacion` | domain, application, infrastructure, presentation |
-| `cableado` | wiring: the composition root |
-| `CasosDeUso`; `crear_`, `obtener_`, `listar_`, `actualizar_`, `borrar_` | use cases; create, get, list, update, delete |
-| `ejecutar` | execute, the one method of a use case |
-| `repositorio`: `guardar`, `buscar_por_id`, `buscar_todos` | repository: save, find by id, find all |
-| `modelo`, `errores`, `valores`, `rutas`, `respuestas` | model, errors, value objects, routes, responses |
-| `madres` (`MadreProducto`): `aleatorio`, `con_<campo>`, `construir` | object mothers: random, with a field, build |
-| `pruebas`, `dobles` (`MockRepositorioProducto`) | tests (the feature that exposes test helpers), test doubles |
-| `creado_en`, `actualizado_en`, `borrado`, `borrado_en` | created at, updated at, deleted, deleted at |
-| `codigo`, `mensaje`; `limite`, `desplazamiento`, `elementos` | code, message; limit, offset, items |
-| `deberia_…_cuando_…`; `Preparar`, `Actuar`, `Comprobar` | should … when …; Arrange, Act, Assert |
-| `generado`, `migraciones`, `migrador` | generated, migrations, migrator |
+Se quedan en inglés lo que imponen el lenguaje o una librería (`new`, `from_`, `as_`, el prefijo
+`Mock`), la jerga asentada (`id`, `Dto`, `Api`, `Params`, `Props`, `Impl`, `Snapshot`,
+`UnitOfWork`) y las variables de entorno. Cada nombre generado está en el
+[glosario](https://github.com/Guuri11/Puerto/blob/main/docs/glosario.md).
 
-Every generated name is in the
-[glossary](https://github.com/Guuri11/Puerto/blob/main/docs/glosario.md).
+## Tres clases de fichero
 
-## Three kinds of file
+Lo que permite regenerar un proyecto Puerto sin miedo es que cada fichero tiene un solo dueño.
 
-What makes a Puerto project safe to regenerate is that each file has one owner.
+**Regenerados.** Se reescriben desde `puerto.toml` con cada comando que cambia el manifiesto.
+Empiezan con un comentario `GENERADO`. Nunca los edites a mano: cambia el manifiesto y ejecuta el
+generador.
 
-**Regenerated.** Rewritten from `puerto.toml` by every command that changes the manifest. They
-start with a `GENERADO` comment. Never edit them by hand: change
-the manifest and run the generator.
-
-| File | Rewritten by |
+| Fichero | Lo reescribe |
 |---|---|
 | `presentacion/cableado/`, `presentacion/api/src/generado/bootstrap.rs` | `scaffold`, `caso-de-uso`, `presentacion`, `bootstrap` |
-| `contextos/<c>/dominio/src/eventos.rs` | `scaffold`, `evento`, `bootstrap` (events projects) |
-| `presentacion/worker/src/generado/registro.rs` | `consumidor`, `correo --tras`, `bootstrap` (events projects) |
-| `web/src/generado/*` | `scaffold`, `web`, `bootstrap` (web projects) |
+| `contextos/<c>/dominio/src/eventos.rs` | `scaffold`, `evento`, `bootstrap` (proyectos con eventos) |
+| `presentacion/worker/src/generado/registro.rs` | `consumidor`, `correo --tras`, `bootstrap` (proyectos con eventos) |
+| `web/src/generado/*` | `scaffold`, `web`, `bootstrap` (proyectos con web) |
 | `docs/api/openapi.json`, `web/src/api/esquema.d.ts` | `make web/sync` |
 
-**Written once, then yours.** A generator writes them when it creates the piece, then never
-touches them again. Models, use cases, repositories, routes, consumers, mail templates, screens:
-almost everything. Edit them freely. `puerto generar scaffold` refuses to overwrite an entity
-that already has files, and `--forzar` is the explicit way to discard your changes.
+**Se escriben una vez y son tuyos.** Un generador los escribe al crear la pieza y no vuelve a
+tocarlos. Modelos, casos de uso, repositorios, rutas, consumidores, plantillas de correo,
+pantallas: casi todo. Edítalos con libertad. `puerto generar scaffold` se niega a sobrescribir una
+entidad que ya tiene ficheros, y `--forzar` es la forma explícita de descartar tus cambios.
 
-**Patched.** A few files get a line added and nothing else: `aplicacion_<c>/src/lib.rs` and
-`rutas.rs` (a `pub mod` and an `Api<Entidad>` field per new use case), the root `Cargo.toml` and
-`presentacion/api/Cargo.toml` (the crates of a new context), and `puerto.toml` itself.
+**Parcheados.** Unos pocos ficheros reciben una línea y nada más: `aplicacion_<c>/src/lib.rs` y
+`rutas.rs` (un `pub mod` y un campo de `Api<Entidad>` por cada caso de uso nuevo), el
+`Cargo.toml` raíz y `presentacion/api/Cargo.toml` (los crates de un contexto nuevo), y el propio
+`puerto.toml`.
 
 <Aside type="tip">
-Each crate's `lib.rs` is flat: one `pub mod` line per file, and no `mod.rs` files. Adding a use
-case is one line in `aplicacion_<c>/src/lib.rs` plus its file, which is exactly what
-`puerto generar caso-de-uso` writes.
+El `lib.rs` de cada crate es plano: una línea `pub mod` por fichero, y ningún `mod.rs`. Añadir un
+caso de uso es una línea en `aplicacion_<c>/src/lib.rs` más su fichero, que es justo lo que
+escribe `puerto generar caso-de-uso`.
 </Aside>
 
 ## `puerto.toml`
 
-The manifest is the source of truth. After the scaffold above it reads:
+El manifiesto es la fuente de verdad. Tras el scaffold de arriba, dice:
 
 ```toml title="puerto.toml"
 [proyecto]
@@ -143,22 +131,23 @@ tipo = "String"
 unico = true
 ```
 
-`puerto validar` checks it against the code (a declared entity with no files, a consumer with no
-handler, a route whose roles disagree with the manifest) and `puerto listar` prints what it
-declares. The full schema is in the [puerto.toml reference](/docs/reference/puerto-toml/).
+`puerto validar` lo comprueba contra el código (una entidad declarada sin ficheros, un consumidor
+sin manejador, una ruta cuyos roles no coinciden con el manifiesto) y `puerto listar` imprime lo
+que declara. El esquema completo está en la [referencia de puerto.toml](/docs/reference/puerto-toml/).
 
-## The runtime crates
+## Los crates del runtime
 
-Code that is the same in every project is a dependency, declared once in the root `Cargo.toml`
-under `[workspace.dependencies]` and inherited by each crate:
+El código que es igual en todos los proyectos es una dependencia, declarada una vez en el
+`Cargo.toml` raíz bajo `[workspace.dependencies]` y heredada por cada crate:
 
 ```toml title="Cargo.toml"
 [workspace.dependencies]
-puerto-web = "0.21"
-puerto-nucleo = "0.21"
+puerto-web = "0.23"
+puerto-nucleo = "0.23"
 ```
 
-`puerto-nucleo` (repository error, paged lists, the ports) is the only one the domain may import:
-it has no driver, no runtime and no I/O. `puerto-web` carries poem and stays in the `rest_<c>`
-crates and `api`. `puerto-sqlx` carries sqlx and stays in the `infra_<c>` crates and the
-binaries. The [runtime crates reference](/docs/reference/runtime-crates/) lists them all.
+`puerto-nucleo` (el error de repositorio, las listas paginadas, los puertos) es el único que puede
+importar el dominio: no tiene driver, ni runtime, ni E/S. `puerto-web` lleva poem y se queda en
+los crates `rest_<c>` y en `api`. `puerto-sqlx` lleva sqlx y se queda en los crates `infra_<c>` y
+en los binarios. La [referencia de los crates del runtime](/docs/reference/runtime-crates/) los
+lista todos.

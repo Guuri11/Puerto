@@ -99,7 +99,7 @@ writeFileSync(join(OUT, 'logo-full.svg'), logo(C.day, C.ink, C.canvas));
 writeFileSync(join(OUT, 'logo-full-dark.svg'), logo(C.dark, C.nightInk, C.night));
 
 // ── Imagen social del repositorio (1280×640): la misma composición que el og.png de la web ──
-const lede = ['The Rust framework that generates', 'Domain-Driven Design backends.'];
+const lede = ['El framework en Rust que genera', 'backends Domain-Driven Design.'];
 const cmd = '$ cargo install puerto';
 const hazard = Array.from({ length: 70 }, (_, i) => `<path d="M${i * 40 - 40} 640 l40 -40 h20 l-40 40z" fill="${C.ink}"/>`).join('');
 const social = svg(
@@ -108,13 +108,13 @@ const social = svg(
   `<rect width="1280" height="640" fill="${C.canvas}"/>` +
     symbol({ x: 76, y: 52, scale: 2.25 }) +
     `<text class="w" x="160" y="104">${word}</text>` +
-    `<text class="h"><tspan x="70" y="268">SCAFFOLD.</tspan><tspan x="70" y="380">STRUCTURE.</tspan><tspan x="70" y="492">SHIP.</tspan></text>` +
+    `<text class="h"><tspan x="70" y="268">GENERA.</tspan><tspan x="70" y="380">ORDENA.</tspan><tspan x="70" y="492">ZARPA.</tspan></text>` +
     `<text class="l"><tspan x="800" y="374">${lede[0]}</tspan><tspan x="800" y="412">${lede[1]}</tspan></text>` +
     `<rect x="800" y="446" width="410" height="62" fill="${C.night}" stroke="${C.ink}" stroke-width="3"/>` +
     `<text class="c" x="822" y="486"><tspan fill="${C.nightMuted}">$</tspan> cargo install puerto</text>` +
     `<rect y="597" width="1280" height="43" fill="${C.accent}"/>${hazard}<rect y="596" width="1280" height="3" fill="${C.ink}"/>`,
   fontFace('Puerto Stencil', 'stencil', word) +
-    fontFace('Puerto Display', 'display', 'SCAFFOLD.STRUCTURE.SHIP') +
+    fontFace('Puerto Display', 'display', 'GENERA.ORDENA.ZARPA') +
     fontFace('Puerto Sans', 'sans', lede.join(' ')) +
     fontFace('Puerto Mono', 'mono', cmd) +
     `.w{font-family:'Puerto Stencil';font-weight:800;font-size:50px;letter-spacing:.04em;fill:${C.ink}}` +

@@ -19,7 +19,7 @@ const layers = [
     ring: 'presentation',
     code: 'RST',
     crate: 'rest_<c>',
-    holds: 'Routes, DTOs, response enums, error mapping, route tests',
+    holds: 'Rutas, DTO, enums de respuesta, errores HTTP, tests de rutas',
     knows: 'aplicacion_<c>, dominio_<c>',
     shift: 2,
   },
@@ -28,7 +28,7 @@ const layers = [
     ring: 'infrastructure',
     code: 'INF',
     crate: 'infra_<c>',
-    holds: 'Adapters: in-memory or Postgres repositories, units of work, mail senders',
+    holds: 'Adaptadores: repositorios en memoria o Postgres, unidades de trabajo, envío de correo',
     knows: 'dominio_<c>',
     shift: 3,
   },
@@ -37,7 +37,7 @@ const layers = [
     ring: 'business',
     code: 'APL',
     crate: 'aplicacion_<c>',
-    holds: 'Use cases, one file each: params, trait, double, implementation, tests',
+    holds: 'Casos de uso, un fichero cada uno: params, trait, doble, implementación, tests',
     knows: 'dominio_<c>',
     shift: 1,
   },
@@ -46,15 +46,15 @@ const layers = [
     ring: 'business',
     code: 'DOM',
     crate: 'dominio_<c>',
-    holds: 'Models, typed ids, value objects, errors, repository ports, events',
-    knows: 'nucleo and puerto-nucleo only',
+    holds: 'Modelos, ids tipados, objetos valor, errores, puertos de repositorio, eventos',
+    knows: 'solo nucleo y puerto-nucleo',
     shift: 0,
   },
 ] as const;
 ---
 
 <figure class="stack not-content" data-stack={animate ? '' : undefined}>
-  <ol class="stack__list" aria-label="The four crates of a context, from the outside in">
+  <ol class="stack__list" aria-label="Los cuatro crates de un contexto, de fuera hacia dentro">
     {
       layers.map((l, i) => (
         <li class={`stack__box stack__box--${l.ring}`} style={`--i: ${i}; --shift: ${l.shift}`} data-stack-box>
@@ -66,16 +66,16 @@ const layers = [
           </div>
           <p class="stack__holds">{l.holds}</p>
           <p class="stack__knows">
-            <span class="stack__crate">{l.crate}</span> depends on {l.knows}
+            <span class="stack__crate">{l.crate}</span> depende de {l.knows}
           </p>
         </li>
       ))
     }
   </ol>
   <figcaption class="stack__caption">
-    One context, from the outside in. Dependencies point inward only, and each layer of each
-    context is its own crate, so Cargo checks the rule. Only <code>presentacion/</code>, the wiring
-    and the binaries, sees them all.
+    Un contexto, de fuera hacia dentro. Las dependencias solo apuntan hacia dentro, y cada capa de
+    cada contexto es su propio crate, así que la regla la comprueba Cargo. Solo
+    <code>presentacion/</code>, el cableado y los binarios, los ve todos.
   </figcaption>
 </figure>
 

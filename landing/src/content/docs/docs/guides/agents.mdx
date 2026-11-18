@@ -1,73 +1,77 @@
 ---
-title: Working with agents
-description: "What Puerto gives a coding agent: tested AGENTS.md rules, a compiler that rejects architectural mistakes, generators for the wiring, review tiers."
+title: Trabajar con agentes
+description: "Lo que Puerto le da a un agente: reglas AGENTS.md con tests, un compilador que rechaza errores de arquitectura, generadores y niveles de revisión."
 ---
 
 import { Aside, Code } from '@astrojs/starlight/components';
 import compiler from '@/data/harvest/compiler.json';
 
-Puerto is built on one bet: **the stricter the structure, the better an agent works inside it.**
-An agent writing into a codebase where every project looks different has to guess, and its
-guesses look plausible. An agent writing into a Puerto project has rules it can read, generators
-that write the wiring, and a compiler that refuses architectural mistakes with a precise message.
+Puerto se apoya en una apuesta: **cuanto más estricta la estructura, mejor trabaja un agente dentro
+de ella.** Un agente que escribe en un código donde cada proyecto es distinto tiene que adivinar,
+y lo que adivina parece razonable. Un agente que escribe en un proyecto Puerto tiene reglas que
+puede leer, generadores que escriben el cableado y un compilador que rechaza los errores de
+arquitectura con un mensaje preciso.
 
-## The rules ship with the project
+## Las reglas vienen con el proyecto
 
-Every project has a root `AGENTS.md` and a one-line `CLAUDE.md` (`@AGENTS.md`), so Claude Code,
-Codex, Cursor and the rest load the same instructions. `contextos/AGENTS.md` has the detail of a
-context's four crates, and `presentacion/AGENTS.md` that of the wiring and the binaries; a web
-project adds `web/AGENTS.md`, and an events project `presentacion/worker/AGENTS.md`. Like
-everything Puerto generates, they are written in Spanish.
+Cada proyecto tiene un `AGENTS.md` en la raíz y un `CLAUDE.md` de una línea (`@AGENTS.md`), así que
+Claude Code, Codex, Cursor y los demás cargan las mismas instrucciones. `contextos/AGENTS.md`
+detalla los cuatro crates de un contexto, y `presentacion/AGENTS.md` el cableado y los binarios;
+un proyecto con web añade `web/AGENTS.md`, y uno con eventos `presentacion/worker/AGENTS.md`.
+Como todo lo que genera Puerto, están en castellano.
 
-The root file covers:
+El fichero raíz cubre:
 
-- the architecture and the dependency rule, with what each crate must **never** contain;
-- the runtime crates and what each one owns, so the agent does not copy their code in;
-- the `puerto` commands, the field syntax, and which files are regenerated, which are patched and
-  which are yours;
-- the order of work: generate, list the scenarios, the failing test, the rule in the domain, then
-  the endpoint, API first;
-- the sections for what the project has turned on: the frontend, domain events, auth, mail;
-- the conventions: TDD, test names, error codes, logging, no `unwrap()`;
-- the checks to run before saying "done": `puerto validar`, `make test`, `make lint`,
+- la arquitectura y la regla de dependencias, con lo que cada crate **nunca** debe contener;
+- los crates del runtime y de qué se encarga cada uno, para que el agente no copie su código;
+- los comandos de `puerto`, la sintaxis de los campos, y qué ficheros se regeneran, cuáles se
+  parchean y cuáles son tuyos;
+- el orden de trabajo: generar, listar los escenarios, el test que falla, la regla en el dominio
+  y después el endpoint, la API primero;
+- las secciones de lo que el proyecto tiene activado: el frontend, los eventos de dominio, la
+  auth, el correo;
+- las convenciones: TDD, nombres de tests, códigos de error, logs, ningún `unwrap()`;
+- las comprobaciones antes de decir «hecho»: `puerto validar`, `make test`, `make lint`,
   `make format`;
-- how to work: one commit per piece, and which changes a human must read.
+- cómo trabajar: un commit por pieza, y qué cambios tiene que leer una persona.
 
-`contextos/AGENTS.md` lays out a context file by file, with the rules an agent is most likely to
-break: the two constructors, typed ids, one file per use case, writes through the unit of work in
-an events project, tests next to the code, the Object Mothers. `presentacion/AGENTS.md` says what
-is generated and must not be edited, the error contract, the health probes and the shape of a
-handler.
+`contextos/AGENTS.md` recorre un contexto fichero a fichero, con las reglas que un agente tiene
+más probabilidades de romper: los dos constructores, los ids tipados, un fichero por caso de uso,
+las escrituras por la unidad de trabajo en un proyecto con eventos, los tests junto al código, las
+madres. `presentacion/AGENTS.md` dice qué está generado y no se edita, el contrato de errores, las
+sondas de salud y la forma de un handler.
 
-<Aside type="note" title="Tested, so it cannot drift">
-Agent instructions are generated output, and Puerto tests them like any other: the root file must
-cover the essentials, and no `AGENTS.md` may describe something the generator no longer does, such
-as a `mod.rs` file or the old logger port. Before that test existed they had drifted, and agents
-followed the wrong rules ([ADR-0010](/docs/decisions/adr/0010-generated-agent-rules-are-tested/)).
+<Aside type="note" title="Con tests, para que no se desfasen">
+Las instrucciones para agentes son salida generada, y Puerto las prueba como cualquier otra: el
+fichero raíz tiene que cubrir lo esencial, y ningún `AGENTS.md` puede describir algo que el
+generador ya no hace, como un fichero `mod.rs` o el antiguo puerto de logger. Antes de que
+existiera ese test se habían desfasado, y los agentes seguían reglas equivocadas
+([ADR-0010](/docs/decisions/adr/0010-generated-agent-rules-are-tested/)).
 </Aside>
 
-## The compiler does the reviewing
+## El compilador hace la revisión
 
-An agent that has used repositories in other frameworks will reach for `guardar` (save). In a
-Puerto project with domain events, the repository has none, so that is a compile error:
+Un agente que ha usado repositorios en otros frameworks buscará `guardar`. En un proyecto Puerto
+con eventos de dominio, el repositorio no lo tiene, así que es un error de compilación:
 
 <Code code={compiler.code} lang="rust" title={compiler.file} />
 
 <Code code={compiler.error} lang="txt" title="cargo check" />
 
-That output is not written by hand: a script generates a project, writes that use case and runs
-`cargo check`, after every Puerto release. The agent reads it, finds the `uow_factory` next to the
-repository in the same struct, switches to the unit of work, and the event gets recorded. Nobody
-had to catch it in review. The same goes for mixing up two entities' ids, an error variant without
-an HTTP status, a consumer listening to an event that no longer exists, or a frontend type that
-disagrees with the API. [The architecture](/docs/start/architecture/#what-the-compiler-enforces-for-you)
-lists them.
+Esa salida no está escrita a mano: un script genera un proyecto, escribe ese caso de uso y ejecuta
+`cargo check`, tras cada release de Puerto. El agente la lee, encuentra el `uow_factory` junto al
+repositorio en el mismo struct, pasa a la unidad de trabajo, y el evento queda registrado. Nadie
+tuvo que verlo en la revisión. Lo mismo pasa al confundir los ids de dos entidades, con una
+variante de error sin estado HTTP, con un consumidor que escucha un evento que ya no existe o con
+un tipo del frontend que no coincide con la API.
+[La arquitectura](/docs/start/architecture/#lo-que-el-compilador-impone-por-ti) los lista.
 
-## Generators instead of wiring
+## Generadores en vez de cableado
 
-The code an agent is most likely to get subtly wrong is the code that connects things:
-dependency injection, module declarations, route tables, the frontend's composition root. In a
-Puerto project the agent does not write it. `AGENTS.md` tells it to run the generator:
+El código que un agente tiene más probabilidades de escribir mal sin que se note es el que conecta
+cosas: la inyección de dependencias, las declaraciones de módulos, las tablas de rutas, la raíz de
+composición del frontend. En un proyecto Puerto el agente no lo escribe. `AGENTS.md` le dice que
+ejecute el generador:
 
 ```bash
 puerto generar scaffold Producto -- nombre:String precio:i64 sku:String!
@@ -76,26 +80,28 @@ puerto generar bootstrap
 puerto validar
 ```
 
-For bigger features, the [layer-by-layer generators](/docs/guides/layer-by-layer/) keep the
-agent's context to one crate at a time: domain first, tested, then the next.
+Para funcionalidades más grandes, los [generadores capa a capa](/docs/guides/layer-by-layer/)
+mantienen el contexto del agente en un crate cada vez: primero el dominio, con tests, y después el
+siguiente.
 
-## Where a person still reads the diff
+## Dónde sigue leyendo el diff una persona
 
-The generated `AGENTS.md` sorts changes by how forgiving the system is when they are wrong (it
-calls the tiers `Nivel 1` and `Nivel 2`):
+El `AGENTS.md` generado ordena los cambios según lo que perdona el sistema cuando están mal (llama
+a los niveles `Nivel 1` y `Nivel 2`):
 
-- **Tier 1: fails silently, slowly or expensively.** A green suite is not enough; a person reads
-  the whole diff before it is committed. SQL migrations, money and other arithmetic the business
-  relies on, authentication and authorization, uniqueness and deduplication, data that crosses a
-  tenant or customer boundary.
-- **Tier 2: fails loudly and reversibly.** The checks are enough. DTO and domain mapping,
-  adapters with real integration tests, read-only queries, docs.
+- **Nivel 1: falla en silencio, despacio o caro.** Que los tests estén en verde no basta; una
+  persona lee el diff entero antes del commit. Migraciones SQL, dinero y cualquier aritmética de la
+  que dependa el negocio, autenticación y autorización, unicidad y deduplicación, datos que cruzan
+  la frontera de un cliente o de un tenant.
+- **Nivel 2: falla con ruido y se puede deshacer.** Basta con las comprobaciones. Traducciones
+  entre DTO y dominio, adaptadores con tests de integración reales, consultas de solo lectura,
+  documentación.
 
-A change that touches both is Tier 1. And the agent makes **one commit per piece**, green, so the
-history shows what it did in steps a person can review.
+Un cambio que toca los dos es de Nivel 1. Y el agente hace **un commit por pieza**, en verde, así
+que el historial muestra lo que hizo en pasos que una persona puede revisar.
 
-## Upgrades are prompts too
+## Las actualizaciones también son prompts
 
-When a release changes generated code, its migration guide in the [changelog](/docs/changelog/)
-includes a paragraph written to be handed to a coding agent as is. See
-[Upgrading](/docs/guides/upgrading/).
+Cuando una release cambia el código generado, su guía de migración en el
+[changelog](/docs/changelog/) incluye un párrafo escrito para dárselo tal cual a un agente. Mira
+[Actualizar](/docs/guides/upgrading/).
