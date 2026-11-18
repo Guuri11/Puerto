@@ -1,3 +1,30 @@
+## [0.24.0] - 2026-11-18
+
+La CLI, el README y la web, en castellano como lo que genera Puerto (PLAN Fase 23, ADR-0024). Lo
+generado no cambia: solo la versión de los crates del runtime que piden los proyectos. Las entradas
+anteriores de este changelog se quedan en inglés.
+
+### Changed
+
+- **Los mensajes de la CLI en castellano**: lo que imprime cada generador, los errores y avisos de
+  `puerto validar`, `puerto listar`, las preguntas de `puerto nuevo` y la ayuda de cada comando,
+  con los nombres de los valores en castellano (`<NOMBRE>`, `<CAMPOS>`, `<ENTIDAD>`…). Las piezas
+  fijas de la ayuda y de los errores de clap (`Uso:`, `Opciones:`, `argumento inesperado`,
+  `consejo:`…) también. Los nombres de los subcomandos y de los flags no cambian.
+- `puerto nuevo` pregunta el nombre del proyecto él mismo, al principio y con la misma validación
+  que `--nombre`, en lugar de dejarlo para cargo-generate.
+- La salida de `generar scaffold` alinea la línea de `web/` con las demás y ya no habla de un
+  repositorio HTTP.
+- `README.md`, el README de crates.io y la `description` de cada crate, en castellano.
+- La web (<https://puerto-rs.vercel.app>) en castellano: la portada, las docs y la referencia de la
+  CLI, generada de la ayuda nueva. El lema pasa a «Genera. Ordena. Zarpa.».
+
+### Breaking
+
+- Un script que leía la salida de `puerto` en inglés deja de encajar: los mensajes, la ayuda y los
+  errores cambian de idioma. Ni la estructura de lo generado, ni `puerto.toml`, ni la API de los
+  crates del runtime cambian.
+
 ## [0.23.0] - 2026-11-17
 
 The generated frontend is the presentation layer and nothing more, and it speaks Spanish like the

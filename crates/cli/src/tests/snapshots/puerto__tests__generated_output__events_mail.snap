@@ -351,11 +351,11 @@ sqlx = { version = "0.8", features = ["runtime-tokio-rustls", "postgres", "macro
 
 # El runtime de Puerto (ADR-0017 de Puerto): lo que comparten todos los proyectos de Puerto vive
 # en estos crates, en la misma versión minor que la CLI `puerto` que generó este proyecto.
-puerto-nucleo = "0.23"
-puerto-web = "0.23"
-puerto-sqlx = "0.23"
-puerto-eventos = "0.23"
-puerto-correo = "0.23"
+puerto-nucleo = "0.24"
+puerto-web = "0.24"
+puerto-sqlx = "0.24"
+puerto-eventos = "0.24"
+puerto-correo = "0.24"
 
 # Los crates de este proyecto: cada `Cargo.toml` los nombra con `{ workspace = true }`.
 cableado = { path = "presentacion/cableado" }

@@ -1,0 +1,33 @@
+[workspace]
+# Un crate por contexto y capa (ADR-0023 de Puerto): `contextos/*/*` incluye cada uno nuevo.
+members = ["nucleo", "contextos/*/*", "presentacion/*"]
+resolver = "3"
+
+[workspace.dependencies]
+# Crates de terceros: una sola versión para todo el proyecto.
+async-trait = "0.1"
+thiserror = "2"
+tracing = "0.1"
+uuid = { version = "1", features = ["v4", "serde"] }
+chrono = { version = "0.4", features = ["serde"] }
+mockall = "0.13"
+tokio = { version = "1", features = ["rt-multi-thread", "macros"] }
+poem = "3"
+# Feature `chrono`: sin ella, poem-openapi no implementa `Type` para DateTime<Utc>.
+poem-openapi = { version = "5", features = ["swagger-ui", "uuid", "chrono"] }
+
+# El runtime de Puerto (ADR-0017 de Puerto): lo que comparten todos los proyectos de Puerto vive
+# en estos crates, en la misma versión minor que la CLI `puerto` que generó este proyecto.
+puerto-web = "0.24"
+puerto-nucleo = "0.24"
+puerto-auth = "0.24"
+
+# Los crates de este proyecto: cada `Cargo.toml` los nombra con `{ workspace = true }`.
+cableado = { path = "presentacion/cableado" }
+dominio_usuario = { path = "contextos/usuario/dominio" }
+infra_usuario = { path = "contextos/usuario/infraestructura" }
+rest_usuario = { path = "contextos/usuario/rest" }
+dominio_cliente = { path = "contextos/cliente/dominio" }
+aplicacion_cliente = { path = "contextos/cliente/aplicacion" }
+infra_cliente = { path = "contextos/cliente/infraestructura" }
+rest_cliente = { path = "contextos/cliente/rest" }
