@@ -375,6 +375,13 @@ make format/fix    # cargo fmt --all
   neutras (`Crear producto`, `¿Borrar producto?`): Puerto no sabe el género de una entidad.
   `bootstrap.rs` exporta la especificación OpenAPI a `docs/api/openapi.json` desde los dobles de
   los casos de uso, y `make web/sync` la convierte en los tipos del frontend
+- La marca y las pantallas base de `web/` (Fase 25, ADR-0027): `web/src/marca/marca.ts` (nombre del
+  proyecto, eslogan, logo; en el `include` de `cargo-generate.toml`), `web/src/marca/tema.css` (el
+  `@plugin "daisyui"` y los temas `light`/`dark` recoloreados; `index.css` solo lo importa) y
+  `web/public/logo.svg`, escritos una vez. `Marco` es un lateral (`drawer lg:drawer-open`) con la
+  marca, «Panel» y una entrada por sección; `paginas/panel.tsx` (`PaginaPanel`, en `/`) muestra el
+  `total` de cada lista, que da cada `EntradaMenu` (`contarTotal(api.GET("/<plural>",
+  PAGINA_DE_UNO))`, generado en `rutas.tsx`; en `<RequiereAuth>` si alguna lista lo está)
 - Los formularios web dicen qué falló junto al campo: `contextos/<entidad>/mensajes.ts` (generado de
   los mismos códigos que `errores.rs`) asocia un código a un mensaje y un campo; `ErrorCampo` lo
   muestra bajo ese input, los demás códigos van a la alerta, los desconocidos se muestran tal cual
@@ -425,13 +432,19 @@ make format/fix    # cargo fmt --all
   (el puerto `Cuentas`, los códigos de la API como mensajes de formulario),
   `auth/pasarela-local.ts` (el token en `localStorage`; `login(volverA)` lo borra y va a
   `/login?siguiente=`) y las páginas `/login` y `/registro`. `dependencias.ts` construye una sola
-  `pasarelaLocal()` como `auth` y `cuentas`; `rutas.tsx` tiene `/login` y `/registro` en vez de
+  `pasarelaLocal()` como `auth` y `cuentas`; `main.tsx` monta `/login` y `/registro` en vez de
   `/auth/callback`. Sin `oidc-client-ts`, sin `web/.env`
+- Con auth y `web/` (los dos modos): `main.tsx` monta las páginas de acceso (`/login` y
+  `/registro`, o `/auth/callback`) en `MarcoAcceso` (`compartido/ui/marco-acceso.tsx`, la marca a
+  un lado y el formulario en una tarjeta) y el resto en `Marco`; `MenuUsuario` es un desplegable
+  con `Avatar` (`compartido/ui/avatar.tsx`, `iniciales(usuario)`) que lleva a `/perfil`
+  (`paginas/perfil.tsx`, de solo lectura sobre `GET /me`, en `<RequiereAuth>` en `rutas.tsx`)
 - `--auth oidc` con `web/`: escrito una vez, en `web/src/auth/` — `sesion.ts` (`PasarelaAuth`,
   `UsuarioActual`), `{pasarela-oidc,middleware-bearer}.ts` (`oidc-client-ts`, fijado, en memoria;
   dependency-cruiser lo mantiene en la pasarela), `auth.tsx` (`ProveedorAuth`, `useAuth`,
-  `RequiereAuth`), `/auth/callback`, un menú de usuario en el marco, `pruebas/auth.ts` y un
-  `renderizarPantalla` que inicia sesión con un llamante con todos los roles; `VITE_AUTH_*` en
+  `RequiereAuth`), `/auth/callback` (en `main.tsx`), un menú de usuario en el marco,
+  `pruebas/auth.ts` y un `renderizarPantalla` que inicia sesión con un llamante con todos los
+  roles; `VITE_AUTH_*` en
   `web/.env`. Regenerados: `dependencias.ts` construye la pasarela y firma el cliente, `rutas.tsx`
   envuelve en `<RequiereAuth>` cada pantalla cuyo caso de uso está protegido, `roles.ts` lista los
   roles. Las pantallas del scaffold ocultan Crear/Editar/Borrar tras `puede(rol)` cuando el caso de

@@ -3515,15 +3515,16 @@ event sourcing; las proyecciones (`generar proyeccion`) y las sagas, cada una en
 
 ## Fase 25 — La marca y las pantallas base del frontend (ADR-0027)
 
-**Estado:** en curso. Decidido por Sergio el 2026-11-18: el valor de `web/` no es solo el CRUD;
-un proyecto nuevo debe verse como un producto (un login, un panel, un perfil) y llevar su marca en
-un solo sitio. La marca es del producto y la pone quien lo desarrolla, en sus ficheros; los ajustes
-en ejecución (un admin que cambia el logo, una marca por cliente) quedan fuera: piden subir
-ficheros y separar datos por cliente, que Puerto no tiene. Un solo diseño: los temas de daisyUI ya
-dan la variedad. Prototipado en dos proyectos desechables (sin auth y con `--auth local`), con
-`bun run typecheck`, `lint`, `lint:arch`, `bun test` y `build` en verde y revisado en el navegador.
+**Estado:** hecha (2026-11-18), sin publicar. Decidido por Sergio el 2026-11-18: el valor de `web/`
+no es solo el CRUD; un proyecto nuevo debe verse como un producto (un login, un panel, un perfil) y
+llevar su marca en un solo sitio. La marca es del producto y la pone quien lo desarrolla, en sus
+ficheros; los ajustes en ejecución (un admin que cambia el logo, una marca por cliente) quedan
+fuera: piden subir ficheros y separar datos por cliente, que Puerto no tiene. Un solo diseño: los
+temas de daisyUI ya dan la variedad. Prototipado en dos proyectos desechables (sin auth y con
+`--auth local`), con `bun run typecheck`, `lint`, `lint:arch`, `bun test` y `build` en verde y
+revisado en el navegador.
 
-### 25.1 — La marca, el tema y el logo (todo proyecto con web)
+### 25.1 — La marca, el tema y el logo (todo proyecto con web) ✅
 
 Ficheros nuevos de la plantilla, escritos una vez (del usuario):
 
@@ -3539,7 +3540,7 @@ Ficheros nuevos de la plantilla, escritos una vez (del usuario):
 - `web/public/logo.svg`: un logo de ejemplo propio (con `<title>`: Biome lo exige). `index.html`
   lo usa de icono (`<link rel="icon" type="image/svg+xml" href="/logo.svg" />`).
 
-### 25.2 — El marco lateral y el panel (todo proyecto con web)
+### 25.2 — El marco lateral y el panel (todo proyecto con web) ✅
 
 - `compartido/ui/marco.tsx`: `Marco({ menu, children })` (sin `titulo`: lo da la marca). Un
   `drawer lg:drawer-open` de daisyUI: en el lateral el logo y el nombre (enlazan a `/`) y el menú
@@ -3576,7 +3577,7 @@ Ficheros nuevos de la plantilla, escritos una vez (del usuario):
   va en `RequiereAuth` solo si una lista está protegida; la copia de `generado/rutas.tsx` de la
   plantilla sigue siendo la del generador; snapshots.
 
-### 25.3 — El acceso, el menú de usuario y el perfil (proyectos con auth y web)
+### 25.3 — El acceso, el menú de usuario y el perfil (proyectos con auth y web) ✅
 
 - `compartido/ui/marco-acceso.tsx` (`MarcoAcceso`): sin el menú de la app; en pantallas anchas, la
   marca y el eslogan sobre el color primario a un lado y el formulario en una tarjeta al otro; en

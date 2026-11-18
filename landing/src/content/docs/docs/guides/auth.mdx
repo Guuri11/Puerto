@@ -169,8 +169,11 @@ alerta como `auth.prohibido`.
 
 | | OIDC | Local |
 |---|---|---|
-| Inicio de sesión | Authorization Code + PKCE (`oidc-client-ts`) | las páginas `/login` y `/registro` |
+| Inicio de sesión | Authorization Code + PKCE (`oidc-client-ts`); vuelve a `/auth/callback` | las páginas `/login` y `/registro` |
 | Dónde va el token | en memoria; una recarga vuelve a pasar por el proveedor | `localStorage`; Cerrar sesión lo revoca |
+
+Esas páginas van fuera del menú de la app, en una página de acceso con la marca del proyecto. Con
+la sesión iniciada, el menú de usuario lleva a `/perfil`, que muestra lo que responde `GET /me`.
 
 <Aside type="caution" title="Tier 1">
 Las comprobaciones de autenticación y autorización están en el Tier 1 del `AGENTS.md` generado:

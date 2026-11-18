@@ -22,6 +22,28 @@ castellano (`ContenedorListaProducto`, `useCarga`, `desenvolver`), y sus pantall
 neutras (`Crear producto`, `¿Borrar producto?`), porque Puerto no puede saber el género de una
 entidad.
 
+## La marca, el marco y el panel
+
+Un proyecto nuevo ya se ve como un producto. Su marca vive en tres ficheros que escribe
+`puerto nuevo` y que no vuelve a tocar
+([ADR-0027](/docs/decisions/adr/0027-la-marca-es-del-proyecto/)):
+
+- `web/src/marca/marca.ts`: el nombre (el del proyecto), el eslogan y la ruta del logo.
+- `web/src/marca/tema.css`: los colores y los radios de la marca, sobre los temas claro y oscuro de
+  daisyUI. La app sigue el modo del sistema. Para otro tema, genera uno en el
+  [generador de temas de daisyUI](https://daisyui.com/theme-generator/) y pega sus variables.
+- `web/public/logo.svg`: el logo, que también es el icono de la pestaña.
+
+El marco pone la marca y el menú en un lateral, con la sección actual marcada; en el móvil, el
+lateral se abre desde un botón. La página de inicio es el **panel**: una tarjeta por entidad con
+el total de su lista, que sale del `total` de una página de un elemento
+(`GET /productos?limite=1`), sin endpoints nuevos.
+
+Con auth, el login y el registro (o la vuelta del proveedor OIDC) van fuera del marco, en una
+página de acceso con la marca a un lado y el formulario en una tarjeta. El menú de usuario muestra
+un avatar con las iniciales y lleva al **perfil** (`/perfil`), que enseña lo que responde
+`GET /me`: nombre, email y roles.
+
 ## El contrato es la especificación OpenAPI
 
 Las rutas del backend son poem-openapi, así que la API se describe sola. Un test de
@@ -50,7 +72,10 @@ API en silencio.
     - contenedores/ lista, detalle, formulario: llamadas y estado, con tests
     - vistas/ lista, detalle, formulario: solo props
     - mensajes.ts qué dice cada código de error, y en qué campo
-  - paginas/ inicio, no-encontrada
+  - marca/
+    - marca.ts tuyo: nombre, eslogan y logo
+    - tema.css tuyo: los colores de la marca sobre los temas de daisyUI
+  - paginas/ panel, no-encontrada
   - compartido/ formularios.ts, use-carga.ts, ui/ (marco, alertas, paginación, errores de campo)
   - generado/ **generado**: la raíz de composición y la tabla de rutas
   - rutas.tsx tuyo: rutas propias

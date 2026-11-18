@@ -72,11 +72,13 @@ aquí, y regenerar `bootstrap.rs` nunca los pierde.
 
 `tracing` a secas, sin logger que inyectar
 ([ADR-0006](/docs/decisions/adr/0006-logging-through-tracing-not-a-logger-port/)). Cada petición
-se registra con su método, su ruta, su estado y su duración, y cada caso de uso registra `inicio` y
-`fin` con su id. Nunca registres los params ni el cuerpo de una petición: son datos del usuario.
+se registra con su método, su ruta, su estado y su duración, y cada caso de uso abre un span con su
+nombre y su id que registra una vez el código de su error
+([ADR-0026](/docs/decisions/adr/0026-casos-de-uso-sin-fontaneria/)). Nunca registres los params ni
+el cuerpo de una petición: son datos del usuario.
 
 ```rust
-tracing::info!(id = %producto.id, "cambiar_precio_producto: fin");
+#[tracing::instrument(name = "cambiar_precio_producto", skip_all, fields(id = %params.id), err(level = "warn"))]
 ```
 
 ## La toolchain
