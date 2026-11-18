@@ -511,7 +511,9 @@ fn snippets_cover_events_projects_and_custom_endpoints() {
     // The use case over the unit of work never calls the repository's `save`: in an events
     // project the port has none.
     assert!(!s["app-use-case-uow"].contains("repository.guardar"));
-    assert!(s["app-use-case-uow"].contains("uow.commit()"));
+    // ADR-0026: the entity and its event are saved by the factory, in one transaction.
+    assert!(s["app-use-case-uow"].contains(".guardar(&entidad, Evento"));
+    assert!(s["uow-write"].contains(".guardar(&entidad, Evento"));
 }
 
 /// Replaces the first occurrence of `from` in the file at `rel`, which must contain it.
@@ -585,8 +587,8 @@ fn compose_publish_from_snippets(output: &Path) {
     // `uow-write` in place of the generated write block of update_producto.
     let update = "contextos/producto/aplicacion/src/actualizar_producto.rs";
     let src = fs::read_to_string(output.join(update)).unwrap();
-    let start = src.find("        let mut uow = ").unwrap();
-    let end_marker = "uow.commit().await?;\n";
+    let start = src.find("        self.uow_factory").unwrap();
+    let end_marker = ".await?;\n";
     let end = start + src[start..].find(end_marker).unwrap() + end_marker.len();
     let write = expand_snippet(&s["uow-write"], &[("Entidad", "Producto")]);
     fs::write(

@@ -3473,7 +3473,7 @@ span lleva el nombre y el `id`; `err` registra el código en `warn`); `entidad.a
   de `--db --eventos db` contiene `: inicio"` ni `: fin"`; los que comparaban con `inicio` lo hacen
   con el atributo.
 
-### 24.2 — `guardar` en la factoría de unidades de trabajo (proyectos con eventos)
+### 24.2 — `guardar` en la factoría de unidades de trabajo (proyectos con eventos) ✅
 
 - `UnitOfWorkFactory<E>` gana un método por defecto:
   `async fn guardar(&self, entidad: &<E>, evento: Evento<E>) -> Result<(), ErrorRepositorio>`

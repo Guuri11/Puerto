@@ -23,10 +23,7 @@ impl Borrar{{ pascal }} for Borrar{{ pascal }}Impl {
         entidad.borrado = true;
         entidad.borrado_en = Some(ahora);
         entidad.actualizado_en = ahora;
-        let mut uow = self.uow_factory.begin().await?;
-        uow.guardar(&entidad).await?;
-        uow.registrar(Evento{{ pascal }}::Borrado(Snapshot{{ pascal }}::from_entidad(&entidad))).await?;
-        uow.commit().await?;
+        self.uow_factory.guardar(&entidad, Evento{{ pascal }}::Borrado(Snapshot{{ pascal }}::from_entidad(&entidad))).await?;
         Ok(())
     }
 }

@@ -372,10 +372,12 @@ lee.
 
 - **No edites nunca a mano `contextos/<c>/dominio/src/eventos.rs`**: se reescribe a partir de
   `puerto.toml` (el snapshot sigue los campos de la entidad). Añade un evento con
-  `puerto generar evento <Entidad> <nombre>` y regístralo después desde un caso de uso:
-  `uow.registrar(EventoProducto::Publicado(SnapshotProducto::from_entidad(&entidad)))`.
-- Un caso de uso de escritura: `uow_factory.begin()` → `guardar` → `registrar` → `commit`. Salir
-  antes con `?`, sin llegar al `commit`, deshace todo.
+  `puerto generar evento <Entidad> <nombre>` y guárdalo después desde un caso de uso:
+  `self.uow_factory.guardar(&entidad, EventoProducto::Publicado(SnapshotProducto::from_entidad(&entidad)))`.
+- Un caso de uso de escritura guarda la entidad y su evento con `uow_factory.guardar(&entidad,
+  evento)`: los dos en una transacción, o ninguno. Para escribir más de una vez, la unidad de
+  trabajo a mano: `begin()` → `guardar` → `registrar` → `commit`; salir antes con `?`, sin llegar
+  al `commit`, deshace todo.
 - El snapshot es un contrato público: los consumidores lo decodifican. Renombrar un campo lo cambia.
 - `presentacion/worker/` es el segundo proceso: hace de relay del outbox y ejecuta los consumidores
   (`make worker`). **No edites nunca a mano `presentacion/worker/src/generado/registro.rs`.**

@@ -22,10 +22,7 @@ impl Crear{{ pascal }} for Crear{{ pascal }}Impl {
 {% endfor %}        let entidad = {{ pascal }}::new(Props{{ pascal }} {
 {% for f in fields %}            {{ f.name }}{% if not f.is_vo %}: params.{{ f.name }}{% endif %},
 {% endfor %}        })?;
-        let mut uow = self.uow_factory.begin().await?;
-        uow.guardar(&entidad).await?;
-        uow.registrar(Evento{{ pascal }}::Creado(Snapshot{{ pascal }}::from_entidad(&entidad))).await?;
-        uow.commit().await?;
+        self.uow_factory.guardar(&entidad, Evento{{ pascal }}::Creado(Snapshot{{ pascal }}::from_entidad(&entidad))).await?;
         Ok(entidad)
     }
 }

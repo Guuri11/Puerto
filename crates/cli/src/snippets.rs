@@ -266,13 +266,11 @@ pub const SNIPPETS_JSON: &str = r##"{
   "Aplicación — escritura por la unidad de trabajo (eventos)": {
     "prefix": "uow-write",
     "body": [
-      "let mut uow = self.uow_factory.begin().await?;",
-      "uow.guardar(&entidad).await?;",
-      "uow.registrar(Evento${1:Entidad}::${2:Actualizado}(Snapshot${1:Entidad}::from_entidad(&entidad)))",
-      "\t.await?;",
-      "uow.commit().await?;"
+      "self.uow_factory",
+      "\t.guardar(&entidad, Evento${1:Entidad}::${2:Actualizado}(Snapshot${1:Entidad}::from_entidad(&entidad)))",
+      "\t.await?;"
     ],
-    "description": "Proyectos con eventos: escribir por la unidad de trabajo — begin, guardar, registrar el evento, commit. Soltarla sin commit la deshace."
+    "description": "Proyectos con eventos: guardar la entidad y su evento en una transacción (la factoría hace begin, guardar, registrar y commit). Para escribir más de una vez, begin y commit a mano."
   },
   "Aplicación — impl del caso de uso sobre la unidad de trabajo (eventos)": {
     "prefix": "app-use-case-uow",
@@ -301,11 +299,9 @@ pub const SNIPPETS_JSON: &str = r##"{
       "\t\tlet mut entidad = self.repositorio.buscar_por_id(params.id).await?.ok_or(Error${2:Entidad}::NoEncontrado)?;",
       "\t\t$0",
       "\t\tentidad.actualizado_en = chrono::Utc::now();",
-      "\t\tlet mut uow = self.uow_factory.begin().await?;",
-      "\t\tuow.guardar(&entidad).await?;",
-      "\t\tuow.registrar(Evento${2:Entidad}::${5:Publicado}(Snapshot${2:Entidad}::from_entidad(&entidad)))",
+      "\t\tself.uow_factory",
+      "\t\t\t.guardar(&entidad, Evento${2:Entidad}::${5:Publicado}(Snapshot${2:Entidad}::from_entidad(&entidad)))",
       "\t\t\t.await?;",
-      "\t\tuow.commit().await?;",
       "\t\tOk(entidad)",
       "\t}",
       "}",

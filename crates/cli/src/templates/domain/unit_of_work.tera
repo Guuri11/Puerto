@@ -18,6 +18,15 @@ pub trait UnitOfWork{{ pascal }}: Send {
 #[async_trait]
 pub trait UnitOfWorkFactory{{ pascal }}: Send + Sync {
     async fn begin(&self) -> Result<Box<dyn UnitOfWork{{ pascal }}>, ErrorRepositorio>;
+
+    /// La escritura de siempre en una llamada (ADR-0026 de Puerto): guarda la entidad y registra el
+    /// evento que emitió, las dos cosas o ninguna. Para escribir más de una vez, `begin` y `commit`.
+    async fn guardar(&self, entidad: &{{ pascal }}, evento: Evento{{ pascal }}) -> Result<(), ErrorRepositorio> {
+        let mut uow = self.begin().await?;
+        uow.guardar(entidad).await?;
+        uow.registrar(evento).await?;
+        uow.commit().await
+    }
 }
 
 #[cfg(any(test, feature = "pruebas"))]

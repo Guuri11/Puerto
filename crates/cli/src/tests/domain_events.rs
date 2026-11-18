@@ -165,6 +165,13 @@ fn scaffold_in_an_events_project_writes_events_and_units_of_work() {
     let uow = read(&output, "contextos/producto/dominio/src/unit_of_work.rs");
     assert!(uow.contains("pub trait UnitOfWorkProducto: Send"));
     assert!(uow.contains("pub trait UnitOfWorkFactoryProducto: Send + Sync"));
+    // ADR-0026: one call for the common write — begin, guardar, registrar, commit.
+    assert!(
+        uow.contains(
+            "async fn guardar(&self, entidad: &Producto, evento: EventoProducto) -> Result<(), ErrorRepositorio> {"
+        ),
+        "{uow}"
+    );
     assert!(uow.contains("pub struct UnitOfWorkFactoryGrabadora"));
 
     let pg_uow = read(
@@ -223,12 +230,16 @@ fn scaffold_in_an_events_project_writes_through_the_unit_of_work() {
             uc.contains("pub uow_factory: Arc<dyn UnitOfWorkFactoryProducto>,"),
             "{action}"
         );
-        assert!(uc.contains("self.uow_factory.begin()"), "{action}");
+        // ADR-0026: the factory's `guardar` opens, writes, records and commits in one call.
         assert!(
-            uc.contains(&format!("uow.registrar(EventoProducto::{event}(")),
+            uc.contains("self.uow_factory.guardar(&entidad, "),
+            "{action}: {uc}"
+        );
+        assert!(
+            uc.contains(&format!("EventoProducto::{event}(")),
             "{action}"
         );
-        assert!(uc.contains("uow.commit()"), "{action}");
+        assert!(!uc.contains("begin()"), "{action}");
         assert!(!uc.contains("repository.guardar"), "{action}");
     }
     let create = read(

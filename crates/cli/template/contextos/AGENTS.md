@@ -15,7 +15,7 @@ contextos/<c>/
 │       ├── errores.rs            # el enum Error<Entidad> (thiserror, códigos legibles por máquina)
 │       ├── repositorio.rs        # el trait Repositorio<Entidad> (puerto) + `dobles::MockRepositorio<Entidad>`
 │       ├── eventos.rs            # GENERADO: snapshot + eventos (proyectos con `eventos`), no lo edites a mano
-│       ├── unit_of_work.rs       # el puerto de escritura: begin → guardar → registrar → commit (proyectos con `eventos`)
+│       ├── unit_of_work.rs       # el puerto de escritura: guardar(&entidad, evento), o begin → … → commit (proyectos con `eventos`)
 │       └── pruebas/madres.rs     # la madre (Object Mother), tras la feature `pruebas`
 ├── aplicacion/       → aplicacion_<c>    un fichero por caso de uso
 │   └── src/<accion>.rs           # Params<Accion> + el trait <Accion> + `dobles::Mock<Accion>` + <Accion>Impl + tests
@@ -73,8 +73,9 @@ Postgres) están tras la feature `pruebas` de cada crate, que los demás crates 
 - **Un caso de uso es un fichero** del crate de aplicación: sus `Params`, su trait, el doble del
   trait y la `Impl` con sus tests. Las rutas guardan un `Arc<dyn …>` del trait.
 - **Proyectos con eventos**: un puerto de repositorio solo lee. Una escritura pasa por la unidad de
-  trabajo de la entidad (`uow_factory.begin()`, `guardar`, `registrar(Evento<Entidad>::…)`,
-  `commit`), y sus tests usan `unit_of_work::dobles::UnitOfWorkFactoryGrabadora`.
+  trabajo de la entidad: `uow_factory.guardar(&entidad, evento)` guarda la entidad y su evento en
+  una transacción (para escribir más de una vez, `begin()` → `guardar` → `registrar` → `commit`), y
+  sus tests usan `unit_of_work::dobles::UnitOfWorkFactoryGrabadora`.
 - **Dependencias inyectadas como `Arc<dyn Trait>`**, nunca tipos concretos.
 - **Nada de `unwrap()`/`expect()`** fuera de los tests (los módulos `pruebas` son código de test).
 - **Logs con `tracing` directamente**, sin puerto de logger. El `ejecutar` de un caso de uso lleva
