@@ -94,7 +94,7 @@ enum GenerateAction {
         /// (p. ej. listar_productos,obtener_producto). Las demás rutas reciben `auth: BearerAuth`
         #[arg(value_name = "CASOS_DE_USO", long = "publico", value_delimiter = ',')]
         public: Vec<String>,
-        /// Proyectos con auth: el rol que exige una ruta, <caso_de_uso>=<rol>, separados por comas
+        /// Proyectos con auth: el rol que exige una ruta, caso_de_uso=rol, separados por comas
         /// (p. ej. crear_producto=admin,borrar_producto=admin): `#[requiere_rol]` en el handler
         #[arg(value_name = "CASO=ROL", long = "rol", value_delimiter = ',')]
         role: Vec<String>,

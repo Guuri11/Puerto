@@ -49,7 +49,11 @@ pub fn run(
     println!("✓ {dir}/infraestructura/ {repo_name}");
     println!("✓ {dir}/rest/            rutas, dto, respuestas, errores");
     if web {
-        println!("✓ web/                   pantallas de lista, detalle y formulario");
+        let width = format!("{dir}/infraestructura/").len();
+        println!(
+            "✓ {:<width$} pantallas de lista, detalle y formulario",
+            "web/"
+        );
     }
     println!("✓ Hecho. Sin cablear nada a mano.");
     if web {
