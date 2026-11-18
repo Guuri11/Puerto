@@ -12342,6 +12342,7 @@ export function crearDependencias(): Dependencias {
 // GENERADO por puerto. Edita puerto.toml y después ejecuta `puerto generar bootstrap`.
 
 import { Route, Switch } from "wouter";
+import { contarTotal, PAGINA_DE_UNO } from "../api/http";
 import type { EntradaMenu } from "../compartido/ui/marco";
 import { ContenedorDetalleCompra } from "../contextos/compra/contenedores/detalle-compra";
 import { ContenedorFormularioCompra } from "../contextos/compra/contenedores/formulario-compra";
@@ -12352,21 +12353,33 @@ import { ContenedorListaEntrega } from "../contextos/entrega/contenedores/lista-
 import { ContenedorDetalleProveedor } from "../contextos/proveedor/contenedores/detalle-proveedor";
 import { ContenedorFormularioProveedor } from "../contextos/proveedor/contenedores/formulario-proveedor";
 import { ContenedorListaProveedor } from "../contextos/proveedor/contenedores/lista-proveedor";
-import { PaginaInicio } from "../paginas/inicio";
 import { PaginaNoEncontrada } from "../paginas/no-encontrada";
+import { PaginaPanel } from "../paginas/panel";
 import { rutasPropias } from "../rutas";
 
 export const entradasMenu: EntradaMenu[] = [
-  { etiqueta: "Compras", href: "/compras" },
-  { etiqueta: "Entregas", href: "/entregas" },
-  { etiqueta: "Proveedores", href: "/proveedores" },
+  {
+    etiqueta: "Compras",
+    href: "/compras",
+    total: ({ api }) => contarTotal(api.GET("/compras", PAGINA_DE_UNO)),
+  },
+  {
+    etiqueta: "Entregas",
+    href: "/entregas",
+    total: ({ api }) => contarTotal(api.GET("/entregas", PAGINA_DE_UNO)),
+  },
+  {
+    etiqueta: "Proveedores",
+    href: "/proveedores",
+    total: ({ api }) => contarTotal(api.GET("/proveedores", PAGINA_DE_UNO)),
+  },
 ];
 
 export function RutasApp() {
   return (
     <Switch>
       <Route path="/">
-        <PaginaInicio entradas={entradasMenu} />
+        <PaginaPanel entradas={entradasMenu} />
       </Route>
       {rutasPropias}
       <Route path="/compras">

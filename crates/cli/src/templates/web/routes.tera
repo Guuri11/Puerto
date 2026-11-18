@@ -1,6 +1,9 @@
 // GENERADO por puerto. Edita puerto.toml y después ejecuta `puerto generar bootstrap`.
 
 import { Route, Switch } from "wouter";
+{% if entities -%}
+import { contarTotal, PAGINA_DE_UNO } from "../api/http";
+{% endif -%}
 {% if guarded -%}
 import { RequiereAuth } from "../auth/auth";
 {% endif -%}
@@ -13,30 +16,43 @@ import { ContenedorLista{{ e.pascal }} } from "../contextos/{{ e.kebab }}/conten
 {% if auth and not local -%}
 import { PaginaAuthCallback } from "../paginas/auth-callback";
 {% endif -%}
-import { PaginaInicio } from "../paginas/inicio";
 {% if local -%}
 import { PaginaLogin } from "../paginas/login";
 {% endif -%}
 import { PaginaNoEncontrada } from "../paginas/no-encontrada";
+import { PaginaPanel } from "../paginas/panel";
 {% if local -%}
 import { PaginaRegistro } from "../paginas/registro";
 {% endif -%}
 import { rutasPropias } from "../rutas";
 
 export const entradasMenu: EntradaMenu[] = [
-{%- if nav_inline %}
-{%- for e in entities %}{ etiqueta: "{{ e.label_plural }}", href: "/{{ e.plural }}" }{% endfor -%}
-{%- else %}
 {%- for e in entities %}
-  { etiqueta: "{{ e.label_plural }}", href: "/{{ e.plural }}" },
+  {
+    etiqueta: "{{ e.label_plural }}",
+    href: "/{{ e.plural }}",
+{%- if e.total_inline %}
+    total: ({ api }) => contarTotal(api.GET("/{{ e.plural }}", PAGINA_DE_UNO)),
+{%- else %}
+    total: ({ api }) =>
+      contarTotal(api.GET("/{{ e.plural }}", PAGINA_DE_UNO)),
+{%- endif %}
+  },
 {%- endfor %}
+{%- if entities %}
 {% endif %}];
 
 export function RutasApp() {
   return (
     <Switch>
       <Route path="/">
-        <PaginaInicio entradas={entradasMenu} />
+{%- if panel_guarded %}
+        <RequiereAuth>
+          <PaginaPanel entradas={entradasMenu} />
+        </RequiereAuth>
+{%- else %}
+        <PaginaPanel entradas={entradasMenu} />
+{%- endif %}
       </Route>
 {%- if local %}
       <Route path="/login">

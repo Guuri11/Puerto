@@ -6843,13 +6843,13 @@ privado = true
 === web/src/marca/tema.css ===
 (borrado)
 
-=== web/src/paginas/inicio.test.tsx ===
-(borrado)
-
-=== web/src/paginas/inicio.tsx ===
-(borrado)
-
 === web/src/paginas/no-encontrada.tsx ===
+(borrado)
+
+=== web/src/paginas/panel.test.tsx ===
+(borrado)
+
+=== web/src/paginas/panel.tsx ===
 (borrado)
 
 === web/src/pruebas/happy-dom.ts ===

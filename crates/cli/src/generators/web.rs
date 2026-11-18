@@ -616,6 +616,8 @@ struct RoutedEntityCtx {
     /// `<Route path="/…/:id/editar">{(params) => …}</Route>` fits on one line.
     edit_route_inline: bool,
     detail_route_inline: bool,
+    /// The menu entry's `total: ({ api }) => contarTotal(…),` fits on one line.
+    total_inline: bool,
     /// The screen sits behind `<RequiereAuth>`: a use case it calls is protected (auth projects).
     list_guarded: bool,
     new_guarded: bool,
@@ -648,6 +650,10 @@ fn generated_ctx(config: &PuertoConfig) -> tera::Context {
             RoutedEntityCtx {
                 edit_route_inline: route("/editar", "Formulario"),
                 detail_route_inline: route("", "Detalle"),
+                total_inline: fits(&format!(
+                    "    total: ({{ api }}) => contarTotal(api.GET(\"/{}\", PAGINA_DE_UNO)),",
+                    entity.plural
+                )),
                 list_guarded: guarded("list"),
                 new_guarded: guarded("create"),
                 // The form loads the entity, then saves it.
@@ -658,15 +664,6 @@ fn generated_ctx(config: &PuertoConfig) -> tera::Context {
         })
         .collect();
     sliced.sort_by(|a, b| compare_sources(&a.entity.kebab, &b.entity.kebab));
-    // Biome breaks an array of two or more objects; a single one stays inline while it fits.
-    let nav_inline = match sliced.as_slice() {
-        [] => true,
-        [only] => fits(&format!(
-            "export const entradasMenu: EntradaMenu[] = [{{ etiqueta: \"{}\", href: \"/{}\" }}];",
-            only.entity.label_plural, only.entity.plural
-        )),
-        _ => false,
-    };
     // Every role a screen checks, once each: what the screen tests' caller holds.
     let mut roles: Vec<String> = vec![];
     for entity in config.entity.iter().filter(|e| has_web_slice(e)) {
@@ -686,8 +683,9 @@ fn generated_ctx(config: &PuertoConfig) -> tera::Context {
             .iter()
             .any(|e| e.list_guarded || e.new_guarded || e.edit_guarded || e.detail_guarded),
     );
+    // The panel counts every list: one that asks for a session would send there anyway (its 401).
+    ctx.insert("panel_guarded", &sliced.iter().any(|e| e.list_guarded));
     ctx.insert("entities", &sliced);
-    ctx.insert("nav_inline", &nav_inline);
     ctx.insert("roles", &roles);
     ctx
 }

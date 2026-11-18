@@ -105,7 +105,16 @@ fn scaffold_names_files_in_kebab_case_routes_after_the_plural_and_variables_in_c
         "{routes}"
     );
     assert!(routes.contains(r#"<Route path="/lineas_pedido/nuevo">"#));
-    assert!(routes.contains(r#"{ etiqueta: "Lineas pedido", href: "/lineas_pedido" }"#));
+    assert!(
+        routes.contains(
+            r#"  {
+    etiqueta: "Lineas pedido",
+    href: "/lineas_pedido",
+    total: ({ api }) => contarTotal(api.GET("/lineas_pedido", PAGINA_DE_UNO)),
+  },"#
+        ),
+        "{routes}"
+    );
     assert!(routes.contains("../contextos/linea-pedido/contenedores/lista-linea-pedido"));
 
     let screens = "web/src/contextos/linea-pedido";
@@ -458,8 +467,71 @@ fn generated_routes_match_custom_routes_before_the_entities() {
     let generated = read(&output, "web/src/generado/rutas.tsx");
     let custom = generated.find("{rutasPropias}").unwrap();
     assert!(custom < generated.find("<Route path=\"/productos\">").unwrap());
-    assert!(custom > generated.find("<PaginaInicio").unwrap());
+    assert!(custom > generated.find("<PaginaPanel").unwrap());
 
+    cleanup(&dir);
+}
+
+// ── Fase 25.2: el marco lateral y el panel ───────────────────────────────
+
+#[test]
+fn new_web_project_opens_on_the_panel_inside_the_branded_frame() {
+    let (dir, output) = web_project("web_panel");
+
+    assert!(!output.join("web/src/paginas/inicio.tsx").exists());
+    assert!(output.join("web/src/paginas/panel.test.tsx").exists());
+    let panel = read(&output, "web/src/paginas/panel.tsx");
+    assert!(panel.contains("export function PaginaPanel("), "{panel}");
+    assert!(panel.contains("entrada.total(dependencias)"), "{panel}");
+    let marco = read(&output, "web/src/compartido/ui/marco.tsx");
+    assert!(
+        marco.contains("total: (dependencias: Dependencias) => Promise<number>;"),
+        "{marco}"
+    );
+    assert!(marco.contains("{marca.nombre}"), "{marco}");
+    assert!(marco.contains("drawer lg:drawer-open"), "{marco}");
+    assert!(!marco.contains("titulo"), "{marco}");
+    assert!(read(&output, "web/src/main.tsx").contains("<Marco menu={entradasMenu}>"));
+    let http = read(&output, "web/src/api/http.ts");
+    assert!(http.contains("export const PAGINA_DE_UNO = "), "{http}");
+    assert!(
+        http.contains("export async function contarTotal("),
+        "{http}"
+    );
+    let routes = read(&output, "web/src/generado/rutas.tsx");
+    assert!(
+        routes.contains("<PaginaPanel entradas={entradasMenu} />"),
+        "{routes}"
+    );
+    // No entity yet: nothing to count, so no client helpers to import.
+    assert!(!routes.contains("contarTotal"), "{routes}");
+    cleanup(&dir);
+}
+
+#[test]
+fn a_menu_entry_breaks_its_total_after_the_arrow_when_the_line_is_too_long() {
+    // Biome keeps an expanded object, and breaks an arrow's body onto the next line past 100
+    // columns; the generated file has to be what Biome would leave.
+    let (dir, output) = web_project("web_panel_long");
+
+    scaffold::run_scaffold(
+        "ConfiguracionNotificacionUsuarioExterno",
+        &output,
+        &[],
+        OverwritePolicy::Ask,
+    )
+    .unwrap();
+
+    let routes = read(&output, "web/src/generado/rutas.tsx");
+    assert!(
+        routes.contains(
+            r#"    total: ({ api }) =>
+      contarTotal(api.GET("/configuraciones_notificacion_usuario_externo", PAGINA_DE_UNO)),
+"#
+        ),
+        "{routes}"
+    );
+    assert!(routes.contains("import { contarTotal, PAGINA_DE_UNO } from \"../api/http\";"));
     cleanup(&dir);
 }
 

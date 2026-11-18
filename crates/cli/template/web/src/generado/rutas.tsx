@@ -2,8 +2,8 @@
 
 import { Route, Switch } from "wouter";
 import type { EntradaMenu } from "../compartido/ui/marco";
-import { PaginaInicio } from "../paginas/inicio";
 import { PaginaNoEncontrada } from "../paginas/no-encontrada";
+import { PaginaPanel } from "../paginas/panel";
 import { rutasPropias } from "../rutas";
 
 export const entradasMenu: EntradaMenu[] = [];
@@ -12,7 +12,7 @@ export function RutasApp() {
   return (
     <Switch>
       <Route path="/">
-        <PaginaInicio entradas={entradasMenu} />
+        <PaginaPanel entradas={entradasMenu} />
       </Route>
       {rutasPropias}
       <Route>

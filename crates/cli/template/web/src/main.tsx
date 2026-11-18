@@ -17,7 +17,7 @@ document.title = marca.nombre;
 createRoot(raiz).render(
   <StrictMode>
     <ProveedorDependencias valor={crearDependencias()}>
-      <Marco titulo={document.title} menu={entradasMenu}>
+      <Marco menu={entradasMenu}>
         <RutasApp />
       </Marco>
     </ProveedorDependencias>

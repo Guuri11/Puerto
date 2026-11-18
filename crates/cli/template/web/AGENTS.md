@@ -15,7 +15,8 @@ reciben. No hay dominio, casos de uso ni adaptadores propios; las reglas viven e
 |---|---|
 | `api/` | `cliente.ts` (`crearClienteApi`, `ClienteApi`, `Esquemas`: los DTO por nombre), `http.ts` (`desenvolver`, `ErrorApi`, `TAMANO_PAGINA`) y `esquema.d.ts` (generado) |
 | `contextos/<entidad>/` | `contenedores/` (estado y llamadas a la API, con sus tests), `vistas/` (solo props) y `mensajes.ts` |
-| `paginas/` | las páginas que no son de una entidad (inicio, página no encontrada) |
+| `marca/` | `marca.ts` (nombre, eslogan, logo) y `tema.css` (los colores de la marca sobre los temas claro y oscuro de daisyUI): tuyos, Puerto no los vuelve a escribir. El logo es `public/logo.svg` |
+| `paginas/` | las páginas que no son de una entidad (el panel, página no encontrada) |
 | `compartido/` | `formularios.ts` (texto del formulario ↔ valores de la API), `use-carga.ts` y `ui/` (componentes compartidos) |
 | `generado/` | la raíz de composición y la tabla de rutas: **las reescribe Puerto** |
 | `pruebas/` | `renderizarPantalla`, la API falsa y una madre por entidad: solo para los tests |
@@ -64,6 +65,11 @@ página en la URL (`?pagina=2`) y pinta `compartido/ui/paginacion.tsx` con lo qu
 que pida la pantalla.
 
 Rutas: `/<plural>`, `/<plural>/nuevo`, `/<plural>/:id`, `/<plural>/:id/editar`.
+
+El marco (`compartido/ui/marco.tsx`) pone la marca y el menú en un lateral; cada entidad es una
+entrada de `entradasMenu` y una tarjeta del panel (`paginas/panel.tsx`, en `/`), que muestra el
+`total` de su lista (`contarTotal(api.GET("/<plural>", PAGINA_DE_UNO))`, generado en
+`generado/rutas.tsx`).
 
 ## Ficheros generados
 

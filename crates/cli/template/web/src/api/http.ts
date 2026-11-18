@@ -44,3 +44,11 @@ export const TAMANO_PAGINA = 20;
  * una referencia.
  */
 export const LIMITE_PAGINA_MAXIMO = 100;
+
+/** La consulta de una página de un solo elemento: lo justo para leer el `total` de una lista. */
+export const PAGINA_DE_UNO = { params: { query: { limite: 1 } } };
+
+/** El `total` de una lista paginada. */
+export async function contarTotal(llamada: Promise<Respuesta<{ total: number }>>): Promise<number> {
+  return (await desenvolver(llamada)).total;
+}

@@ -614,6 +614,31 @@ fn scaffold_web_producto(output: &Path, access: &scaffold::ScaffoldAccess) {
 }
 
 #[test]
+fn the_panel_asks_for_a_session_only_when_a_list_it_counts_does() {
+    // The panel counts every list: a protected one answers 401, which signs in anyway.
+    let (dir, output) = auth_web_project("auth_web_panel");
+    let panel = "<Route path=\"/\">\n        <PaginaPanel entradas={entradasMenu} />";
+    let guarded_panel = "<Route path=\"/\">\n        <RequiereAuth>\n          <PaginaPanel entradas={entradasMenu} />";
+
+    scaffold_web_producto(&output, &access(&["listar_productos"], &[]));
+    let routes = read(&output, "web/src/generado/rutas.tsx");
+    assert!(routes.contains(panel), "{routes}");
+
+    // A re-scaffold keeps the block's public use cases: a second entity, every list protected.
+    scaffold::run_scaffold_with_access(
+        "Categoria",
+        &output,
+        &[scaffold_test_field("title", "String")],
+        OverwritePolicy::Force,
+        &access(&[], &[]),
+    )
+    .unwrap();
+    let routes = read(&output, "web/src/generado/rutas.tsx");
+    assert!(routes.contains(guarded_panel), "{routes}");
+    cleanup(&dir);
+}
+
+#[test]
 fn scaffold_in_an_auth_web_project_guards_every_screen_but_the_public_ones() {
     let (dir, output) = auth_web_project("auth_web_routes");
 

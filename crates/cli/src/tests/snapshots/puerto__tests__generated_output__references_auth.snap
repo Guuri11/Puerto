@@ -6961,44 +6961,94 @@ export class ErrorAuth extends Error {
 }
 
 === web/src/compartido/ui/marco.tsx ===
-import type { ReactNode } from "react";
-import { Link } from "wouter";
+import { type ReactNode, useState } from "react";
+import { Link, useLocation } from "wouter";
+import type { Dependencias } from "../../generado/dependencias";
+import { marca } from "../../marca/marca";
 import { MenuUsuario } from "./menu-usuario";
 
+/** Una sección de la app: una entrada del menú y una tarjeta del panel. */
 export interface EntradaMenu {
   etiqueta: string;
   href: string;
+  /** Cuántos elementos tiene su lista: lo que enseña el panel. */
+  total: (dependencias: Dependencias) => Promise<number>;
 }
 
-export function Marco({
-  titulo,
-  menu,
-  children,
-}: {
-  titulo: string;
-  menu: EntradaMenu[];
-  children: ReactNode;
-}) {
-  return (
-    <div className="min-h-screen bg-base-200">
-      <header className="navbar bg-base-100 shadow-sm">
-        <Link href="/" className="btn btn-ghost text-xl">
-          {titulo}
+/**
+ * La marca y el menú en un lateral, quien tiene la sesión arriba y el contenido debajo. En una
+ * pantalla estrecha el lateral se esconde tras un botón y se cierra al elegir una entrada.
+ */
+export function Marco({ menu, children }: { menu: EntradaMenu[]; children: ReactNode }) {
+  const [ubicacion] = useLocation();
+  const [abierto, setAbierto] = useState(false);
+  const enlace = (href: string, etiqueta: string) => {
+    const actual = ubicacion === href || (href !== "/" && ubicacion.startsWith(`${href}/`));
+    return (
+      <li key={href}>
+        <Link
+          href={href}
+          className={actual ? "menu-active" : undefined}
+          aria-current={actual ? "page" : undefined}
+          onClick={() => setAbierto(false)}
+        >
+          {etiqueta}
         </Link>
-        <nav>
-          <ul className="menu menu-horizontal">
-            {menu.map((entrada) => (
-              <li key={entrada.href}>
-                <Link href={entrada.href}>{entrada.etiqueta}</Link>
-              </li>
-            ))}
-          </ul>
-        </nav>
-        <div className="ml-auto">
-          <MenuUsuario />
-        </div>
-      </header>
-      <main className="container mx-auto max-w-5xl p-4">{children}</main>
+      </li>
+    );
+  };
+
+  return (
+    <div className="drawer lg:drawer-open">
+      <input
+        id="marco-menu"
+        type="checkbox"
+        className="drawer-toggle"
+        checked={abierto}
+        onChange={(event) => setAbierto(event.target.checked)}
+      />
+      <div className="drawer-content flex min-h-screen flex-col bg-base-200">
+        <header className="navbar bg-base-100 shadow-sm">
+          <label
+            htmlFor="marco-menu"
+            className="btn btn-square btn-ghost lg:hidden"
+            aria-label="Abrir el menú"
+          >
+            <svg
+              viewBox="0 0 24 24"
+              className="size-6"
+              fill="none"
+              stroke="currentColor"
+              aria-hidden="true"
+            >
+              <path strokeLinecap="round" strokeWidth="2" d="M4 6h16M4 12h16M4 18h16" />
+            </svg>
+          </label>
+          <Link href="/" className="flex items-center gap-2 px-2 text-lg font-bold lg:hidden">
+            <img src={marca.logo} alt="" className="size-8" />
+            {marca.nombre}
+          </Link>
+          <div className="ml-auto">
+            <MenuUsuario />
+          </div>
+        </header>
+        <main className="mx-auto w-full max-w-6xl flex-1 p-4 lg:p-8">{children}</main>
+      </div>
+      <div className="drawer-side z-20">
+        <label htmlFor="marco-menu" className="drawer-overlay" aria-label="Cerrar el menú" />
+        <aside className="flex min-h-full w-64 flex-col border-base-300 border-r bg-base-100">
+          <Link href="/" className="flex items-center gap-3 p-5 text-xl font-bold">
+            <img src={marca.logo} alt="" className="size-10" />
+            {marca.nombre}
+          </Link>
+          <nav>
+            <ul className="menu w-full gap-1">
+              {enlace("/", "Panel")}
+              {menu.map((entrada) => enlace(entrada.href, entrada.etiqueta))}
+            </ul>
+          </nav>
+        </aside>
+      </div>
     </div>
   );
 }
@@ -8446,6 +8496,7 @@ export const ROLES: string[] = ["admin"];
 // GENERADO por puerto. Edita puerto.toml y después ejecuta `puerto generar bootstrap`.
 
 import { Route, Switch } from "wouter";
+import { contarTotal, PAGINA_DE_UNO } from "../api/http";
 import { RequiereAuth } from "../auth/auth";
 import type { EntradaMenu } from "../compartido/ui/marco";
 import { ContenedorDetalleEquipo } from "../contextos/equipo/contenedores/detalle-equipo";
@@ -8455,20 +8506,30 @@ import { ContenedorDetalleJugador } from "../contextos/jugador/contenedores/deta
 import { ContenedorFormularioJugador } from "../contextos/jugador/contenedores/formulario-jugador";
 import { ContenedorListaJugador } from "../contextos/jugador/contenedores/lista-jugador";
 import { PaginaAuthCallback } from "../paginas/auth-callback";
-import { PaginaInicio } from "../paginas/inicio";
 import { PaginaNoEncontrada } from "../paginas/no-encontrada";
+import { PaginaPanel } from "../paginas/panel";
 import { rutasPropias } from "../rutas";
 
 export const entradasMenu: EntradaMenu[] = [
-  { etiqueta: "Equipos", href: "/equipos" },
-  { etiqueta: "Jugadores", href: "/jugadores" },
+  {
+    etiqueta: "Equipos",
+    href: "/equipos",
+    total: ({ api }) => contarTotal(api.GET("/equipos", PAGINA_DE_UNO)),
+  },
+  {
+    etiqueta: "Jugadores",
+    href: "/jugadores",
+    total: ({ api }) => contarTotal(api.GET("/jugadores", PAGINA_DE_UNO)),
+  },
 ];
 
 export function RutasApp() {
   return (
     <Switch>
       <Route path="/">
-        <PaginaInicio entradas={entradasMenu} />
+        <RequiereAuth>
+          <PaginaPanel entradas={entradasMenu} />
+        </RequiereAuth>
       </Route>
       <Route path="/auth/callback">
         <PaginaAuthCallback />
@@ -8543,7 +8604,7 @@ createRoot(raiz).render(
   <StrictMode>
     <ProveedorDependencias valor={crearDependencias()}>
       <ProveedorAuth>
-        <Marco titulo={document.title} menu={entradasMenu}>
+        <Marco menu={entradasMenu}>
           <RutasApp />
         </Marco>
       </ProveedorAuth>

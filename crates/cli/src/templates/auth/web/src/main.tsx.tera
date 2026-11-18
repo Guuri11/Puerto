@@ -19,7 +19,7 @@ createRoot(raiz).render(
   <StrictMode>
     <ProveedorDependencias valor={crearDependencias()}>
       <ProveedorAuth>
-        <Marco titulo={document.title} menu={entradasMenu}>
+        <Marco menu={entradasMenu}>
           <RutasApp />
         </Marco>
       </ProveedorAuth>

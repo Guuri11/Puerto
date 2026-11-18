@@ -3217,21 +3217,28 @@ export function crearDependencias(): Dependencias {
 // GENERADO por puerto. Edita puerto.toml y después ejecuta `puerto generar bootstrap`.
 
 import { Route, Switch } from "wouter";
+import { contarTotal, PAGINA_DE_UNO } from "../api/http";
 import type { EntradaMenu } from "../compartido/ui/marco";
 import { ContenedorDetalleBillete } from "../contextos/billete/contenedores/detalle-billete";
 import { ContenedorFormularioBillete } from "../contextos/billete/contenedores/formulario-billete";
 import { ContenedorListaBillete } from "../contextos/billete/contenedores/lista-billete";
-import { PaginaInicio } from "../paginas/inicio";
 import { PaginaNoEncontrada } from "../paginas/no-encontrada";
+import { PaginaPanel } from "../paginas/panel";
 import { rutasPropias } from "../rutas";
 
-export const entradasMenu: EntradaMenu[] = [{ etiqueta: "Billetes", href: "/billetes" }];
+export const entradasMenu: EntradaMenu[] = [
+  {
+    etiqueta: "Billetes",
+    href: "/billetes",
+    total: ({ api }) => contarTotal(api.GET("/billetes", PAGINA_DE_UNO)),
+  },
+];
 
 export function RutasApp() {
   return (
     <Switch>
       <Route path="/">
-        <PaginaInicio entradas={entradasMenu} />
+        <PaginaPanel entradas={entradasMenu} />
       </Route>
       {rutasPropias}
       <Route path="/billetes">
