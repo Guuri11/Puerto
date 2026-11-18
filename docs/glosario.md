@@ -330,6 +330,18 @@ los nombres de los tests son frases: con tildes.
 | auth: `Sign in`, `Sign out`, `Create account`, `Create an account`, `Email`, `Password`, `Name`, `Wrong email or password`, `An account with this email already exists`, `This is not an email address` | `Iniciar sesión`, `Cerrar sesión`, `Crear cuenta`, `Crea una cuenta`, `Email`, `Contraseña`, `Nombre`, `Email o contraseña incorrectos`, `Ya hay una cuenta con este email`, `No es una dirección de email` |
 | tests: `should show … when …`, `// Arrange`, `// Act`, `// Assert` | `debería mostrar … cuando …`, `// Preparar`, `// Actuar`, `// Comprobar` |
 
+## Fase 25 — la marca y las pantallas base (decidido el 2026-11-18)
+
+No hay un nombre anterior. Sergio aprobó `marca`, `tema`, `panel`, `perfil` y `acceso`; el resto se
+decidió por el camino, con las mismas reglas.
+
+| Dónde | Nombre |
+|---|---|
+| ficheros | `web/src/marca/marca.ts`, `web/src/marca/tema.css`, `web/public/logo.svg`, `compartido/ui/marco-acceso.tsx`, `compartido/ui/avatar.tsx`, `paginas/panel.tsx` (antes `inicio.tsx`), `paginas/perfil.tsx` |
+| nombres | `marca { nombre, eslogan, logo }`, `MarcoAcceso`, `Avatar`, `iniciales`, `PaginaPanel` (antes `PaginaInicio`), `TarjetaTotal`, `PaginaPerfil`, `EntradaMenu.total`, `contarTotal`, `PAGINA_DE_UNO` |
+| rutas | `/perfil` |
+| textos | `Panel`, `Perfil`, `Roles`, `Sin roles`, `Sin nombre`, `Sin email`, `Ver la lista`, `Abrir el menú`, `Cerrar el menú`, el eslogan `Todo lo que gestionas, en un solo sitio.` |
+
 ## Pendiente
 
 Nada por ahora. Una palabra nueva se pregunta antes de usarla.

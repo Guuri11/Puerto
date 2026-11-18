@@ -3510,3 +3510,98 @@ span lleva el nombre y el `id`; `err` registra el código en `warn`); `entidad.a
 Un bus de comandos o middleware (ADR-0026); varios eventos por llamada a `guardar` (se usa
 `begin`/`commit`); eventos que se despachan en el mismo proceso antes del commit (los de eShop);
 event sourcing; las proyecciones (`generar proyeccion`) y las sagas, cada una en su fase.
+
+---
+
+## Fase 25 — La marca y las pantallas base del frontend (ADR-0027)
+
+**Estado:** en curso. Decidido por Sergio el 2026-11-18: el valor de `web/` no es solo el CRUD;
+un proyecto nuevo debe verse como un producto (un login, un panel, un perfil) y llevar su marca en
+un solo sitio. La marca es del producto y la pone quien lo desarrolla, en sus ficheros; los ajustes
+en ejecución (un admin que cambia el logo, una marca por cliente) quedan fuera: piden subir
+ficheros y separar datos por cliente, que Puerto no tiene. Un solo diseño: los temas de daisyUI ya
+dan la variedad. Prototipado en dos proyectos desechables (sin auth y con `--auth local`), con
+`bun run typecheck`, `lint`, `lint:arch`, `bun test` y `build` en verde y revisado en el navegador.
+
+### 25.1 — La marca, el tema y el logo (todo proyecto con web)
+
+Ficheros nuevos de la plantilla, escritos una vez (del usuario):
+
+- `web/src/marca/marca.ts`: `export const marca = { nombre, eslogan, logo }`. `nombre` es el del
+  proyecto (`{{project-name}}`: el fichero entra en el `include` de `cargo-generate.toml`), el
+  eslogan una frase neutra («Todo lo que gestionas, en un solo sitio.») y `logo` `"/logo.svg"`.
+  `main.tsx` pone `document.title = marca.nombre`.
+- `web/src/marca/tema.css`: `@plugin "daisyui";` y dos `@plugin "daisyui/theme"` que sobrescriben
+  los temas `light` (`default`) y `dark` (`prefersdark`) con los colores de la marca (primario,
+  acento) y los radios; lo que no se sobrescribe sale del tema de daisyUI. `index.css` pasa a
+  `@import "tailwindcss"; @import "./marca/tema.css";`. (Un `@import` tras el `@plugin` lo rechaza
+  Biome, y antes del `@plugin` los temas de daisyUI lo pisan: por eso el plugin vive en `tema.css`.)
+- `web/public/logo.svg`: un logo de ejemplo propio (con `<title>`: Biome lo exige). `index.html`
+  lo usa de icono (`<link rel="icon" type="image/svg+xml" href="/logo.svg" />`).
+
+### 25.2 — El marco lateral y el panel (todo proyecto con web)
+
+- `compartido/ui/marco.tsx`: `Marco({ menu, children })` (sin `titulo`: lo da la marca). Un
+  `drawer lg:drawer-open` de daisyUI: en el lateral el logo y el nombre (enlazan a `/`) y el menú
+  (`Panel` y una entrada por sección, la actual con `menu-active` y `aria-current="page"`); en una
+  pantalla estrecha, una barra con el botón «Abrir el menú», y el lateral se cierra al elegir una
+  entrada. Con auth, la barra se ve siempre y lleva `MenuUsuario` a la derecha.
+- `EntradaMenu` gana `total: (dependencias: Dependencias) => Promise<number>`: lo que enseña el
+  panel. `generado/rutas.tsx` escribe cada entrada expandida (Biome conserva un objeto expandido):
+
+  ```ts
+  export const entradasMenu: EntradaMenu[] = [
+    {
+      etiqueta: "Productos",
+      href: "/productos",
+      total: ({ api }) => contarTotal(api.GET("/productos", PAGINA_DE_UNO)),
+    },
+  ];
+  ```
+
+  con la línea de `total` partida tras `=>` cuando no cabe en 100 columnas.
+- `api/http.ts` (plantilla): `PAGINA_DE_UNO` (`{ params: { query: { limite: 1 } } }`) y
+  `contarTotal(llamada)`, que desenvuelve la página y responde su `total`. Sin cambios en el backend:
+  la lista ya responde `total`.
+- `paginas/panel.tsx` (`PaginaPanel`, sustituye a `paginas/inicio.tsx` / `PaginaInicio`): el título
+  «Panel», el eslogan y una tarjeta (`stats` de daisyUI) por sección, que enlaza su lista y muestra
+  su total (un spinner mientras carga, «—» si falla); sin secciones, el `SinElementos` de siempre.
+  Mantiene el enlace a la Swagger UI.
+- Con auth, `generado/rutas.tsx` envuelve el panel en `<RequiereAuth>` cuando alguna de las listas
+  que resume la pide: su `401` mandaría a iniciar sesión de todos modos.
+- Tests (de la plantilla): el panel muestra el total y enlaza la lista; «—» cuando no se puede
+  contar; el texto de `puerto generar scaffold` sin secciones. Tests de Puerto: `marca.ts`, `tema.css`
+  y `logo.svg` existen y `marca.ts` lleva el nombre del proyecto; `inicio.tsx` ya no existe;
+  `rutas.tsx` importa `PaginaPanel` y da a cada entrada su `total` con la ruta de su lista; el panel
+  va en `RequiereAuth` solo si una lista está protegida; la copia de `generado/rutas.tsx` de la
+  plantilla sigue siendo la del generador; snapshots.
+
+### 25.3 — El acceso, el menú de usuario y el perfil (proyectos con auth y web)
+
+- `compartido/ui/marco-acceso.tsx` (`MarcoAcceso`): sin el menú de la app; en pantallas anchas, la
+  marca y el eslogan sobre el color primario a un lado y el formulario en una tarjeta al otro; en
+  estrechas, la tarjeta con el logo encima.
+- `main.tsx` (auth) monta un `Switch`: `/login` y `/registro` (local) o `/auth/callback` (OIDC) en
+  `MarcoAcceso`, y todo lo demás en `Marco` con `RutasApp`. `generado/rutas.tsx` deja de tener esas
+  rutas. `login.tsx` y `registro.tsx` pierden su ancho propio (lo da la tarjeta) y el botón ocupa
+  la tarjeta entera.
+- `compartido/ui/avatar.tsx`: `iniciales(usuario)` (la primera letra de las dos primeras palabras
+  del nombre; si no hay, la del email; si tampoco, «?») y `Avatar({ usuario, className })`, un
+  círculo con ellas (sin los `div` del `avatar` de daisyUI: va dentro de un `<button>`).
+- `MenuUsuario`: un `dropdown` de daisyUI con el avatar y el nombre que abre «Perfil» (`/perfil`) y
+  «Cerrar sesión»; sin sesión, el botón «Iniciar sesión».
+- `paginas/perfil.tsx` (`PaginaPerfil`), en `/perfil` con `<RequiereAuth>` (en
+  `generado/rutas.tsx`): solo lectura, de `useAuth().usuario` (`GET /me`, sin llamadas nuevas): el
+  avatar, el nombre, el email, los roles (`badge`, o «Sin roles») y «Cerrar sesión».
+- Tests (de la plantilla): `iniciales` con nombre, solo con email y sin ninguno; el menú enlaza el
+  perfil y muestra las iniciales; el perfil muestra nombre, email y roles, «Sin roles» y cierra la
+  sesión. Tests de Puerto: los ficheros de auth nuevos existen (y los de OIDC/local en su modo);
+  `main.tsx` monta `MarcoAcceso`; `rutas.tsx` lleva `/perfil` y no `/login`; snapshots; el compile
+  matrix en todos los escenarios con web.
+
+### Fuera de alcance (Fase 25)
+
+Ajustes de marca en ejecución y una marca por cliente; editar el perfil o cambiar la contraseña
+(casos de uso nuevos en `usuario`); un selector de tema claro/oscuro (se usa el del sistema);
+gráficas en el panel (pedirían endpoints de agregación); varias plantillas a elegir; la etiqueta de
+una referencia en las listas (hoy muestran su id; el detalle ya la muestra).
