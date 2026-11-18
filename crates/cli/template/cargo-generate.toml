@@ -6,4 +6,5 @@ include = [
     "puerto.toml",
     "Makefile",
     "web/index.html",
+    "web/src/marca/marca.ts",
 ]

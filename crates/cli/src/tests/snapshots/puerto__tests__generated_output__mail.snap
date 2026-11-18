@@ -1237,6 +1237,9 @@ nombre = "receipt"
 === web/package.json ===
 (borrado)
 
+=== web/public/logo.svg ===
+(borrado)
+
 === web/src/api/http.ts ===
 (borrado)
 
@@ -1301,6 +1304,12 @@ nombre = "receipt"
 (borrado)
 
 === web/src/main.tsx ===
+(borrado)
+
+=== web/src/marca/marca.ts ===
+(borrado)
+
+=== web/src/marca/tema.css ===
 (borrado)
 
 === web/src/paginas/inicio.test.tsx ===

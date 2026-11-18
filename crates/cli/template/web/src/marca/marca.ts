@@ -1,0 +1,9 @@
+/**
+ * La marca del producto: la leen el marco, el panel y, con auth, las páginas de acceso. Los colores
+ * están en `tema.css`; el logo, en `web/public/logo.svg`, que también es el icono de la pestaña.
+ */
+export const marca = {
+  nombre: "{{project-name}}",
+  eslogan: "Todo lo que gestionas, en un solo sitio.",
+  logo: "/logo.svg",
+};

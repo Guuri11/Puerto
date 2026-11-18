@@ -739,6 +739,60 @@ fn web_index_html_is_titled_after_the_project() {
     cleanup(&dir);
 }
 
+// ── Fase 25: la marca ─────────────────────────────────────────────────────
+
+#[test]
+fn web_brand_is_named_after_the_project_and_its_logo_is_the_tab_icon() {
+    let dir = temp_dir("web_brand");
+    cleanup(&dir);
+    fs::create_dir_all(&dir).unwrap();
+
+    let output = generate_project("shop-front", &dir).unwrap();
+
+    let marca = fs::read_to_string(output.join("web/src/marca/marca.ts")).unwrap();
+    assert!(marca.contains("nombre: \"shop-front\","), "{marca}");
+    assert!(marca.contains("logo: \"/logo.svg\","), "{marca}");
+    let logo = fs::read_to_string(output.join("web/public/logo.svg")).unwrap();
+    // Biome lints SVG: one without a <title> fails the project's `make web/lint`.
+    assert!(logo.contains("<title>"), "{logo}");
+    let index = fs::read_to_string(output.join("web/index.html")).unwrap();
+    assert!(
+        index.contains(r#"<link rel="icon" type="image/svg+xml" href="/logo.svg" />"#),
+        "{index}"
+    );
+    let main = fs::read_to_string(output.join("web/src/main.tsx")).unwrap();
+    assert!(main.contains("document.title = marca.nombre;"), "{main}");
+    cleanup(&dir);
+}
+
+#[test]
+fn web_theme_brings_daisyui_and_recolours_its_light_and_dark_themes() {
+    let dir = temp_dir("web_theme");
+    cleanup(&dir);
+    fs::create_dir_all(&dir).unwrap();
+
+    let output = generate_project("shop-front", &dir).unwrap();
+
+    let tema = fs::read_to_string(output.join("web/src/marca/tema.css")).unwrap();
+    for line in [
+        "@plugin \"daisyui\";",
+        "name: \"light\";",
+        "default: true;",
+        "name: \"dark\";",
+        "prefersdark: true;",
+        "--color-primary:",
+    ] {
+        assert!(tema.contains(line), "missing {line}: {tema}");
+    }
+    // Behind the plugin, the import is invalid CSS (Biome); before it, daisyUI's themes win.
+    let index = fs::read_to_string(output.join("web/src/index.css")).unwrap();
+    assert_eq!(
+        index,
+        "@import \"tailwindcss\";\n@import \"./marca/tema.css\";\n"
+    );
+    cleanup(&dir);
+}
+
 #[test]
 fn web_package_pins_exact_versions_and_runs_on_bun() {
     // A caret range lets a fresh install pick a release the templates were never tested against.
