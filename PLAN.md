@@ -3385,3 +3385,40 @@ entidad en `web/src/contextos/<e>/` (el mismo nombre que el backend). Va en la 0
 
 La internacionalización (un catálogo de textos, varios idiomas); el género de una entidad en
 `puerto.toml`.
+
+---
+
+## Fase 23 — La CLI, el README y la web en castellano (ADR-0024)
+
+**Estado:** en curso (2026-11-18). La ADR-0024 dejó para una pasada aparte "la documentación de
+Puerto, la web, el README y los mensajes de la CLI". Decidido por Sergio el 2026-11-18: los
+mensajes de la CLI, el README y la web pasan al castellano; `PLAN.md`, el `CHANGELOG.md` y las ADR
+anteriores a la 0023 se quedan como están (son historia: el changelog sale de los commits).
+
+### 23.1 — Los mensajes de la CLI
+
+- Todo lo que `puerto` escribe: la ayuda de clap (`about`, cada argumento, los nombres de los
+  valores: `<NOMBRE>`, `<CAMPOS>`, `<ENTIDAD>`…), las preguntas de `puerto nuevo` (también el
+  nombre del proyecto, que ya no pregunta cargo-generate), lo que imprime cada generador, los
+  errores y avisos de `puerto validar`, y `puerto listar`.
+- Las piezas fijas de clap (`Usage:`, `Options:`, `Print help`, `unexpected argument`, `tip:`…) se
+  sustituyen en el texto que renderiza antes de imprimirlo; lo que no conoce la tabla se queda
+  como está.
+- Los nombres de los subcomandos y de los flags no cambian (`completions`, `help`, `--help`,
+  `--version`).
+- Tests: los que comparaban con un mensaje lo hacen con el castellano; uno nuevo comprueba que la
+  ayuda de la raíz y de `generar scaffold` y dos errores de clap no dejan ninguna pieza en inglés.
+
+### 23.2 — El README
+
+### 23.3 — La web (`landing/`)
+
+- Las páginas de `landing/src/content/docs/` que no se copian del repo, la portada, la cabecera,
+  el pie y el 404; Starlight con `lang: 'es'` (sus propios textos: buscar, en esta página…).
+- `make site/data` vuelve a cosechar la ayuda de la CLI; los tests e2e de `landing/` buscan los
+  textos nuevos.
+
+### Fuera de alcance (Fase 23)
+
+Traducir `PLAN.md`, el `CHANGELOG.md`, las ADR 0001–0022 o el código fuente de Puerto; renombrar
+subcomandos o flags.
