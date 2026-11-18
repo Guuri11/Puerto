@@ -34,3 +34,4 @@ ADR; supersede it with a new one and link both ways.
 | [0023](0023-crates-por-contexto-y-capa.md) | Un crate por contexto y capa en los proyectos generados | Aceptada |
 | [0024](0024-lo-generado-en-castellano.md) | Lo que genera Puerto, en castellano | Aceptada |
 | [0025](0025-el-frontend-es-presentacion.md) | El frontend generado es presentación: contenedores sobre el cliente tipado | Aceptada |
+| [0026](0026-casos-de-uso-sin-fontaneria.md) | Los casos de uso de escritura: la entidad emite, la factoría guarda, el span registra | Aceptada |

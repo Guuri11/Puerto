@@ -102,6 +102,9 @@ Hay una tabla de invariables, con tests: `analisis`, `crisis`, `tesis`, `lunes`�
 | `// Arrange`, `// Act`, `// Assert` | `// Preparar`, `// Actuar`, `// Comprobar` |
 | `create_product: start`, `done`, `rejected`, `repository failed` | `crear_producto: inicio`, `fin`, `rechazado`, `fallo del repositorio` |
 
+Desde la Fase 24 (ADR-0026) un caso de uso no escribe esas líneas: su `ejecutar` lleva
+`#[tracing::instrument(name = "crear_producto", …)]`, y el span se llama como el caso de uso.
+
 ## Lo que la Fase 19.7 decidió por el camino
 
 | Hoy | Ahora |
@@ -244,6 +247,16 @@ Lo que añadió la Fase 20 (lo que encontró canasta); no hay un nombre anterior
 | runtime (`puerto-web`) | `BearerAuthOpcional(pub Option<Principal>)` |
 | DTO | `DtoProducto::from_dominio_publico(&entidad)` (los campos privados a `None`) |
 | SQL | el índice de un único compuesto: `<tabla>_<campo>_<campo>_key` |
+
+## Fase 24 (decidido el 2026-11-18)
+
+Los casos de uso de escritura (ADR-0026). No hay un nombre anterior.
+
+| Dónde | Nombre |
+|---|---|
+| modelo (proyectos con eventos) | `Producto::crear(props) -> Result<(Producto, EventoProducto), ErrorProducto>` (`new` + el evento `Creado`) |
+| modelo | `Producto::borrar(&mut self)` (el borrado lógico; con eventos devuelve `EventoProducto`); con eventos, `actualizar` devuelve `EventoProducto` |
+| unidad de trabajo | `UnitOfWorkFactoryProducto::guardar(&self, entidad, evento)` (`begin` + `guardar` + `registrar` + `commit`) |
 
 ## Fase 22 — el frontend (decidido el 2026-11-17)
 

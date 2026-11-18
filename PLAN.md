@@ -3426,3 +3426,87 @@ anteriores a la 0023 se quedan como están (son historia: el changelog sale de l
 
 Traducir `PLAN.md`, el `CHANGELOG.md`, las ADR 0001–0022 o el código fuente de Puerto; renombrar
 subcomandos o flags.
+
+---
+
+## Fase 24 — Casos de uso de escritura sin fontanería (ADR-0026)
+
+**Estado:** especificada (2026-11-18). Decidido por Sergio el 2026-11-18, tras comparar eShop
+(MediatR + EF Core), Wolverine y `cqrs-es`: sin bus ni middleware. La entidad emite sus eventos,
+la factoría de unidades de trabajo los guarda en una llamada y `tracing::instrument` hace los logs.
+Un `actualizar_<e>` con eventos pasa de ~25 líneas a 5:
+
+```rust
+#[tracing::instrument(name = "actualizar_producto", skip_all, fields(id = %params.id), err(level = "warn"))]
+async fn ejecutar(&self, params: ParamsActualizarProducto) -> Result<Producto, ErrorProducto> {
+    let mut entidad = self.repositorio.buscar_por_id(params.id).await?.ok_or(ErrorProducto::NoEncontrado)?;
+    let evento = entidad.actualizar(PropsProducto { nombre: params.nombre })?;
+    self.uow_factory.guardar(&entidad, evento).await?;
+    Ok(entidad)
+}
+```
+
+Prototipo (toolchain 1.95.0): `#[instrument]` funciona sobre un método de `#[async_trait]` (el
+span lleva el nombre y el `id`; `err` registra el código en `warn`); `entidad.actualizar(p)?;` con
+`#[must_use]` en el evento da `unused_must_use`; un método por defecto de un trait
+`#[async_trait]` se llama sobre un `Arc<dyn …>`.
+
+### 24.1 — Los logs, con `#[tracing::instrument]`
+
+- Todo `ejecutar` generado lleva
+  `#[tracing::instrument(name = "<caso>", skip_all, err(level = "warn"))]`, con
+  `fields(id = %params.id)` cuando los params tienen `id` (`obtener`, `actualizar`, `borrar`). Son
+  los CRUD (con y sin eventos), el esqueleto de `generar caso-de-uso`, el demo `obtener_saludo` y
+  los de auth local (`registrar_usuario`, `login`, `logout`).
+- Fuera: las líneas `<caso>: inicio`, `fin`, `rechazado` y `fallo del repositorio`, los cierres
+  `fallido`, los `inspect_err` y los `ok_or_else` que solo registraban (`.ok_or(Error<E>::NoEncontrado)?`).
+- Por qué basta: un fallo de infraestructura ya lo registra su adaptador en `error`, con la causa
+  del driver (`repository_pg_crud`, `unit_of_work_pg`, `TransaccionPostgres`), y ahora dentro del
+  span del caso de uso; el `Err` que devuelve `ejecutar` se registra una vez en `warn` con su
+  código; poem registra cada respuesta con su estado y su duración. Un caso de uso que acaba bien
+  no escribe línea propia.
+- `skip_all` mantiene la regla de no registrar los datos de la petición (el demo registraba
+  `nombre`).
+- Snippets (`app-use-case`, `uow-write`, `app-use-case-uow`), el `AGENTS.md` raíz, el de
+  `contextos/` y `.claude/rules/architecture.md` dicen lo mismo.
+- Tests: el `crear_<e>` generado lleva el `instrument` con su nombre; ningún `.rs` del escenario
+  de `--db --eventos db` contiene `: inicio"` ni `: fin"`; los que comparaban con `inicio` lo hacen
+  con el atributo.
+
+### 24.2 — `guardar` en la factoría de unidades de trabajo (proyectos con eventos)
+
+- `UnitOfWorkFactory<E>` gana un método por defecto:
+  `async fn guardar(&self, entidad: &<E>, evento: Evento<E>) -> Result<(), ErrorRepositorio>`
+  — `begin`, `guardar`, `registrar`, `commit`. `begin`/`commit` siguen para un caso de uso propio
+  que escribe más de una vez.
+- `crear`, `actualizar` y `borrar` lo usan. `UnitOfWorkFactoryGrabadora` no cambia: el método pasa
+  por sus `begin`/`guardar`/`registrar`/`commit`, así que los tests de los casos de uso siguen
+  viendo `grabado()` igual.
+- Tests: `unit_of_work.rs` declara `guardar`; los tres casos de uso CRUD de escritura lo llaman y
+  no contienen `begin()`; el compile matrix ejecuta sus tests contra la grabadora.
+
+### 24.3 — La entidad emite sus eventos
+
+- Proyectos con eventos, entidades CRUD: los métodos de dominio devuelven el evento que provocan.
+  - `Producto::crear(props) -> Result<(Producto, EventoProducto), ErrorProducto>`: `new` + `Creado`.
+    `new` se queda (la madre y los tests construyen sin emitir nada; `from_repositorio` tampoco).
+  - `Producto::actualizar(&mut self, props) -> Result<EventoProducto, ErrorProducto>`.
+  - `Producto::borrar(&mut self) -> EventoProducto`.
+- `Evento<E>` lleva `#[must_use]`: un evento que nadie guarda es un aviso, y el `make lint` del
+  proyecto (`-D warnings`) lo rechaza.
+- Todas las entidades CRUD: el borrado lógico (`borrado`, `borrado_en`, `actualizado_en`) pasa del
+  caso de uso `borrar_<e>` a `Producto::borrar(&mut self)` (sin eventos, no devuelve nada).
+- Un evento propio (`generar evento`) lo emite un método de la entidad que escribe el usuario:
+  `pub fn publicar(&mut self) -> EventoProducto`. El mensaje de `generar evento` y la sección de
+  eventos del `AGENTS.md` raíz lo dicen así.
+- Tests (del proyecto generado, en `modelo.rs`): `crear` emite `Creado` con el id de la entidad,
+  `actualizar` emite `Actualizado`, `borrar` marca la entidad y emite `Borrado`; sin eventos,
+  `borrar` la marca. Tests de Puerto: el `modelo.rs` de un proyecto con eventos tiene `crear` y
+  `borrar` con sus firmas, `eventos.rs` tiene `#[must_use`, `borrar_<e>.rs` ya no contiene
+  `borrado = true`.
+
+### Fuera de alcance (Fase 24)
+
+Un bus de comandos o middleware (ADR-0026); varios eventos por llamada a `guardar` (se usa
+`begin`/`commit`); eventos que se despachan en el mismo proceso antes del commit (los de eShop);
+event sourcing; las proyecciones (`generar proyeccion`) y las sagas, cada una en su fase.
