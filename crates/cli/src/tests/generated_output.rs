@@ -4,7 +4,8 @@ use compile_matrix::{
     EVENTS_DB, EVENTS_KAFKA, EVENTS_MAIL, EVENTS_MAIL_KAFKA, MAIL, MULTI_ENTITY, NO_DEMO, NO_WEB,
     OPT_VEC_PRIM, OPT_VEC_VO, PLAIN_VO, POSTGRES_EVERY_TYPE, PRIMITIVES, REFERENCES,
     REFERENCES_AUTH, REFERENCES_AUTH_DB, REFERENCES_DB, REFERENCES_EVENTS, SHARED_VO, Scenario,
-    UUID_VO, VO_KITCHEN_SINK, WEB_CRUD, WEB_EVERY_TYPE, apply_scenario,
+    UUID_VO, VO_KITCHEN_SINK, WEB_BLOCKS, WEB_BLOCKS_LOCAL, WEB_BLOCKS_PLAIN, WEB_CRUD,
+    WEB_EVERY_TYPE, apply_scenario,
 };
 use std::collections::BTreeMap;
 
@@ -123,6 +124,9 @@ snapshot_scenarios! {
     snapshot_auth_oidc_db => AUTH_OIDC_DB,
     snapshot_auth_oidc_events => AUTH_OIDC_EVENTS,
     snapshot_auth_local => AUTH_LOCAL,
+    snapshot_web_blocks => WEB_BLOCKS,
+    snapshot_web_blocks_plain => WEB_BLOCKS_PLAIN,
+    snapshot_web_blocks_local => WEB_BLOCKS_LOCAL,
 }
 
 /// ADR-0026: a use case logs through its `#[tracing::instrument]` span, never by hand.

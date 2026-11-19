@@ -97,7 +97,9 @@ fn a_default_block_on_a_new_project_changes_nothing() {
     let before = web_sources(&output);
 
     for id in ["marco/lateral", "panel/tarjetas", "tema/puerto"] {
-        let written = blocks::run_install(id, &output, OverwritePolicy::Ask).unwrap();
+        let written = blocks::run_install(id, &output, OverwritePolicy::Ask)
+            .unwrap()
+            .written;
         assert!(written.is_empty(), "{id} escribió {written:?}");
     }
 
@@ -114,7 +116,9 @@ fn a_default_auth_block_on_a_new_auth_project_changes_nothing() {
     let before = web_sources(&output);
 
     for id in ["acceso/dividido", "marco/lateral", "perfil/tarjeta"] {
-        let written = blocks::run_install(id, &output, OverwritePolicy::Ask).unwrap();
+        let written = blocks::run_install(id, &output, OverwritePolicy::Ask)
+            .unwrap()
+            .written;
         assert!(written.is_empty(), "{id} escribió {written:?}");
     }
 
@@ -140,7 +144,9 @@ fn another_variant_replaces_only_its_slot_and_only_with_forzar() {
         Vec::<String>::new()
     );
 
-    let written = blocks::run_install("panel/resumen", &output, OverwritePolicy::Force).unwrap();
+    let written = blocks::run_install("panel/resumen", &output, OverwritePolicy::Force)
+        .unwrap()
+        .written;
     assert_eq!(written, vec![PathBuf::from("web/src/paginas/panel.tsx")]);
     let after = web_sources(&output);
     assert_eq!(changed(&before, &after), vec!["web/src/paginas/panel.tsx"]);
@@ -148,7 +154,11 @@ fn another_variant_replaces_only_its_slot_and_only_with_forzar() {
 
     // Installed already: nothing to protect, nothing to write.
     let again = blocks::run_install("panel/resumen", &output, OverwritePolicy::Ask).unwrap();
-    assert!(again.is_empty());
+    assert!(again.written.is_empty());
+    assert_eq!(
+        again.files,
+        vec![PathBuf::from("web/src/paginas/panel.tsx")]
+    );
     cleanup(&dir);
 }
 
@@ -423,7 +433,9 @@ fn new_refuses_a_portada_without_web_or_a_route_that_is_not_one() {
 #[test]
 fn the_welcome_portada_is_a_block_of_projects_with_portada_only() {
     let (dir, output) = with_portada("portada_block", NewOptions::default());
-    let written = blocks::run_install("portada/bienvenida", &output, OverwritePolicy::Ask).unwrap();
+    let written = blocks::run_install("portada/bienvenida", &output, OverwritePolicy::Ask)
+        .unwrap()
+        .written;
     assert!(written.is_empty(), "{written:?}");
     cleanup(&dir);
 
@@ -451,5 +463,81 @@ fn validar_checks_the_portada_and_the_route_of_the_app() {
     fs::write(output.join("puerto.toml"), manifest).unwrap();
     let orphan = validate::run_validate(&output).unwrap_err().to_string();
     assert!(orphan.contains("ruta_app"), "{orphan}");
+    cleanup(&dir);
+}
+
+// ── 26.4: las secciones de marketing ───────────────────────────────────────────────────────────
+
+const SECTIONS: [&str; 6] = [
+    "cabecera",
+    "caracteristicas",
+    "precios",
+    "preguntas",
+    "llamada",
+    "pie",
+];
+
+#[test]
+fn the_product_portada_brings_every_section_in_its_own_file() {
+    let (dir, output) = with_portada("portada_producto", NewOptions::default());
+
+    let refused = blocks::run_install("portada/producto", &output, OverwritePolicy::Ask);
+    assert!(
+        refused.is_err(),
+        "pisaría la portada de bienvenida sin --forzar"
+    );
+
+    let written = blocks::run_install("portada/producto", &output, OverwritePolicy::Force)
+        .unwrap()
+        .written;
+    assert_eq!(written.len(), 1 + SECTIONS.len(), "{written:?}");
+    let page = read(&output, "web/src/paginas/portada.tsx");
+    for section in SECTIONS {
+        let file = format!("web/src/portada/{section}.tsx");
+        let component = format!(
+            "Seccion{}",
+            crate::generators::naming::to_pascal_case(section)
+        );
+        assert!(read(&output, &file).contains(&format!("export function {component}")));
+        assert!(
+            page.contains(&format!("<{component} />")),
+            "la portada no monta {component}"
+        );
+    }
+    cleanup(&dir);
+}
+
+#[test]
+fn a_section_replaces_its_file_of_the_product_portada_only() {
+    let (dir, output) = with_portada("portada_seccion", NewOptions::default());
+
+    let err = blocks::run_install("cabecera/dividida", &output, OverwritePolicy::Force)
+        .unwrap_err()
+        .to_string();
+    assert!(err.contains("portada/producto"), "{err}");
+
+    blocks::run_install("portada/producto", &output, OverwritePolicy::Force).unwrap();
+    let default = blocks::run_install("cabecera/centrada", &output, OverwritePolicy::Ask)
+        .unwrap()
+        .written;
+    assert!(default.is_empty(), "{default:?}");
+    let before = web_sources(&output);
+    blocks::run_install("cabecera/dividida", &output, OverwritePolicy::Force).unwrap();
+    assert_eq!(
+        changed(&before, &web_sources(&output)),
+        vec!["web/src/portada/cabecera.tsx"]
+    );
+    cleanup(&dir);
+}
+
+#[test]
+fn the_sections_need_a_project_with_portada() {
+    let (dir, output) = plain("portada_secciones_sin");
+
+    let err = blocks::run_install("precios/planes", &output, OverwritePolicy::Force)
+        .unwrap_err()
+        .to_string();
+
+    assert!(err.contains("portada"), "{err}");
     cleanup(&dir);
 }

@@ -1,0 +1,18 @@
+import { Link } from "wouter";
+import { rutaApp } from "../generado/rutas";
+import { marca } from "../marca/marca";
+
+/** La última invitación a entrar, en una banda del color de la marca. */
+export function SeccionLlamada() {
+  return (
+    <section className="px-4 py-20">
+      <div className="mx-auto max-w-6xl space-y-6 rounded-box bg-primary px-8 py-16 text-center text-primary-content">
+        <h2 className="text-4xl font-bold">Empieza hoy con {marca.nombre}</h2>
+        <p className="mx-auto max-w-xl text-lg opacity-80">{marca.eslogan}</p>
+        <Link href={rutaApp} className="btn btn-lg border-0 bg-base-100 text-base-content">
+          Ir al panel
+        </Link>
+      </div>
+    </section>
+  );
+}

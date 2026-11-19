@@ -1,0 +1,94 @@
+import { Link } from "wouter";
+import { rutaApp } from "../generado/rutas";
+
+/** Los planes: el destacado, en el centro. Los nombres, los precios y lo que incluyen son de ejemplo. */
+const PLANES = [
+  {
+    nombre: "Básico",
+    precio: "0 €",
+    periodo: "/mes",
+    descripcion: "Para probarlo a fondo.",
+    incluye: ["1 persona", "Hasta 100 elementos", "Soporte por email"],
+    destacado: false,
+  },
+  {
+    nombre: "Equipo",
+    precio: "29 €",
+    periodo: "/mes",
+    descripcion: "Para un equipo que ya trabaja con ello.",
+    incluye: [
+      "Hasta 10 personas",
+      "Elementos sin límite",
+      "Roles y permisos",
+      "Soporte prioritario",
+    ],
+    destacado: true,
+  },
+  {
+    nombre: "Empresa",
+    precio: "A medida",
+    periodo: "",
+    descripcion: "Para organizaciones grandes.",
+    incluye: ["Personas sin límite", "Acuerdo de servicio", "Ayuda para empezar"],
+    destacado: false,
+  },
+];
+
+/** Los planes y su precio, uno al lado del otro. */
+export function SeccionPrecios() {
+  return (
+    <section id="precios" className="scroll-mt-16 bg-base-200 px-4 py-20">
+      <div className="mx-auto max-w-6xl">
+        <header className="mx-auto mb-12 max-w-2xl space-y-3 text-center">
+          <h2 className="text-4xl font-bold">Precios</h2>
+          <p className="text-lg text-base-content/70">
+            Empieza gratis y cambia de plan cuando quieras.
+          </p>
+        </header>
+        <ul className="grid items-start gap-6 lg:grid-cols-3">
+          {PLANES.map((plan) => (
+            <li
+              key={plan.nombre}
+              className={`card bg-base-100 ${plan.destacado ? "border-2 border-primary shadow-xl" : "border border-base-300"}`}
+            >
+              <div className="card-body gap-4">
+                <div className="flex items-center justify-between">
+                  <h3 className="card-title">{plan.nombre}</h3>
+                  {plan.destacado && <span className="badge badge-primary">Más elegido</span>}
+                </div>
+                <p className="text-base-content/70">{plan.descripcion}</p>
+                <p>
+                  <span className="text-4xl font-bold">{plan.precio}</span>
+                  <span className="text-base-content/70">{plan.periodo}</span>
+                </p>
+                <ul className="space-y-2">
+                  {plan.incluye.map((linea) => (
+                    <li key={linea} className="flex items-center gap-2">
+                      <svg
+                        viewBox="0 0 24 24"
+                        className="size-5 text-primary"
+                        fill="none"
+                        stroke="currentColor"
+                        strokeWidth="2"
+                        aria-hidden="true"
+                      >
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                      </svg>
+                      {linea}
+                    </li>
+                  ))}
+                </ul>
+                <Link
+                  href={rutaApp}
+                  className={`btn mt-2 ${plan.destacado ? "btn-primary" : "btn-outline"}`}
+                >
+                  Entrar
+                </Link>
+              </div>
+            </li>
+          ))}
+        </ul>
+      </div>
+    </section>
+  );
+}

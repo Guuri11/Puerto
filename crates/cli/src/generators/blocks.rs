@@ -18,6 +18,8 @@ pub enum Needs {
     Auth,
     /// `[proyecto] portada`: the slot is a page of the portada.
     Portada,
+    /// A portada made of sections (`portada/producto`): the slot is one of them.
+    Sections,
 }
 
 /// Where a block file's content comes from.
@@ -31,6 +33,8 @@ enum Source {
     Auth,
     /// A variant of its own: `templates/web/bloques/<slot>/<variant>/<file name>.tera`.
     Variant,
+    /// Another block's file: a page brings the default variant of each of its sections.
+    Block(&'static str),
 }
 
 pub struct Block {
@@ -48,6 +52,12 @@ const PANEL: &str = "src/paginas/panel.tsx";
 const PERFIL: &str = "src/paginas/perfil.tsx";
 const TEMA: &str = "src/marca/tema.css";
 const PORTADA: &str = "src/paginas/portada.tsx";
+const CABECERA: &str = "src/portada/cabecera.tsx";
+const CARACTERISTICAS: &str = "src/portada/caracteristicas.tsx";
+const PRECIOS: &str = "src/portada/precios.tsx";
+const PREGUNTAS: &str = "src/portada/preguntas.tsx";
+const LLAMADA: &str = "src/portada/llamada.tsx";
+const PIE: &str = "src/portada/pie.tsx";
 
 const fn block(
     id: &'static str,
@@ -120,6 +130,62 @@ pub const CATALOG: &[Block] = &[
         &[(PORTADA, Source::Variant)],
     ),
     block(
+        "portada/producto",
+        "una web de producto: barra, cabecera, características, precios, preguntas, llamada y pie",
+        Needs::Portada,
+        &[
+            (PORTADA, Source::Variant),
+            (CABECERA, Source::Block("cabecera/centrada")),
+            (CARACTERISTICAS, Source::Block("caracteristicas/rejilla")),
+            (PRECIOS, Source::Block("precios/planes")),
+            (PREGUNTAS, Source::Block("preguntas/acordeon")),
+            (LLAMADA, Source::Block("llamada/banda")),
+            (PIE, Source::Block("pie/columnas")),
+        ],
+    ),
+    block(
+        "cabecera/centrada",
+        "el eslogan en grande en el centro y la entrada a la app",
+        Needs::Sections,
+        &[(CABECERA, Source::Variant)],
+    ),
+    block(
+        "cabecera/dividida",
+        "el eslogan a un lado y, al otro, un navegador con un panel de ejemplo",
+        Needs::Sections,
+        &[(CABECERA, Source::Variant)],
+    ),
+    block(
+        "caracteristicas/rejilla",
+        "seis características con su icono, en una rejilla",
+        Needs::Sections,
+        &[(CARACTERISTICAS, Source::Variant)],
+    ),
+    block(
+        "precios/planes",
+        "tres planes, el del centro destacado",
+        Needs::Sections,
+        &[(PRECIOS, Source::Variant)],
+    ),
+    block(
+        "preguntas/acordeon",
+        "las preguntas frecuentes en un acordeón",
+        Needs::Sections,
+        &[(PREGUNTAS, Source::Variant)],
+    ),
+    block(
+        "llamada/banda",
+        "una banda del color de la marca que invita a entrar",
+        Needs::Sections,
+        &[(LLAMADA, Source::Variant)],
+    ),
+    block(
+        "pie/columnas",
+        "la marca y los enlaces de la portada, en columnas",
+        Needs::Sections,
+        &[(PIE, Source::Variant)],
+    ),
+    block(
         "tema/puerto",
         "cian y ámbar, esquinas redondeadas",
         Needs::Nothing,
@@ -175,6 +241,7 @@ pub fn catalog_text() -> String {
             Needs::Nothing => "",
             Needs::Auth => " (auth)",
             Needs::Portada => " (portada)",
+            Needs::Sections => " (portada/producto)",
         };
         text.push_str(&format!(
             "  {:width$}  {}{needs}\n",
@@ -226,15 +293,19 @@ fn render_block(
                 (Source::BaseOrAuth, Some(_)) | (Source::Auth, _) => {
                     render(&format!("auth/web/{file}.tera"), &ctx)?
                 }
-                (Source::Variant, _) => {
-                    let name = Path::new(file).file_name().and_then(|n| n.to_str());
-                    let name = name.ok_or_else(|| format!("{file}: sin nombre de fichero"))?;
-                    render(&format!("web/bloques/{}/{name}.tera", block.id), &ctx)?
-                }
+                (Source::Variant, _) => render(&variant_template(block.id, file)?, &ctx)?,
+                (Source::Block(id), _) => render(&variant_template(id, file)?, &ctx)?,
             };
             Ok((Path::new(layout::WEB_DIR).join(file), content))
         })
         .collect()
+}
+
+/// `templates/web/bloques/<slot>/<variant>/<file name>.tera`.
+fn variant_template(id: &str, file: &str) -> Result<String, String> {
+    let name = Path::new(file).file_name().and_then(|n| n.to_str());
+    let name = name.ok_or_else(|| format!("{file}: sin nombre de fichero"))?;
+    Ok(format!("web/bloques/{id}/{name}.tera"))
 }
 
 fn base_file(file: &str) -> Result<String, String> {
@@ -246,13 +317,28 @@ fn base_file(file: &str) -> Result<String, String> {
         .ok_or_else(|| format!("la plantilla no tiene {path}"))
 }
 
-/// Installs the block `id` in the project at `base`; responds the files it wrote (none when they
-/// already had its content). A file with other content is protected unless `policy` forces it.
+/// The project's portada mounts the sections of `web/src/portada/` (`portada/producto`).
+fn composes_sections(base: &Path) -> bool {
+    fs::read_to_string(base.join(layout::WEB_DIR).join(PORTADA))
+        .is_ok_and(|page| page.contains("from \"../portada/"))
+}
+
+/// What installing a block did.
+#[derive(Debug)]
+pub struct Installed {
+    /// Every file of the block, relative to the project root.
+    pub files: Vec<PathBuf>,
+    /// The ones that changed: none when the block was already installed.
+    pub written: Vec<PathBuf>,
+}
+
+/// Installs the block `id` in the project at `base`. A file with other content is protected
+/// unless `policy` forces it.
 pub fn run_install(
     id: &str,
     base: &Path,
     policy: OverwritePolicy,
-) -> Result<Vec<PathBuf>, Box<dyn std::error::Error>> {
+) -> Result<Installed, Box<dyn std::error::Error>> {
     let block = find(id)?;
     let config = crate::puerto_toml::read(base)?;
     if !config.project.web {
@@ -267,23 +353,32 @@ pub fn run_install(
         )
         .into());
     }
-    if block.needs == Needs::Portada && !config.project.portada {
+    if matches!(block.needs, Needs::Portada | Needs::Sections) && !config.project.portada {
         return Err(format!(
             "'{id}' es de la portada, y este proyecto no tiene ([proyecto] portada: `puerto nuevo --portada`)"
         )
         .into());
     }
+    if block.needs == Needs::Sections && !composes_sections(base) {
+        return Err(format!(
+            "'{id}' es una sección de portada/producto, y la portada de este proyecto no tiene \
+             secciones: instala antes `puerto generar web-bloque portada/producto`"
+        )
+        .into());
+    }
 
-    let changed: Vec<(PathBuf, String)> = render_block(block, auth)?
+    let rendered = render_block(block, auth)?;
+    let files: Vec<PathBuf> = rendered.iter().map(|(path, _)| path.clone()).collect();
+    let changed: Vec<(PathBuf, String)> = rendered
         .into_iter()
         .filter(|(path, content)| {
             fs::read_to_string(base.join(path)).ok().as_ref() != Some(content)
         })
         .collect();
-    let paths: Vec<PathBuf> = changed.iter().map(|(path, _)| path.clone()).collect();
-    guard_files_overwrite(base, id, &paths, policy)?;
+    let written: Vec<PathBuf> = changed.iter().map(|(path, _)| path.clone()).collect();
+    guard_files_overwrite(base, id, &written, policy)?;
     for (path, content) in &changed {
         write_file(&base.join(path), content)?;
     }
-    Ok(paths)
+    Ok(Installed { files, written })
 }

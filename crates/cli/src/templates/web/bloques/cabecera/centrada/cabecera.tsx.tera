@@ -1,0 +1,28 @@
+import { Link } from "wouter";
+import { rutaApp } from "../generado/rutas";
+import { marca } from "../marca/marca";
+
+/** La primera pantalla de la portada: qué es, en el centro, y la entrada a la app. */
+export function SeccionCabecera() {
+  return (
+    <section className="hero bg-linear-to-b from-base-200 to-base-100 px-4 py-24">
+      <div className="hero-content max-w-3xl flex-col gap-6 text-center">
+        <span className="badge badge-primary badge-soft">Nuevo en {marca.nombre}</span>
+        <h1 className="text-balance text-5xl font-bold tracking-tight md:text-6xl">
+          {marca.eslogan}
+        </h1>
+        <p className="max-w-xl text-lg text-base-content/70">
+          Cuenta aquí qué resuelve {marca.nombre} y para quién, en una o dos frases.
+        </p>
+        <div className="flex flex-wrap justify-center gap-3">
+          <Link href={rutaApp} className="btn btn-primary btn-lg">
+            Entrar
+          </Link>
+          <a href="#caracteristicas" className="btn btn-ghost btn-lg">
+            Características
+          </a>
+        </div>
+      </div>
+    </section>
+  );
+}

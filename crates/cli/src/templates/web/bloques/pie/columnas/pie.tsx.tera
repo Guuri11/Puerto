@@ -1,0 +1,41 @@
+import { Link } from "wouter";
+import { rutaApp } from "../generado/rutas";
+import { marca } from "../marca/marca";
+
+/** El pie: la marca y los enlaces de la portada, en columnas. */
+export function SeccionPie() {
+  return (
+    <footer className="border-base-300 border-t bg-base-200 px-4">
+      <div className="footer mx-auto max-w-6xl py-12 sm:footer-horizontal">
+        <aside className="max-w-xs space-y-3">
+          <p className="flex items-center gap-2 text-lg font-bold">
+            <img src={marca.logo} alt="" className="size-8" />
+            {marca.nombre}
+          </p>
+          <p className="text-base-content/70">{marca.eslogan}</p>
+        </aside>
+        <nav>
+          <h3 className="footer-title">Producto</h3>
+          <a href="#caracteristicas" className="link link-hover">
+            Características
+          </a>
+          <a href="#precios" className="link link-hover">
+            Precios
+          </a>
+          <a href="#preguntas" className="link link-hover">
+            Preguntas frecuentes
+          </a>
+        </nav>
+        <nav>
+          <h3 className="footer-title">Cuenta</h3>
+          <Link href={rutaApp} className="link link-hover">
+            Entrar
+          </Link>
+        </nav>
+      </div>
+      <p className="mx-auto max-w-6xl border-base-300 border-t py-6 text-sm text-base-content/70">
+        © {new Date().getFullYear()} {marca.nombre}
+      </p>
+    </footer>
+  );
+}

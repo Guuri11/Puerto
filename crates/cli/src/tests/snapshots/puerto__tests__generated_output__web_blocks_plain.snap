@@ -1,0 +1,4472 @@
+---
+source: crates/cli/src/tests/generated_output.rs
+expression: generated_output(& WEB_BLOCKS_PLAIN)
+---
+=== AGENTS.md ===
+# Instrucciones para agentes de IA
+
+Un backend en Rust generado por [Puerto](https://github.com/Guuri11/Puerto): DDD + hexagonal
+(puertos y adaptadores), un crate por contexto y capa, API REST con poem-openapi. Este fichero es
+la puerta de entrada de cualquier agente de código (`CLAUDE.md` lo importa). El detalle está junto
+al código: `contextos/AGENTS.md`, `presentacion/AGENTS.md`.
+
+## Arquitectura
+
+```
+nucleo/                 objetos valor compartidos — sin E/S
+contextos/<c>/          un contexto por entidad de puerto.toml, cuatro crates cada uno:
+  dominio/              → dominio_<c>      modelos, objetos valor, errores, puertos de repositorio
+  aplicacion/           → aplicacion_<c>   un fichero por caso de uso: params, trait, impl, tests
+  infraestructura/      → infra_<c>        adaptadores: repositorios en memoria o de Postgres
+  rest/                 → rest_<c>         HTTP: rutas, DTO, respuestas, mapeo de errores
+presentacion/
+  cableado/             GENERADO: construye los repositorios y casos de uso de cada contexto
+  api/                  el binario: sondas de salud, el bootstrap generado, tu `app.rs`
+migraciones/, migrador/ el SQL de toda la base de datos y su único `MIGRADOR` (proyectos `--db`)
+```
+
+Las dependencias solo apuntan hacia dentro, y Cargo las hace cumplir: `rest → aplicacion → dominio
+→ nucleo`, `infraestructura → dominio`; solo `presentacion/*` depende de `infra_*`. Una referencia
+entre entidades es una dependencia entre sus crates de dominio, así que las referencias nunca
+forman un ciclo.
+
+| Crate | Contiene | Nunca |
+|---|---|---|
+| `dominio_<c>` | el modelo, su tipo de id, los objetos valor, los errores, el puerto del repositorio | importa un driver de base de datos, un framework HTTP o un adaptador |
+| `aplicacion_<c>` | los casos de uso: el contrato de cada uno y su implementación | sabe de HTTP o de almacenamiento |
+| `infra_<c>` | los adaptadores que implementan los puertos del dominio | contiene reglas de negocio |
+| `rest_<c>` | rutas, DTO, respuestas, mapeo de errores | expone un modelo de dominio en una respuesta |
+
+**El runtime de Puerto.** Lo que comparten todos los proyectos de Puerto no se copia en ellos: es
+un crate, declarado una vez en el `Cargo.toml` raíz (`[workspace.dependencies]`, en la misma minor
+que la CLI `puerto`) y que cada miembro hereda con `{ workspace = true }`.
+
+| Crate | Es dueño de | Lo importan |
+|---|---|---|
+| `puerto-nucleo` | `ErrorRepositorio` (con lo que falla todo puerto de repositorio), `PeticionPagina` / `Pagina<T>` (listas paginadas, límite máximo de 100) | todos los crates: `use puerto_nucleo::{Pagina, PeticionPagina, ErrorRepositorio};` |
+| `puerto-web` | el servidor (`App`: tracing, CORS, apagado ordenado), `Config` (leída del entorno y de `.env`), las sondas `/health` y `/health/ready`, `RespuestaError` | `rest_*` y `presentacion/api` |
+| `puerto-sqlx` (proyectos `--db`) | el pool de Postgres, las migraciones en el arranque, el `ping` de disponibilidad, `mapear_error_sqlx` (error del driver → `ErrorRepositorio`) | `infra_*` y los binarios |
+
+`puerto-nucleo` solo depende de `thiserror`, así que el dominio puede usarlo; `puerto-web` arrastra
+poem y se queda en los crates REST y en el binario; `puerto-sqlx` arrastra sqlx y se queda en los
+crates de infraestructura y en los binarios. No copies su código en el proyecto; actualízalos con
+la CLI `puerto` (`puerto validar` avisa cuando se desfasan). Tus propios middleware y rutas van en
+`presentacion/api/src/app.rs`, que ningún generador toca.
+
+**Las rutas se sirven bajo `/api`**: `#[oai(path = "/productos")]` responde en
+`GET /api/productos`. La Swagger UI está en `/` y las sondas en `/health` y `/health/ready`, sin
+prefijo.
+
+**El `lib.rs` de cada crate es plano**: un `pub mod` por fichero, sin `mod.rs`. Añadir un caso de
+uso es una línea en el `lib.rs` del crate de aplicación más su fichero, y `puerto generar
+caso-de-uso` escribe las dos cosas.
+
+## `puerto.toml` es la fuente de verdad
+
+Describe cada entidad, sus campos y casos de uso, y las funcionalidades del proyecto (`db`, `web`,
+`eventos`, `auth`). La CLI `puerto` genera a partir de él el código y el cableado; `puerto validar`
+comprueba que los dos siguen de acuerdo. `puerto listar` muestra lo que declara, y `puerto
+<comando> --help` cuenta con más detalle todo lo que sigue.
+
+| Comando | Qué escribe |
+|---|---|
+| `puerto generar scaffold <Nombre> [-- campos…]` | todas las capas de una entidad CRUD (crear, obtener, listar, actualizar, borrar) + la migración de su tabla con `db` |
+| `puerto generar dominio <Nombre> [-- campos…]` | solo la capa de dominio, y la entidad en `puerto.toml`; después `puerto generar aplicacion <Nombre>`, `puerto generar repositorio <Nombre>`, `puerto generar presentacion <Nombre>`: una capa cada vez, y cada una comprueba la anterior |
+| `puerto generar caso-de-uso <Entidad> <accion>` | un caso de uso más: su fichero (trait + doble, la impl por rellenar; ver más abajo) y un campo en `Api<Entidad>` |
+| `puerto generar objeto-valor <Nombre> <tipo>` | un objeto valor compartido (`[[objeto_valor]]`), reutilizable por todas las entidades |
+| `puerto generar migracion <nombre>` | una migración SQL vacía (proyectos `db`) |
+| `puerto generar bootstrap` | vuelve a cablear `presentacion/cableado` y `generado/bootstrap.rs` a partir de `puerto.toml` |
+| `puerto generar evento <Entidad> <nombre>` | un evento de dominio propio (proyectos con `eventos`) |
+| `puerto generar consumidor <nombre> --tras <tipo_evento>[,…]` | un consumidor del worker (proyectos con `eventos`) |
+| `puerto generar correo <nombre> [-- campos…] [--tras <tipo_evento> --para <campo>]` | un correo: su puerto, sus plantillas, su adaptador SMTP; con `--tras`, lo envía el worker |
+| `puerto generar snippets` | snippets de editor para los patrones de abajo (Zed, VS Code) |
+| `puerto validar` | comprueba nombres, tipos y que el manifiesto y el código están de acuerdo |
+
+Un único sobre varios campos (una línea por jugador y partido) es `--unico jugador_id,partido_id`
+en `scaffold` o `dominio` (se puede repetir): un índice único parcial en Postgres, comprobado
+también por el repositorio en memoria; queda en `[[entidad]] unicos`. El orden de la lista es
+`--orden=-puntos,nombre` (`-`, descendente; después, los más recientes primero): queda en
+`[[entidad]] orden`.
+
+En un proyecto con auth, `scaffold` también acepta `--publico <caso_de_uso>[,…]` (sin token),
+`--rol <caso_de_uso>=<rol>[,…]` (ver la sección Auth) y `--privado <campo>[,…]`: un campo de texto
+que las rutas públicas solo dan a quien tiene sesión (`[[entidad.campos]] privado`; esas rutas
+reciben `auth: BearerAuthOpcional` y responden `Dto<Entidad>::from_dominio_publico` sin ella).
+
+Con `web/`, `scaffold` también escribe las pantallas de la entidad y `generar bootstrap` también
+reescribe los ficheros generados del frontend; `puerto generar web <Nombre>` escribe solo las
+pantallas de una entidad.
+
+### Campos
+
+Los campos van después de `--`, un argumento cada uno, sin comillas:
+
+| Argumento | Campo |
+|---|---|
+| `titulo:String`, `precio:i64`, `activo:bool`, `ratio:f64`, `propietario_id:Uuid` | un primitivo |
+| `precio:i64!` | `!` al final: único (un índice único parcial en Postgres; no en `opt`/`vec`) |
+| `resumen:opt:String` | `Option<String>`: admite nulo |
+| `etiquetas:vec:String` | `Vec<String>` (`String` o `i64`) |
+| `publicado_en:DateTime` | `DateTime<Utc>` (también `opt:DateTime`) |
+| `meta:map` | `HashMap<String, String>`: una columna `JSONB` |
+| `nombre:Nombre:String` | un objeto valor `Nombre` que envuelve un primitivo: se valida una vez, en `Nombre::new` |
+| `segundo_nombre:SegundoNombre:opt:String` | un objeto valor opcional |
+| `etiqueta:Etiqueta:vec:String` | una lista de objetos valor |
+| `estado:Estado:enum:Borrador/Publicado` | un objeto valor enum (`"Borrador".parse::<Estado>()`) |
+| `email:Email` | un objeto valor compartido declarado con `generar objeto-valor` (el tipo se infiere) |
+| `cliente_id:ref:Cliente` | una referencia: el `IdCliente` de un `Cliente` generado antes (`!`: uno a uno) |
+| `revisor_id:ref:opt:Cliente` | una referencia opcional |
+
+Mejor un objeto valor que un primitivo suelto cuando el campo tiene una regla: la regla vive
+entonces en un solo sitio, y un valor inválido es un código de error (`producto.nombre_invalido`,
+`422`) en todas partes.
+
+Una entidad se refiere a otra por su id, nunca conteniéndola: un caso de uso que necesita el
+cliente se lo pide al repositorio de clientes. Con base de datos la columna es una clave foránea, y
+una escritura que nombra un cliente que no existe responde `422`
+`pedido.validacion.cliente_id_no_encontrado`. Borrar un cliente (un borrado lógico) deja sus pedidos
+apuntándole. La lista filtra por cada referencia: `GET /pedidos?clienteId=…` (`ParamsListarPedidos
+{ cliente_id }`, `FiltroPedido` en el puerto del repositorio). En la web la referencia es un
+`<select>` de clientes y un enlace en el detalle.
+
+### Lo generado y lo tuyo
+
+| | Ficheros | Se cambian |
+|---|---|---|
+| **Se reescriben en cada ejecución**: no los edites a mano | `presentacion/cableado/` (también su `Cargo.toml`), `presentacion/api/src/generado/bootstrap.rs`, `contextos/<c>/dominio/src/eventos.rs`, `presentacion/worker/src/generado/registro.rs` | editando `puerto.toml` y ejecutando después el comando que los escribe (`generar bootstrap`, `generar evento`, `generar consumidor`) |
+| **Los ficheros de la entidad**: son tuyos, pero `scaffold --forzar` los reescribe | los cuatro crates de un contexto: los casos de uso CRUD, el modelo, los errores, el repositorio, las rutas, los DTO, los mapeos, la madre, y sus `Cargo.toml` y `lib.rs` | editándolos; `--forzar` solo mientras sigan siendo lo que escribió el generador |
+| **Parcheados**: se añade una línea y se conserva el resto | el `Cargo.toml` raíz (miembros, `[workspace.dependencies]`), `presentacion/api/Cargo.toml` y `presentacion/worker/Cargo.toml` (el crate de un contexto), el `lib.rs` del crate de aplicación, `rutas.rs` (los campos de `Api<Entidad>`), `presentacion/worker/src/consumidores.rs`, `puerto.toml` | editándolos libremente; conserva las líneas que añadió Puerto |
+| **Se escriben una vez**: tuyos desde el principio | `presentacion/api/src/app.rs` (tus middleware y rutas), la impl de un `generar caso-de-uso`, los consumidores, los correos y sus plantillas, las migraciones, los ficheros de auth | editándolos |
+
+Con `web/`: `web/src/generado/*`, `web/src/api/esquema.d.ts` y `docs/api/openapi.json` también se
+reescriben (`generar bootstrap`, `make web/sync`); las pantallas de una entidad son ficheros suyos
+como los demás; `web/src/rutas.tsx` (tus propias pantallas) es tuyo. El detalle, en
+`web/AGENTS.md`.
+
+### Cambiar los campos de una entidad
+
+- **El código sigue siendo lo que escribió el generador:** cambia el bloque `[[entidad]]` de
+  `puerto.toml` (o pasa la nueva lista de campos) y ejecuta `puerto generar scaffold <Nombre>
+  --forzar`. Los casos de uso añadidos con `generar caso-de-uso` se conservan; cualquier otro cambio
+  a mano en los ficheros de la entidad se pierde.
+- **En un proyecto `--db` la migración de la tabla nunca se reescribe** (puede estar ya aplicada).
+  Si aún no se ha aplicado en ningún sitio: edita esa migración `crear_tabla_<entidad>`. Si ya se
+  ha aplicado: añade `puerto generar migracion anadir_<campo>_a_<plural>` con el `ALTER TABLE`, y
+  después `make sqlx/migrate && make sqlx/prepare`.
+- **El código ya es tuyo:** añade el campo a mano en todas las capas (el modelo y las Props, los
+  params, la madre, la fila y sus conversiones, los DTO, cualquier pantalla) con una migración, y
+  actualiza `[[entidad.campos]]` para que `puerto.toml` siga describiendo el código.
+
+## Trabajar con Puerto
+
+Primero genera; después escribe las reglas de negocio, empezando por el test. No escribas nunca el
+cableado a mano: si el cableado, un `lib.rs` o `Api<Entidad>` necesitan una línea, la escribe un
+comando.
+
+1. **Modélalo en el generador.** Una entidad nueva: `puerto generar scaffold <Nombre> -- …` con sus
+   campos, objetos valor y enums. Una operación más sobre una entidad:
+   `puerto generar caso-de-uso <Entidad> <accion>`.
+2. **Enumera los escenarios** antes del código: el camino feliz, la entrada vacía o inválida, los
+   límites, los cambios de estado y la regresión que pida un arreglo.
+3. **Rojo.** Una entidad generada con `scaffold` ya tiene tests de lo que generó; añade los tuyos al
+   lado. `generar caso-de-uso` deja la impl en `todo!()`, unos `Params` de relleno y un test marcado
+   `#[ignore = "escribe este test"]` en `contextos/<c>/aplicacion/src/<accion>.rs`: quita el
+   `ignore`, escribe el test y míralo fallar.
+4. **Verde.** Primero el dominio: los invariantes en el `validar` del modelo (lo llaman `new` y
+   `actualizar`) o en un objeto valor (`contextos/<c>/dominio/`); si uno rechaza un valor por
+   defecto de la madre, cámbialo en la madre: los tests generados toman de ahí sus valores. Después
+   los `Params`, el trait y la impl del caso de uso, en un solo fichero.
+5. **El endpoint, API primero.** `generar caso-de-uso` pone el caso de uso en `Api<Entidad>` pero no
+   añade ninguna ruta: escribe `dto.rs`, `respuestas.rs`, el brazo de `errores.rs` de cada error
+   nuevo (con su test), después el handler en `rutas.rs` y un test de ruta por cada código de estado
+   (`contextos/AGENTS.md`).
+6. **Comprueba.** Todo lo de *Comprueba antes de terminar*, y después un commit.
+
+## Frontend (`web/`)
+
+Una app React + daisyUI sobre Bun que habla con la API bajo `/api`. Es solo presentación: los
+contenedores llaman a la API con su cliente tipado y las vistas pintan lo que reciben; las reglas
+viven en el backend. `make web/lint` comprueba que una vista no llama a la API. Sus reglas
+(carpetas, ficheros generados, tests) están en `web/AGENTS.md`.
+
+La spec OpenAPI es el contrato entre las dos mitades: `docs/api/openapi.json`, exportada por un test
+de `generado/bootstrap.rs`. **Después de un scaffold y después de tocar una ruta o un DTO, ejecuta
+`make web/sync`** (vuelve a exportar la spec, regenera los tipos de red del frontend y formatea
+`web/`) y haz commit de las dos cosas. Hasta entonces `make test` falla: ese fallo es la
+comprobación de desfase. `puerto generar scaffold` también escribe las pantallas de una entidad
+CRUD; `puerto generar web <Nombre>` las escribe solas.
+
+Las pantallas base (el acceso, el marco, el panel, el perfil), la portada y el tema tienen otras
+variantes: `puerto generar web-bloque` las lista, y `puerto generar web-bloque <hueco>/<variante>
+--forzar` cambia el fichero de ese hueco por otra. Cada variante cumple el contrato de su hueco (el
+mismo export, las mismas props), así que no toca nada más. Se ven en
+https://puerto-rs.vercel.app/bloques.
+
+## Convenciones
+
+- **TDD.** Escribe primero el test que falla, y después el código mínimo. Nombres de test:
+  `deberia_<resultado>_cuando_<escenario>`, con `// Preparar` / `// Actuar` / `// Comprobar`.
+- **Los errores son códigos legibles por máquina** (`producto.no_encontrado`,
+  `producto.validacion.titulo_vacio`), nunca frases. La API los devuelve en
+  `RespuestaError.codigo`; los fallos de validación del dominio son `422`.
+- **Logs:** `tracing` directamente, sin logger inyectado. El `ejecutar` de un caso de uso lleva
+  `#[tracing::instrument(name = "<caso_de_uso>", skip_all, err(level = "warn"))]`: el span da
+  nombre a los logs de lo que llama y registra su error una vez. No escribas líneas de inicio ni de
+  fin, y nunca registres el contenido de una petición (son datos del usuario: por eso `skip_all`).
+- **Nada de `unwrap()` / `expect()`** fuera de los tests.
+- **API primero:** cambia `rutas.rs` + `dto.rs` (el contrato) antes que la implementación.
+
+## Comprueba antes de terminar
+
+```bash
+puerto validar   # el manifiesto y el código están de acuerdo
+make test        # tests unitarios y de integración
+make lint        # clippy --all-targets -D warnings: la toolchain está fijada en rust-toolchain.toml
+make format      # comprobación de rustfmt; `make format/fix` lo aplica
+```
+
+- **Con `web/`:** `make web/sync` tras un scaffold o cualquier cambio de ruta o DTO, y commit de lo
+  que escribió; hasta entonces `make test` falla por el desfase. `make test` y `make lint` también
+  pasan las comprobaciones del frontend.
+- **En un proyecto `--db`:** `make docker-compose/up` antes de `make test` (los `#[sqlx::test]`
+  necesitan Postgres), y `make sqlx/prepare` tras cambiar una consulta o una migración; haz commit
+  de `.sqlx/`.
+
+`rust-toolchain.toml` fija la versión de Rust: clippy gana lints entre versiones, así que una
+toolchain fijada es lo que hace que `make lint` dé la misma respuesta en todas las máquinas.
+
+## Cómo se trabaja aquí
+
+**Haz un commit por pieza.** Termina un caso de uso (o un arreglo), deja `make test` y `make lint`
+en verde, haz commit y empieza el siguiente. Una regla como «pasos pequeños» que no está atada a
+nada comprobable no se cumple; un commit por pieza se ve en `git log`.
+
+**Dónde tiene que leer el diff una persona**: calibra según lo que perdona el sistema cuando el
+código está mal:
+
+- **Nivel 1: falla en silencio, despacio o caro.** Un juego de tests en verde no basta; una persona
+  lee el diff entero antes del commit: las migraciones SQL (sobre todo las destructivas), todo lo
+  que toque dinero u otra aritmética de la que dependa el negocio, las comprobaciones de
+  autenticación y autorización, las reglas de unicidad o deduplicación, los datos que cruzan la
+  frontera de un inquilino o de un cliente.
+- **Nivel 2: falla de forma ruidosa y reversible.** Bastan las comprobaciones de arriba: el mapeo
+  DTO ↔ dominio, los adaptadores cubiertos por tests de integración reales, las consultas de solo
+  lectura, la documentación.
+
+Un cambio que toca los dos niveles es de Nivel 1.
+
+**Deja las decisiones por escrito.** Cuando una decisión de diseño se apoya en un contexto que no
+está en el código, regístralo (una ADR en `docs/adr/` o un cambio en estos ficheros) para que la
+siguiente sesión herede el motivo en vez de volver a deducirlo o de deshacerlo.
+
+=== Cargo.toml ===
+[workspace]
+# Un crate por contexto y capa (ADR-0023 de Puerto): `contextos/*/*` incluye cada uno nuevo.
+members = ["nucleo", "contextos/*/*", "presentacion/*"]
+resolver = "3"
+
+[workspace.dependencies]
+# Crates de terceros: una sola versión para todo el proyecto.
+async-trait = "0.1"
+thiserror = "2"
+tracing = "0.1"
+uuid = { version = "1", features = ["v4", "serde"] }
+chrono = { version = "0.4", features = ["serde"] }
+mockall = "0.13"
+tokio = { version = "1", features = ["rt-multi-thread", "macros"] }
+poem = "3"
+# Feature `chrono`: sin ella, poem-openapi no implementa `Type` para DateTime<Utc>.
+poem-openapi = { version = "5", features = ["swagger-ui", "uuid", "chrono"] }
+
+# El runtime de Puerto (ADR-0017 de Puerto): lo que comparten todos los proyectos de Puerto vive
+# en estos crates, en la misma versión minor que la CLI `puerto` que generó este proyecto.
+puerto-nucleo = "0.26"
+puerto-web = "0.26"
+
+# Los crates de este proyecto: cada `Cargo.toml` los nombra con `{ workspace = true }`.
+cableado = { path = "presentacion/cableado" }
+dominio_saludo = { path = "contextos/saludo/dominio" }
+aplicacion_saludo = { path = "contextos/saludo/aplicacion" }
+infra_saludo = { path = "contextos/saludo/infraestructura" }
+rest_saludo = { path = "contextos/saludo/rest" }
+dominio_linea_pedido = { path = "contextos/linea_pedido/dominio" }
+aplicacion_linea_pedido = { path = "contextos/linea_pedido/aplicacion" }
+infra_linea_pedido = { path = "contextos/linea_pedido/infraestructura" }
+rest_linea_pedido = { path = "contextos/linea_pedido/rest" }
+
+=== contextos/linea_pedido/aplicacion/Cargo.toml ===
+[package]
+name = "aplicacion_linea_pedido"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+dominio_linea_pedido = { workspace = true }
+puerto-nucleo = { workspace = true }
+async-trait = { workspace = true }
+tracing = { workspace = true }
+uuid = { workspace = true }
+chrono = { workspace = true }
+mockall = { workspace = true, optional = true }
+
+[features]
+# Los dobles de los casos de uso (`mock!`), para los tests de otros crates (ADR-0023 § 5 de
+# Puerto).
+pruebas = ["dep:mockall", "dominio_linea_pedido/pruebas"]
+
+[dev-dependencies]
+dominio_linea_pedido = { workspace = true, features = ["pruebas"] }
+mockall = { workspace = true }
+tokio = { workspace = true }
+
+=== contextos/linea_pedido/aplicacion/src/actualizar_linea_pedido.rs ===
+use async_trait::async_trait;
+use dominio_linea_pedido::errores::ErrorLineaPedido;
+use dominio_linea_pedido::modelo::{IdLineaPedido, LineaPedido, PropsLineaPedido};
+use dominio_linea_pedido::repositorio::RepositorioLineaPedido;
+use dominio_linea_pedido::valores::Sku;
+use std::sync::Arc;
+use uuid::Uuid;
+
+#[derive(Debug, Clone)]
+pub struct ParamsActualizarLineaPedido {
+    pub id: IdLineaPedido,
+    pub title: String,
+    pub quantity: i64,
+    pub rate: f64,
+    pub in_stock: bool,
+    pub ref_id: Uuid,
+    pub sku: String,
+}
+
+#[async_trait]
+pub trait ActualizarLineaPedido: Send + Sync {
+    async fn ejecutar(
+        &self,
+        params: ParamsActualizarLineaPedido,
+    ) -> Result<LineaPedido, ErrorLineaPedido>;
+}
+
+#[cfg(any(test, feature = "pruebas"))]
+pub mod dobles {
+    use mockall::mock;
+
+    use super::*;
+
+    mock! {
+        pub ActualizarLineaPedido {}
+
+        #[async_trait]
+        impl ActualizarLineaPedido for ActualizarLineaPedido {
+            async fn ejecutar(&self, params: ParamsActualizarLineaPedido) -> Result<LineaPedido, ErrorLineaPedido>;
+        }
+    }
+}
+
+pub struct ActualizarLineaPedidoImpl {
+    pub repositorio: Arc<dyn RepositorioLineaPedido>,
+}
+
+#[async_trait]
+impl ActualizarLineaPedido for ActualizarLineaPedidoImpl {
+    #[tracing::instrument(name = "actualizar_linea_pedido", skip_all, fields(id = %params.id), err(level = "warn"))]
+    async fn ejecutar(
+        &self,
+        params: ParamsActualizarLineaPedido,
+    ) -> Result<LineaPedido, ErrorLineaPedido> {
+        let mut entidad = self
+            .repositorio
+            .buscar_por_id(params.id)
+            .await?
+            .ok_or(ErrorLineaPedido::NoEncontrado)?;
+        let sku = Sku::new(params.sku)?;
+        entidad.actualizar(PropsLineaPedido {
+            title: params.title,
+            quantity: params.quantity,
+            rate: params.rate,
+            in_stock: params.in_stock,
+            ref_id: params.ref_id,
+            sku,
+        })?;
+        self.repositorio.guardar(&entidad).await?;
+        Ok(entidad)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use dominio_linea_pedido::{
+        modelo::IdLineaPedido, pruebas::madres::MadreLineaPedido,
+        repositorio::dobles::MockRepositorioLineaPedido,
+    };
+
+    #[tokio::test]
+    async fn deberia_actualizar_linea_pedido_cuando_los_parametros_son_validos() {
+        // Preparar
+        let props = MadreLineaPedido::new().construir_props();
+        let mut entidad = MadreLineaPedido::aleatorio();
+        // Lo que estaba guardado, distinto de lo que trae la actualización.
+        entidad.title = "original".to_string();
+        let id_entidad = entidad.id;
+        let mut repositorio_doble = MockRepositorioLineaPedido::new();
+        repositorio_doble
+            .expect_buscar_por_id()
+            .returning(move |_| Ok(Some(entidad.clone())));
+        repositorio_doble.expect_guardar().returning(|_| Ok(()));
+        let caso_de_uso = ActualizarLineaPedidoImpl {
+            repositorio: Arc::new(repositorio_doble),
+        };
+
+        // Actuar
+        let resultado = caso_de_uso
+            .ejecutar(ParamsActualizarLineaPedido {
+                id: id_entidad,
+                title: props.title,
+                quantity: props.quantity,
+                rate: props.rate,
+                in_stock: props.in_stock,
+                ref_id: props.ref_id,
+                sku: props.sku.valor().to_string(),
+            })
+            .await;
+
+        // Comprobar
+        assert_eq!(
+            resultado.unwrap().title,
+            MadreLineaPedido::new().construir_props().title
+        );
+    }
+
+    #[tokio::test]
+    async fn deberia_devolver_no_encontrado_cuando_linea_pedido_no_existe() {
+        // Preparar
+        let props = MadreLineaPedido::new().construir_props();
+        let mut repositorio_doble = MockRepositorioLineaPedido::new();
+        repositorio_doble
+            .expect_buscar_por_id()
+            .returning(|_| Ok(None));
+        let caso_de_uso = ActualizarLineaPedidoImpl {
+            repositorio: Arc::new(repositorio_doble),
+        };
+
+        // Actuar
+        let resultado = caso_de_uso
+            .ejecutar(ParamsActualizarLineaPedido {
+                id: IdLineaPedido::generar(),
+                title: props.title,
+                quantity: props.quantity,
+                rate: props.rate,
+                in_stock: props.in_stock,
+                ref_id: props.ref_id,
+                sku: props.sku.valor().to_string(),
+            })
+            .await;
+
+        // Comprobar
+        assert!(resultado.is_err());
+        assert_eq!(
+            resultado.unwrap_err().to_string(),
+            "linea_pedido.no_encontrado"
+        );
+    }
+
+    #[tokio::test]
+    async fn deberia_devolver_error_cuando_title_es_una_cadena_vacia() {
+        // Preparar
+        let props = MadreLineaPedido::new().construir_props();
+        let entidad = MadreLineaPedido::aleatorio();
+        let id_entidad = entidad.id;
+        let mut repositorio_doble = MockRepositorioLineaPedido::new();
+        repositorio_doble
+            .expect_buscar_por_id()
+            .returning(move |_| Ok(Some(entidad.clone())));
+        let caso_de_uso = ActualizarLineaPedidoImpl {
+            repositorio: Arc::new(repositorio_doble),
+        };
+
+        // Actuar
+        let resultado = caso_de_uso
+            .ejecutar(ParamsActualizarLineaPedido {
+                id: id_entidad,
+                title: "".to_string(),
+                quantity: props.quantity,
+                rate: props.rate,
+                in_stock: props.in_stock,
+                ref_id: props.ref_id,
+                sku: props.sku.valor().to_string(),
+            })
+            .await;
+
+        // Comprobar
+        assert!(resultado.is_err());
+        assert_eq!(
+            resultado.unwrap_err().to_string(),
+            "linea_pedido.validacion.title_vacio"
+        );
+    }
+
+    #[tokio::test]
+    async fn deberia_devolver_error_cuando_sku_es_una_cadena_vacia() {
+        // Preparar
+        let props = MadreLineaPedido::new().construir_props();
+        let entidad = MadreLineaPedido::aleatorio();
+        let id_entidad = entidad.id;
+        let mut repositorio_doble = MockRepositorioLineaPedido::new();
+        repositorio_doble
+            .expect_buscar_por_id()
+            .returning(move |_| Ok(Some(entidad.clone())));
+        let caso_de_uso = ActualizarLineaPedidoImpl {
+            repositorio: Arc::new(repositorio_doble),
+        };
+
+        // Actuar
+        let resultado = caso_de_uso
+            .ejecutar(ParamsActualizarLineaPedido {
+                id: id_entidad,
+                title: props.title,
+                quantity: props.quantity,
+                rate: props.rate,
+                in_stock: props.in_stock,
+                ref_id: props.ref_id,
+                sku: "".to_string(),
+            })
+            .await;
+
+        // Comprobar
+        assert!(resultado.is_err());
+        assert_eq!(
+            resultado.unwrap_err().to_string(),
+            "linea_pedido.sku_invalido"
+        );
+    }
+}
+
+=== contextos/linea_pedido/aplicacion/src/borrar_linea_pedido.rs ===
+use async_trait::async_trait;
+use dominio_linea_pedido::errores::ErrorLineaPedido;
+use dominio_linea_pedido::modelo::IdLineaPedido;
+use dominio_linea_pedido::repositorio::RepositorioLineaPedido;
+use std::sync::Arc;
+
+#[derive(Debug, Clone)]
+pub struct ParamsBorrarLineaPedido {
+    pub id: IdLineaPedido,
+}
+
+#[async_trait]
+pub trait BorrarLineaPedido: Send + Sync {
+    async fn ejecutar(&self, params: ParamsBorrarLineaPedido) -> Result<(), ErrorLineaPedido>;
+}
+
+#[cfg(any(test, feature = "pruebas"))]
+pub mod dobles {
+    use mockall::mock;
+
+    use super::*;
+
+    mock! {
+        pub BorrarLineaPedido {}
+
+        #[async_trait]
+        impl BorrarLineaPedido for BorrarLineaPedido {
+            async fn ejecutar(&self, params: ParamsBorrarLineaPedido) -> Result<(), ErrorLineaPedido>;
+        }
+    }
+}
+
+pub struct BorrarLineaPedidoImpl {
+    pub repositorio: Arc<dyn RepositorioLineaPedido>,
+}
+
+#[async_trait]
+impl BorrarLineaPedido for BorrarLineaPedidoImpl {
+    #[tracing::instrument(name = "borrar_linea_pedido", skip_all, fields(id = %params.id), err(level = "warn"))]
+    async fn ejecutar(&self, params: ParamsBorrarLineaPedido) -> Result<(), ErrorLineaPedido> {
+        let mut entidad = self
+            .repositorio
+            .buscar_por_id(params.id)
+            .await?
+            .ok_or(ErrorLineaPedido::NoEncontrado)?;
+        entidad.borrar();
+        self.repositorio.guardar(&entidad).await?;
+        Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use dominio_linea_pedido::{
+        modelo::IdLineaPedido, pruebas::madres::MadreLineaPedido,
+        repositorio::dobles::MockRepositorioLineaPedido,
+    };
+
+    #[tokio::test]
+    async fn deberia_hacer_borrado_logico_de_linea_pedido_cuando_el_id_existe() {
+        let entidad = MadreLineaPedido::aleatorio();
+        let id_entidad = entidad.id;
+        let mut repositorio_doble = MockRepositorioLineaPedido::new();
+        repositorio_doble
+            .expect_buscar_por_id()
+            .returning(move |_| Ok(Some(entidad.clone())));
+        repositorio_doble.expect_guardar().returning(|_| Ok(()));
+        let caso_de_uso = BorrarLineaPedidoImpl {
+            repositorio: Arc::new(repositorio_doble),
+        };
+
+        let resultado = caso_de_uso
+            .ejecutar(ParamsBorrarLineaPedido { id: id_entidad })
+            .await;
+
+        assert!(resultado.is_ok());
+    }
+
+    #[tokio::test]
+    async fn deberia_devolver_no_encontrado_cuando_linea_pedido_no_existe() {
+        let mut repositorio_doble = MockRepositorioLineaPedido::new();
+        repositorio_doble
+            .expect_buscar_por_id()
+            .returning(|_| Ok(None));
+        let caso_de_uso = BorrarLineaPedidoImpl {
+            repositorio: Arc::new(repositorio_doble),
+        };
+
+        let resultado = caso_de_uso
+            .ejecutar(ParamsBorrarLineaPedido {
+                id: IdLineaPedido::generar(),
+            })
+            .await;
+
+        assert!(resultado.is_err());
+        assert_eq!(
+            resultado.unwrap_err().to_string(),
+            "linea_pedido.no_encontrado"
+        );
+    }
+}
+
+=== contextos/linea_pedido/aplicacion/src/crear_linea_pedido.rs ===
+use async_trait::async_trait;
+use dominio_linea_pedido::errores::ErrorLineaPedido;
+use dominio_linea_pedido::modelo::{LineaPedido, PropsLineaPedido};
+use dominio_linea_pedido::repositorio::RepositorioLineaPedido;
+use dominio_linea_pedido::valores::Sku;
+use std::sync::Arc;
+use uuid::Uuid;
+
+#[derive(Debug, Clone)]
+pub struct ParamsCrearLineaPedido {
+    pub title: String,
+    pub quantity: i64,
+    pub rate: f64,
+    pub in_stock: bool,
+    pub ref_id: Uuid,
+    pub sku: String,
+}
+
+#[async_trait]
+pub trait CrearLineaPedido: Send + Sync {
+    async fn ejecutar(
+        &self,
+        params: ParamsCrearLineaPedido,
+    ) -> Result<LineaPedido, ErrorLineaPedido>;
+}
+
+#[cfg(any(test, feature = "pruebas"))]
+pub mod dobles {
+    use mockall::mock;
+
+    use super::*;
+
+    mock! {
+        pub CrearLineaPedido {}
+
+        #[async_trait]
+        impl CrearLineaPedido for CrearLineaPedido {
+            async fn ejecutar(&self, params: ParamsCrearLineaPedido) -> Result<LineaPedido, ErrorLineaPedido>;
+        }
+    }
+}
+
+pub struct CrearLineaPedidoImpl {
+    pub repositorio: Arc<dyn RepositorioLineaPedido>,
+}
+
+#[async_trait]
+impl CrearLineaPedido for CrearLineaPedidoImpl {
+    #[tracing::instrument(name = "crear_linea_pedido", skip_all, err(level = "warn"))]
+    async fn ejecutar(
+        &self,
+        params: ParamsCrearLineaPedido,
+    ) -> Result<LineaPedido, ErrorLineaPedido> {
+        let sku = Sku::new(params.sku)?;
+        let entidad = LineaPedido::new(PropsLineaPedido {
+            title: params.title,
+            quantity: params.quantity,
+            rate: params.rate,
+            in_stock: params.in_stock,
+            ref_id: params.ref_id,
+            sku,
+        })?;
+        self.repositorio.guardar(&entidad).await?;
+        Ok(entidad)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use dominio_linea_pedido::pruebas::madres::MadreLineaPedido;
+    use dominio_linea_pedido::repositorio::dobles::MockRepositorioLineaPedido;
+    use puerto_nucleo::ErrorRepositorio;
+
+    #[tokio::test]
+    async fn deberia_crear_linea_pedido_cuando_los_campos_son_validos() {
+        // Preparar
+        let props = MadreLineaPedido::new().construir_props();
+        let mut repositorio_doble = MockRepositorioLineaPedido::new();
+        repositorio_doble.expect_guardar().returning(|_| Ok(()));
+        let caso_de_uso = CrearLineaPedidoImpl {
+            repositorio: Arc::new(repositorio_doble),
+        };
+
+        // Actuar
+        let resultado = caso_de_uso
+            .ejecutar(ParamsCrearLineaPedido {
+                title: props.title,
+                quantity: props.quantity,
+                rate: props.rate,
+                in_stock: props.in_stock,
+                ref_id: props.ref_id,
+                sku: props.sku.valor().to_string(),
+            })
+            .await;
+
+        // Comprobar
+        assert!(resultado.is_ok());
+        assert_eq!(
+            resultado.unwrap().title,
+            MadreLineaPedido::new().construir_props().title
+        );
+    }
+
+    #[tokio::test]
+    async fn deberia_devolver_duplicado_cuando_el_almacen_rechaza_un_duplicado() {
+        // Preparar
+        let props = MadreLineaPedido::new().construir_props();
+        let mut repositorio_doble = MockRepositorioLineaPedido::new();
+        repositorio_doble
+            .expect_guardar()
+            .returning(|_| Err(ErrorRepositorio::Duplicado));
+        let caso_de_uso = CrearLineaPedidoImpl {
+            repositorio: Arc::new(repositorio_doble),
+        };
+
+        // Actuar
+        let resultado = caso_de_uso
+            .ejecutar(ParamsCrearLineaPedido {
+                title: props.title,
+                quantity: props.quantity,
+                rate: props.rate,
+                in_stock: props.in_stock,
+                ref_id: props.ref_id,
+                sku: props.sku.valor().to_string(),
+            })
+            .await;
+
+        // Comprobar
+        assert!(resultado.is_err());
+        assert_eq!(resultado.unwrap_err().to_string(), "linea_pedido.duplicado");
+    }
+
+    #[tokio::test]
+    async fn deberia_devolver_error_cuando_title_es_una_cadena_vacia() {
+        // Preparar
+        let props = MadreLineaPedido::new().construir_props();
+        let repositorio_doble = MockRepositorioLineaPedido::new();
+        let caso_de_uso = CrearLineaPedidoImpl {
+            repositorio: Arc::new(repositorio_doble),
+        };
+
+        // Actuar
+        let resultado = caso_de_uso
+            .ejecutar(ParamsCrearLineaPedido {
+                title: "".to_string(),
+                quantity: props.quantity,
+                rate: props.rate,
+                in_stock: props.in_stock,
+                ref_id: props.ref_id,
+                sku: props.sku.valor().to_string(),
+            })
+            .await;
+
+        // Comprobar
+        assert!(resultado.is_err());
+        assert_eq!(
+            resultado.unwrap_err().to_string(),
+            "linea_pedido.validacion.title_vacio"
+        );
+    }
+
+    #[tokio::test]
+    async fn deberia_devolver_error_cuando_sku_es_una_cadena_vacia() {
+        // Preparar
+        let props = MadreLineaPedido::new().construir_props();
+        let repositorio_doble = MockRepositorioLineaPedido::new();
+        let caso_de_uso = CrearLineaPedidoImpl {
+            repositorio: Arc::new(repositorio_doble),
+        };
+
+        // Actuar
+        let resultado = caso_de_uso
+            .ejecutar(ParamsCrearLineaPedido {
+                title: props.title,
+                quantity: props.quantity,
+                rate: props.rate,
+                in_stock: props.in_stock,
+                ref_id: props.ref_id,
+                sku: "".to_string(),
+            })
+            .await;
+
+        // Comprobar
+        assert!(resultado.is_err());
+        assert_eq!(
+            resultado.unwrap_err().to_string(),
+            "linea_pedido.sku_invalido"
+        );
+    }
+}
+
+=== contextos/linea_pedido/aplicacion/src/lib.rs ===
+pub mod actualizar_linea_pedido;
+pub mod borrar_linea_pedido;
+pub mod crear_linea_pedido;
+pub mod listar_lineas_pedido;
+pub mod obtener_linea_pedido;
+
+=== contextos/linea_pedido/aplicacion/src/listar_lineas_pedido.rs ===
+use async_trait::async_trait;
+use dominio_linea_pedido::errores::ErrorLineaPedido;
+use dominio_linea_pedido::modelo::LineaPedido;
+use dominio_linea_pedido::repositorio::RepositorioLineaPedido;
+use puerto_nucleo::{Pagina, PeticionPagina};
+use std::sync::Arc;
+
+#[derive(Debug, Clone)]
+pub struct ParamsListarLineasPedido {
+    pub pagina: PeticionPagina,
+}
+
+#[async_trait]
+pub trait ListarLineasPedido: Send + Sync {
+    async fn ejecutar(
+        &self,
+        params: ParamsListarLineasPedido,
+    ) -> Result<Pagina<LineaPedido>, ErrorLineaPedido>;
+}
+
+#[cfg(any(test, feature = "pruebas"))]
+pub mod dobles {
+    use mockall::mock;
+
+    use super::*;
+
+    mock! {
+        pub ListarLineasPedido {}
+
+        #[async_trait]
+        impl ListarLineasPedido for ListarLineasPedido {
+            async fn ejecutar(&self, params: ParamsListarLineasPedido) -> Result<Pagina<LineaPedido>, ErrorLineaPedido>;
+        }
+    }
+}
+
+pub struct ListarLineasPedidoImpl {
+    pub repositorio: Arc<dyn RepositorioLineaPedido>,
+}
+
+#[async_trait]
+impl ListarLineasPedido for ListarLineasPedidoImpl {
+    #[tracing::instrument(name = "listar_lineas_pedido", skip_all, err(level = "warn"))]
+    async fn ejecutar(
+        &self,
+        params: ParamsListarLineasPedido,
+    ) -> Result<Pagina<LineaPedido>, ErrorLineaPedido> {
+        self.repositorio
+            .buscar_todos(params.pagina)
+            .await
+            .map_err(ErrorLineaPedido::from)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use dominio_linea_pedido::{
+        pruebas::madres::MadreLineaPedido, repositorio::dobles::MockRepositorioLineaPedido,
+    };
+    use puerto_nucleo::PeticionPagina;
+
+    #[tokio::test]
+    async fn deberia_devolver_la_pagina_de_lineas_pedido() {
+        let entidades = MadreLineaPedido::aleatorios(2);
+        let mut repositorio_doble = MockRepositorioLineaPedido::new();
+        repositorio_doble
+            .expect_buscar_todos()
+            .returning(move |pagina| Ok(Pagina::new(entidades.clone(), 2, pagina)));
+        let caso_de_uso = ListarLineasPedidoImpl {
+            repositorio: Arc::new(repositorio_doble),
+        };
+
+        let resultado = caso_de_uso
+            .ejecutar(ParamsListarLineasPedido {
+                pagina: PeticionPagina::default(),
+            })
+            .await;
+
+        let pagina = resultado.unwrap();
+        assert_eq!(pagina.elementos.len(), 2);
+        assert_eq!(pagina.total, 2);
+    }
+
+    #[tokio::test]
+    async fn deberia_devolver_una_pagina_vacia_cuando_no_hay_lineas_pedido() {
+        let mut repositorio_doble = MockRepositorioLineaPedido::new();
+        repositorio_doble
+            .expect_buscar_todos()
+            .returning(|pagina| Ok(Pagina::new(vec![], 0, pagina)));
+        let caso_de_uso = ListarLineasPedidoImpl {
+            repositorio: Arc::new(repositorio_doble),
+        };
+
+        let resultado = caso_de_uso
+            .ejecutar(ParamsListarLineasPedido {
+                pagina: PeticionPagina::default(),
+            })
+            .await;
+
+        let pagina = resultado.unwrap();
+        assert!(pagina.elementos.is_empty());
+        assert_eq!(pagina.total, 0);
+    }
+
+    #[tokio::test]
+    async fn deberia_pasar_al_repositorio_la_pagina_pedida() {
+        let mut repositorio_doble = MockRepositorioLineaPedido::new();
+        repositorio_doble
+            .expect_buscar_todos()
+            .withf(|pagina| pagina.limite() == 5 && pagina.desplazamiento() == 10)
+            .returning(|pagina| Ok(Pagina::new(vec![], 0, pagina)));
+        let caso_de_uso = ListarLineasPedidoImpl {
+            repositorio: Arc::new(repositorio_doble),
+        };
+
+        let resultado = caso_de_uso
+            .ejecutar(ParamsListarLineasPedido {
+                pagina: PeticionPagina::new(Some(5), Some(10)),
+            })
+            .await;
+
+        assert_eq!(resultado.unwrap().desplazamiento, 10);
+    }
+}
+
+=== contextos/linea_pedido/aplicacion/src/obtener_linea_pedido.rs ===
+use async_trait::async_trait;
+use dominio_linea_pedido::errores::ErrorLineaPedido;
+use dominio_linea_pedido::modelo::{IdLineaPedido, LineaPedido};
+use dominio_linea_pedido::repositorio::RepositorioLineaPedido;
+use std::sync::Arc;
+
+#[derive(Debug, Clone)]
+pub struct ParamsObtenerLineaPedido {
+    pub id: IdLineaPedido,
+}
+
+#[async_trait]
+pub trait ObtenerLineaPedido: Send + Sync {
+    async fn ejecutar(
+        &self,
+        params: ParamsObtenerLineaPedido,
+    ) -> Result<LineaPedido, ErrorLineaPedido>;
+}
+
+#[cfg(any(test, feature = "pruebas"))]
+pub mod dobles {
+    use mockall::mock;
+
+    use super::*;
+
+    mock! {
+        pub ObtenerLineaPedido {}
+
+        #[async_trait]
+        impl ObtenerLineaPedido for ObtenerLineaPedido {
+            async fn ejecutar(&self, params: ParamsObtenerLineaPedido) -> Result<LineaPedido, ErrorLineaPedido>;
+        }
+    }
+}
+
+pub struct ObtenerLineaPedidoImpl {
+    pub repositorio: Arc<dyn RepositorioLineaPedido>,
+}
+
+#[async_trait]
+impl ObtenerLineaPedido for ObtenerLineaPedidoImpl {
+    #[tracing::instrument(name = "obtener_linea_pedido", skip_all, fields(id = %params.id), err(level = "warn"))]
+    async fn ejecutar(
+        &self,
+        params: ParamsObtenerLineaPedido,
+    ) -> Result<LineaPedido, ErrorLineaPedido> {
+        self.repositorio
+            .buscar_por_id(params.id)
+            .await?
+            .ok_or(ErrorLineaPedido::NoEncontrado)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use dominio_linea_pedido::{
+        modelo::IdLineaPedido, pruebas::madres::MadreLineaPedido,
+        repositorio::dobles::MockRepositorioLineaPedido,
+    };
+    use puerto_nucleo::ErrorRepositorio;
+
+    #[tokio::test]
+    async fn deberia_devolver_linea_pedido_cuando_el_id_existe() {
+        let entidad = MadreLineaPedido::aleatorio();
+        let id_entidad = entidad.id;
+        let mut repositorio_doble = MockRepositorioLineaPedido::new();
+        repositorio_doble
+            .expect_buscar_por_id()
+            .returning(move |_| Ok(Some(entidad.clone())));
+        let caso_de_uso = ObtenerLineaPedidoImpl {
+            repositorio: Arc::new(repositorio_doble),
+        };
+
+        let resultado = caso_de_uso
+            .ejecutar(ParamsObtenerLineaPedido { id: id_entidad })
+            .await;
+
+        assert_eq!(resultado.unwrap().id, id_entidad);
+    }
+
+    #[tokio::test]
+    async fn deberia_devolver_no_encontrado_cuando_el_id_no_existe() {
+        let mut repositorio_doble = MockRepositorioLineaPedido::new();
+        repositorio_doble
+            .expect_buscar_por_id()
+            .returning(|_| Ok(None));
+        let caso_de_uso = ObtenerLineaPedidoImpl {
+            repositorio: Arc::new(repositorio_doble),
+        };
+
+        let resultado = caso_de_uso
+            .ejecutar(ParamsObtenerLineaPedido {
+                id: IdLineaPedido::generar(),
+            })
+            .await;
+
+        assert!(resultado.is_err());
+        assert_eq!(
+            resultado.unwrap_err().to_string(),
+            "linea_pedido.no_encontrado"
+        );
+    }
+
+    #[tokio::test]
+    async fn deberia_devolver_error_de_repositorio_cuando_el_almacen_no_esta_disponible() {
+        let mut repositorio_doble = MockRepositorioLineaPedido::new();
+        repositorio_doble
+            .expect_buscar_por_id()
+            .returning(|_| Err(ErrorRepositorio::NoDisponible));
+        let caso_de_uso = ObtenerLineaPedidoImpl {
+            repositorio: Arc::new(repositorio_doble),
+        };
+
+        let resultado = caso_de_uso
+            .ejecutar(ParamsObtenerLineaPedido {
+                id: IdLineaPedido::generar(),
+            })
+            .await;
+
+        assert!(resultado.is_err());
+        assert_eq!(
+            resultado.unwrap_err().to_string(),
+            "linea_pedido.repositorio"
+        );
+    }
+}
+
+=== contextos/linea_pedido/dominio/Cargo.toml ===
+[package]
+name = "dominio_linea_pedido"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+puerto-nucleo = { workspace = true }
+async-trait = { workspace = true }
+thiserror = { workspace = true }
+uuid = { workspace = true }
+chrono = { workspace = true }
+mockall = { workspace = true, optional = true }
+
+[features]
+# Los dobles (`mock!`) y la madre de objetos, para los tests de otros crates (ADR-0023 § 5 de
+# Puerto).
+pruebas = ["dep:mockall"]
+
+[dev-dependencies]
+mockall = { workspace = true }
+tokio = { workspace = true }
+
+=== contextos/linea_pedido/dominio/src/errores.rs ===
+use puerto_nucleo::ErrorRepositorio;
+use thiserror::Error;
+
+#[derive(Debug, Error)]
+pub enum ErrorLineaPedido {
+    #[error("linea_pedido.validacion.{0}")]
+    Validacion(String),
+    #[error("linea_pedido.no_encontrado")]
+    NoEncontrado,
+    #[error("linea_pedido.duplicado")]
+    Duplicado,
+    #[error("linea_pedido.repositorio")]
+    Repositorio,
+    #[error("linea_pedido.desconocido")]
+    Desconocido,
+    #[error("linea_pedido.sku_invalido")]
+    SkuInvalido,
+}
+
+impl From<ErrorRepositorio> for ErrorLineaPedido {
+    /// Cada fallo que nombra `puerto-nucleo` tiene su brazo. `ErrorRepositorio` es
+    /// `#[non_exhaustive]`: uno que añada una versión posterior es un problema del almacén (500)
+    /// hasta que tenga aquí un significado.
+    fn from(err: ErrorRepositorio) -> Self {
+        match err {
+            ErrorRepositorio::Duplicado => Self::Duplicado,
+            ErrorRepositorio::DatosInvalidos | ErrorRepositorio::NoDisponible => Self::Repositorio,
+            _ => Self::Repositorio,
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn deberia_convertir_un_duplicado_en_el_duplicado_de_la_entidad() {
+        let err = ErrorLineaPedido::from(ErrorRepositorio::Duplicado);
+        assert_eq!(err.to_string(), "linea_pedido.duplicado");
+    }
+
+    #[test]
+    fn deberia_convertir_datos_invalidos_en_un_error_de_repositorio() {
+        let err = ErrorLineaPedido::from(ErrorRepositorio::DatosInvalidos);
+        assert_eq!(err.to_string(), "linea_pedido.repositorio");
+    }
+
+    #[test]
+    fn deberia_convertir_un_almacen_no_disponible_en_un_error_de_repositorio() {
+        let err = ErrorLineaPedido::from(ErrorRepositorio::NoDisponible);
+        assert_eq!(err.to_string(), "linea_pedido.repositorio");
+    }
+}
+
+=== contextos/linea_pedido/dominio/src/lib.rs ===
+pub mod errores;
+pub mod modelo;
+pub mod repositorio;
+pub mod valores;
+
+#[cfg(any(test, feature = "pruebas"))]
+pub mod pruebas {
+    pub mod madres;
+}
+
+=== contextos/linea_pedido/dominio/src/modelo.rs ===
+use crate::valores::Sku;
+use chrono::{DateTime, Utc};
+use uuid::Uuid;
+
+use crate::errores::ErrorLineaPedido;
+
+/// El id de cada `LineaPedido`: un `Uuid` que no se puede pasar donde se espera el id de otra
+/// entidad.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct IdLineaPedido(Uuid);
+
+impl IdLineaPedido {
+    /// Un id nuevo y aleatorio — para una entidad que se está creando.
+    pub fn generar() -> Self {
+        Self(Uuid::new_v4())
+    }
+
+    /// Un id leído de fuera (un parámetro de ruta, una fila) — sin validar: cualquier `Uuid` es un
+    /// id.
+    pub fn from_uuid(valor: Uuid) -> Self {
+        Self(valor)
+    }
+
+    pub fn valor(&self) -> Uuid {
+        self.0
+    }
+}
+
+impl std::fmt::Display for IdLineaPedido {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        self.0.fmt(f)
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct PropsLineaPedido {
+    pub title: String,
+    pub quantity: i64,
+    pub rate: f64,
+    pub in_stock: bool,
+    pub ref_id: Uuid,
+    pub sku: Sku,
+}
+
+#[derive(Debug, Clone)]
+pub struct LineaPedido {
+    pub id: IdLineaPedido,
+    pub creado_en: DateTime<Utc>,
+    pub actualizado_en: DateTime<Utc>,
+    pub borrado: bool,
+    pub borrado_en: Option<DateTime<Utc>>,
+    pub title: String,
+    pub quantity: i64,
+    pub rate: f64,
+    pub in_stock: bool,
+    pub ref_id: Uuid,
+    pub sku: Sku,
+}
+
+impl LineaPedido {
+    pub fn new(props: PropsLineaPedido) -> Result<Self, ErrorLineaPedido> {
+        Self::validar(&props)?;
+        let ahora = chrono::Utc::now();
+        Ok(Self {
+            id: IdLineaPedido::generar(),
+            creado_en: ahora,
+            actualizado_en: ahora,
+            borrado: false,
+            borrado_en: None,
+            title: props.title,
+            quantity: props.quantity,
+            rate: props.rate,
+            in_stock: props.in_stock,
+            ref_id: props.ref_id,
+            sku: props.sku,
+        })
+    }
+
+    /// Cambia los campos propios, con las mismas reglas que `new`.
+    pub fn actualizar(&mut self, props: PropsLineaPedido) -> Result<(), ErrorLineaPedido> {
+        Self::validar(&props)?;
+        self.title = props.title;
+        self.quantity = props.quantity;
+        self.rate = props.rate;
+        self.in_stock = props.in_stock;
+        self.ref_id = props.ref_id;
+        self.sku = props.sku;
+        self.actualizado_en = chrono::Utc::now();
+        Ok(())
+    }
+
+    /// El borrado lógico: la fila se queda, marcada como borrada.
+    pub fn borrar(&mut self) {
+        let ahora = chrono::Utc::now();
+        self.borrado = true;
+        self.borrado_en = Some(ahora);
+        self.actualizado_en = ahora;
+    }
+
+    pub fn from_repositorio(datos: LineaPedido) -> Self {
+        datos
+    }
+
+    /// Las reglas de los campos propios: las comprueban `new` y `actualizar`, así que una regla nueva
+    /// se escribe solo aquí.
+    fn validar(props: &PropsLineaPedido) -> Result<(), ErrorLineaPedido> {
+        if props.title.trim().is_empty() {
+            return Err(ErrorLineaPedido::Validacion("title_vacio".into()));
+        }
+        Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::pruebas::madres::MadreLineaPedido;
+
+    #[test]
+    fn deberia_crear_linea_pedido_cuando_los_campos_son_validos() {
+        let resultado = LineaPedido::new(MadreLineaPedido::new().construir_props());
+        assert_eq!(
+            resultado.unwrap().title,
+            MadreLineaPedido::new().construir_props().title
+        );
+    }
+
+    #[test]
+    fn deberia_rechazar_linea_pedido_cuando_title_es_una_cadena_vacia() {
+        let resultado =
+            LineaPedido::new(MadreLineaPedido::new().con_title_vacio().construir_props());
+        assert!(resultado.is_err());
+        assert_eq!(
+            resultado.unwrap_err().to_string(),
+            "linea_pedido.validacion.title_vacio"
+        );
+    }
+
+    #[test]
+    fn deberia_rechazar_linea_pedido_cuando_title_solo_tiene_espacios() {
+        let resultado =
+            LineaPedido::new(MadreLineaPedido::new().con_title("   ").construir_props());
+        assert!(resultado.is_err());
+    }
+
+    #[test]
+    fn deberia_rechazar_actualizar_linea_pedido_cuando_title_es_una_cadena_vacia() {
+        let mut entidad = MadreLineaPedido::aleatorio();
+        let resultado =
+            entidad.actualizar(MadreLineaPedido::new().con_title_vacio().construir_props());
+        assert_eq!(
+            resultado.unwrap_err().to_string(),
+            "linea_pedido.validacion.title_vacio"
+        );
+    }
+
+    #[test]
+    fn deberia_rechazar_linea_pedido_cuando_sku_es_una_cadena_vacia() {
+        let resultado = Sku::new("".to_string());
+        assert!(resultado.is_err());
+        assert_eq!(
+            resultado.unwrap_err().to_string(),
+            "linea_pedido.sku_invalido"
+        );
+    }
+
+    #[test]
+    fn deberia_marcar_linea_pedido_como_borrado_cuando_se_borra() {
+        // Preparar
+        let mut entidad = MadreLineaPedido::aleatorio();
+
+        // Actuar
+        entidad.borrar();
+
+        // Comprobar
+        assert!(entidad.borrado);
+        assert!(entidad.borrado_en.is_some());
+    }
+}
+
+=== contextos/linea_pedido/dominio/src/pruebas/madres.rs ===
+use crate::modelo::LineaPedido;
+use crate::modelo::PropsLineaPedido;
+use crate::valores::Sku;
+use uuid::Uuid;
+
+pub struct MadreLineaPedido {
+    title: Option<String>,
+    quantity: Option<i64>,
+    rate: Option<f64>,
+    in_stock: Option<bool>,
+    ref_id: Option<Uuid>,
+    sku: Option<Sku>,
+}
+
+impl MadreLineaPedido {
+    pub fn new() -> Self {
+        Self {
+            title: None,
+            quantity: None,
+            rate: None,
+            in_stock: None,
+            ref_id: None,
+            sku: None,
+        }
+    }
+
+    pub fn con_title(mut self, title: &str) -> Self {
+        self.title = Some(title.to_string());
+        self
+    }
+
+    pub fn con_quantity(mut self, quantity: i64) -> Self {
+        self.quantity = Some(quantity);
+        self
+    }
+
+    pub fn con_rate(mut self, rate: f64) -> Self {
+        self.rate = Some(rate);
+        self
+    }
+
+    pub fn con_in_stock(mut self, in_stock: bool) -> Self {
+        self.in_stock = Some(in_stock);
+        self
+    }
+
+    pub fn con_ref_id(mut self, ref_id: Uuid) -> Self {
+        self.ref_id = Some(ref_id);
+        self
+    }
+
+    pub fn con_sku(mut self, sku: Sku) -> Self {
+        self.sku = Some(sku);
+        self
+    }
+
+    pub fn con_title_vacio(mut self) -> Self {
+        self.title = Some(String::new());
+        self
+    }
+
+    pub fn construir(self) -> LineaPedido {
+        LineaPedido::new(PropsLineaPedido {
+            title: self.title.unwrap_or_else(|| "example".to_string()),
+            quantity: self.quantity.unwrap_or(42),
+            rate: self.rate.unwrap_or(1.5),
+            in_stock: self.in_stock.unwrap_or(true),
+            ref_id: self.ref_id.unwrap_or_else(Uuid::new_v4),
+            sku: self.sku.unwrap_or_else(|| {
+                Sku::new("example".to_string()).expect("Sku::new rechazó el valor de ejemplo")
+            }),
+        })
+        .expect("MadreLineaPedido: LineaPedido::new rechazó los props")
+    }
+
+    pub fn construir_props(self) -> PropsLineaPedido {
+        PropsLineaPedido {
+            title: self.title.unwrap_or_else(|| "example".to_string()),
+            quantity: self.quantity.unwrap_or(42),
+            rate: self.rate.unwrap_or(1.5),
+            in_stock: self.in_stock.unwrap_or(true),
+            ref_id: self.ref_id.unwrap_or_else(Uuid::new_v4),
+            sku: self.sku.unwrap_or_else(|| {
+                Sku::new("example".to_string()).expect("Sku::new rechazó el valor de ejemplo")
+            }),
+        }
+    }
+
+    pub fn aleatorio() -> LineaPedido {
+        Self::new().construir()
+    }
+
+    pub fn aleatorios(n: usize) -> Vec<LineaPedido> {
+        (0..n).map(|_| Self::aleatorio()).collect()
+    }
+}
+
+impl Default for MadreLineaPedido {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+=== contextos/linea_pedido/dominio/src/repositorio.rs ===
+use async_trait::async_trait;
+use puerto_nucleo::{ErrorRepositorio, Pagina, PeticionPagina};
+
+use crate::modelo::{IdLineaPedido, LineaPedido};
+
+#[async_trait]
+pub trait RepositorioLineaPedido: Send + Sync {
+    async fn buscar_todos(
+        &self,
+        pagina: PeticionPagina,
+    ) -> Result<Pagina<LineaPedido>, ErrorRepositorio>;
+    async fn buscar_por_id(
+        &self,
+        id: IdLineaPedido,
+    ) -> Result<Option<LineaPedido>, ErrorRepositorio>;
+    async fn guardar(&self, entidad: &LineaPedido) -> Result<(), ErrorRepositorio>;
+}
+
+#[cfg(any(test, feature = "pruebas"))]
+pub mod dobles {
+    use mockall::mock;
+
+    use super::*;
+
+    mock! {
+        pub RepositorioLineaPedido {}
+
+        #[async_trait]
+        impl RepositorioLineaPedido for RepositorioLineaPedido {
+            async fn buscar_todos(&self, pagina: PeticionPagina) -> Result<Pagina<LineaPedido>, ErrorRepositorio>;
+            async fn buscar_por_id(&self, id: IdLineaPedido) -> Result<Option<LineaPedido>, ErrorRepositorio>;
+            async fn guardar(&self, entidad: &LineaPedido) -> Result<(), ErrorRepositorio>;
+        }
+    }
+}
+
+=== contextos/linea_pedido/dominio/src/valores.rs ===
+use crate::errores::ErrorLineaPedido;
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct Sku {
+    valor: String,
+}
+
+impl Sku {
+    pub fn new(valor: String) -> Result<Self, ErrorLineaPedido> {
+        let recortado = valor.trim().to_string();
+        if recortado.is_empty() {
+            return Err(ErrorLineaPedido::SkuInvalido);
+        }
+        Ok(Self { valor: recortado })
+    }
+
+    pub fn valor(&self) -> &str {
+        &self.valor
+    }
+}
+
+=== contextos/linea_pedido/infraestructura/Cargo.toml ===
+[package]
+name = "infra_linea_pedido"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+dominio_linea_pedido = { workspace = true }
+puerto-nucleo = { workspace = true }
+async-trait = { workspace = true }
+tracing = { workspace = true }
+uuid = { workspace = true }
+chrono = { workspace = true }
+
+[features]
+pruebas = ["dominio_linea_pedido/pruebas"]
+
+[dev-dependencies]
+dominio_linea_pedido = { workspace = true, features = ["pruebas"] }
+tokio = { workspace = true }
+
+=== contextos/linea_pedido/infraestructura/src/lib.rs ===
+pub mod repositorio;
+
+=== contextos/linea_pedido/infraestructura/src/repositorio.rs ===
+use std::collections::HashMap;
+use std::sync::{PoisonError, RwLock, RwLockReadGuard, RwLockWriteGuard};
+
+use async_trait::async_trait;
+use dominio_linea_pedido::{
+    modelo::{IdLineaPedido, LineaPedido},
+    repositorio::RepositorioLineaPedido,
+};
+use puerto_nucleo::{ErrorRepositorio, Pagina, PeticionPagina};
+
+/// Guarda lineas_pedido en la memoria del proceso: se pierden cuando el proceso se para.
+/// Como el adaptador de Postgres, oculta las filas borradas y lista primero las más recientes.
+/// Cubre el hueco hasta que haya base de datos (`puerto nuevo --db` genera repositorios Postgres).
+#[derive(Default)]
+pub struct RepositorioLineaPedidoEnMemoria {
+    filas: RwLock<HashMap<IdLineaPedido, LineaPedido>>,
+}
+
+impl RepositorioLineaPedidoEnMemoria {
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    // Un cerrojo envenenado significa que un escritor hizo panic; cada escritura es un solo
+    // insert, así que el mapa sigue entero y se usa tal cual.
+    fn leer(&self) -> RwLockReadGuard<'_, HashMap<IdLineaPedido, LineaPedido>> {
+        self.filas.read().unwrap_or_else(PoisonError::into_inner)
+    }
+
+    fn escribir(&self) -> RwLockWriteGuard<'_, HashMap<IdLineaPedido, LineaPedido>> {
+        self.filas.write().unwrap_or_else(PoisonError::into_inner)
+    }
+}
+
+#[async_trait]
+impl RepositorioLineaPedido for RepositorioLineaPedidoEnMemoria {
+    async fn buscar_todos(
+        &self,
+        pagina: PeticionPagina,
+    ) -> Result<Pagina<LineaPedido>, ErrorRepositorio> {
+        tracing::debug!(
+            limite = pagina.limite(),
+            desplazamiento = pagina.desplazamiento(),
+            "buscar_todos"
+        );
+        let filas = self.leer();
+        let mut vivos: Vec<&LineaPedido> = filas.values().filter(|fila| !fila.borrado).collect();
+        vivos.sort_by(|a, b| {
+            b.creado_en
+                .cmp(&a.creado_en)
+                .then_with(|| a.id.valor().cmp(&b.id.valor()))
+        });
+        let total = vivos.len() as u64;
+        let elementos = vivos
+            .into_iter()
+            .skip(pagina.desplazamiento() as usize)
+            .take(pagina.limite() as usize)
+            .cloned()
+            .collect();
+        Ok(Pagina::new(elementos, total, pagina))
+    }
+
+    async fn buscar_por_id(
+        &self,
+        id: IdLineaPedido,
+    ) -> Result<Option<LineaPedido>, ErrorRepositorio> {
+        tracing::debug!(%id, "buscar_por_id");
+        Ok(self.leer().get(&id).filter(|fila| !fila.borrado).cloned())
+    }
+
+    async fn guardar(&self, entidad: &LineaPedido) -> Result<(), ErrorRepositorio> {
+        tracing::debug!(id = %entidad.id, "guardar");
+        let mut filas = self.escribir();
+        filas.insert(entidad.id, entidad.clone());
+        Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use dominio_linea_pedido::pruebas::madres::MadreLineaPedido;
+
+    /// Una entidad válida, con los valores de la madre.
+    fn nuevo_linea_pedido() -> LineaPedido {
+        MadreLineaPedido::aleatorio()
+    }
+
+    #[tokio::test]
+    async fn deberia_encontrar_linea_pedido_por_id_tras_guardar() {
+        // Preparar
+        let repositorio = RepositorioLineaPedidoEnMemoria::new();
+        let entidad = nuevo_linea_pedido();
+        repositorio.guardar(&entidad).await.unwrap();
+
+        // Actuar
+        let encontrado = repositorio.buscar_por_id(entidad.id).await.unwrap();
+
+        // Comprobar
+        assert_eq!(encontrado.map(|fila| fila.id), Some(entidad.id));
+    }
+
+    #[tokio::test]
+    async fn deberia_actualizar_la_fila_cuando_se_guarda_de_nuevo() {
+        // Preparar
+        let repositorio = RepositorioLineaPedidoEnMemoria::new();
+        let mut entidad = nuevo_linea_pedido();
+        repositorio.guardar(&entidad).await.unwrap();
+        entidad.actualizado_en = chrono::Utc::now();
+
+        // Actuar
+        repositorio.guardar(&entidad).await.unwrap();
+
+        // Comprobar
+        let pagina = repositorio
+            .buscar_todos(PeticionPagina::default())
+            .await
+            .unwrap();
+        assert_eq!(pagina.total, 1);
+        assert_eq!(pagina.elementos[0].actualizado_en, entidad.actualizado_en);
+    }
+
+    #[tokio::test]
+    async fn no_deberia_encontrar_linea_pedido_tras_su_borrado() {
+        // Preparar
+        let repositorio = RepositorioLineaPedidoEnMemoria::new();
+        let mut entidad = nuevo_linea_pedido();
+        entidad.borrado = true;
+        entidad.borrado_en = Some(entidad.actualizado_en);
+        repositorio.guardar(&entidad).await.unwrap();
+
+        // Actuar
+        let encontrado = repositorio.buscar_por_id(entidad.id).await.unwrap();
+        let pagina = repositorio
+            .buscar_todos(PeticionPagina::default())
+            .await
+            .unwrap();
+
+        // Comprobar
+        assert!(encontrado.is_none());
+        assert_eq!(pagina.total, 0);
+    }
+
+    #[tokio::test]
+    async fn deberia_devolver_la_pagina_pedida_de_una_lista_mayor() {
+        // Preparar
+        let repositorio = RepositorioLineaPedidoEnMemoria::new();
+        for _ in 0..3 {
+            repositorio.guardar(&nuevo_linea_pedido()).await.unwrap();
+        }
+
+        // Actuar
+        let pagina = repositorio
+            .buscar_todos(PeticionPagina::new(Some(2), Some(2)))
+            .await
+            .unwrap();
+
+        // Comprobar
+        assert_eq!(pagina.elementos.len(), 1);
+        assert_eq!(pagina.total, 3);
+        assert_eq!((pagina.limite, pagina.desplazamiento), (2, 2));
+    }
+}
+
+=== contextos/linea_pedido/rest/Cargo.toml ===
+[package]
+name = "rest_linea_pedido"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+aplicacion_linea_pedido = { workspace = true }
+dominio_linea_pedido = { workspace = true }
+puerto-nucleo = { workspace = true }
+puerto-web = { workspace = true }
+poem = { workspace = true }
+poem-openapi = { workspace = true }
+tracing = { workspace = true }
+uuid = { workspace = true }
+chrono = { workspace = true }
+
+[dev-dependencies]
+aplicacion_linea_pedido = { workspace = true, features = ["pruebas"] }
+dominio_linea_pedido = { workspace = true, features = ["pruebas"] }
+poem = { workspace = true, features = ["test"] }
+tokio = { workspace = true }
+
+=== contextos/linea_pedido/rest/src/dto.rs ===
+use dominio_linea_pedido::modelo::LineaPedido;
+use poem_openapi::Object;
+use puerto_nucleo::Pagina;
+use uuid::Uuid;
+
+#[derive(Debug, Object)]
+#[oai(rename_all = "camelCase")]
+pub struct DtoLineaPedido {
+    pub id: Uuid,
+    pub title: String,
+    pub quantity: i64,
+    pub rate: f64,
+    pub in_stock: bool,
+    pub ref_id: Uuid,
+    pub sku: String,
+}
+
+impl DtoLineaPedido {
+    pub fn from_dominio(entidad: &LineaPedido) -> Self {
+        Self {
+            id: entidad.id.valor(),
+            title: entidad.title.clone(),
+            quantity: entidad.quantity,
+            rate: entidad.rate,
+            in_stock: entidad.in_stock,
+            ref_id: entidad.ref_id,
+            sku: entidad.sku.valor().to_string(),
+        }
+    }
+}
+
+#[derive(Debug, Object)]
+#[oai(rename_all = "camelCase")]
+pub struct PeticionCrearLineaPedido {
+    pub title: String,
+    pub quantity: i64,
+    pub rate: f64,
+    pub in_stock: bool,
+    pub ref_id: Uuid,
+    pub sku: String,
+}
+
+/// Una página de LineasPedido: `total` es el recuento completo y `limite`, el que aplicó
+/// la API.
+#[derive(Debug, Object)]
+#[oai(rename_all = "camelCase")]
+pub struct DtoPaginaLineaPedido {
+    pub elementos: Vec<DtoLineaPedido>,
+    pub total: u64,
+    pub limite: u32,
+    pub desplazamiento: u32,
+}
+
+impl DtoPaginaLineaPedido {
+    pub fn from_dominio(pagina: &Pagina<LineaPedido>) -> Self {
+        Self {
+            elementos: pagina
+                .elementos
+                .iter()
+                .map(DtoLineaPedido::from_dominio)
+                .collect(),
+            total: pagina.total,
+            limite: pagina.limite,
+            desplazamiento: pagina.desplazamiento,
+        }
+    }
+}
+
+#[derive(Debug, Object)]
+#[oai(rename_all = "camelCase")]
+pub struct PeticionActualizarLineaPedido {
+    pub title: String,
+    pub quantity: i64,
+    pub rate: f64,
+    pub in_stock: bool,
+    pub ref_id: Uuid,
+    pub sku: String,
+}
+
+=== contextos/linea_pedido/rest/src/errores.rs ===
+use dominio_linea_pedido::errores::ErrorLineaPedido;
+use poem::http::StatusCode;
+use poem_openapi::payload::Json;
+use puerto_web::RespuestaError;
+
+/// Un error de linea_pedido como su estado HTTP y su cuerpo (ADR-0007 de Puerto): los fallos de
+/// validación y los objetos valor inválidos son 422 — la petición estaba bien formada (poem
+/// responde 400 a una que no lo está), pero incumple una regla del dominio. Exhaustivo a propósito:
+/// una variante de error nueva no compila hasta que tiene un estado.
+pub fn a_respuesta_error(err: ErrorLineaPedido) -> (StatusCode, Json<RespuestaError>) {
+    let status = match &err {
+        ErrorLineaPedido::Validacion(_) => StatusCode::UNPROCESSABLE_ENTITY,
+        ErrorLineaPedido::NoEncontrado => StatusCode::NOT_FOUND,
+        ErrorLineaPedido::Duplicado => StatusCode::CONFLICT,
+        ErrorLineaPedido::Repositorio => StatusCode::INTERNAL_SERVER_ERROR,
+        ErrorLineaPedido::Desconocido => StatusCode::INTERNAL_SERVER_ERROR,
+        ErrorLineaPedido::SkuInvalido => StatusCode::UNPROCESSABLE_ENTITY,
+    };
+    (status, Json(RespuestaError::from_codigo(err.to_string())))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn deberia_mapear_validacion_a_422_con_su_codigo() {
+        // Actuar
+        let (status, Json(cuerpo)) =
+            a_respuesta_error(ErrorLineaPedido::Validacion("nombre_vacio".into()));
+
+        // Comprobar
+        assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY);
+        assert_eq!(cuerpo.codigo, "linea_pedido.validacion.nombre_vacio");
+    }
+
+    #[test]
+    fn deberia_mapear_no_encontrado_a_404_con_su_codigo() {
+        // Actuar
+        let (status, Json(cuerpo)) = a_respuesta_error(ErrorLineaPedido::NoEncontrado);
+
+        // Comprobar
+        assert_eq!(status, StatusCode::NOT_FOUND);
+        assert_eq!(cuerpo.codigo, "linea_pedido.no_encontrado");
+    }
+
+    #[test]
+    fn deberia_mapear_duplicado_a_409_con_su_codigo() {
+        // Actuar
+        let (status, Json(cuerpo)) = a_respuesta_error(ErrorLineaPedido::Duplicado);
+
+        // Comprobar
+        assert_eq!(status, StatusCode::CONFLICT);
+        assert_eq!(cuerpo.codigo, "linea_pedido.duplicado");
+    }
+
+    #[test]
+    fn deberia_mapear_repositorio_a_500_con_su_codigo() {
+        // Actuar
+        let (status, Json(cuerpo)) = a_respuesta_error(ErrorLineaPedido::Repositorio);
+
+        // Comprobar
+        assert_eq!(status, StatusCode::INTERNAL_SERVER_ERROR);
+        assert_eq!(cuerpo.codigo, "linea_pedido.repositorio");
+    }
+
+    #[test]
+    fn deberia_mapear_desconocido_a_500_con_su_codigo() {
+        // Actuar
+        let (status, Json(cuerpo)) = a_respuesta_error(ErrorLineaPedido::Desconocido);
+
+        // Comprobar
+        assert_eq!(status, StatusCode::INTERNAL_SERVER_ERROR);
+        assert_eq!(cuerpo.codigo, "linea_pedido.desconocido");
+    }
+
+    #[test]
+    fn deberia_mapear_sku_invalido_a_422_con_su_codigo() {
+        // Actuar
+        let (status, Json(cuerpo)) = a_respuesta_error(ErrorLineaPedido::SkuInvalido);
+
+        // Comprobar
+        assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY);
+        assert_eq!(cuerpo.codigo, "linea_pedido.sku_invalido");
+    }
+}
+
+=== contextos/linea_pedido/rest/src/lib.rs ===
+pub mod dto;
+pub mod errores;
+pub mod respuestas;
+pub mod rutas;
+
+=== contextos/linea_pedido/rest/src/respuestas.rs ===
+// La variante de éxito lleva el DTO entero, así que crece más que las de error a medida que la
+// entidad gana campos. Una respuesta se construye una vez por petición y se devuelve: meter el DTO
+// en un `Box` solo añadiría una reserva de memoria.
+#![allow(clippy::large_enum_variant)]
+
+use poem::http::StatusCode;
+use poem_openapi::{ApiResponse, payload::Json};
+use puerto_web::RespuestaError;
+
+use crate::dto::{DtoLineaPedido, DtoPaginaLineaPedido};
+
+#[derive(ApiResponse)]
+pub enum RespuestaCrearLineaPedido {
+    #[oai(status = 201)]
+    Creado(Json<DtoLineaPedido>),
+    #[oai(status = 422)]
+    NoProcesable(Json<RespuestaError>),
+    #[oai(status = 401)]
+    NoAutorizado(Json<RespuestaError>),
+    #[oai(status = 403)]
+    Prohibido(Json<RespuestaError>),
+    #[oai(status = 409)]
+    Conflicto(Json<RespuestaError>),
+    #[oai(status = 500)]
+    ErrorInterno(Json<RespuestaError>),
+}
+
+impl RespuestaCrearLineaPedido {
+    pub fn from_status(status: StatusCode, error: Json<RespuestaError>) -> Self {
+        match status {
+            StatusCode::UNPROCESSABLE_ENTITY => Self::NoProcesable(error),
+            StatusCode::UNAUTHORIZED => Self::NoAutorizado(error),
+            StatusCode::FORBIDDEN => Self::Prohibido(error),
+            StatusCode::CONFLICT => Self::Conflicto(error),
+            _ => Self::ErrorInterno(error),
+        }
+    }
+}
+
+#[derive(ApiResponse)]
+pub enum RespuestaObtenerLineaPedido {
+    #[oai(status = 200)]
+    Ok(Json<DtoLineaPedido>),
+    #[oai(status = 401)]
+    NoAutorizado(Json<RespuestaError>),
+    #[oai(status = 403)]
+    Prohibido(Json<RespuestaError>),
+    #[oai(status = 404)]
+    NoEncontrado(Json<RespuestaError>),
+    #[oai(status = 500)]
+    ErrorInterno(Json<RespuestaError>),
+}
+
+impl RespuestaObtenerLineaPedido {
+    pub fn from_status(status: StatusCode, error: Json<RespuestaError>) -> Self {
+        match status {
+            StatusCode::UNAUTHORIZED => Self::NoAutorizado(error),
+            StatusCode::FORBIDDEN => Self::Prohibido(error),
+            StatusCode::NOT_FOUND => Self::NoEncontrado(error),
+            _ => Self::ErrorInterno(error),
+        }
+    }
+}
+
+#[derive(ApiResponse)]
+pub enum RespuestaListarLineasPedido {
+    #[oai(status = 200)]
+    Ok(Json<DtoPaginaLineaPedido>),
+    #[oai(status = 401)]
+    NoAutorizado(Json<RespuestaError>),
+    #[oai(status = 403)]
+    Prohibido(Json<RespuestaError>),
+    #[oai(status = 500)]
+    ErrorInterno(Json<RespuestaError>),
+}
+
+impl RespuestaListarLineasPedido {
+    pub fn from_status(status: StatusCode, error: Json<RespuestaError>) -> Self {
+        match status {
+            StatusCode::UNAUTHORIZED => Self::NoAutorizado(error),
+            StatusCode::FORBIDDEN => Self::Prohibido(error),
+            _ => Self::ErrorInterno(error),
+        }
+    }
+}
+
+#[derive(ApiResponse)]
+pub enum RespuestaActualizarLineaPedido {
+    #[oai(status = 200)]
+    Ok(Json<DtoLineaPedido>),
+    #[oai(status = 422)]
+    NoProcesable(Json<RespuestaError>),
+    #[oai(status = 401)]
+    NoAutorizado(Json<RespuestaError>),
+    #[oai(status = 403)]
+    Prohibido(Json<RespuestaError>),
+    #[oai(status = 404)]
+    NoEncontrado(Json<RespuestaError>),
+    #[oai(status = 409)]
+    Conflicto(Json<RespuestaError>),
+    #[oai(status = 500)]
+    ErrorInterno(Json<RespuestaError>),
+}
+
+impl RespuestaActualizarLineaPedido {
+    pub fn from_status(status: StatusCode, error: Json<RespuestaError>) -> Self {
+        match status {
+            StatusCode::UNPROCESSABLE_ENTITY => Self::NoProcesable(error),
+            StatusCode::UNAUTHORIZED => Self::NoAutorizado(error),
+            StatusCode::FORBIDDEN => Self::Prohibido(error),
+            StatusCode::NOT_FOUND => Self::NoEncontrado(error),
+            StatusCode::CONFLICT => Self::Conflicto(error),
+            _ => Self::ErrorInterno(error),
+        }
+    }
+}
+
+#[derive(ApiResponse)]
+pub enum RespuestaBorrarLineaPedido {
+    #[oai(status = 204)]
+    SinContenido,
+    #[oai(status = 401)]
+    NoAutorizado(Json<RespuestaError>),
+    #[oai(status = 403)]
+    Prohibido(Json<RespuestaError>),
+    #[oai(status = 404)]
+    NoEncontrado(Json<RespuestaError>),
+    #[oai(status = 500)]
+    ErrorInterno(Json<RespuestaError>),
+}
+
+impl RespuestaBorrarLineaPedido {
+    pub fn from_status(status: StatusCode, error: Json<RespuestaError>) -> Self {
+        match status {
+            StatusCode::UNAUTHORIZED => Self::NoAutorizado(error),
+            StatusCode::FORBIDDEN => Self::Prohibido(error),
+            StatusCode::NOT_FOUND => Self::NoEncontrado(error),
+            _ => Self::ErrorInterno(error),
+        }
+    }
+}
+
+=== contextos/linea_pedido/rest/src/rutas.rs ===
+use std::sync::Arc;
+
+use aplicacion_linea_pedido::{
+    actualizar_linea_pedido::{ActualizarLineaPedido, ParamsActualizarLineaPedido},
+    borrar_linea_pedido::{BorrarLineaPedido, ParamsBorrarLineaPedido},
+    crear_linea_pedido::{CrearLineaPedido, ParamsCrearLineaPedido},
+    listar_lineas_pedido::{ListarLineasPedido, ParamsListarLineasPedido},
+    obtener_linea_pedido::{ObtenerLineaPedido, ParamsObtenerLineaPedido},
+};
+use dominio_linea_pedido::modelo::IdLineaPedido;
+use poem_openapi::{
+    OpenApi, Tags,
+    param::{Path, Query},
+    payload::Json,
+};
+use puerto_nucleo::PeticionPagina;
+use uuid::Uuid;
+
+use crate::dto::{
+    DtoLineaPedido, DtoPaginaLineaPedido, PeticionActualizarLineaPedido, PeticionCrearLineaPedido,
+};
+use crate::errores::a_respuesta_error;
+use crate::respuestas::{
+    RespuestaActualizarLineaPedido, RespuestaBorrarLineaPedido, RespuestaCrearLineaPedido,
+    RespuestaListarLineasPedido, RespuestaObtenerLineaPedido,
+};
+
+#[derive(Tags)]
+enum ApiTags {
+    LineaPedido,
+}
+
+/// Guarda los puertos de los casos de uso; `generado/bootstrap.rs` conecta las implementaciones.
+pub struct ApiLineaPedido {
+    pub crear_linea_pedido: Arc<dyn CrearLineaPedido>,
+    pub obtener_linea_pedido: Arc<dyn ObtenerLineaPedido>,
+    pub listar_lineas_pedido: Arc<dyn ListarLineasPedido>,
+    pub actualizar_linea_pedido: Arc<dyn ActualizarLineaPedido>,
+    pub borrar_linea_pedido: Arc<dyn BorrarLineaPedido>,
+}
+
+#[OpenApi]
+impl ApiLineaPedido {
+    /// Crea: LineaPedido
+    #[oai(path = "/lineas_pedido", method = "post", tag = "ApiTags::LineaPedido")]
+    async fn crear(&self, cuerpo: Json<PeticionCrearLineaPedido>) -> RespuestaCrearLineaPedido {
+        match self
+            .crear_linea_pedido
+            .ejecutar(ParamsCrearLineaPedido {
+                title: cuerpo.title.clone(),
+                quantity: cuerpo.quantity,
+                rate: cuerpo.rate,
+                in_stock: cuerpo.in_stock,
+                ref_id: cuerpo.ref_id,
+                sku: cuerpo.sku.clone(),
+            })
+            .await
+        {
+            Ok(entidad) => {
+                RespuestaCrearLineaPedido::Creado(Json(DtoLineaPedido::from_dominio(&entidad)))
+            }
+            Err(err) => {
+                let (status, error) = a_respuesta_error(err);
+                tracing::warn!(codigo = %error.0.codigo, "crear_linea_pedido falló");
+                RespuestaCrearLineaPedido::from_status(status, error)
+            }
+        }
+    }
+
+    /// Obtiene: LineaPedido por id
+    #[oai(
+        path = "/lineas_pedido/:id",
+        method = "get",
+        tag = "ApiTags::LineaPedido"
+    )]
+    async fn obtener(&self, id: Path<Uuid>) -> RespuestaObtenerLineaPedido {
+        match self
+            .obtener_linea_pedido
+            .ejecutar(ParamsObtenerLineaPedido {
+                id: IdLineaPedido::from_uuid(id.0),
+            })
+            .await
+        {
+            Ok(entidad) => {
+                RespuestaObtenerLineaPedido::Ok(Json(DtoLineaPedido::from_dominio(&entidad)))
+            }
+            Err(err) => {
+                let (status, error) = a_respuesta_error(err);
+                tracing::warn!(codigo = %error.0.codigo, "obtener_linea_pedido falló");
+                RespuestaObtenerLineaPedido::from_status(status, error)
+            }
+        }
+    }
+
+    /// Lista LineasPedido, página a página (el dominio acota `limite`)
+    #[oai(path = "/lineas_pedido", method = "get", tag = "ApiTags::LineaPedido")]
+    async fn listar(
+        &self,
+        limite: Query<Option<u32>>,
+        desplazamiento: Query<Option<u32>>,
+    ) -> RespuestaListarLineasPedido {
+        match self
+            .listar_lineas_pedido
+            .ejecutar(ParamsListarLineasPedido {
+                pagina: PeticionPagina::new(limite.0, desplazamiento.0),
+            })
+            .await
+        {
+            Ok(pagina) => {
+                RespuestaListarLineasPedido::Ok(Json(DtoPaginaLineaPedido::from_dominio(&pagina)))
+            }
+            Err(err) => {
+                let (status, error) = a_respuesta_error(err);
+                tracing::error!(codigo = %error.0.codigo, "listar_lineas_pedido falló");
+                RespuestaListarLineasPedido::from_status(status, error)
+            }
+        }
+    }
+
+    /// Actualiza: LineaPedido
+    #[oai(
+        path = "/lineas_pedido/:id",
+        method = "put",
+        tag = "ApiTags::LineaPedido"
+    )]
+    async fn actualizar(
+        &self,
+        id: Path<Uuid>,
+        cuerpo: Json<PeticionActualizarLineaPedido>,
+    ) -> RespuestaActualizarLineaPedido {
+        match self
+            .actualizar_linea_pedido
+            .ejecutar(ParamsActualizarLineaPedido {
+                id: IdLineaPedido::from_uuid(id.0),
+                title: cuerpo.title.clone(),
+                quantity: cuerpo.quantity,
+                rate: cuerpo.rate,
+                in_stock: cuerpo.in_stock,
+                ref_id: cuerpo.ref_id,
+                sku: cuerpo.sku.clone(),
+            })
+            .await
+        {
+            Ok(entidad) => {
+                RespuestaActualizarLineaPedido::Ok(Json(DtoLineaPedido::from_dominio(&entidad)))
+            }
+            Err(err) => {
+                let (status, error) = a_respuesta_error(err);
+                tracing::warn!(codigo = %error.0.codigo, "actualizar_linea_pedido falló");
+                RespuestaActualizarLineaPedido::from_status(status, error)
+            }
+        }
+    }
+
+    /// Borra: LineaPedido
+    #[oai(
+        path = "/lineas_pedido/:id",
+        method = "delete",
+        tag = "ApiTags::LineaPedido"
+    )]
+    async fn borrar(&self, id: Path<Uuid>) -> RespuestaBorrarLineaPedido {
+        match self
+            .borrar_linea_pedido
+            .ejecutar(ParamsBorrarLineaPedido {
+                id: IdLineaPedido::from_uuid(id.0),
+            })
+            .await
+        {
+            Ok(()) => RespuestaBorrarLineaPedido::SinContenido,
+            Err(err) => {
+                let (status, error) = a_respuesta_error(err);
+                tracing::warn!(codigo = %error.0.codigo, "borrar_linea_pedido falló");
+                RespuestaBorrarLineaPedido::from_status(status, error)
+            }
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use aplicacion_linea_pedido::{
+        actualizar_linea_pedido::dobles::MockActualizarLineaPedido,
+        borrar_linea_pedido::dobles::MockBorrarLineaPedido,
+        crear_linea_pedido::dobles::MockCrearLineaPedido,
+        listar_lineas_pedido::dobles::MockListarLineasPedido,
+        obtener_linea_pedido::dobles::MockObtenerLineaPedido,
+    };
+    use dominio_linea_pedido::errores::ErrorLineaPedido;
+    use dominio_linea_pedido::pruebas::madres::MadreLineaPedido;
+    use poem::{Route, http::StatusCode, test::TestClient};
+    use poem_openapi::{OpenApiService, types::ToJSON};
+    use puerto_nucleo::Pagina;
+
+    use super::*;
+
+    /// Un doble por caso de uso. Cada test pone expectativas solo en el que su ruta debe llamar:
+    /// una ruta que recurra a otro caso de uso entra en pánico en vez de pasar.
+    #[derive(Default)]
+    struct Dobles {
+        crear: MockCrearLineaPedido,
+        obtener: MockObtenerLineaPedido,
+        listar: MockListarLineasPedido,
+        actualizar: MockActualizarLineaPedido,
+        borrar: MockBorrarLineaPedido,
+    }
+
+    impl Dobles {
+        fn cliente(self) -> TestClient<Route> {
+            let api = ApiLineaPedido {
+                crear_linea_pedido: Arc::new(self.crear),
+                obtener_linea_pedido: Arc::new(self.obtener),
+                listar_lineas_pedido: Arc::new(self.listar),
+                actualizar_linea_pedido: Arc::new(self.actualizar),
+                borrar_linea_pedido: Arc::new(self.borrar),
+            };
+            TestClient::new(Route::new().nest("/", OpenApiService::new(api, "test", "1.0")))
+        }
+    }
+
+    fn peticion_crear() -> PeticionCrearLineaPedido {
+        PeticionCrearLineaPedido {
+            title: "example".to_string(),
+            quantity: 42,
+            rate: 1.5,
+            in_stock: true,
+            ref_id: Uuid::new_v4(),
+            sku: "example".to_string(),
+        }
+    }
+
+    fn peticion_actualizar() -> PeticionActualizarLineaPedido {
+        PeticionActualizarLineaPedido {
+            title: "example".to_string(),
+            quantity: 42,
+            rate: 1.5,
+            in_stock: true,
+            ref_id: Uuid::new_v4(),
+            sku: "example".to_string(),
+        }
+    }
+
+    fn ruta_elemento() -> String {
+        format!("/lineas_pedido/{}", Uuid::new_v4())
+    }
+
+    #[tokio::test]
+    async fn deberia_responder_201_cuando_se_crea_linea_pedido() {
+        // Preparar
+        let mut dobles = Dobles::default();
+        dobles
+            .crear
+            .expect_ejecutar()
+            .returning(|_| Ok(MadreLineaPedido::aleatorio()));
+
+        // Actuar
+        let respuesta = dobles
+            .cliente()
+            .post("/lineas_pedido")
+            .body_json(&peticion_crear().to_json())
+            .send()
+            .await;
+
+        // Comprobar
+        respuesta.assert_status(StatusCode::CREATED);
+    }
+
+    #[tokio::test]
+    async fn deberia_responder_422_cuando_linea_pedido_no_supera_la_validacion() {
+        // Preparar
+        let mut dobles = Dobles::default();
+        dobles
+            .crear
+            .expect_ejecutar()
+            .returning(|_| Err(ErrorLineaPedido::Validacion("invalid".to_string())));
+
+        // Actuar
+        let respuesta = dobles
+            .cliente()
+            .post("/lineas_pedido")
+            .body_json(&peticion_crear().to_json())
+            .send()
+            .await;
+
+        // Comprobar
+        respuesta.assert_status(StatusCode::UNPROCESSABLE_ENTITY);
+    }
+
+    #[tokio::test]
+    async fn deberia_responder_200_cuando_linea_pedido_existe() {
+        // Preparar
+        let mut dobles = Dobles::default();
+        dobles
+            .obtener
+            .expect_ejecutar()
+            .returning(|_| Ok(MadreLineaPedido::aleatorio()));
+
+        // Actuar
+        let respuesta = dobles.cliente().get(ruta_elemento()).send().await;
+
+        // Comprobar
+        respuesta.assert_status(StatusCode::OK);
+    }
+
+    #[tokio::test]
+    async fn deberia_responder_404_cuando_linea_pedido_no_existe() {
+        // Preparar
+        let mut dobles = Dobles::default();
+        dobles
+            .obtener
+            .expect_ejecutar()
+            .returning(|_| Err(ErrorLineaPedido::NoEncontrado));
+
+        // Actuar
+        let respuesta = dobles.cliente().get(ruta_elemento()).send().await;
+
+        // Comprobar
+        respuesta.assert_status(StatusCode::NOT_FOUND);
+    }
+
+    #[tokio::test]
+    async fn deberia_responder_200_con_una_pagina_de_lineas_pedido_cuando_se_listan() {
+        // Preparar
+        let mut dobles = Dobles::default();
+        dobles.listar.expect_ejecutar().returning(|params| {
+            Ok(Pagina::new(
+                MadreLineaPedido::aleatorios(2),
+                7,
+                params.pagina,
+            ))
+        });
+
+        // Actuar
+        let respuesta = dobles.cliente().get("/lineas_pedido").send().await;
+
+        // Comprobar
+        respuesta.assert_status(StatusCode::OK);
+        let json = respuesta.json().await;
+        let cuerpo = json.value().object();
+        cuerpo.get("elementos").array().assert_len(2);
+        cuerpo.get("total").assert_i64(7);
+    }
+
+    #[tokio::test]
+    async fn deberia_pasar_limite_y_desplazamiento_al_caso_de_uso() {
+        // Preparar
+        let mut dobles = Dobles::default();
+        dobles
+            .listar
+            .expect_ejecutar()
+            .withf(|params| params.pagina == PeticionPagina::new(Some(5), Some(10)))
+            .returning(|params| Ok(Pagina::new(vec![], 0, params.pagina)));
+
+        // Actuar
+        let respuesta = dobles
+            .cliente()
+            .get("/lineas_pedido?limite=5&desplazamiento=10")
+            .send()
+            .await;
+
+        // Comprobar
+        respuesta.assert_status(StatusCode::OK);
+    }
+
+    #[tokio::test]
+    async fn deberia_responder_500_cuando_el_listado_falla_en_el_repositorio() {
+        // Preparar
+        let mut dobles = Dobles::default();
+        dobles
+            .listar
+            .expect_ejecutar()
+            .returning(|_| Err(ErrorLineaPedido::Repositorio));
+
+        // Actuar
+        let respuesta = dobles.cliente().get("/lineas_pedido").send().await;
+
+        // Comprobar
+        respuesta.assert_status(StatusCode::INTERNAL_SERVER_ERROR);
+    }
+
+    #[tokio::test]
+    async fn deberia_responder_200_cuando_se_actualiza_linea_pedido() {
+        // Preparar
+        let mut dobles = Dobles::default();
+        dobles
+            .actualizar
+            .expect_ejecutar()
+            .returning(|_| Ok(MadreLineaPedido::aleatorio()));
+
+        // Actuar
+        let respuesta = dobles
+            .cliente()
+            .put(ruta_elemento())
+            .body_json(&peticion_actualizar().to_json())
+            .send()
+            .await;
+
+        // Comprobar
+        respuesta.assert_status(StatusCode::OK);
+    }
+
+    #[tokio::test]
+    async fn deberia_responder_404_cuando_se_actualiza_linea_pedido_inexistente() {
+        // Preparar
+        let mut dobles = Dobles::default();
+        dobles
+            .actualizar
+            .expect_ejecutar()
+            .returning(|_| Err(ErrorLineaPedido::NoEncontrado));
+
+        // Actuar
+        let respuesta = dobles
+            .cliente()
+            .put(ruta_elemento())
+            .body_json(&peticion_actualizar().to_json())
+            .send()
+            .await;
+
+        // Comprobar
+        respuesta.assert_status(StatusCode::NOT_FOUND);
+    }
+
+    #[tokio::test]
+    async fn deberia_responder_204_cuando_se_borra_linea_pedido() {
+        // Preparar
+        let mut dobles = Dobles::default();
+        dobles.borrar.expect_ejecutar().returning(|_| Ok(()));
+
+        // Actuar
+        let respuesta = dobles.cliente().delete(ruta_elemento()).send().await;
+
+        // Comprobar
+        respuesta.assert_status(StatusCode::NO_CONTENT);
+    }
+
+    #[tokio::test]
+    async fn deberia_responder_404_cuando_se_borra_linea_pedido_inexistente() {
+        // Preparar
+        let mut dobles = Dobles::default();
+        dobles
+            .borrar
+            .expect_ejecutar()
+            .returning(|_| Err(ErrorLineaPedido::NoEncontrado));
+
+        // Actuar
+        let respuesta = dobles.cliente().delete(ruta_elemento()).send().await;
+
+        // Comprobar
+        respuesta.assert_status(StatusCode::NOT_FOUND);
+    }
+}
+
+=== contextos/saludo/aplicacion/src/obtener_saludo.rs ===
+use std::sync::Arc;
+
+use async_trait::async_trait;
+use dominio_saludo::{errores::ErrorSaludo, modelo::Saludo, repositorio::RepositorioSaludo};
+
+#[derive(Debug, Clone)]
+pub struct ParamsObtenerSaludo {
+    pub nombre: String,
+}
+
+#[async_trait]
+pub trait ObtenerSaludo: Send + Sync {
+    async fn ejecutar(&self, params: ParamsObtenerSaludo) -> Result<Saludo, ErrorSaludo>;
+}
+
+#[cfg(any(test, feature = "pruebas"))]
+pub mod dobles {
+    use mockall::mock;
+
+    use super::*;
+
+    mock! {
+        pub ObtenerSaludo {}
+
+        #[async_trait]
+        impl ObtenerSaludo for ObtenerSaludo {
+            async fn ejecutar(&self, params: ParamsObtenerSaludo) -> Result<Saludo, ErrorSaludo>;
+        }
+    }
+}
+
+pub struct ObtenerSaludoImpl {
+    pub repositorio: Arc<dyn RepositorioSaludo>,
+}
+
+#[async_trait]
+impl ObtenerSaludo for ObtenerSaludoImpl {
+    // El span da nombre a los logs de lo que llama y registra el error que devuelve; `skip_all`:
+    // el nombre es un dato del usuario y no va al log.
+    #[tracing::instrument(name = "obtener_saludo", skip_all, err(level = "warn"))]
+    async fn ejecutar(&self, params: ParamsObtenerSaludo) -> Result<Saludo, ErrorSaludo> {
+        if params.nombre.trim().is_empty() {
+            return Err(ErrorSaludo::Validacion("nombre_vacio".into()));
+        }
+
+        match self.repositorio.buscar_por_nombre(&params.nombre).await? {
+            Some(saludo) => Ok(saludo),
+            None => Saludo::new(&params.nombre),
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use dominio_saludo::repositorio::dobles::MockRepositorioSaludo;
+
+    #[tokio::test]
+    async fn deberia_devolver_el_saludo_cuando_el_nombre_es_valido() {
+        // Preparar
+        let mut repositorio_doble = MockRepositorioSaludo::new();
+        repositorio_doble
+            .expect_buscar_por_nombre()
+            .returning(|_| Ok(None));
+
+        let caso_de_uso = ObtenerSaludoImpl {
+            repositorio: Arc::new(repositorio_doble),
+        };
+
+        // Actuar
+        let resultado = caso_de_uso
+            .ejecutar(ParamsObtenerSaludo {
+                nombre: "Mundo".into(),
+            })
+            .await;
+
+        // Comprobar
+        assert!(resultado.is_ok());
+        let saludo = resultado.unwrap();
+        assert_eq!(saludo.nombre, "Mundo");
+        assert!(saludo.mensaje.contains("Mundo"));
+    }
+
+    #[tokio::test]
+    async fn deberia_devolver_error_cuando_el_nombre_esta_vacio() {
+        // Preparar
+        let repositorio_doble = MockRepositorioSaludo::new();
+        let caso_de_uso = ObtenerSaludoImpl {
+            repositorio: Arc::new(repositorio_doble),
+        };
+
+        // Actuar
+        let resultado = caso_de_uso
+            .ejecutar(ParamsObtenerSaludo { nombre: "".into() })
+            .await;
+
+        // Comprobar
+        assert!(resultado.is_err());
+        assert_eq!(
+            resultado.unwrap_err().to_string(),
+            "saludo.validacion.nombre_vacio"
+        );
+    }
+
+    #[tokio::test]
+    async fn deberia_devolver_el_saludo_guardado_cuando_esta_en_el_repositorio() {
+        // Preparar
+        let en_cache = Saludo {
+            nombre: "Puerto".into(),
+            mensaje: "¡Hola desde la caché!".into(),
+        };
+        let mut repositorio_doble = MockRepositorioSaludo::new();
+        repositorio_doble
+            .expect_buscar_por_nombre()
+            .returning(move |_| Ok(Some(en_cache.clone())));
+
+        let caso_de_uso = ObtenerSaludoImpl {
+            repositorio: Arc::new(repositorio_doble),
+        };
+
+        // Actuar
+        let resultado = caso_de_uso
+            .ejecutar(ParamsObtenerSaludo {
+                nombre: "Puerto".into(),
+            })
+            .await;
+
+        // Comprobar
+        assert!(resultado.is_ok());
+        assert_eq!(resultado.unwrap().mensaje, "¡Hola desde la caché!");
+    }
+}
+
+=== contextos/saludo/rest/src/rutas.rs ===
+use std::sync::Arc;
+
+use aplicacion_saludo::obtener_saludo::{ObtenerSaludo, ParamsObtenerSaludo};
+use poem_openapi::{OpenApi, Tags, param::Path};
+
+use crate::{dto::DtoSaludo, errores::a_respuesta_error, respuestas::RespuestaObtenerSaludo};
+
+#[derive(Tags)]
+enum ApiTags {
+    Saludo,
+}
+
+/// Guarda el puerto del caso de uso; `generado/bootstrap.rs` conecta la implementación.
+pub struct ApiSaludo {
+    pub obtener_saludo: Arc<dyn ObtenerSaludo>,
+}
+
+#[OpenApi]
+impl ApiSaludo {
+    /// Obtiene un saludo para el nombre dado
+    #[oai(path = "/saludos/:nombre", method = "get", tag = "ApiTags::Saludo")]
+    async fn obtener_saludo(&self, nombre: Path<String>) -> RespuestaObtenerSaludo {
+        match self
+            .obtener_saludo
+            .ejecutar(ParamsObtenerSaludo { nombre: nombre.0 })
+            .await
+        {
+            Ok(saludo) => RespuestaObtenerSaludo::Ok(poem_openapi::payload::Json(
+                DtoSaludo::from_dominio(&saludo),
+            )),
+            Err(err) => {
+                let (status, error) = a_respuesta_error(err);
+                tracing::warn!(codigo = %error.0.codigo, "obtener_saludo falló");
+                RespuestaObtenerSaludo::from_status(status, error)
+            }
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use aplicacion_saludo::obtener_saludo::dobles::MockObtenerSaludo;
+    use dominio_saludo::{errores::ErrorSaludo, modelo::Saludo};
+    use poem::{Route, http::StatusCode, test::TestClient};
+    use poem_openapi::OpenApiService;
+
+    use super::*;
+
+    fn cliente(caso_de_uso: MockObtenerSaludo) -> TestClient<Route> {
+        let api = ApiSaludo {
+            obtener_saludo: Arc::new(caso_de_uso),
+        };
+        TestClient::new(Route::new().nest("/", OpenApiService::new(api, "test", "1.0")))
+    }
+
+    #[tokio::test]
+    async fn deberia_responder_200_con_el_saludo_cuando_el_nombre_es_valido() {
+        // Preparar
+        let mut caso_de_uso = MockObtenerSaludo::new();
+        caso_de_uso
+            .expect_ejecutar()
+            .returning(|params| Saludo::new(&params.nombre));
+
+        // Actuar
+        let respuesta = cliente(caso_de_uso).get("/saludos/Ada").send().await;
+
+        // Comprobar
+        respuesta.assert_status(StatusCode::OK);
+        respuesta
+            .json()
+            .await
+            .value()
+            .object()
+            .get("nombre")
+            .assert_string("Ada");
+    }
+
+    #[tokio::test]
+    async fn deberia_responder_422_cuando_se_rechaza_el_saludo() {
+        // Preparar
+        let mut caso_de_uso = MockObtenerSaludo::new();
+        caso_de_uso
+            .expect_ejecutar()
+            .returning(|_| Err(ErrorSaludo::Validacion("nombre_vacio".into())));
+
+        // Actuar
+        let respuesta = cliente(caso_de_uso).get("/saludos/Ada").send().await;
+
+        // Comprobar
+        respuesta.assert_status(StatusCode::UNPROCESSABLE_ENTITY);
+    }
+}
+
+=== presentacion/api/Cargo.toml ===
+[package]
+name = "api"
+version = "0.1.0"
+edition = "2024"
+
+[[bin]]
+name = "snapshot"
+path = "src/main.rs"
+
+[dependencies]
+# Los repositorios y casos de uso de cada contexto, ya construidos (`generado/bootstrap.rs`).
+cableado = { workspace = true }
+# El servidor, las sondas de salud, la configuración y el cuerpo de error (`main.rs`,
+# `generado/bootstrap.rs`).
+puerto-web = { workspace = true }
+poem = { workspace = true }
+poem-openapi = { workspace = true }
+tokio = { workspace = true }
+rest_saludo = { workspace = true }
+rest_linea_pedido = { workspace = true }
+
+[dev-dependencies]
+# El test que exporta la spec construye cada API con los dobles de los casos de uso.
+aplicacion_saludo = { workspace = true, features = ["pruebas"] }
+aplicacion_linea_pedido = { workspace = true, features = ["pruebas"] }
+
+=== presentacion/api/src/generado/bootstrap.rs ===
+// GENERADO por puerto. Edita puerto.toml y después ejecuta `puerto generar bootstrap`.
+use poem::Endpoint;
+use poem_openapi::OpenApiService;
+use rest_linea_pedido::rutas::ApiLineaPedido;
+use rest_saludo::rutas::ApiSaludo;
+
+/// Las rutas, cableadas. Un error es lo que paró el arranque: `main` lo muestra y sale con 1.
+pub async fn construir_app(config: puerto_web::Config) -> Result<impl Endpoint, String> {
+    let casos_saludo = cableado::saludo::construir();
+    let api_saludo = ApiSaludo {
+        obtener_saludo: casos_saludo.obtener_saludo,
+    };
+
+    let casos_linea_pedido = cableado::linea_pedido::construir();
+    let api_linea_pedido = ApiLineaPedido {
+        crear_linea_pedido: casos_linea_pedido.crear_linea_pedido,
+        obtener_linea_pedido: casos_linea_pedido.obtener_linea_pedido,
+        listar_lineas_pedido: casos_linea_pedido.listar_lineas_pedido,
+        actualizar_linea_pedido: casos_linea_pedido.actualizar_linea_pedido,
+        borrar_linea_pedido: casos_linea_pedido.borrar_linea_pedido,
+    };
+
+    let disponible = puerto_web::health::siempre_disponible();
+
+    // `app.rs` es del proyecto: el middleware y las rutas que se añadan allí envuelven todo esto.
+    Ok(crate::app::configurar(puerto_web::rutas(
+        servicio_openapi((api_saludo, api_linea_pedido)),
+        &config,
+        disponible,
+    )))
+}
+
+/// El servicio de la API, construido en un solo sitio: cualquier otro que lea su spec (el test de
+/// exportación de un proyecto con `web/`) ve la API que responde el servidor.
+fn servicio_openapi<T: poem_openapi::OpenApi>(api: T) -> OpenApiService<T, ()> {
+    OpenApiService::new(api, env!("CARGO_PKG_NAME"), env!("CARGO_PKG_VERSION"))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::sync::Arc;
+
+    use aplicacion_linea_pedido::actualizar_linea_pedido::dobles::MockActualizarLineaPedido;
+    use aplicacion_linea_pedido::borrar_linea_pedido::dobles::MockBorrarLineaPedido;
+    use aplicacion_linea_pedido::crear_linea_pedido::dobles::MockCrearLineaPedido;
+    use aplicacion_linea_pedido::listar_lineas_pedido::dobles::MockListarLineasPedido;
+    use aplicacion_linea_pedido::obtener_linea_pedido::dobles::MockObtenerLineaPedido;
+    use aplicacion_saludo::obtener_saludo::dobles::MockObtenerSaludo;
+
+    /// El contrato de la API del que se generan los tipos del frontend (`make web/sync`).
+    const OPENAPI_JSON: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/../../docs/api/openapi.json");
+
+    /// Se construye con casos de uso dobles: sin servidor ni base de datos. Si falta el fichero,
+    /// se escribe; si es distinto, falla: ejecuta `make web/sync` (pone `UPDATE_OPENAPI=1`) y haz
+    /// commit del diff.
+    #[test]
+    fn la_spec_openapi_coincide_con_docs_api_openapi_json() {
+        let api_saludo = ApiSaludo {
+            obtener_saludo: Arc::new(MockObtenerSaludo::new()),
+        };
+        let api_linea_pedido = ApiLineaPedido {
+            crear_linea_pedido: Arc::new(MockCrearLineaPedido::new()),
+            obtener_linea_pedido: Arc::new(MockObtenerLineaPedido::new()),
+            listar_lineas_pedido: Arc::new(MockListarLineasPedido::new()),
+            actualizar_linea_pedido: Arc::new(MockActualizarLineaPedido::new()),
+            borrar_linea_pedido: Arc::new(MockBorrarLineaPedido::new()),
+        };
+        let spec = servicio_openapi((api_saludo, api_linea_pedido)).spec();
+
+        let ruta = std::path::Path::new(OPENAPI_JSON);
+        if std::env::var_os("UPDATE_OPENAPI").is_some() || !ruta.exists() {
+            let directorio = ruta
+                .parent()
+                .expect("docs/api/openapi.json tiene directorio padre");
+            std::fs::create_dir_all(directorio).expect("crear docs/api");
+            std::fs::write(ruta, &spec).expect("escribir docs/api/openapi.json");
+            return;
+        }
+        let en_disco = std::fs::read_to_string(ruta).expect("leer docs/api/openapi.json");
+        assert!(
+            en_disco == spec,
+            "docs/api/openapi.json no es la API que sirve este código: ejecuta `make web/sync`"
+        );
+    }
+}
+
+=== presentacion/cableado/Cargo.toml ===
+# GENERADO por puerto. Edita puerto.toml y después ejecuta `puerto generar bootstrap`.
+[package]
+name = "cableado"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+aplicacion_saludo = { workspace = true }
+dominio_saludo = { workspace = true }
+infra_saludo = { workspace = true }
+aplicacion_linea_pedido = { workspace = true }
+dominio_linea_pedido = { workspace = true }
+infra_linea_pedido = { workspace = true }
+
+
+=== presentacion/cableado/src/lib.rs ===
+// GENERADO por puerto. Edita puerto.toml y después ejecuta `puerto generar bootstrap`.
+//! Los repositorios, unidades de trabajo y casos de uso de cada contexto, construidos para los
+//! binarios (ADR-0023 § 7 de Puerto). Aquí no hay HTTP: `api` monta sus rutas sobre estos casos de
+//! uso.
+
+pub mod saludo {
+    use std::sync::Arc;
+
+    use aplicacion_saludo::obtener_saludo::{ObtenerSaludo, ObtenerSaludoImpl};
+    use dominio_saludo::repositorio::RepositorioSaludo;
+    use infra_saludo::repositorio::RepositorioSaludoEnMemoria;
+
+    /// Los casos de uso de `saludo`, sobre sus adaptadores.
+    pub struct CasosDeUso {
+        pub obtener_saludo: Arc<dyn ObtenerSaludo>,
+    }
+
+    pub fn construir() -> CasosDeUso {
+        let repositorio: Arc<dyn RepositorioSaludo> = Arc::new(RepositorioSaludoEnMemoria::new());
+        CasosDeUso {
+            obtener_saludo: Arc::new(ObtenerSaludoImpl {
+                repositorio: Arc::clone(&repositorio),
+            }),
+        }
+    }
+}
+
+pub mod linea_pedido {
+    use std::sync::Arc;
+
+    use aplicacion_linea_pedido::actualizar_linea_pedido::{
+        ActualizarLineaPedido, ActualizarLineaPedidoImpl,
+    };
+    use aplicacion_linea_pedido::borrar_linea_pedido::{BorrarLineaPedido, BorrarLineaPedidoImpl};
+    use aplicacion_linea_pedido::crear_linea_pedido::{CrearLineaPedido, CrearLineaPedidoImpl};
+    use aplicacion_linea_pedido::listar_lineas_pedido::{
+        ListarLineasPedido, ListarLineasPedidoImpl,
+    };
+    use aplicacion_linea_pedido::obtener_linea_pedido::{
+        ObtenerLineaPedido, ObtenerLineaPedidoImpl,
+    };
+    use dominio_linea_pedido::repositorio::RepositorioLineaPedido;
+    use infra_linea_pedido::repositorio::RepositorioLineaPedidoEnMemoria;
+
+    /// Los casos de uso de `linea_pedido`, sobre sus adaptadores.
+    pub struct CasosDeUso {
+        pub crear_linea_pedido: Arc<dyn CrearLineaPedido>,
+        pub obtener_linea_pedido: Arc<dyn ObtenerLineaPedido>,
+        pub listar_lineas_pedido: Arc<dyn ListarLineasPedido>,
+        pub actualizar_linea_pedido: Arc<dyn ActualizarLineaPedido>,
+        pub borrar_linea_pedido: Arc<dyn BorrarLineaPedido>,
+    }
+
+    pub fn construir() -> CasosDeUso {
+        let repositorio: Arc<dyn RepositorioLineaPedido> =
+            Arc::new(RepositorioLineaPedidoEnMemoria::new());
+        CasosDeUso {
+            crear_linea_pedido: Arc::new(CrearLineaPedidoImpl {
+                repositorio: Arc::clone(&repositorio),
+            }),
+            obtener_linea_pedido: Arc::new(ObtenerLineaPedidoImpl {
+                repositorio: Arc::clone(&repositorio),
+            }),
+            listar_lineas_pedido: Arc::new(ListarLineasPedidoImpl {
+                repositorio: Arc::clone(&repositorio),
+            }),
+            actualizar_linea_pedido: Arc::new(ActualizarLineaPedidoImpl {
+                repositorio: Arc::clone(&repositorio),
+            }),
+            borrar_linea_pedido: Arc::new(BorrarLineaPedidoImpl {
+                repositorio: Arc::clone(&repositorio),
+            }),
+        }
+    }
+}
+
+=== puerto.toml ===
+[proyecto]
+nombre = "snapshot"
+web = true
+portada = true
+ruta_app = "/app"
+
+[[entidad]]
+nombre = "Saludo"
+casos_de_uso = ["obtener_saludo"]
+campos = []
+
+[[entidad]]
+nombre = "LineaPedido"
+casos_de_uso = [
+    "crear_linea_pedido",
+    "obtener_linea_pedido",
+    "listar_lineas_pedido",
+    "actualizar_linea_pedido",
+    "borrar_linea_pedido",
+]
+
+[[entidad.campos]]
+nombre = "title"
+tipo = "String"
+
+[[entidad.campos]]
+nombre = "quantity"
+tipo = "i64"
+
+[[entidad.campos]]
+nombre = "rate"
+tipo = "f64"
+
+[[entidad.campos]]
+nombre = "in_stock"
+tipo = "bool"
+
+[[entidad.campos]]
+nombre = "ref_id"
+tipo = "Uuid"
+
+[[entidad.campos]]
+nombre = "sku"
+tipo = "String"
+objeto_valor = "Sku"
+
+=== web/src/api/cliente.ts ===
+import createClient, { type Client, type ClientOptions } from "openapi-fetch";
+import type { components, paths } from "./esquema";
+
+/** El cliente tipado de la API. `paths` sale de la especificación del backend (`make web/sync`). */
+export type ClienteApi = Client<paths>;
+
+/** Los DTO de la API por nombre: `Esquemas["DtoProducto"]`, `Esquemas["PeticionCrearProducto"]`. */
+export type Esquemas = components["schemas"];
+
+/** `/api` es el backend: en desarrollo, Vite lo pasa a `:8080`. */
+export function crearClienteApi(opciones: ClientOptions = {}): ClienteApi {
+  return createClient<paths>({ baseUrl: "/api", ...opciones });
+}
+
+=== web/src/compartido/ui/marco.tsx ===
+import { type ReactNode, useState } from "react";
+import { Link, useLocation } from "wouter";
+import type { Dependencias } from "../../generado/dependencias";
+import { marca } from "../../marca/marca";
+
+/** Una sección de la app: una entrada del menú y una tarjeta del panel. */
+export interface EntradaMenu {
+  etiqueta: string;
+  href: string;
+  /** Cuántos elementos tiene su lista: lo que enseña el panel. */
+  total: (dependencias: Dependencias) => Promise<number>;
+}
+
+/**
+ * La marca y el menú en una barra arriba y el contenido debajo.
+ * En una pantalla estrecha el menú se despliega bajo la barra y se cierra al elegir una entrada.
+ */
+export function Marco({ menu, children }: { menu: EntradaMenu[]; children: ReactNode }) {
+  const [ubicacion] = useLocation();
+  const [abierto, setAbierto] = useState(false);
+  const enlaces = [{ href: "/", etiqueta: "Panel" }, ...menu].map(({ href, etiqueta }) => {
+    const actual = ubicacion === href || (href !== "/" && ubicacion.startsWith(`${href}/`));
+    return (
+      <li key={href}>
+        <Link
+          href={href}
+          className={actual ? "menu-active" : undefined}
+          aria-current={actual ? "page" : undefined}
+          onClick={() => setAbierto(false)}
+        >
+          {etiqueta}
+        </Link>
+      </li>
+    );
+  });
+
+  return (
+    <div className="flex min-h-screen flex-col bg-base-200">
+      <header className="sticky top-0 z-20 bg-base-100 shadow-sm">
+        <div className="navbar mx-auto max-w-6xl gap-2 px-4">
+          <button
+            type="button"
+            className="btn btn-square btn-ghost lg:hidden"
+            aria-label={abierto ? "Cerrar el menú" : "Abrir el menú"}
+            aria-expanded={abierto}
+            onClick={() => setAbierto(!abierto)}
+          >
+            <svg
+              viewBox="0 0 24 24"
+              className="size-6"
+              fill="none"
+              stroke="currentColor"
+              aria-hidden="true"
+            >
+              <path strokeLinecap="round" strokeWidth="2" d="M4 6h16M4 12h16M4 18h16" />
+            </svg>
+          </button>
+          <Link href="/" className="flex items-center gap-2 px-2 text-lg font-bold">
+            <img src={marca.logo} alt="" className="size-8" />
+            {marca.nombre}
+          </Link>
+          <nav className="hidden lg:block">
+            <ul className="menu menu-horizontal gap-1">{enlaces}</ul>
+          </nav>
+        </div>
+        {abierto && (
+          <nav className="border-base-300 border-t lg:hidden">
+            <ul className="menu w-full">{enlaces}</ul>
+          </nav>
+        )}
+      </header>
+      <main className="mx-auto w-full max-w-6xl flex-1 p-4 lg:p-8">{children}</main>
+    </div>
+  );
+}
+
+=== web/src/contextos/linea-pedido/contenedores/detalle-linea-pedido.test.tsx ===
+import { describe, expect, test } from "bun:test";
+import { fireEvent, screen, waitFor } from "@testing-library/react";
+import { apiFalsa } from "../../../pruebas/api-falsa";
+import { coleccionLineaPedido, MadreLineaPedido } from "../../../pruebas/linea-pedido";
+import { renderizarPantalla } from "../../../pruebas/renderizar";
+import { ContenedorDetalleLineaPedido } from "./detalle-linea-pedido";
+
+describe("ContenedorDetalleLineaPedido", () => {
+  test("debería mostrar el detalle cuando existe", async () => {
+    // Preparar
+    const sembrado = MadreLineaPedido.aleatorio();
+    const api = apiFalsa([coleccionLineaPedido([sembrado])]);
+
+    const pantalla = <ContenedorDetalleLineaPedido id={sembrado.id} />;
+
+    // Actuar
+    renderizarPantalla(pantalla, { api });
+
+    // Comprobar
+    expect(await screen.findByText("Editar")).toBeTruthy();
+  });
+
+  test("debería mostrar el código de no encontrado cuando no existe", async () => {
+    // Preparar
+    const api = apiFalsa([coleccionLineaPedido()]);
+    const pantalla = <ContenedorDetalleLineaPedido id={crypto.randomUUID()} />;
+
+    // Actuar
+    renderizarPantalla(pantalla, { api });
+
+    // Comprobar
+    expect((await screen.findByRole("alert")).textContent).toBe("linea_pedido.no_encontrado");
+  });
+
+  test("debería borrar solo tras confirmar el borrado", async () => {
+    // Preparar
+    const sembrado = MadreLineaPedido.aleatorio();
+    const guardados = coleccionLineaPedido([sembrado]);
+    const api = apiFalsa([guardados]);
+    const pantalla = <ContenedorDetalleLineaPedido id={sembrado.id} />;
+    const { historial } = renderizarPantalla(pantalla, { api });
+    fireEvent.click(await screen.findByText("Borrar", { selector: ".card-actions button" }));
+    expect(guardados.elementos.has(sembrado.id)).toBe(true);
+
+    // Actuar
+    fireEvent.click(screen.getByText("Borrar", { selector: ".modal-action button" }));
+
+    // Comprobar
+    await waitFor(() => expect(historial.at(-1)).toBe("/lineas_pedido"));
+    expect(guardados.elementos.has(sembrado.id)).toBe(false);
+  });
+});
+
+=== web/src/contextos/linea-pedido/contenedores/detalle-linea-pedido.tsx ===
+import { useState } from "react";
+import { Link, useLocation } from "wouter";
+import { desenvolver } from "../../../api/http";
+import { AlertaError } from "../../../compartido/ui/alerta-error";
+import { DialogoConfirmar } from "../../../compartido/ui/dialogo-confirmar";
+import { useCarga } from "../../../compartido/use-carga";
+import { useDependencias } from "../../../dependencias";
+import { VistaDetalleLineaPedido } from "../vistas/detalle-linea-pedido";
+
+export function ContenedorDetalleLineaPedido({ id }: { id: string }) {
+  const { api } = useDependencias();
+  const lineaPedido = useCarga(
+    () => desenvolver(api.GET("/lineas_pedido/{id}", { params: { path: { id } } })),
+    [api, id],
+  );
+  const [, navegar] = useLocation();
+  const [confirmando, setConfirmando] = useState(false);
+  const [fallo, setFallo] = useState<unknown>(null);
+
+  const borrar = async () => {
+    setConfirmando(false);
+    try {
+      await desenvolver(api.DELETE("/lineas_pedido/{id}", { params: { path: { id } } }));
+      navegar("/lineas_pedido");
+    } catch (error) {
+      setFallo(error);
+    }
+  };
+
+  return (
+    <section className="space-y-4">
+      <h1 className="text-2xl font-bold">Linea pedido</h1>
+      {fallo !== null && <AlertaError error={fallo} />}
+      {lineaPedido.estado === "cargando" && <span className="loading loading-spinner" />}
+      {lineaPedido.estado === "error" && <AlertaError error={lineaPedido.error} />}
+      {lineaPedido.estado === "listo" && (
+        <div className="card bg-base-100">
+          <div className="card-body">
+            <VistaDetalleLineaPedido lineaPedido={lineaPedido.datos} />
+            <div className="card-actions justify-end">
+              <Link href={`/lineas_pedido/${id}/editar`} className="btn">
+                Editar
+              </Link>
+              <button type="button" className="btn btn-error" onClick={() => setConfirmando(true)}>
+                Borrar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+      <Link href="/lineas_pedido" className="link">
+        Volver a lineas pedido
+      </Link>
+      <DialogoConfirmar
+        abierto={confirmando}
+        mensaje="¿Borrar linea pedido?"
+        alConfirmar={borrar}
+        alCancelar={() => setConfirmando(false)}
+      />
+    </section>
+  );
+}
+
+=== web/src/contextos/linea-pedido/contenedores/formulario-linea-pedido.test.tsx ===
+import { describe, expect, test } from "bun:test";
+import { fireEvent, screen, waitFor } from "@testing-library/react";
+import type { Esquemas } from "../../../api/cliente";
+import { apiFalsa } from "../../../pruebas/api-falsa";
+import { coleccionLineaPedido, MadreLineaPedido } from "../../../pruebas/linea-pedido";
+import { renderizarPantalla } from "../../../pruebas/renderizar";
+import { ContenedorFormularioLineaPedido } from "./formulario-linea-pedido";
+
+function escribir(etiqueta: string, valor: string) {
+  fireEvent.change(screen.getByLabelText(etiqueta), { target: { value: valor } });
+}
+
+/** Rellena el formulario vacío con `peticion`, como lo haría quien lo usa. */
+async function rellenar(peticion: Esquemas["PeticionCrearLineaPedido"]) {
+  await screen.findByText("Guardar");
+  escribir("Title", peticion.title);
+  escribir("Quantity", String(peticion.quantity));
+  escribir("Rate", String(peticion.rate));
+  if (peticion.inStock) fireEvent.click(screen.getByLabelText("In stock"));
+  escribir("Ref id", peticion.refId);
+  escribir("Sku", peticion.sku);
+}
+
+describe("ContenedorFormularioLineaPedido", () => {
+  test("debería crear con lo escrito e ir a su detalle", async () => {
+    // Preparar
+    const peticion = MadreLineaPedido.peticion();
+    const guardados = coleccionLineaPedido();
+    const api = apiFalsa([guardados]);
+    const pantalla = <ContenedorFormularioLineaPedido />;
+    const { historial } = renderizarPantalla(pantalla, { api });
+    await rellenar(peticion);
+
+    // Actuar
+    fireEvent.click(screen.getByText("Guardar"));
+
+    // Comprobar
+    await waitFor(() => expect(historial.at(-1)).toStartWith("/lineas_pedido/"));
+    const [creado] = guardados.elementos.values();
+    expect(creado).toMatchObject(peticion);
+    expect(historial.at(-1)).toBe(`/lineas_pedido/${creado?.id}`);
+  });
+
+  test("debería guardar la edición cuando se envía el formulario", async () => {
+    // Preparar
+    const sembrado = MadreLineaPedido.aleatorio();
+    const guardados = coleccionLineaPedido([sembrado]);
+    const api = apiFalsa([guardados]);
+    const pantalla = <ContenedorFormularioLineaPedido id={sembrado.id} />;
+    const { historial } = renderizarPantalla(pantalla, { api });
+
+    // Actuar
+    fireEvent.click(await screen.findByText("Guardar"));
+
+    // Comprobar
+    await waitFor(() => expect(historial.at(-1)).toBe(`/lineas_pedido/${sembrado.id}`));
+    expect(guardados.elementos.get(sembrado.id)).toEqual(sembrado);
+  });
+
+  test("debería mostrar el propio código cuando la API responde uno que el formulario no conoce", async () => {
+    // Preparar
+    const peticion = MadreLineaPedido.peticion();
+    const codigo = "linea_pedido.validacion.invalido";
+    const fallos = { "POST /lineas_pedido": codigo };
+    const api = apiFalsa([coleccionLineaPedido()], fallos);
+    renderizarPantalla(<ContenedorFormularioLineaPedido />, { api });
+    await rellenar(peticion);
+
+    // Actuar
+    fireEvent.click(screen.getByText("Guardar"));
+
+    // Comprobar
+    expect((await screen.findByRole("alert")).textContent).toBe(codigo);
+  });
+
+  test("debería decir que los valores ya están en uso cuando la API responde un duplicado", async () => {
+    // Preparar
+    const peticion = MadreLineaPedido.peticion();
+    const fallos = { "POST /lineas_pedido": "linea_pedido.duplicado" };
+    const api = apiFalsa([coleccionLineaPedido()], fallos);
+    renderizarPantalla(<ContenedorFormularioLineaPedido />, { api });
+    await rellenar(peticion);
+
+    // Actuar
+    fireEvent.click(screen.getByText("Guardar"));
+
+    // Comprobar
+    expect((await screen.findByRole("alert")).textContent).toBe("Estos valores ya están en uso");
+  });
+
+  test("debería mostrar el mensaje bajo su input cuando la API rechaza un campo", async () => {
+    // Preparar
+    const peticion = MadreLineaPedido.peticion();
+    const fallos = { "POST /lineas_pedido": "linea_pedido.validacion.title_vacio" };
+    const api = apiFalsa([coleccionLineaPedido()], fallos);
+    renderizarPantalla(<ContenedorFormularioLineaPedido />, { api });
+    await rellenar(peticion);
+
+    // Actuar
+    fireEvent.click(screen.getByText("Guardar"));
+
+    // Comprobar
+    expect(await screen.findByText("Title: obligatorio")).toBeTruthy();
+    const campo = screen.getByLabelText("Title");
+    expect(campo.getAttribute("aria-invalid")).toBe("true");
+    expect(screen.queryByRole("alert")).toBeNull();
+  });
+});
+
+=== web/src/contextos/linea-pedido/contenedores/formulario-linea-pedido.tsx ===
+import { useState } from "react";
+import { Link, useLocation } from "wouter";
+import type { Esquemas } from "../../../api/cliente";
+import { desenvolver } from "../../../api/http";
+import { AlertaError, codigoError } from "../../../compartido/ui/alerta-error";
+import { useCarga } from "../../../compartido/use-carga";
+import { useDependencias } from "../../../dependencias";
+import { aProblema } from "../mensajes";
+import {
+  aFormularioLineaPedido,
+  aPeticionLineaPedido,
+  VistaFormularioLineaPedido,
+} from "../vistas/formulario-linea-pedido";
+
+type LineaPedido = Esquemas["DtoLineaPedido"];
+
+/** Crear, o editar con `id`: el formulario de lineas pedido. */
+export function ContenedorFormularioLineaPedido({ id }: { id?: string }) {
+  const { api } = useDependencias();
+  const existente = useCarga(
+    () =>
+      id === undefined
+        ? Promise.resolve(null)
+        : desenvolver(api.GET("/lineas_pedido/{id}", { params: { path: { id } } })),
+    [api, id],
+  );
+  const titulo = id === undefined ? "Crear linea pedido" : "Editar linea pedido";
+
+  return (
+    <section className="space-y-4">
+      <h1 className="text-2xl font-bold">{titulo}</h1>
+      {existente.estado === "cargando" && <span className="loading loading-spinner" />}
+      {existente.estado === "error" && <AlertaError error={existente.error} />}
+      {existente.estado === "listo" && <FormularioLineaPedido existente={existente.datos} />}
+      <Link href={id === undefined ? "/lineas_pedido" : `/lineas_pedido/${id}`} className="link">
+        Cancelar
+      </Link>
+    </section>
+  );
+}
+
+function FormularioLineaPedido({ existente }: { existente: LineaPedido | null }) {
+  const { api } = useDependencias();
+  const [, navegar] = useLocation();
+  const [valores, setValores] = useState(aFormularioLineaPedido(existente));
+  const [guardando, setGuardando] = useState(false);
+  const [fallo, setFallo] = useState<unknown>(null);
+  const problema = fallo === null ? null : aProblema(codigoError(fallo));
+
+  const guardar = async () => {
+    setGuardando(true);
+    setFallo(null);
+    try {
+      const cuerpo = aPeticionLineaPedido(valores);
+      const guardado = await desenvolver(
+        existente === null
+          ? api.POST("/lineas_pedido", { body: cuerpo })
+          : api.PUT("/lineas_pedido/{id}", {
+              params: { path: { id: existente.id } },
+              body: cuerpo,
+            }),
+      );
+      navegar(`/lineas_pedido/${guardado.id}`);
+    } catch (error) {
+      setFallo(error);
+      setGuardando(false);
+    }
+  };
+
+  return (
+    <div className="card bg-base-100">
+      <div className="card-body">
+        {problema?.campo === null && <AlertaError error={fallo} mensaje={problema.texto} />}
+        <VistaFormularioLineaPedido
+          valores={valores}
+          guardando={guardando}
+          problema={problema}
+          alCambiar={setValores}
+          alEnviar={guardar}
+        />
+      </div>
+    </div>
+  );
+}
+
+=== web/src/contextos/linea-pedido/contenedores/lista-linea-pedido.test.tsx ===
+import { describe, expect, test } from "bun:test";
+import { fireEvent, screen } from "@testing-library/react";
+import { apiFalsa } from "../../../pruebas/api-falsa";
+import { coleccionLineaPedido, MadreLineaPedido } from "../../../pruebas/linea-pedido";
+import { renderizarPantalla } from "../../../pruebas/renderizar";
+import { ContenedorListaLineaPedido } from "./lista-linea-pedido";
+
+describe("ContenedorListaLineaPedido", () => {
+  test("debería mostrar una fila por cada linea pedido", async () => {
+    // Preparar
+    const semilla = [MadreLineaPedido.aleatorio(), MadreLineaPedido.aleatorio()];
+    const api = apiFalsa([coleccionLineaPedido(semilla)]);
+
+    // Actuar
+    renderizarPantalla(<ContenedorListaLineaPedido />, { api });
+
+    // Comprobar
+    expect(await screen.findAllByText("Ver")).toHaveLength(2);
+  });
+
+  test("debería mostrar la página siguiente cuando se pulsa Siguiente", async () => {
+    // Preparar
+    const semilla = Array.from({ length: 25 }, () => MadreLineaPedido.aleatorio());
+    const api = apiFalsa([coleccionLineaPedido(semilla)]);
+    renderizarPantalla(<ContenedorListaLineaPedido />, { api });
+    expect(await screen.findAllByText("Ver")).toHaveLength(20);
+
+    // Actuar
+    fireEvent.click(screen.getByRole("button", { name: "Siguiente" }));
+
+    // Comprobar
+    expect(await screen.findByText("21–25 de 25")).toBeTruthy();
+    expect(screen.getAllByText("Ver")).toHaveLength(5);
+  });
+
+  test("debería abrir la página que nombra la URL", async () => {
+    // Preparar
+    const semilla = Array.from({ length: 25 }, () => MadreLineaPedido.aleatorio());
+    const api = apiFalsa([coleccionLineaPedido(semilla)]);
+    const ruta = "/lineas_pedido?pagina=2";
+
+    // Actuar
+    renderizarPantalla(<ContenedorListaLineaPedido />, { api }, ruta);
+
+    // Comprobar
+    expect(await screen.findByText("21–25 de 25")).toBeTruthy();
+  });
+
+  test("debería decirlo cuando no hay lineas pedido", async () => {
+    // Preparar
+    const api = apiFalsa([coleccionLineaPedido()]);
+
+    // Actuar
+    renderizarPantalla(<ContenedorListaLineaPedido />, { api });
+
+    // Comprobar
+    expect(await screen.findByText("Todavía no hay lineas pedido.")).toBeTruthy();
+  });
+
+  test("debería mostrar el código del error cuando la API no da la lista", async () => {
+    // Preparar
+    const fallos = { "GET /lineas_pedido": "linea_pedido.repositorio" };
+    const api = apiFalsa([coleccionLineaPedido()], fallos);
+
+    // Actuar
+    renderizarPantalla(<ContenedorListaLineaPedido />, { api });
+
+    // Comprobar
+    expect((await screen.findByRole("alert")).textContent).toBe("linea_pedido.repositorio");
+  });
+});
+
+=== web/src/contextos/linea-pedido/contenedores/lista-linea-pedido.tsx ===
+import { Link, useLocation, useSearch } from "wouter";
+import { desenvolver, TAMANO_PAGINA } from "../../../api/http";
+import { AlertaError } from "../../../compartido/ui/alerta-error";
+import { busquedaPagina, desplazamientoDeUrl, Paginacion } from "../../../compartido/ui/paginacion";
+import { SinElementos } from "../../../compartido/ui/sin-elementos";
+import { useCarga } from "../../../compartido/use-carga";
+import { useDependencias } from "../../../dependencias";
+import { VistaListaLineaPedido } from "../vistas/lista-linea-pedido";
+
+/** La lista, página a página; la página va en la URL (`?pagina=2`): recargar y volver la mantienen. */
+export function ContenedorListaLineaPedido() {
+  const { api } = useDependencias();
+  const [ubicacion, navegar] = useLocation();
+  const desplazamiento = desplazamientoDeUrl(useSearch(), TAMANO_PAGINA);
+  const irA = (siguiente: number) => navegar(ubicacion + busquedaPagina(siguiente, TAMANO_PAGINA));
+  const consulta = { limite: TAMANO_PAGINA, desplazamiento };
+  const lineasPedido = useCarga(
+    () => desenvolver(api.GET("/lineas_pedido", { params: { query: consulta } })),
+    [api, desplazamiento],
+  );
+
+  return (
+    <section className="space-y-4">
+      <div className="flex items-center justify-between">
+        <h1 className="text-2xl font-bold">Lineas pedido</h1>
+        <Link href="/lineas_pedido/nuevo" className="btn btn-primary">
+          Crear linea pedido
+        </Link>
+      </div>
+      {lineasPedido.estado === "cargando" && <span className="loading loading-spinner" />}
+      {lineasPedido.estado === "error" && <AlertaError error={lineasPedido.error} />}
+      {lineasPedido.estado === "listo" &&
+        (lineasPedido.datos.total === 0 ? (
+          <SinElementos mensaje="Todavía no hay lineas pedido." />
+        ) : (
+          <>
+            <VistaListaLineaPedido lineasPedido={lineasPedido.datos.elementos} />
+            <Paginacion
+              total={lineasPedido.datos.total}
+              limite={lineasPedido.datos.limite}
+              desplazamiento={lineasPedido.datos.desplazamiento}
+              alCambiarDesplazamiento={irA}
+            />
+          </>
+        ))}
+    </section>
+  );
+}
+
+=== web/src/contextos/linea-pedido/mensajes.ts ===
+/** Lo que una pantalla muestra de un error de la API: bajo el input del que trata, o en la alerta. */
+export interface ProblemaLineaPedido {
+  campo: string | null;
+  texto: string;
+}
+
+/**
+ * Los mensajes de los códigos de `errores.rs` del backend, generados de la misma lista. Un código que
+ * no está aquí se muestra tal cual.
+ */
+const TEXTOS: Record<string, string> = {
+  "linea_pedido.validacion.title_vacio": "Title: obligatorio",
+  "linea_pedido.sku_invalido": "Sku: no válido",
+  "linea_pedido.duplicado": "Estos valores ya están en uso",
+  "linea_pedido.no_encontrado": "Ya no existe",
+  "linea_pedido.repositorio": "No se ha podido guardar; inténtalo más tarde",
+  "linea_pedido.desconocido": "Algo ha ido mal",
+};
+
+/** El input del que trata el código de cada campo. */
+const CAMPOS: Record<string, string> = {
+  "linea_pedido.validacion.title_vacio": "title",
+  "linea_pedido.sku_invalido": "sku",
+};
+
+export function aProblema(codigo: string): ProblemaLineaPedido {
+  return { campo: CAMPOS[codigo] ?? null, texto: TEXTOS[codigo] ?? codigo };
+}
+
+=== web/src/contextos/linea-pedido/vistas/detalle-linea-pedido.tsx ===
+import type { Esquemas } from "../../../api/cliente";
+
+type LineaPedido = Esquemas["DtoLineaPedido"];
+
+export function VistaDetalleLineaPedido({ lineaPedido }: { lineaPedido: LineaPedido }) {
+  return (
+    <dl className="grid grid-cols-[max-content_1fr] gap-x-6 gap-y-2">
+      <dt className="font-semibold">Title</dt>
+      <dd>{lineaPedido.title}</dd>
+      <dt className="font-semibold">Quantity</dt>
+      <dd>{lineaPedido.quantity}</dd>
+      <dt className="font-semibold">Rate</dt>
+      <dd>{lineaPedido.rate}</dd>
+      <dt className="font-semibold">In stock</dt>
+      <dd>{lineaPedido.inStock ? "Sí" : "No"}</dd>
+      <dt className="font-semibold">Ref id</dt>
+      <dd>{lineaPedido.refId}</dd>
+      <dt className="font-semibold">Sku</dt>
+      <dd>{lineaPedido.sku}</dd>
+    </dl>
+  );
+}
+
+=== web/src/contextos/linea-pedido/vistas/formulario-linea-pedido.tsx ===
+import type { Esquemas } from "../../../api/cliente";
+import { ErrorCampo } from "../../../compartido/ui/error-campo";
+import type { ProblemaLineaPedido } from "../mensajes";
+
+type LineaPedido = Esquemas["DtoLineaPedido"];
+type PeticionLineaPedido = Esquemas["PeticionCrearLineaPedido"];
+
+/** Lo que guardan los inputs: el texto de cada input, `checked` en una casilla. */
+export interface ValoresFormularioLineaPedido {
+  title: string;
+  quantity: string;
+  rate: string;
+  inStock: boolean;
+  refId: string;
+  sku: string;
+}
+
+/** Los inputs de `lineaPedido`, vacíos cuando todavía no hay ninguno. */
+export function aFormularioLineaPedido(
+  lineaPedido: LineaPedido | null,
+): ValoresFormularioLineaPedido {
+  if (lineaPedido === null) {
+    return {
+      title: "",
+      quantity: "",
+      rate: "",
+      inStock: false,
+      refId: "",
+      sku: "",
+    };
+  }
+  return {
+    title: lineaPedido.title,
+    quantity: String(lineaPedido.quantity),
+    rate: String(lineaPedido.rate),
+    inStock: lineaPedido.inStock,
+    refId: lineaPedido.refId,
+    sku: lineaPedido.sku,
+  };
+}
+
+/** Lo que mandan crear y actualizar: los mismos campos en los dos. */
+export function aPeticionLineaPedido(valores: ValoresFormularioLineaPedido): PeticionLineaPedido {
+  return {
+    title: valores.title,
+    quantity: Number(valores.quantity),
+    rate: Number(valores.rate),
+    inStock: valores.inStock,
+    refId: valores.refId,
+    sku: valores.sku,
+  };
+}
+
+export function VistaFormularioLineaPedido({
+  valores,
+  guardando,
+  problema,
+  alCambiar,
+  alEnviar,
+}: {
+  valores: ValoresFormularioLineaPedido;
+  guardando: boolean;
+  /** Lo que dijo la API del último envío: se muestra bajo su input. */
+  problema: ProblemaLineaPedido | null;
+  alCambiar: (valores: ValoresFormularioLineaPedido) => void;
+  alEnviar: () => void;
+}) {
+  return (
+    <form
+      className="space-y-2"
+      onSubmit={(event) => {
+        event.preventDefault();
+        alEnviar();
+      }}
+    >
+      <label className="fieldset">
+        <span className="fieldset-legend">Title</span>
+        <input
+          className="input w-full"
+          type="text"
+          aria-invalid={problema?.campo === "title"}
+          required
+          value={valores.title}
+          onChange={(event) => alCambiar({ ...valores, title: event.target.value })}
+        />
+      </label>
+      <ErrorCampo problema={problema} campo="title" />
+      <label className="fieldset">
+        <span className="fieldset-legend">Quantity</span>
+        <input
+          className="input w-full"
+          type="number"
+          aria-invalid={problema?.campo === "quantity"}
+          required
+          value={valores.quantity}
+          onChange={(event) => alCambiar({ ...valores, quantity: event.target.value })}
+        />
+      </label>
+      <ErrorCampo problema={problema} campo="quantity" />
+      <label className="fieldset">
+        <span className="fieldset-legend">Rate</span>
+        <input
+          className="input w-full"
+          type="number"
+          aria-invalid={problema?.campo === "rate"}
+          step="any"
+          required
+          value={valores.rate}
+          onChange={(event) => alCambiar({ ...valores, rate: event.target.value })}
+        />
+      </label>
+      <ErrorCampo problema={problema} campo="rate" />
+      <label className="label">
+        <input
+          className="checkbox"
+          type="checkbox"
+          checked={valores.inStock}
+          onChange={(event) => alCambiar({ ...valores, inStock: event.target.checked })}
+        />
+        In stock
+      </label>
+      <label className="fieldset">
+        <span className="fieldset-legend">Ref id</span>
+        <input
+          className="input w-full"
+          type="text"
+          aria-invalid={problema?.campo === "refId"}
+          required
+          value={valores.refId}
+          onChange={(event) => alCambiar({ ...valores, refId: event.target.value })}
+        />
+      </label>
+      <ErrorCampo problema={problema} campo="refId" />
+      <label className="fieldset">
+        <span className="fieldset-legend">Sku</span>
+        <input
+          className="input w-full"
+          type="text"
+          aria-invalid={problema?.campo === "sku"}
+          required
+          value={valores.sku}
+          onChange={(event) => alCambiar({ ...valores, sku: event.target.value })}
+        />
+      </label>
+      <ErrorCampo problema={problema} campo="sku" />
+      <button type="submit" className="btn btn-primary" disabled={guardando}>
+        Guardar
+      </button>
+    </form>
+  );
+}
+
+=== web/src/contextos/linea-pedido/vistas/lista-linea-pedido.tsx ===
+import { Link } from "wouter";
+import type { Esquemas } from "../../../api/cliente";
+
+type LineaPedido = Esquemas["DtoLineaPedido"];
+
+export function VistaListaLineaPedido({ lineasPedido }: { lineasPedido: LineaPedido[] }) {
+  return (
+    <div className="overflow-x-auto rounded-box bg-base-100">
+      <table className="table">
+        <thead>
+          <tr>
+            <th>Title</th>
+            <th>Quantity</th>
+            <th>Rate</th>
+            <th>In stock</th>
+            <th>Ref id</th>
+            <th>Sku</th>
+            <th />
+          </tr>
+        </thead>
+        <tbody>
+          {lineasPedido.map((lineaPedido) => (
+            <tr key={lineaPedido.id}>
+              <td>{lineaPedido.title}</td>
+              <td>{lineaPedido.quantity}</td>
+              <td>{lineaPedido.rate}</td>
+              <td>{lineaPedido.inStock ? "Sí" : "No"}</td>
+              <td>{lineaPedido.refId}</td>
+              <td>{lineaPedido.sku}</td>
+              <td className="text-right">
+                <Link href={`/lineas_pedido/${lineaPedido.id}`} className="link">
+                  Ver
+                </Link>
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+=== web/src/generado/dependencias.ts ===
+// GENERADO por puerto. Edita puerto.toml y después ejecuta `puerto generar bootstrap`.
+//
+// La raíz de composición: el único módulo que construye el cliente de la API. Las pantallas llegan
+// a él con `useDependencias()`, así un test les da un falso.
+
+import { type ClienteApi, crearClienteApi } from "../api/cliente";
+
+export interface Dependencias {
+  api: ClienteApi;
+}
+
+export function crearDependencias(): Dependencias {
+  const api = crearClienteApi();
+  return { api };
+}
+
+=== web/src/generado/rutas.tsx ===
+// GENERADO por puerto. Edita puerto.toml y después ejecuta `puerto generar bootstrap`.
+
+import { Route, Switch } from "wouter";
+import { contarTotal, PAGINA_DE_UNO } from "../api/http";
+import type { EntradaMenu } from "../compartido/ui/marco";
+import { ContenedorDetalleLineaPedido } from "../contextos/linea-pedido/contenedores/detalle-linea-pedido";
+import { ContenedorFormularioLineaPedido } from "../contextos/linea-pedido/contenedores/formulario-linea-pedido";
+import { ContenedorListaLineaPedido } from "../contextos/linea-pedido/contenedores/lista-linea-pedido";
+import { PaginaNoEncontrada } from "../paginas/no-encontrada";
+import { PaginaPanel } from "../paginas/panel";
+import { rutasPropias } from "../rutas";
+
+/** Dónde va la app: en la raíz o, con portada, en `[proyecto] ruta_app` (`puerto nuevo --portada`). */
+export const rutaApp = "/app";
+
+export const entradasMenu: EntradaMenu[] = [
+  {
+    etiqueta: "Lineas pedido",
+    href: "/lineas_pedido",
+    total: ({ api }) => contarTotal(api.GET("/lineas_pedido", PAGINA_DE_UNO)),
+  },
+];
+
+export function RutasApp() {
+  return (
+    <Switch>
+      <Route path="/">
+        <PaginaPanel entradas={entradasMenu} />
+      </Route>
+      {rutasPropias}
+      <Route path="/lineas_pedido">
+        <ContenedorListaLineaPedido />
+      </Route>
+      <Route path="/lineas_pedido/nuevo">
+        <ContenedorFormularioLineaPedido />
+      </Route>
+      <Route path="/lineas_pedido/:id/editar">
+        {(params) => <ContenedorFormularioLineaPedido id={params.id} />}
+      </Route>
+      <Route path="/lineas_pedido/:id">
+        {(params) => <ContenedorDetalleLineaPedido id={params.id} />}
+      </Route>
+      <Route>
+        <PaginaNoEncontrada />
+      </Route>
+    </Switch>
+  );
+}
+
+=== web/src/main.tsx ===
+import "./index.css";
+
+import { StrictMode } from "react";
+import { createRoot } from "react-dom/client";
+import { Route, Switch } from "wouter";
+import { Marco } from "./compartido/ui/marco";
+import { ProveedorDependencias } from "./dependencias";
+import { crearDependencias } from "./generado/dependencias";
+import { entradasMenu, RutasApp, rutaApp } from "./generado/rutas";
+import { marca } from "./marca/marca";
+import { PaginaNoEncontrada } from "./paginas/no-encontrada";
+import { PaginaPortada } from "./paginas/portada";
+
+const raiz = document.getElementById("root");
+if (raiz === null) {
+  throw new Error("index.html no tiene el elemento #root");
+}
+document.title = marca.nombre;
+
+createRoot(raiz).render(
+  <StrictMode>
+    <ProveedorDependencias valor={crearDependencias()}>
+      <Switch>
+        <Route path="/">
+          <PaginaPortada />
+        </Route>
+        <Route path={rutaApp} nest>
+          <Marco menu={entradasMenu}>
+            <RutasApp />
+          </Marco>
+        </Route>
+        <Route>
+          <main className="mx-auto max-w-6xl p-4 lg:p-8">
+            <PaginaNoEncontrada />
+          </main>
+        </Route>
+      </Switch>
+    </ProveedorDependencias>
+  </StrictMode>,
+);
+
+=== web/src/marca/tema.css ===
+/*
+ * Los colores de la marca, sobre los temas claro y oscuro de daisyUI (se usa el del sistema). Lo que
+ * no se cambia aquí sale del tema original. Genera otros en https://daisyui.com/theme-generator/ y
+ * pega sus variables.
+ */
+@plugin "daisyui";
+
+@plugin "daisyui/theme" {
+  name: "light";
+  default: true;
+  --color-primary: oklch(27% 0.02 260);
+  --color-primary-content: oklch(98% 0.005 260);
+  --color-accent: oklch(58% 0.17 255);
+  --color-accent-content: oklch(98% 0.01 255);
+  --color-base-200: oklch(97% 0.004 260);
+  --color-base-300: oklch(92% 0.006 260);
+  --radius-box: 0.5rem;
+  --radius-field: 0.375rem;
+  --radius-selector: 0.25rem;
+}
+
+@plugin "daisyui/theme" {
+  name: "dark";
+  prefersdark: true;
+  --color-primary: oklch(94% 0.01 260);
+  --color-primary-content: oklch(22% 0.02 260);
+  --color-accent: oklch(68% 0.15 255);
+  --color-accent-content: oklch(18% 0.03 255);
+  --color-base-100: oklch(20% 0.01 260);
+  --color-base-200: oklch(17% 0.01 260);
+  --color-base-300: oklch(26% 0.012 260);
+  --radius-box: 0.5rem;
+  --radius-field: 0.375rem;
+  --radius-selector: 0.25rem;
+}
+
+=== web/src/paginas/panel.tsx ===
+import { Link } from "wouter";
+import type { EntradaMenu } from "../compartido/ui/marco";
+import { SinElementos } from "../compartido/ui/sin-elementos";
+import { useCarga } from "../compartido/use-carga";
+import { useDependencias } from "../dependencias";
+import { marca } from "../marca/marca";
+
+/** La API sirve su Swagger UI en su raíz (`make run`). */
+const URL_DOCS_API = "http://localhost:8080/";
+
+/** La página de inicio: una banda con la marca y, debajo, una fila con el total de cada sección. */
+export function PaginaPanel({ entradas }: { entradas: EntradaMenu[] }) {
+  return (
+    <section className="space-y-6">
+      <header className="rounded-box bg-primary p-8 text-primary-content">
+        <h1 className="text-3xl font-bold">Panel</h1>
+        <p className="opacity-80">{marca.eslogan}</p>
+      </header>
+      {entradas.length === 0 ? (
+        <SinElementos mensaje="Todavía no hay entidades. Añade una con `puerto generar scaffold <Nombre>`." />
+      ) : (
+        <div className="stats stats-vertical w-full bg-base-100 shadow-sm lg:stats-horizontal">
+          {entradas.map((entrada) => (
+            <TarjetaTotal key={entrada.href} entrada={entrada} />
+          ))}
+        </div>
+      )}
+      <a className="link link-hover text-sm" href={URL_DOCS_API}>
+        Documentación de la API (Swagger UI)
+      </a>
+    </section>
+  );
+}
+
+function TarjetaTotal({ entrada }: { entrada: EntradaMenu }) {
+  const dependencias = useDependencias();
+  const total = useCarga(() => entrada.total(dependencias), [entrada, dependencias]);
+  return (
+    <Link href={entrada.href} className="stat transition hover:bg-base-200">
+      <div className="stat-title">{entrada.etiqueta}</div>
+      <div className="stat-value">
+        {total.estado === "listo" ? (
+          total.datos
+        ) : total.estado === "cargando" ? (
+          <span className="loading loading-dots" />
+        ) : (
+          "—"
+        )}
+      </div>
+      <div className="stat-desc">Ver la lista</div>
+    </Link>
+  );
+}
+
+=== web/src/paginas/portada.test.tsx ===
+import { describe, expect, test } from "bun:test";
+import { screen } from "@testing-library/react";
+import { rutaApp } from "../generado/rutas";
+import { marca } from "../marca/marca";
+import { renderizarPantalla } from "../pruebas/renderizar";
+import { PaginaPortada } from "./portada";
+
+describe("PaginaPortada", () => {
+  test("debería mostrar la marca y llevar a la app al entrar", async () => {
+    // Actuar
+    renderizarPantalla(<PaginaPortada />, {});
+
+    // Comprobar
+    expect((await screen.findAllByText(marca.nombre)).length).toBeGreaterThan(0);
+    const entradas = screen.getAllByText("Entrar");
+    for (const entrada of entradas) {
+      expect(entrada.closest("a")?.getAttribute("href")).toBe(rutaApp);
+    }
+  });
+});
+
+=== web/src/paginas/portada.tsx ===
+import { Link } from "wouter";
+import { rutaApp } from "../generado/rutas";
+import { marca } from "../marca/marca";
+import { SeccionCabecera } from "../portada/cabecera";
+import { SeccionCaracteristicas } from "../portada/caracteristicas";
+import { SeccionLlamada } from "../portada/llamada";
+import { SeccionPie } from "../portada/pie";
+import { SeccionPrecios } from "../portada/precios";
+import { SeccionPreguntas } from "../portada/preguntas";
+
+/**
+ * La portada pública, en `/`: una web de producto, con una sección por fichero de `portada/`.
+ * Quítalas, cámbialas o reordénalas aquí; `puerto generar web-bloque` lista otras variantes.
+ */
+export function PaginaPortada() {
+  return (
+    <div className="min-h-screen bg-base-100">
+      <header className="sticky top-0 z-20 border-base-300 border-b bg-base-100/90 backdrop-blur">
+        <nav className="navbar mx-auto max-w-6xl gap-2 px-4">
+          <Link href="/" className="flex items-center gap-2 text-lg font-bold">
+            <img src={marca.logo} alt="" className="size-8" />
+            {marca.nombre}
+          </Link>
+          <ul className="menu menu-horizontal ml-auto hidden gap-1 md:flex">
+            <li>
+              <a href="#caracteristicas">Características</a>
+            </li>
+            <li>
+              <a href="#precios">Precios</a>
+            </li>
+            <li>
+              <a href="#preguntas">Preguntas frecuentes</a>
+            </li>
+          </ul>
+          <Link href={rutaApp} className="btn btn-primary btn-sm ml-auto md:ml-0">
+            Entrar
+          </Link>
+        </nav>
+      </header>
+      <main>
+        <SeccionCabecera />
+        <SeccionCaracteristicas />
+        <SeccionPrecios />
+        <SeccionPreguntas />
+        <SeccionLlamada />
+      </main>
+      <SeccionPie />
+    </div>
+  );
+}
+
+=== web/src/portada/cabecera.tsx ===
+import { Link } from "wouter";
+import { rutaApp } from "../generado/rutas";
+import { marca } from "../marca/marca";
+
+/** La primera pantalla de la portada: qué es, en el centro, y la entrada a la app. */
+export function SeccionCabecera() {
+  return (
+    <section className="hero bg-linear-to-b from-base-200 to-base-100 px-4 py-24">
+      <div className="hero-content max-w-3xl flex-col gap-6 text-center">
+        <span className="badge badge-primary badge-soft">Nuevo en {marca.nombre}</span>
+        <h1 className="text-balance text-5xl font-bold tracking-tight md:text-6xl">
+          {marca.eslogan}
+        </h1>
+        <p className="max-w-xl text-lg text-base-content/70">
+          Cuenta aquí qué resuelve {marca.nombre} y para quién, en una o dos frases.
+        </p>
+        <div className="flex flex-wrap justify-center gap-3">
+          <Link href={rutaApp} className="btn btn-primary btn-lg">
+            Entrar
+          </Link>
+          <a href="#caracteristicas" className="btn btn-ghost btn-lg">
+            Características
+          </a>
+        </div>
+      </div>
+    </section>
+  );
+}
+
+=== web/src/portada/caracteristicas.tsx ===
+/** Lo que hace el producto: un icono, un título y una frase cada cosa. Los textos son de ejemplo. */
+const CARACTERISTICAS = [
+  {
+    titulo: "Rápido",
+    texto: "Las pantallas cargan al momento, también con miles de elementos.",
+    icono: "M13 10V3L4 14h7v7l9-11h-7z",
+  },
+  {
+    titulo: "Seguro",
+    texto: "Cada cuenta ve lo suyo, y cada acción pide el permiso que toca.",
+    icono: "M12 3l8 4v5c0 5-3.5 8-8 9-4.5-1-8-4-8-9V7l8-4z",
+  },
+  {
+    titulo: "Tus datos",
+    texto: "Exporta lo que guardas cuando quieras, en un formato abierto.",
+    icono: "M4 7c0-2 3.6-3 8-3s8 1 8 3-3.6 3-8 3-8-1-8-3zm0 0v10c0 2 3.6 3 8 3s8-1 8-3V7",
+  },
+  {
+    titulo: "En equipo",
+    texto: "Invita a quien trabaja contigo y repartid el trabajo.",
+    icono:
+      "M16 19v-1a4 4 0 00-8 0v1M12 11a3 3 0 100-6 3 3 0 000 6zm7 8v-1a3 3 0 00-2-2.8M17 5.2a3 3 0 010 5.6",
+  },
+  {
+    titulo: "En el móvil",
+    texto: "La misma app en el ordenador, la tableta y el teléfono.",
+    icono: "M8 3h8a1 1 0 011 1v16a1 1 0 01-1 1H8a1 1 0 01-1-1V4a1 1 0 011-1zm3 15h2",
+  },
+  {
+    titulo: "Sin sorpresas",
+    texto: "Un precio claro cada mes, sin permanencia.",
+    icono: "M5 13l4 4L19 7",
+  },
+];
+
+/** Lo que hace el producto, en una rejilla. */
+export function SeccionCaracteristicas() {
+  return (
+    <section id="caracteristicas" className="mx-auto max-w-6xl scroll-mt-16 px-4 py-20">
+      <header className="mx-auto mb-12 max-w-2xl space-y-3 text-center">
+        <h2 className="text-4xl font-bold">Características</h2>
+        <p className="text-lg text-base-content/70">Todo lo que necesitas, sin nada que sobre.</p>
+      </header>
+      <ul className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
+        {CARACTERISTICAS.map((caracteristica) => (
+          <li key={caracteristica.titulo} className="card border border-base-300 bg-base-100">
+            <div className="card-body gap-3">
+              <span className="flex size-11 items-center justify-center rounded-field bg-primary/10 text-primary">
+                <svg
+                  viewBox="0 0 24 24"
+                  className="size-6"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  aria-hidden="true"
+                >
+                  <path d={caracteristica.icono} />
+                </svg>
+              </span>
+              <h3 className="card-title">{caracteristica.titulo}</h3>
+              <p className="text-base-content/70">{caracteristica.texto}</p>
+            </div>
+          </li>
+        ))}
+      </ul>
+    </section>
+  );
+}
+
+=== web/src/portada/llamada.tsx ===
+import { Link } from "wouter";
+import { rutaApp } from "../generado/rutas";
+import { marca } from "../marca/marca";
+
+/** La última invitación a entrar, en una banda del color de la marca. */
+export function SeccionLlamada() {
+  return (
+    <section className="px-4 py-20">
+      <div className="mx-auto max-w-6xl space-y-6 rounded-box bg-primary px-8 py-16 text-center text-primary-content">
+        <h2 className="text-4xl font-bold">Empieza hoy con {marca.nombre}</h2>
+        <p className="mx-auto max-w-xl text-lg opacity-80">{marca.eslogan}</p>
+        <Link href={rutaApp} className="btn btn-lg border-0 bg-base-100 text-base-content">
+          Ir al panel
+        </Link>
+      </div>
+    </section>
+  );
+}
+
+=== web/src/portada/pie.tsx ===
+import { Link } from "wouter";
+import { rutaApp } from "../generado/rutas";
+import { marca } from "../marca/marca";
+
+/** El pie: la marca y los enlaces de la portada, en columnas. */
+export function SeccionPie() {
+  return (
+    <footer className="border-base-300 border-t bg-base-200 px-4">
+      <div className="footer mx-auto max-w-6xl py-12 sm:footer-horizontal">
+        <aside className="max-w-xs space-y-3">
+          <p className="flex items-center gap-2 text-lg font-bold">
+            <img src={marca.logo} alt="" className="size-8" />
+            {marca.nombre}
+          </p>
+          <p className="text-base-content/70">{marca.eslogan}</p>
+        </aside>
+        <nav>
+          <h3 className="footer-title">Producto</h3>
+          <a href="#caracteristicas" className="link link-hover">
+            Características
+          </a>
+          <a href="#precios" className="link link-hover">
+            Precios
+          </a>
+          <a href="#preguntas" className="link link-hover">
+            Preguntas frecuentes
+          </a>
+        </nav>
+        <nav>
+          <h3 className="footer-title">Cuenta</h3>
+          <Link href={rutaApp} className="link link-hover">
+            Entrar
+          </Link>
+        </nav>
+      </div>
+      <p className="mx-auto max-w-6xl border-base-300 border-t py-6 text-sm text-base-content/70">
+        © {new Date().getFullYear()} {marca.nombre}
+      </p>
+    </footer>
+  );
+}
+
+=== web/src/portada/precios.tsx ===
+import { Link } from "wouter";
+import { rutaApp } from "../generado/rutas";
+
+/** Los planes: el destacado, en el centro. Los nombres, los precios y lo que incluyen son de ejemplo. */
+const PLANES = [
+  {
+    nombre: "Básico",
+    precio: "0 €",
+    periodo: "/mes",
+    descripcion: "Para probarlo a fondo.",
+    incluye: ["1 persona", "Hasta 100 elementos", "Soporte por email"],
+    destacado: false,
+  },
+  {
+    nombre: "Equipo",
+    precio: "29 €",
+    periodo: "/mes",
+    descripcion: "Para un equipo que ya trabaja con ello.",
+    incluye: [
+      "Hasta 10 personas",
+      "Elementos sin límite",
+      "Roles y permisos",
+      "Soporte prioritario",
+    ],
+    destacado: true,
+  },
+  {
+    nombre: "Empresa",
+    precio: "A medida",
+    periodo: "",
+    descripcion: "Para organizaciones grandes.",
+    incluye: ["Personas sin límite", "Acuerdo de servicio", "Ayuda para empezar"],
+    destacado: false,
+  },
+];
+
+/** Los planes y su precio, uno al lado del otro. */
+export function SeccionPrecios() {
+  return (
+    <section id="precios" className="scroll-mt-16 bg-base-200 px-4 py-20">
+      <div className="mx-auto max-w-6xl">
+        <header className="mx-auto mb-12 max-w-2xl space-y-3 text-center">
+          <h2 className="text-4xl font-bold">Precios</h2>
+          <p className="text-lg text-base-content/70">
+            Empieza gratis y cambia de plan cuando quieras.
+          </p>
+        </header>
+        <ul className="grid items-start gap-6 lg:grid-cols-3">
+          {PLANES.map((plan) => (
+            <li
+              key={plan.nombre}
+              className={`card bg-base-100 ${plan.destacado ? "border-2 border-primary shadow-xl" : "border border-base-300"}`}
+            >
+              <div className="card-body gap-4">
+                <div className="flex items-center justify-between">
+                  <h3 className="card-title">{plan.nombre}</h3>
+                  {plan.destacado && <span className="badge badge-primary">Más elegido</span>}
+                </div>
+                <p className="text-base-content/70">{plan.descripcion}</p>
+                <p>
+                  <span className="text-4xl font-bold">{plan.precio}</span>
+                  <span className="text-base-content/70">{plan.periodo}</span>
+                </p>
+                <ul className="space-y-2">
+                  {plan.incluye.map((linea) => (
+                    <li key={linea} className="flex items-center gap-2">
+                      <svg
+                        viewBox="0 0 24 24"
+                        className="size-5 text-primary"
+                        fill="none"
+                        stroke="currentColor"
+                        strokeWidth="2"
+                        aria-hidden="true"
+                      >
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                      </svg>
+                      {linea}
+                    </li>
+                  ))}
+                </ul>
+                <Link
+                  href={rutaApp}
+                  className={`btn mt-2 ${plan.destacado ? "btn-primary" : "btn-outline"}`}
+                >
+                  Entrar
+                </Link>
+              </div>
+            </li>
+          ))}
+        </ul>
+      </div>
+    </section>
+  );
+}
+
+=== web/src/portada/preguntas.tsx ===
+import { marca } from "../marca/marca";
+
+/** Las preguntas de siempre, con su respuesta. Son de ejemplo. */
+const PREGUNTAS = [
+  {
+    pregunta: `¿Qué es ${marca.nombre}?`,
+    respuesta: marca.eslogan,
+  },
+  {
+    pregunta: "¿Puedo probarlo gratis?",
+    respuesta: "Sí: el plan Básico es gratis, sin tarjeta y sin fecha de caducidad.",
+  },
+  {
+    pregunta: "¿Puedo cambiar de plan?",
+    respuesta: "Cuando quieras. El cambio se nota al momento y se cobra la parte que toca.",
+  },
+  {
+    pregunta: "¿Dónde están mis datos?",
+    respuesta: "En servidores de la Unión Europea, con copias de seguridad cada día.",
+  },
+];
+
+/** Las preguntas frecuentes, en un acordeón: abrir una cierra la anterior. */
+export function SeccionPreguntas() {
+  return (
+    <section id="preguntas" className="mx-auto max-w-3xl scroll-mt-16 px-4 py-20">
+      <h2 className="mb-10 text-center text-4xl font-bold">Preguntas frecuentes</h2>
+      <div className="space-y-3">
+        {PREGUNTAS.map(({ pregunta, respuesta }) => (
+          <details
+            key={pregunta}
+            name="preguntas"
+            className="collapse collapse-arrow border border-base-300 bg-base-100"
+          >
+            <summary className="collapse-title font-semibold">{pregunta}</summary>
+            <p className="collapse-content text-base-content/70">{respuesta}</p>
+          </details>
+        ))}
+      </div>
+    </section>
+  );
+}
+
+=== web/src/pruebas/api-falsa.ts ===
+import { type ClienteApi, crearClienteApi } from "../api/cliente";
+
+/** Lo que guarda la API falsa bajo `ruta`: los DTO de la API, por id. */
+export interface Coleccion<T extends { id: string }> {
+  ruta: string;
+  /** El código que responde un elemento que no está: `producto.no_encontrado`. */
+  noEncontrado: string;
+  elementos: Map<string, T>;
+}
+
+/** Los elementos bajo `ruta` (`/productos`) de `entidad` (`producto`), empezando por `semilla`. */
+export function coleccion<T extends { id: string }>(
+  ruta: string,
+  entidad: string,
+  semilla: T[] = [],
+): Coleccion<T> {
+  const elementos = new Map(semilla.map((elemento) => [elemento.id, elemento]));
+  return { ruta, noEncontrado: `${entidad}.no_encontrado`, elementos };
+}
+
+/**
+ * Un `ClienteApi` que responde como la API generada, sobre colecciones en memoria: una página por
+ * `limite` / `desplazamiento`, un `404` con `<entidad>.no_encontrado`, `201`, `200` y `204`. Cada
+ * uno de `fallos` (`{ "POST /productos": "producto.duplicado" }`) responde su código en su lugar.
+ */
+export function apiFalsa(
+  colecciones: Coleccion<{ id: string }>[],
+  fallos: Record<string, string> = {},
+): ClienteApi {
+  return crearClienteApi({
+    baseUrl: "http://localhost/api",
+    fetch: async (peticion) => {
+      const url = new URL(peticion.url);
+      const ruta = url.pathname.replace(/^\/api/, "");
+      const objetivo = colecciones.find((c) => ruta === c.ruta || ruta.startsWith(`${c.ruta}/`));
+      if (objetivo === undefined) return responderError(404, "http.404");
+      const fallo = fallos[`${peticion.method} ${objetivo.ruta}`];
+      if (fallo !== undefined) return responderError(400, fallo);
+      const id = ruta.slice(objetivo.ruta.length + 1);
+      return id === ""
+        ? servirLista(objetivo, peticion, url)
+        : servirElemento(objetivo, peticion, id);
+    },
+  });
+}
+
+async function servirLista(objetivo: Coleccion<{ id: string }>, peticion: Request, url: URL) {
+  if (peticion.method === "POST") {
+    const creado = { ...(await peticion.json()), id: crypto.randomUUID() };
+    objetivo.elementos.set(creado.id, creado);
+    return Response.json(creado, { status: 201 });
+  }
+  const limite = Number(url.searchParams.get("limite") ?? 20);
+  const desplazamiento = Number(url.searchParams.get("desplazamiento") ?? 0);
+  const todos = [...objetivo.elementos.values()];
+  const elementos = todos.slice(desplazamiento, desplazamiento + limite);
+  return Response.json({ elementos, total: todos.length, limite, desplazamiento });
+}
+
+async function servirElemento(objetivo: Coleccion<{ id: string }>, peticion: Request, id: string) {
+  const encontrado = objetivo.elementos.get(id);
+  if (encontrado === undefined) return responderError(404, objetivo.noEncontrado);
+  if (peticion.method === "DELETE") {
+    objetivo.elementos.delete(id);
+    return new Response(null, { status: 204 });
+  }
+  if (peticion.method === "PUT") {
+    // Como la API, actualizar reemplaza todos los campos: el que no se manda queda vacío.
+    const actualizado = { ...(await peticion.json()), id };
+    objetivo.elementos.set(id, actualizado);
+    return Response.json(actualizado);
+  }
+  return Response.json(encontrado);
+}
+
+/** Un `RespuestaError` como lo responde la API. */
+function responderError(estado: number, codigo: string) {
+  return Response.json({ codigo, mensaje: codigo }, { status: estado });
+}
+
+=== web/src/pruebas/linea-pedido.ts ===
+import type { Esquemas } from "../api/cliente";
+import { coleccion } from "./api-falsa";
+
+type LineaPedido = Esquemas["DtoLineaPedido"];
+type PeticionLineaPedido = Esquemas["PeticionCrearLineaPedido"];
+
+/** Datos válidos de lineas pedido; en `cambios`, los campos de los que trata el test. */
+export const MadreLineaPedido = {
+  peticion(cambios: Partial<PeticionLineaPedido> = {}): PeticionLineaPedido {
+    return {
+      title: "example",
+      quantity: 42,
+      rate: 1.5,
+      inStock: true,
+      refId: crypto.randomUUID(),
+      sku: "example",
+      ...cambios,
+    };
+  },
+
+  aleatorio(cambios: Partial<LineaPedido> = {}): LineaPedido {
+    return { id: crypto.randomUUID(), ...MadreLineaPedido.peticion(), ...cambios };
+  },
+};
+
+/** El `/lineas_pedido` de la API falsa, con `semilla`. */
+export function coleccionLineaPedido(semilla: LineaPedido[] = []) {
+  return coleccion("/lineas_pedido", "linea_pedido", semilla);
+}

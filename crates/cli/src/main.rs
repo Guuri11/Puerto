@@ -668,12 +668,13 @@ fn run(command: Commands) -> Result<(), Box<dyn std::error::Error>> {
             };
             commands::list::require_puerto_project(&cwd)
                 .and_then(|_| crate::generators::blocks::run_install(&id, &cwd, policy))
-                .map(|written| {
-                    if written.is_empty() {
-                        println!("✓ {id} ya estaba instalado: no ha cambiado nada");
-                    }
-                    for path in written {
-                        println!("✓ {}", path.display());
+                .map(|installed| {
+                    for path in &installed.files {
+                        if installed.written.contains(path) {
+                            println!("✓ {}", path.display());
+                        } else {
+                            println!("= {}  (ya lo tenía)", path.display());
+                        }
                     }
                 })
         }

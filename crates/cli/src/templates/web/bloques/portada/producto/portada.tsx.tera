@@ -1,0 +1,50 @@
+import { Link } from "wouter";
+import { rutaApp } from "../generado/rutas";
+import { marca } from "../marca/marca";
+import { SeccionCabecera } from "../portada/cabecera";
+import { SeccionCaracteristicas } from "../portada/caracteristicas";
+import { SeccionLlamada } from "../portada/llamada";
+import { SeccionPie } from "../portada/pie";
+import { SeccionPrecios } from "../portada/precios";
+import { SeccionPreguntas } from "../portada/preguntas";
+
+/**
+ * La portada pública, en `/`: una web de producto, con una sección por fichero de `portada/`.
+ * Quítalas, cámbialas o reordénalas aquí; `puerto generar web-bloque` lista otras variantes.
+ */
+export function PaginaPortada() {
+  return (
+    <div className="min-h-screen bg-base-100">
+      <header className="sticky top-0 z-20 border-base-300 border-b bg-base-100/90 backdrop-blur">
+        <nav className="navbar mx-auto max-w-6xl gap-2 px-4">
+          <Link href="/" className="flex items-center gap-2 text-lg font-bold">
+            <img src={marca.logo} alt="" className="size-8" />
+            {marca.nombre}
+          </Link>
+          <ul className="menu menu-horizontal ml-auto hidden gap-1 md:flex">
+            <li>
+              <a href="#caracteristicas">Características</a>
+            </li>
+            <li>
+              <a href="#precios">Precios</a>
+            </li>
+            <li>
+              <a href="#preguntas">Preguntas frecuentes</a>
+            </li>
+          </ul>
+          <Link href={rutaApp} className="btn btn-primary btn-sm ml-auto md:ml-0">
+            Entrar
+          </Link>
+        </nav>
+      </header>
+      <main>
+        <SeccionCabecera />
+        <SeccionCaracteristicas />
+        <SeccionPrecios />
+        <SeccionPreguntas />
+        <SeccionLlamada />
+      </main>
+      <SeccionPie />
+    </div>
+  );
+}

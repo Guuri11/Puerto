@@ -1,0 +1,42 @@
+import { marca } from "../marca/marca";
+
+/** Las preguntas de siempre, con su respuesta. Son de ejemplo. */
+const PREGUNTAS = [
+  {
+    pregunta: `¿Qué es ${marca.nombre}?`,
+    respuesta: marca.eslogan,
+  },
+  {
+    pregunta: "¿Puedo probarlo gratis?",
+    respuesta: "Sí: el plan Básico es gratis, sin tarjeta y sin fecha de caducidad.",
+  },
+  {
+    pregunta: "¿Puedo cambiar de plan?",
+    respuesta: "Cuando quieras. El cambio se nota al momento y se cobra la parte que toca.",
+  },
+  {
+    pregunta: "¿Dónde están mis datos?",
+    respuesta: "En servidores de la Unión Europea, con copias de seguridad cada día.",
+  },
+];
+
+/** Las preguntas frecuentes, en un acordeón: abrir una cierra la anterior. */
+export function SeccionPreguntas() {
+  return (
+    <section id="preguntas" className="mx-auto max-w-3xl scroll-mt-16 px-4 py-20">
+      <h2 className="mb-10 text-center text-4xl font-bold">Preguntas frecuentes</h2>
+      <div className="space-y-3">
+        {PREGUNTAS.map(({ pregunta, respuesta }) => (
+          <details
+            key={pregunta}
+            name="preguntas"
+            className="collapse collapse-arrow border border-base-300 bg-base-100"
+          >
+            <summary className="collapse-title font-semibold">{pregunta}</summary>
+            <p className="collapse-content text-base-content/70">{respuesta}</p>
+          </details>
+        ))}
+      </div>
+    </section>
+  );
+}

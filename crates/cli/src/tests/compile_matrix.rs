@@ -40,6 +40,10 @@ pub(super) struct Scenario<'a> {
     /// Mails added after the consumers (`puerto generar correo`): `(name, CLI field args, --tras,
     /// --to)`.
     pub(super) mails: &'a [Mail<'a>],
+    /// `puerto nuevo --portada --ruta-app <path>`: the portada at `/`, the app under the path.
+    pub(super) portada: Option<&'a str>,
+    /// Blocks installed last, with `--forzar` (`puerto generar web-bloque`, ADR-0028).
+    pub(super) blocks: &'a [&'a str],
 }
 
 pub(super) type Access<'a> = (&'a str, &'a [&'a str], &'a [&'a str]);
@@ -66,6 +70,8 @@ pub(super) const NO_DEMO: Scenario = Scenario {
     consumers: &[],
     entities: &[("Persona", &["name:String"])],
     shapes: &[],
+    portada: None,
+    blocks: &[],
 };
 
 pub(super) const NO_WEB: Scenario = Scenario {
@@ -83,6 +89,8 @@ pub(super) const NO_WEB: Scenario = Scenario {
     consumers: &[],
     entities: &[],
     shapes: &[],
+    portada: None,
+    blocks: &[],
 };
 
 pub(super) const PRIMITIVES: Scenario = Scenario {
@@ -113,6 +121,8 @@ pub(super) const PRIMITIVES: Scenario = Scenario {
         ],
     )],
     shapes: &[],
+    portada: None,
+    blocks: &[],
 };
 
 pub(super) const UUID_VO: Scenario = Scenario {
@@ -130,6 +140,8 @@ pub(super) const UUID_VO: Scenario = Scenario {
     consumers: &[],
     entities: &[("Reserva", &["reference:String", "tenant_id:TenantId:Uuid"])],
     shapes: &[],
+    portada: None,
+    blocks: &[],
 };
 
 pub(super) const OPT_VEC_PRIM: Scenario = Scenario {
@@ -156,6 +168,8 @@ pub(super) const OPT_VEC_PRIM: Scenario = Scenario {
         ],
     )],
     shapes: &[],
+    portada: None,
+    blocks: &[],
 };
 
 pub(super) const PLAIN_VO: Scenario = Scenario {
@@ -176,6 +190,8 @@ pub(super) const PLAIN_VO: Scenario = Scenario {
         &["name:Name:String", "sku:Sku:String!", "weight:Weight:i64"],
     )],
     shapes: &[],
+    portada: None,
+    blocks: &[],
 };
 
 pub(super) const OPT_VEC_VO: Scenario = Scenario {
@@ -200,6 +216,8 @@ pub(super) const OPT_VEC_VO: Scenario = Scenario {
         ],
     )],
     shapes: &[],
+    portada: None,
+    blocks: &[],
 };
 
 pub(super) const ENUM_VO: Scenario = Scenario {
@@ -223,6 +241,8 @@ pub(super) const ENUM_VO: Scenario = Scenario {
         ],
     )],
     shapes: &[],
+    portada: None,
+    blocks: &[],
 };
 
 pub(super) const SHARED_VO: Scenario = Scenario {
@@ -240,6 +260,8 @@ pub(super) const SHARED_VO: Scenario = Scenario {
     consumers: &[],
     entities: &[("Cliente", &["name:String", "email:Email", "credit:Money"])],
     shapes: &[],
+    portada: None,
+    blocks: &[],
 };
 
 pub(super) const MULTI_ENTITY: Scenario = Scenario {
@@ -260,6 +282,8 @@ pub(super) const MULTI_ENTITY: Scenario = Scenario {
         ("Categoria", &["name:Name:String"]),
     ],
     shapes: &[],
+    portada: None,
+    blocks: &[],
 };
 
 pub(super) const VO_KITCHEN_SINK: Scenario = Scenario {
@@ -290,6 +314,8 @@ pub(super) const VO_KITCHEN_SINK: Scenario = Scenario {
         ],
     )],
     shapes: &[],
+    portada: None,
+    blocks: &[],
 };
 
 pub(super) const ENUM_ONLY: Scenario = Scenario {
@@ -307,6 +333,8 @@ pub(super) const ENUM_ONLY: Scenario = Scenario {
     consumers: &[],
     entities: &[("Billete", &["state:State:enum:Open/Closed"])],
     shapes: &[],
+    portada: None,
+    blocks: &[],
 };
 
 pub(super) const CUSTOM_USE_CASE: Scenario = Scenario {
@@ -324,6 +352,8 @@ pub(super) const CUSTOM_USE_CASE: Scenario = Scenario {
     consumers: &[],
     entities: &[("Producto", &["title:String", "price:i64"])],
     shapes: &[],
+    portada: None,
+    blocks: &[],
 };
 
 /// Phase 9.2: an entity whose every field reaches the frontend — each primitive an input holds,
@@ -353,6 +383,8 @@ pub(super) const WEB_CRUD: Scenario = Scenario {
         ],
     )],
     shapes: &[],
+    portada: None,
+    blocks: &[],
 };
 
 /// Phase 9.3: every field type on the frontend — `Option` of each primitive, `Vec`, `HashMap`,
@@ -390,6 +422,8 @@ pub(super) const WEB_EVERY_TYPE: Scenario = Scenario {
         ],
     )],
     shapes: &[],
+    portada: None,
+    blocks: &[],
 };
 
 /// Phase 18 (ADR-0022): references — required, optional, two to one target, a chain
@@ -430,6 +464,8 @@ pub(super) const REFERENCES: Scenario = Scenario {
     consumers: &[],
     entities: REFERENCE_ENTITIES,
     shapes: &[],
+    portada: None,
+    blocks: &[],
 };
 
 pub(super) const REFERENCES_DB: Scenario = Scenario {
@@ -514,6 +550,8 @@ pub(super) const POSTGRES_EVERY_TYPE: Scenario = Scenario {
         ("Billete", &["state:State:enum:Open/Closed"]),
     ],
     shapes: &[],
+    portada: None,
+    blocks: &[],
 };
 
 pub(super) const EVENTS_DB: Scenario = Scenario {
@@ -545,6 +583,8 @@ pub(super) const EVENTS_DB: Scenario = Scenario {
         ],
     )],
     shapes: &[],
+    portada: None,
+    blocks: &[],
 };
 
 /// [`EVENTS_DB`] in an auth project (Phase 16.4): the unit-of-work writes take the caller too,
@@ -651,6 +691,8 @@ pub(super) const MAIL: Scenario = Scenario {
     consumers: &[],
     entities: &[],
     shapes: &[],
+    portada: None,
+    blocks: &[],
 };
 
 /// `puerto nuevo --auth oidc` (Phase 16.4): the `User` entity in memory, the provisioning
@@ -694,6 +736,8 @@ pub(super) const AUTH_OIDC: Scenario = Scenario {
         ],
     )],
     shapes: &[],
+    portada: None,
+    blocks: &[],
 };
 
 /// Phase 20.6: what canasta has — references on a web slice of an auth project. The detail screen
@@ -725,6 +769,8 @@ pub(super) const REFERENCES_AUTH: Scenario = Scenario {
     )],
     // canasta: one shirt number per team, listed by number; a player's email for signed-in callers.
     shapes: &[("Jugador", &["equipo_id,dorsal"], &["-dorsal"], &["email"])],
+    portada: None,
+    blocks: &[],
 };
 
 /// [`REFERENCES_AUTH`] on Postgres: the unique over a reference and a number is a partial index,
@@ -758,6 +804,46 @@ pub(super) const AUTH_LOCAL: Scenario = Scenario {
     ..AUTH_OIDC_DB
 };
 
+/// `puerto nuevo --auth oidc --portada` with every block that is not a default one installed
+/// (Fase 26, ADR-0028): each variant keeps its slot's contract, so the frontend still typechecks,
+/// lints and passes the template's tests. Without a database: it runs in `make test/full`.
+pub(super) const WEB_BLOCKS: Scenario = Scenario {
+    name: "web_blocks",
+    portada: Some("/panel"),
+    blocks: &[
+        "acceso/centrado",
+        "marco/superior",
+        "panel/resumen",
+        "perfil/banda",
+        "tema/miel",
+        "portada/producto",
+        "cabecera/dividida",
+    ],
+    ..AUTH_OIDC
+};
+
+/// Local accounts under a portada: `/login` and `/registro` beside it in `main.tsx`, the sign-in
+/// going back to the app. Needs Postgres (`make test/db`).
+pub(super) const WEB_BLOCKS_LOCAL: Scenario = Scenario {
+    name: "web_blocks_local",
+    portada: Some("/panel"),
+    blocks: &["acceso/centrado", "portada/producto"],
+    ..AUTH_LOCAL
+};
+
+/// The blocks without auth (the top frame without the user's menu), and the app under `/app`.
+pub(super) const WEB_BLOCKS_PLAIN: Scenario = Scenario {
+    name: "web_blocks_plain",
+    portada: Some("/app"),
+    blocks: &[
+        "marco/superior",
+        "panel/resumen",
+        "tema/pizarra",
+        "portada/producto",
+    ],
+    ..WEB_CRUD
+};
+
 /// Generates the project, applies the scenario, and asserts the result compiles, **passes its own
 /// `make lint`** and **its tests pass**. `cargo check` is not enough: T-01 only broke test targets,
 /// and every generated project ships a `make lint` with `-D warnings` that a fresh `puerto nuevo`
@@ -789,6 +875,9 @@ pub(super) fn apply_scenario(scenario: &Scenario, output: &Path) {
         scaffold::apply_no_web(output).unwrap();
     } else {
         crate::generators::project::keep_web_blocks(output).unwrap();
+    }
+    if let Some(path) = scenario.portada {
+        crate::generators::project::apply_portada(output, path).unwrap();
     }
     if let Some(mode) = scenario.auth {
         crate::generators::auth::apply_auth_to_new_project(output, mode).unwrap();
@@ -868,6 +957,10 @@ pub(super) fn apply_scenario(scenario: &Scenario, output: &Path) {
         let on: Vec<String> = on.iter().map(|e| e.to_string()).collect();
         scaffold::run_generate_mail_on(name, &field_args, &on, *to, output).unwrap();
         format();
+    }
+
+    for id in scenario.blocks {
+        crate::generators::blocks::run_install(id, output, OverwritePolicy::Force).unwrap();
     }
 }
 
@@ -1186,6 +1279,18 @@ fn compiles_without_the_web_frontend() {
 
 #[test]
 #[ignore = "slow: compiles a generated project, then installs, lints and tests its frontend"]
+fn every_block_passes_the_checks_of_its_slot() {
+    assert_scenario_compiles(&WEB_BLOCKS);
+}
+
+#[test]
+#[ignore = "slow: compiles a generated project, then installs, lints and tests its frontend"]
+fn every_block_passes_the_checks_of_its_slot_without_auth() {
+    assert_scenario_compiles(&WEB_BLOCKS_PLAIN);
+}
+
+#[test]
+#[ignore = "slow: compiles a generated project, then installs, lints and tests its frontend"]
 fn compiles_an_oidc_auth_project() {
     assert_scenario_compiles(&AUTH_OIDC);
 }
@@ -1250,6 +1355,12 @@ fn postgres_oidc_auth_project_compiles_lints_and_passes_integration_tests() {
 #[ignore = "slow: needs Postgres — run via `make test/db`"]
 fn postgres_local_auth_project_compiles_lints_and_passes_integration_tests() {
     assert_postgres_scenario_is_clean(&AUTH_LOCAL, "puerto_matrix_auth_local");
+}
+
+#[test]
+#[ignore = "slow: needs Postgres — run via `make test/db`"]
+fn postgres_local_auth_under_a_portada_compiles_lints_and_passes_integration_tests() {
+    assert_postgres_scenario_is_clean(&WEB_BLOCKS_LOCAL, "puerto_matrix_web_blocks_local");
 }
 
 #[test]
