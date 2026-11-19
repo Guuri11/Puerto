@@ -3715,3 +3715,264 @@ variantes de las pantallas CRUD de una entidad (lista, detalle, formulario); el 
 una SPA: si importa, la portada va en una web estática aparte); un registro compatible con shadcn.
 Un selector de claro/oscuro tendrá que contar con que el `light` de serie de daisyUI pisa al de la
 marca cuando se pone `data-theme="light"` (ver 26.5).
+
+---
+
+## Fase 27 — Lo que encontró Aforo
+
+**Estado:** por hacer. Decidido por Sergio el 2026-11-19: todo lo que encontró Aforo
+(`~/dev/aforo`, venta de entradas para salas pequeñas, hecha con la 0.27.0 para enseñar todo
+Puerto: `--db --eventos db --auth local --portada`, cuatro entidades con referencias, eventos y
+casos de uso propios, dos consumidores, dos correos y bloques web) entra en Puerto. Los nombres
+nuevos (§ Por decidir) se le preguntan a Sergio y van a `docs/glosario.md` **antes** de su pieza.
+Un commit por pieza, en este orden. Cada una deja en verde `make test` y `make lint`; `make test/full`
+(y `make test/db` si toca `--db`) se pasa por grupos. El grupo A arregla lo que ya se genera; el B
+genera lo que en Aforo se escribió a mano.
+
+Lo que Aforo arregló a mano sirve de referencia: los commits de `~/dev/aforo` y sus ficheros
+(`docker-compose.yml`, `web/vite.config.ts`, `infraestructura/src/pruebas/siembra.rs` de
+`entrada`, `web/src/pruebas/api-falsa.ts`, `web/src/compartido/{formularios,formato}.ts`,
+`compartido/ui/dialogo-confirmar.tsx`, `contextos/concierto/contenedores/cartelera.tsx`,
+`presentacion/worker/src/consumidores/`, `scripts/demo.sh`).
+
+### Grupo A — Arreglos de lo que ya se genera
+
+### 27.1 — Los puertos, todos en `.env`
+
+- `docker-compose.yml`: Mailpit escribe `"${SMTP_HOST_PORT:-1025}:1025"` y
+  `"${MAILPIT_UI_PORT:-8025}:8025"` (hoy van fijos en `generators/mail.rs`). Dos proyectos con
+  correo chocaban, y Postgres ya lee `DB_HOST_PORT`. `.env` y `.env.example` ganan las dos
+  variables, y `SMTP_URL` usa la misma. `make correo/ui` lee `.env` antes de imprimir la URL.
+- `web/vite.config.ts`: el proxy de `/api` lee `SERVICE_PORT` del `.env` raíz
+  (`loadEnv(mode, "..", "")`, 8080 si no está). Hoy va fijo a `:8080`, así que cambiar el puerto de
+  la API dejaba la web sin API.
+- `puerto nuevo` termina avisando de cada puerto ocupado (`DB_HOST_PORT`, `SERVICE_PORT`,
+  `WORKER_PORT` con eventos, 5173 con web, los de Mailpit si hay correo) y nombra la variable de
+  `.env` que lo cambia. `generar correo` hace lo mismo con los de Mailpit. Solo avisa.
+- Tests: el compose y el `.env` de un proyecto con correo (cambia la aserción de
+  `src/tests/mail.rs`); `vite.config.ts` lee `SERVICE_PORT`; el aviso, con un `TcpListener` ocupando
+  un puerto y otro libre.
+
+### 27.2 — La siembra respeta las reglas de los objetos valor
+
+`siembra.tera` da a cada campo único `Uuid::new_v4().to_string()`: 36 caracteres. En cuanto el objeto
+valor tiene una regla de longitud o de formato, fallan todos los tests de Postgres de la entidad (en
+Aforo, `CodigoEntrada` de 4 a 16 caracteres). La madre gana `pub fn <campo>_unico() -> <primitivo>`
+por cada campo único (es del usuario, como el resto de la madre): por defecto, 12 hexadecimales de un
+uuid. `siembra.rs` lo llama. El `AGENTS.md` dice que, si una regla lo rechaza, se cambia en la madre.
+Tests: la madre lo trae, la siembra lo usa, y el escenario de Postgres pasa.
+
+### 27.3 — Los tests web sacan los textos de `mensajes.ts`
+
+Los tests del formulario comparan con el texto literal («Estos valores ya están en uso»): cambiar un
+mensaje rompía 5 tests en Aforo. Comparan con `aProblema(codigo).texto`. Test: ningún test generado
+de formulario escribe un texto de `mensajes.ts`; `bun test` pasa con un mensaje cambiado.
+
+### 27.4 — La API falsa entiende las acciones
+
+`coleccion(ruta, entidad, semilla, acciones = {})`: `POST <ruta>/{id}/<accion>` mezcla en el
+elemento los campos de esa acción (`{ cancelar: { estado: "Cancelado" } }`) y responde 200. `fallos`
+sigue funcionando con `POST <ruta>`. Lo usa 27.12. Test: una acción cambia el elemento; una acción
+desconocida responde 404.
+
+### 27.5 — Las etiquetas, con tildes
+
+`naming::etiqueta(campo)` (hoy «Titulo», «Direccion», «Genero», «Codigo», y «anio» sale tal cual):
+palabras separadas, la primera en mayúscula, y un diccionario de las palabras habituales que llevan
+tilde (título, dirección, código, género, descripción, teléfono, número, categoría, país, día,
+año ← `anio`, línea, último, público, música…). `[[entidad.campos]] etiqueta = "…"` lo sustituye.
+Se usa en las vistas, los formularios y sus tests, `mensajes.ts` y las plantillas de correo. El
+«`<Etiqueta>`: obligatorio» de `mensajes.ts` concuerda mal («Ciudad: obligatorio»): pasa a una frase
+neutra (por decidir). Tests: `naming` (cada palabra del diccionario, una sin tilde, una compuesta,
+la de `puerto.toml`), el parser y `validar` de `etiqueta`, snapshots.
+
+### 27.6 — Las fechas, en castellano
+
+`formatearFechaHora` usa `toLocaleString()`, que en un navegador en inglés da
+«12/5/2026, 9:00:00 PM». Pasa a
+`toLocaleString("es-ES", { dateStyle: "medium", timeStyle: "short" })` («5 dic 2026, 21:00»), en
+la zona horaria de quien lee. Test (`formularios.test.ts`): la fecha sale en castellano aunque
+`navigator.language` sea `en-US`.
+
+### 27.7 — Las listas muestran la etiqueta de cada referencia
+
+La lista pinta el UUID; el detalle ya pinta la etiqueta (20.6). El contenedor de la lista carga cada
+objetivo una vez (`LIMITE_PAGINA_MAXIMO`, como `opcionesReferencia` del formulario) y la vista
+pinta `<EnlaceReferencia>` con la etiqueta, o el id si no la encuentra o la carga falla. Tests: la
+lista muestra la etiqueta, y el id cuando falla.
+
+### 27.8 — La web respeta los roles de las rutas
+
+- El menú (`entradasMenu`) y el panel solo enseñan una entidad cuyo `listar` tiene rol a quien
+  `puede(rol)`. En Aforo, alguien sin el rol veía «Entradas», una lista que le daba 403, y la
+  tarjeta del panel salía como «—». `rutas.tsx` ya sabe los roles: genera la condición.
+- Al crear, el formulario lleva al detalle solo si `obtener` es público o quien crea `puede` su rol.
+  Si no, va a la lista si la puede ver, y si tampoco, a `/` con un aviso de que se guardó. En
+  Aforo, quien compraba sin ser admin acababa en `auth.prohibido` con la compra ya guardada.
+- Tests: el menú y el panel con y sin el rol; crear sin el rol de `obtener` no termina en un 403.
+
+### 27.9 — Los enums se leen como texto
+
+- Una variante se muestra con su texto en la lista, el detalle y el `<select>` («AlaVenta» →
+  «A la venta»). Por defecto, el nombre partido en palabras; `[[entidad.campos]]` puede darle el
+  suyo (clave por decidir: `{ AlaVenta = "A la venta" }`). El `value` del `<select>` sigue siendo la
+  variante.
+- El formulario de crear trae elegida la primera variante de un enum obligatorio: hoy pide
+  «Elige una opción».
+- Tests: el texto partido y el de `puerto.toml`; la lista, el detalle y el select; el valor por
+  defecto.
+
+### 27.10 — Un conflicto de quien llama no es un error del servidor
+
+`unit_of_work_pg.tera`, `repository_pg_crud.tera` y `user_repository_pg.tera` registran como
+`ERROR` («guardar falló») un `Duplicado` o una `ReferenciaInexistente`, que acaban en 409 o 422:
+harían saltar las alertas en producción. Estos van con `warn!`; el resto (`NoDisponible`,
+`DatosInvalidos`) sigue con `error!`. Tests: la plantilla registra cada variante con su nivel;
+snapshots.
+
+### 27.11 — El duplicado dice qué choca
+
+`mensajes.ts` responde lo mismo a todos los `<e>.duplicado`. Con un campo único, el mensaje lo nombra
+y va bajo su input («Nombre: ya está en uso»). Con `unicos`, nombra la combinación («Sala y fecha:
+ya están en uso»), en la alerta. Sin ninguno, el de hoy. Tests: los tres casos.
+
+### Grupo B — Lo que Aforo escribió a mano
+
+### 27.12 — Una transición de estado, de punta a punta
+
+Aforo escribió a mano tres casos de uso casi iguales (`cancelar_concierto`, `agotar_concierto`,
+`anular_entrada`: buscar por id → método de la entidad → `uow_factory.guardar(&entidad, evento)`),
+dos rutas con su enum de respuesta y cinco tests cada una, y dos botones web con diálogo y tres
+tests. El comando (nombre por decidir; p. ej. `puerto generar transicion Concierto cancelar
+[--evento concierto_cancelado] [--rol admin] [--interno]`) escribe:
+
+- **Dominio:** `contextos/<c>/dominio/src/<verbo>.rs` con
+  `impl <E> { pub fn <verbo>(&mut self) -> Result<Evento<E>, Error<E>> }`, un `impl` aparte para no
+  parchear `modelo.rs`. Pone `actualizado_en`, emite el evento (el propio, declarado como en
+  `generar evento`, o `Actualizado`) y deja la regla al usuario: un comentario donde va la guarda,
+  que rechaza con `Validacion("<código por decidir>")`, y un test `#[ignore = "escribe la regla"]`
+  del rechazo. Sin eventos, devuelve `()`.
+- **Aplicación:** el caso de uso entero con sus tests (lo hace, no existe, la regla lo rechaza sin
+  registrar nada).
+- **REST** (salvo `--interno`): `POST /<plural>/{id}/<verbo>`, su `Respuesta…` con `from_status`, y
+  un test por estado (200, 404, 422 y, con auth, 401 y 403 con `--rol`).
+- **Web** (salvo `--interno`): el botón en el contenedor del detalle (oculto sin `puede(rol)`), un
+  `DialogoConfirmar` (gana `textoCancelar`: «Cancelar / Cancelar concierto» confundía), la recarga,
+  el mensaje del código en `mensajes.ts`, la acción en `pruebas/<e>.ts` (27.4) y tres tests (lo
+  hace, explica el rechazo y no lo ofrece sin el rol).
+- `puerto.toml` lo guarda (forma por decidir) para que `bootstrap` y `validar` lo conozcan.
+- Tests: cada fichero; el compile matrix con una transición en un escenario con eventos y auth y en
+  otro sin ninguno de los dos.
+
+### 27.13 — Casos de uso internos
+
+`generar caso-de-uso … --interno`: sin `actor`, sin campo en `Api<Entidad>` y sin ruta (hoy lleva
+`actor` y un campo con `#[allow(dead_code)]`, aunque solo lo llame el worker). `cableado` lo
+construye igual. Queda en `[[entidad]]` (clave por decidir). Tests: los params, `rutas.rs` sin el
+campo, `cableado`, `validar`.
+
+### 27.14 — Lo que necesita un consumidor
+
+- `puerto-nucleo`: `Principal::sistema(nombre)` (id nil, sujeto `sistema:<nombre>`) para que el worker
+  llame a casos de uso protegidos. Aforo se lo inventó con `Principal::new(Uuid::nil(), …)`.
+- `puerto-nucleo`: un helper que recorre todas las páginas de un `listar` (Aforo escribió el bucle).
+- `generar consumidor … --usa concierto,entrada`: añade al `Cargo.toml` del worker `cableado`, cada
+  `aplicacion_<c>` (y en dev, con `pruebas`) y lo que haga falta. `construir` sale de
+  `cableado::<c>::construir(pool)`.
+- Un sitio para el código que comparten varios consumidores (hoy acaba dentro de uno; por decidir:
+  `consumidores/comun.rs`, que `validar` no confunda con un consumidor).
+- Tests: el runtime (`sistema`, el helper con 0, 1 y varias páginas); el `Cargo.toml` y el fichero
+  del consumidor con `--usa`.
+
+### 27.15 — Un ejemplo por objeto valor compartido
+
+Añadir una regla de formato al `Email` rompió las madres de dos entidades, que usaban `"example"`.
+`[[objeto_valor]] ejemplo = "ana@ejemplo.es"` (`generar objeto-valor Email String --ejemplo …`) da
+el valor a todas las madres, a los tests de rutas, a la siembra y a las madres de la web. Tests: el
+parser, `validar`, y una madre y una siembra con el ejemplo.
+
+### 27.16 — Clases de objeto valor con regla: email y dinero
+
+- `email`: la forma `usuario@dominio.tld` sin espacios (la regla de Aforo) y un ejemplo por defecto.
+- `dinero`: un `i64` en céntimos, `>= 0`. La web lo enseña con `euros()` (`compartido/formato.ts`,
+  que Aforo escribió a mano). Por decidir cómo se escribe en el formulario (euros con coma o céntimos).
+- Sintaxis por decidir (`clase_objeto_valor = "email"`; en la CLI, `email:Email:email`).
+- Tests: cada regla, la madre, la web y `validar`.
+
+### 27.17 — Campos que pone el servidor
+
+En Aforo, el comprador elegía el `estado` y se inventaba el `codigo`.
+
+- `por_defecto = "<valor>"` en `[[entidad.campos]]`: el campo no va en la petición, los params ni el
+  formulario de crear, y `crear` lo pone. Se puede cambiar al actualizar.
+- `generado = true` en un `String` único (o su objeto valor): `crear` lo pide a una función del
+  dominio que es del usuario (`<E>::generar_<campo>()`; por defecto, 8 caracteres `A-Z0-9`). Tampoco
+  va en la petición ni en el formulario.
+- Sintaxis en la CLI por decidir.
+- Tests: el parser, `validar` (`por_defecto` tiene que ser una variante o un literal válido;
+  `generado` solo en `String` único), la petición, los params, el formulario, el caso de uso y
+  snapshots.
+
+### 27.18 — El propietario de una fila
+
+La regla «solo lo mío» es el caso típico de auth, y en Aforo faltaba «Mis entradas».
+`[[entidad]] propietario = "<campo>"` (un `Uuid` que se rellena con `actor.id_usuario`, sin ir en la
+petición):
+
+- `GET /mis-<plural>`: la lista filtrada por quien llama.
+- `obtener`, `actualizar` y `borrar` dejan pasar al propietario o a quien tiene el rol de la ruta;
+  a cualquier otro, `Prohibido`.
+- En la web, «Mis <plural>» en el menú para quien tiene sesión, y crear lleva a su detalle.
+- Comprobar antes cómo llega `id_usuario` con OIDC: el aprovisionamiento lo pone; el
+  `AutenticadorOidc` solo, no.
+- Tests: el caso de uso (propietario, otro, rol), las rutas y la web.
+
+### 27.19 — Una referencia elegida desde la URL
+
+El formulario de crear lee `?<campoCamel>=<id>` y deja elegida esa referencia. Así un «Comprar»
+lleva a `…/entradas/nuevo?conciertoId=…`. Test: el select llega con el valor.
+
+### 27.20 — Una lista pública en la portada
+
+Aforo hizo a mano la cartelera: contenedor, vista y tests sobre `GET /conciertos`, que es pública. Un
+bloque de la portada (hueco por decidir) instala esa sección para una entidad con `listar` público:
+los primeros elementos, la etiqueta de cada referencia (27.7), los textos de los enums (27.9) y el
+dinero (27.16). El comando lleva la entidad como argumento. Tests: rechaza una entidad sin `listar`
+público; la sección y su test; el escaparate (`landing/`).
+
+### 27.21 — Datos de ejemplo
+
+`puerto nuevo` escribe una vez `scripts/sembrar.sh` (del usuario), con los helpers de
+`scripts/demo.sh` de Aforo: una petición, crear y devolver el id, iniciar sesión y conceder un rol.
+`make sembrar` lo ejecuta con el `.env` cargado. Por decidir si `scaffold` añade un ejemplo por
+entidad. Tests: el fichero (ejecutable) y la regla de make.
+
+### 27.22 — `make db/reiniciar` sin preguntar
+
+`CONFIRMAR=DESTRUIR make db/reiniciar` se salta la pregunta (para scripts y agentes; hoy solo con
+`echo DESTRUIR |`). Test: la regla del Makefile.
+
+### Por decidir (antes de su pieza, con Sergio)
+
+- **El género de los eventos CRUD y de los códigos de objeto valor:** `entrada_creado` frente a
+  `entrada_anulada` (propio), `sala.capacidad_invalido`. Cambiarlo rompe el contrato de los
+  snapshots y de los consumidores, así que iría con guía de migración. Si no se cambia, se documenta
+  en el glosario.
+- **Palabras nuevas:**
+  - `etiqueta` de un campo, la clave de los textos de las variantes y la frase neutra de
+    «obligatorio»;
+  - el comando y la clave de la transición, y su código de rechazo;
+  - `interno`, `Principal::sistema`, el helper de páginas, `--usa` y el módulo compartido del worker;
+  - `ejemplo`, las clases `email` y `dinero`;
+  - `por_defecto`, `generado`, `propietario` y la ruta `mis-<plural>`;
+  - el hueco de la lista pública, `sembrar` y `CONFIRMAR`.
+
+### Comprobado y descartado
+
+- Un campo `privado` sin sesión: Aforo creyó ver `"contacto": null`. Era `jq`, que pinta `null` para
+  una clave ausente: el JSON no la lleva, como dice 20.9.
+
+### Fuera de alcance (Fase 27)
+
+Kafka en Aforo; revisar el tema claro y el móvil; una pantalla de compra con pago; lo propio de Aforo
+(la regla del aforo por orden de compra y la compensación son del dominio, no de Puerto).
