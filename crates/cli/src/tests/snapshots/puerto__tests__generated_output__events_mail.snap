@@ -543,9 +543,11 @@ docker-compose/down: ## Para todos los contenedores
 	@echo "${CYAN}Parando los contenedores...${NC}"
 	$(DOCKER_COMPOSE) down
 
-db/reiniciar: ## Vacía la base de datos y vuelve a aplicar las migraciones (DESTRUCTIVO)
-	@printf "${RED}Esto destruye TODOS los datos de la base de datos. Escribe DESTRUIR para confirmar: ${NC}"; \
-	read CONFIRM; \
+db/reiniciar: ## Vacía la base de datos y vuelve a aplicar las migraciones (DESTRUCTIVO; sin preguntar: CONFIRM=DESTRUIR)
+	@if [ "$${CONFIRM:-}" != "DESTRUIR" ]; then \
+		printf "${RED}Esto destruye TODOS los datos de la base de datos. Escribe DESTRUIR para confirmar: ${NC}"; \
+		read CONFIRM; \
+	fi; \
 	if [ "$$CONFIRM" != "DESTRUIR" ]; then \
 		echo "${GREEN}Cancelado${NC}"; \
 		exit 1; \

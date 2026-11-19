@@ -190,5 +190,5 @@ tests de un contexto que referencia `Producto` también pueden sembrar uno. Los 
 | Comando | Qué hace |
 |---|---|
 | `make db/arrancar` / `make db/parar` | Arranca o para los contenedores |
-| `make db/reiniciar` | Lo borra todo y vuelve a ejecutar las migraciones. Te pide que escribas `DESTRUIR` |
+| `make db/reiniciar` | Lo borra todo y vuelve a ejecutar las migraciones. Te pide que escribas `DESTRUIR`; `CONFIRM=DESTRUIR make db/reiniciar` no pregunta (scripts, agentes) |
 | `make generar/migracion NOMBRE=…` | Lo mismo que `puerto generar migracion` |

@@ -368,6 +368,52 @@ fn should_define_each_db_make_target_once_when_the_project_has_a_database() {
 }
 
 #[test]
+fn should_reset_the_database_without_asking_when_confirm_says_destruir() {
+    // 27.22: scripts and agents had to pipe `echo DESTRUIR |` into the prompt.
+    let dir = temp_dir("db_reset_confirm");
+    cleanup(&dir);
+    fs::create_dir_all(&dir).unwrap();
+    let output = generate_db_project("db-reset", &dir).unwrap();
+    // No Docker or sqlx here: the recipe's steps succeed without doing anything.
+    let bin = dir.join("bin");
+    fs::create_dir_all(&bin).unwrap();
+    fs::write(bin.join("sqlx"), "#!/bin/sh\nexit 0\n").unwrap();
+    let mut perms = fs::metadata(bin.join("sqlx")).unwrap().permissions();
+    std::os::unix::fs::PermissionsExt::set_mode(&mut perms, 0o755);
+    fs::set_permissions(bin.join("sqlx"), perms).unwrap();
+    let path = format!("{}:{}", bin.display(), std::env::var("PATH").unwrap());
+    let reset = |confirm: Option<&str>| {
+        let mut command = std::process::Command::new("make");
+        command
+            .args(["db/reiniciar", "DOCKER_COMPOSE=true"])
+            .current_dir(&output)
+            .env("PATH", &path)
+            .env_remove("CONFIRM")
+            .stdin(std::process::Stdio::null());
+        if let Some(value) = confirm {
+            command.env("CONFIRM", value);
+        }
+        let result = command.output().unwrap();
+        let text = format!(
+            "{}{}",
+            String::from_utf8_lossy(&result.stdout),
+            String::from_utf8_lossy(&result.stderr)
+        );
+        (result.status.success(), text)
+    };
+
+    let (asked_ok, asked) = reset(None);
+    let (confirmed_ok, confirmed) = reset(Some("DESTRUIR"));
+    let (wrong_ok, wrong) = reset(Some("si"));
+
+    assert!(!asked_ok && asked.contains("Cancelado"), "{asked}");
+    assert!(confirmed_ok, "{confirmed}");
+    assert!(!confirmed.contains("Escribe DESTRUIR"), "{confirmed}");
+    assert!(!wrong_ok && wrong.contains("Escribe DESTRUIR"), "{wrong}");
+    cleanup(&dir);
+}
+
+#[test]
 fn should_start_postgres_and_wait_for_it_when_running_a_db_project() {
     // `up -d` returns before Postgres accepts connections: the first `make sqlx/migrate` of a
     // fresh project failed with "connection reset by peer". And `make run` started an API whose

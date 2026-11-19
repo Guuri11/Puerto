@@ -3947,7 +3947,7 @@ público; la sección y su test; el escaparate (`landing/`).
 `make sembrar` lo ejecuta con el `.env` cargado. Por decidir si `scaffold` añade un ejemplo por
 entidad. Tests: el fichero (ejecutable) y la regla de make.
 
-### 27.22 — `make db/reiniciar` sin preguntar
+### 27.22 — `make db/reiniciar` sin preguntar ✅
 
 `CONFIRM=DESTRUIR make db/reiniciar` (decidido el 2026-11-19: en inglés, ADR-0024) se salta la pregunta (para scripts y agentes; hoy solo con
 `echo DESTRUIR |`). Test: la regla del Makefile.
