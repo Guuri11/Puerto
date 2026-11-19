@@ -385,6 +385,7 @@ mod tests {
                 web: false,
                 events: None,
                 auth: None,
+                ..Default::default()
             },
             entity: vec![Entity {
                 name: "Ghost".into(),

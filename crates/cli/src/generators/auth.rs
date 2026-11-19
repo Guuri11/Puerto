@@ -466,10 +466,10 @@ fn add_makefile_targets(
 }
 
 /// The frontend's auth files of both modes, written once under `web/` (their templates mirror the
-/// paths). The last three replace the template's own: the app runs inside `ProveedorAuth` (with
-/// the access pages outside the app's frame), the frame shows the user, and `renderizarPantalla`
-/// signs a caller in.
-const WEB_FILES: [&str; 16] = [
+/// paths). The last two replace the template's own: the frame shows the user, and
+/// `renderizarPantalla` signs a caller in. `main.tsx` (the app inside `ProveedorAuth`, the access
+/// pages outside the app's frame) is `project::write_main`'s, which also knows the portada.
+const WEB_FILES: [&str; 15] = [
     "src/auth/sesion.ts",
     "src/auth/middleware-bearer.ts",
     "src/auth/middleware-bearer.test.ts",
@@ -483,7 +483,6 @@ const WEB_FILES: [&str; 16] = [
     "src/paginas/perfil.tsx",
     "src/paginas/perfil.test.tsx",
     "src/pruebas/auth.ts",
-    "src/main.tsx",
     "src/compartido/ui/marco.tsx",
     "src/pruebas/renderizar.tsx",
 ];
@@ -770,6 +769,7 @@ pub fn apply_auth_to_new_project(
     add_makefile_targets(base, &project, local)?;
     if config.project.web {
         write_web(base, &project, local)?;
+        crate::generators::project::write_main(base)?;
     }
     add_agents_section(base, config.project.web, local)?;
 

@@ -57,6 +57,16 @@ enum Commands {
         /// sesiones en la base de datos del proyecto (necesita --db)
         #[arg(value_name = "MODO", long, value_parser = ["oidc", "local"])]
         auth: Option<String>,
+        /// Un SaaS con portada pública: la portada en `/` y la app debajo de --ruta-app (no lo
+        /// pregunta)
+        #[arg(long, conflicts_with_all = ["no_portada", "no_web"])]
+        portada: bool,
+        /// Sin portada: la app en `/`, sin preguntar
+        #[arg(long = "sin-portada", conflicts_with = "portada")]
+        no_portada: bool,
+        /// Dónde va la app bajo la portada (por defecto /panel); implica --portada
+        #[arg(value_name = "RUTA", long = "ruta-app", conflicts_with_all = ["no_portada", "no_web"])]
+        app_path: Option<String>,
         /// Directorio donde se crea el proyecto (por defecto, el actual)
         #[arg(value_name = "DIRECTORIO", long = "destino")]
         destination: Option<PathBuf>,
@@ -439,6 +449,9 @@ fn run(command: Commands) -> Result<(), Box<dyn std::error::Error>> {
             no_web,
             events,
             auth,
+            portada,
+            no_portada,
+            app_path,
             destination,
         } => {
             let options = commands::new::NewOptions {
@@ -448,6 +461,9 @@ fn run(command: Commands) -> Result<(), Box<dyn std::error::Error>> {
                 no_web,
                 events,
                 auth,
+                portada,
+                no_portada,
+                app_path,
             };
             commands::new::new_project(name, options, destination).map(|path| {
                 format_after_generation(&path);
@@ -471,6 +487,13 @@ fn run(command: Commands) -> Result<(), Box<dyn std::error::Error>> {
                 println!("Docs de la API en:     http://localhost:8080");
                 if web {
                     println!("Frontend en:           http://localhost:5173");
+                    let config = crate::puerto_toml::read(&path).ok();
+                    if let Some(project) = config.map(|c| c.project).filter(|p| p.portada) {
+                        println!(
+                            "La app, bajo la portada: http://localhost:5173{}",
+                            project.app_path()
+                        );
+                    }
                 }
                 println!("Añade una entidad con: puerto generar scaffold <Nombre>");
             })

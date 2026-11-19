@@ -593,6 +593,28 @@ pub fn validate_references_before_writing(
 /// The transports `[proyecto] eventos` can name (ADR-0018 § 4).
 pub const EVENT_TRANSPORTS: &[&str] = &["db", "kafka"];
 
+/// The route of the app under a portada: `/` and lowercase segments (`/panel`, `/app/v2`), never
+/// `/` alone: that is the portada's.
+pub fn validate_app_path(path: &str) -> Result<(), String> {
+    let segments: Vec<&str> = match path.strip_prefix('/') {
+        Some(rest) => rest.split('/').collect(),
+        None => vec![],
+    };
+    let valid = !segments.is_empty()
+        && segments.iter().all(|s| {
+            !s.is_empty()
+                && s.chars()
+                    .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-')
+        });
+    if valid {
+        return Ok(());
+    }
+    Err(format!(
+        "la ruta de la app '{path}' no vale: empieza por `/` y sigue con minúsculas, dígitos y `-` \
+         (p. ej. /panel); `/` a secas es de la portada"
+    ))
+}
+
 pub fn validate_events_transport(transport: &str) -> Result<(), String> {
     if EVENT_TRANSPORTS.contains(&transport) {
         return Ok(());

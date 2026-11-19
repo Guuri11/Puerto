@@ -9949,6 +9949,9 @@ import { PaginaPanel } from "../paginas/panel";
 import { PaginaPerfil } from "../paginas/perfil";
 import { rutasPropias } from "../rutas";
 
+/** Dónde va la app: en la raíz o, con portada, en `[proyecto] ruta_app` (`puerto nuevo --portada`). */
+export const rutaApp = "/";
+
 export const entradasMenu: EntradaMenu[] = [
   {
     etiqueta: "Pedidos",
@@ -10077,6 +10080,7 @@ createRoot(raiz).render(
 import { describe, expect, test } from "bun:test";
 import { fireEvent, screen, waitFor } from "@testing-library/react";
 import { ErrorAuth } from "../auth/sesion";
+import { rutaApp } from "../generado/rutas";
 import { cuentasFalsas } from "../pruebas/auth";
 import { renderizarPantalla } from "../pruebas/renderizar";
 import { PaginaLogin, rutaSiguiente } from "./login";
@@ -10129,11 +10133,11 @@ describe("PaginaLogin", () => {
 });
 
 describe("rutaSiguiente", () => {
-  test("debería volver solo a una página de esta app", () => {
+  test("debería volver solo a una página de esta app y, si no, a la app", () => {
     expect(rutaSiguiente("siguiente=%2Fpedidos")).toBe("/pedidos");
-    expect(rutaSiguiente("")).toBe("/");
-    expect(rutaSiguiente("siguiente=%2F%2Fmalo.example")).toBe("/");
-    expect(rutaSiguiente("siguiente=https%3A%2F%2Fmalo.example")).toBe("/");
+    expect(rutaSiguiente("")).toBe(rutaApp);
+    expect(rutaSiguiente("siguiente=%2F%2Fmalo.example")).toBe(rutaApp);
+    expect(rutaSiguiente("siguiente=https%3A%2F%2Fmalo.example")).toBe(rutaApp);
   });
 });
 
@@ -10145,14 +10149,15 @@ import { aProblemaCuenta } from "../auth/mensajes";
 import { AlertaError, codigoError } from "../compartido/ui/alerta-error";
 import { ErrorCampo } from "../compartido/ui/error-campo";
 import { useDependencias } from "../dependencias";
+import { rutaApp } from "../generado/rutas";
 
 /**
  * La página a la que volver tras iniciar sesión: `?siguiente=`, si es una ruta de esta app — nunca
- * otro sitio (`//malo.example`).
+ * otro sitio (`//malo.example`); si no, la app.
  */
 export function rutaSiguiente(busqueda: string): string {
   const siguiente = new URLSearchParams(busqueda).get("siguiente");
-  return siguiente?.startsWith("/") && !siguiente.startsWith("//") ? siguiente : "/";
+  return siguiente?.startsWith("/") && !siguiente.startsWith("//") ? siguiente : rutaApp;
 }
 
 /** Adonde mandan `RequiereAuth` y un `401` a quien no tiene la sesión iniciada. */

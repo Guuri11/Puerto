@@ -65,6 +65,12 @@ pub struct NewOptions {
     pub events: Option<String>,
     /// `--auth <mode>`: `oidc` or `local` (ADR-0021).
     pub auth: Option<String>,
+    /// `--portada`: a public portada at `/` and the app under `app_path` (ADR-0028).
+    pub portada: bool,
+    /// `--sin-portada`, without asking.
+    pub no_portada: bool,
+    /// `--ruta-app <ruta>`: where the app goes under the portada (`/panel` by default); implies it.
+    pub app_path: Option<String>,
 }
 
 pub fn new_project(
@@ -79,6 +85,9 @@ pub fn new_project(
         no_web,
         events,
         auth,
+        portada,
+        no_portada,
+        app_path,
     } = options;
     let name = match name {
         Some(name) => {
@@ -179,6 +188,34 @@ pub fn new_project(
         crate::generators::auth::check_new_project(mode, resolved_db)?;
     }
 
+    // Where the app goes when the project is a SaaS with a public portada (ADR-0028).
+    let resolved_portada = if portada || app_path.is_some() {
+        if resolved_no_web {
+            return Err("--portada necesita el frontend web: quita --sin-web".into());
+        }
+        Some(app_path.unwrap_or_else(|| crate::puerto_toml::DEFAULT_APP_PATH.to_string()))
+    } else if no_portada || resolved_no_web {
+        None
+    } else if dialoguer::console::user_attended()
+        && dialoguer::Confirm::new()
+            .with_prompt("¿Es un SaaS con portada pública?")
+            .default(false)
+            .interact()?
+    {
+        Some(
+            dialoguer::Input::<String>::new()
+                .with_prompt("¿En qué ruta va la app?")
+                .default(crate::puerto_toml::DEFAULT_APP_PATH.to_string())
+                .validate_with(|ruta: &String| crate::validation::validate_app_path(ruta))
+                .interact_text()?,
+        )
+    } else {
+        None
+    };
+    if let Some(path) = &resolved_portada {
+        crate::validation::validate_app_path(path)?;
+    }
+
     eprintln!("Construyendo el esqueleto del proyecto...");
 
     let output = generate_new_project(Some(name), destination)?;
@@ -201,6 +238,10 @@ pub fn new_project(
         crate::generators::project::apply_no_web(&output)?;
     } else {
         crate::generators::project::keep_web_blocks(&output)?;
+    }
+
+    if let Some(path) = &resolved_portada {
+        crate::generators::project::apply_portada(&output, path)?;
     }
 
     // Last: the demo strip rewrites the `lib.rs` and `api.rs` files auth declares its modules in,

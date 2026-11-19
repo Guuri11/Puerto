@@ -249,3 +249,207 @@ fn every_theme_brings_daisyui_a_light_default_and_a_dark_for_the_system() {
     }
     cleanup(&dir);
 }
+
+// ── 26.3: la portada, elegida en `puerto nuevo` ────────────────────────────────────────────────
+
+fn with_portada(name: &str, options: NewOptions) -> (PathBuf, PathBuf) {
+    new_web_project(
+        name,
+        NewOptions {
+            no_db: true,
+            portada: true,
+            ..options
+        },
+    )
+}
+
+fn read(output: &Path, file: &str) -> String {
+    fs::read_to_string(output.join(file)).unwrap_or_else(|e| panic!("{file}: {e}"))
+}
+
+#[test]
+fn new_with_portada_puts_it_at_the_root_and_the_app_under_panel() {
+    let (dir, output) = with_portada("portada_default", NewOptions::default());
+
+    let manifest = read(&output, "puerto.toml");
+    assert!(manifest.contains("portada = true"), "{manifest}");
+    assert!(manifest.contains("ruta_app = \"/panel\""), "{manifest}");
+    assert!(
+        read(&output, "web/src/generado/rutas.tsx").contains("export const rutaApp = \"/panel\";")
+    );
+    let main = read(&output, "web/src/main.tsx");
+    for expected in [
+        "<Route path=\"/\">",
+        "<PaginaPortada />",
+        "<Route path={rutaApp} nest>",
+        "<Marco menu={entradasMenu}>",
+        "<PaginaNoEncontrada />",
+    ] {
+        assert!(main.contains(expected), "main.tsx sin {expected}:\n{main}");
+    }
+    let portada = read(&output, "web/src/paginas/portada.tsx");
+    assert!(portada.contains("export function PaginaPortada"));
+    assert!(portada.contains("rutaApp"));
+    assert!(output.join("web/src/paginas/portada.test.tsx").exists());
+    cleanup(&dir);
+}
+
+#[test]
+fn new_with_portada_takes_the_route_of_the_app() {
+    let (dir, output) = with_portada(
+        "portada_route",
+        NewOptions {
+            app_path: Some("/app".into()),
+            ..Default::default()
+        },
+    );
+
+    assert!(read(&output, "puerto.toml").contains("ruta_app = \"/app\""));
+    assert!(
+        read(&output, "web/src/generado/rutas.tsx").contains("export const rutaApp = \"/app\";")
+    );
+    cleanup(&dir);
+}
+
+#[test]
+fn new_without_portada_keeps_the_app_at_the_root() {
+    let (dir, output) = plain("portada_none");
+
+    let manifest = read(&output, "puerto.toml");
+    assert!(
+        !manifest.contains("portada =") && !manifest.contains("ruta_app"),
+        "{manifest}"
+    );
+    assert!(read(&output, "web/src/generado/rutas.tsx").contains("export const rutaApp = \"/\";"));
+    let template_main = crate::TEMPLATE_DIR
+        .get_file("web/src/main.tsx")
+        .and_then(|f| f.contents_utf8())
+        .unwrap();
+    assert_eq!(read(&output, "web/src/main.tsx"), template_main);
+    assert!(!output.join("web/src/paginas/portada.tsx").exists());
+    cleanup(&dir);
+}
+
+#[test]
+fn new_with_portada_and_auth_keeps_the_access_pages_outside_the_app() {
+    let (dir, output) = with_portada(
+        "portada_auth",
+        NewOptions {
+            auth: Some("oidc".into()),
+            ..Default::default()
+        },
+    );
+
+    let main = read(&output, "web/src/main.tsx");
+    for expected in [
+        "<ProveedorAuth>",
+        "<PaginaPortada />",
+        "<Route path=\"/auth/callback\">",
+        "<MarcoAcceso>",
+        "<Route path={rutaApp} nest>",
+    ] {
+        assert!(main.contains(expected), "main.tsx sin {expected}:\n{main}");
+    }
+    cleanup(&dir);
+}
+
+#[test]
+fn signing_in_without_a_next_page_goes_to_the_app() {
+    let (dir, output) = new_web_project(
+        "portada_login",
+        NewOptions {
+            db: true,
+            auth: Some("local".into()),
+            portada: true,
+            ..Default::default()
+        },
+    );
+
+    let login = read(&output, "web/src/paginas/login.tsx");
+    assert!(login.contains(": rutaApp;"), "{login}");
+    assert!(read(&output, "web/src/paginas/login.test.tsx").contains("toBe(rutaApp)"));
+    cleanup(&dir);
+}
+
+#[test]
+fn new_refuses_a_portada_without_web_or_a_route_that_is_not_one() {
+    for (name, options) in [
+        (
+            "portada_no_web",
+            NewOptions {
+                no_db: true,
+                no_web: true,
+                portada: true,
+                ..Default::default()
+            },
+        ),
+        (
+            "portada_bad_root",
+            NewOptions {
+                no_db: true,
+                portada: true,
+                app_path: Some("/".into()),
+                ..Default::default()
+            },
+        ),
+        (
+            "portada_bad_case",
+            NewOptions {
+                no_db: true,
+                portada: true,
+                app_path: Some("/Panel".into()),
+                ..Default::default()
+            },
+        ),
+        (
+            "portada_bad_slash",
+            NewOptions {
+                no_db: true,
+                portada: true,
+                app_path: Some("panel".into()),
+                ..Default::default()
+            },
+        ),
+    ] {
+        let dir = temp_dir(name);
+        cleanup(&dir);
+        fs::create_dir_all(&dir).unwrap();
+        let result = new_project(Some(name.replace('_', "-")), options, Some(dir.clone()));
+        assert!(result.is_err(), "{name} debería rechazarse");
+        cleanup(&dir);
+    }
+}
+
+#[test]
+fn the_welcome_portada_is_a_block_of_projects_with_portada_only() {
+    let (dir, output) = with_portada("portada_block", NewOptions::default());
+    let written = blocks::run_install("portada/bienvenida", &output, OverwritePolicy::Ask).unwrap();
+    assert!(written.is_empty(), "{written:?}");
+    cleanup(&dir);
+
+    let (dir, output) = plain("portada_block_refused");
+    let err = blocks::run_install("portada/bienvenida", &output, OverwritePolicy::Force)
+        .unwrap_err()
+        .to_string();
+    assert!(err.contains("portada"), "{err}");
+    cleanup(&dir);
+}
+
+#[test]
+fn validar_checks_the_portada_and_the_route_of_the_app() {
+    let (dir, output) = with_portada("portada_validate", NewOptions::default());
+    assert!(validate::run_validate(&output).is_ok());
+
+    fs::remove_file(output.join("web/src/paginas/portada.tsx")).unwrap();
+    let missing = validate::run_validate(&output).unwrap_err().to_string();
+    assert!(missing.contains("portada.tsx"), "{missing}");
+    cleanup(&dir);
+
+    let (dir, output) = plain("portada_validate_route");
+    let manifest =
+        read(&output, "puerto.toml").replace("web = true", "web = true\nruta_app = \"/panel\"");
+    fs::write(output.join("puerto.toml"), manifest).unwrap();
+    let orphan = validate::run_validate(&output).unwrap_err().to_string();
+    assert!(orphan.contains("ruta_app"), "{orphan}");
+    cleanup(&dir);
+}

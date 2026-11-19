@@ -3,18 +3,29 @@ import "./index.css";
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import { Route, Switch } from "wouter";
+{% if auth -%}
 import { ProveedorAuth } from "./auth/auth";
+{% endif -%}
 import { Marco } from "./compartido/ui/marco";
+{% if auth -%}
 import { MarcoAcceso } from "./compartido/ui/marco-acceso";
+{% endif -%}
 import { ProveedorDependencias } from "./dependencias";
 import { crearDependencias } from "./generado/dependencias";
-import { entradasMenu, RutasApp } from "./generado/rutas";
+import { entradasMenu, RutasApp{% if portada %}, rutaApp{% endif %} } from "./generado/rutas";
 import { marca } from "./marca/marca";
+{% if auth and not local -%}
+import { PaginaAuthCallback } from "./paginas/auth-callback";
+{% endif -%}
 {% if local -%}
 import { PaginaLogin } from "./paginas/login";
+{% endif -%}
+{% if portada -%}
+import { PaginaNoEncontrada } from "./paginas/no-encontrada";
+import { PaginaPortada } from "./paginas/portada";
+{% endif -%}
+{% if local -%}
 import { PaginaRegistro } from "./paginas/registro";
-{% else -%}
-import { PaginaAuthCallback } from "./paginas/auth-callback";
 {% endif %}
 const raiz = document.getElementById("root");
 if (raiz === null) {
@@ -25,8 +36,14 @@ document.title = marca.nombre;
 createRoot(raiz).render(
   <StrictMode>
     <ProveedorDependencias valor={crearDependencias()}>
+{%- if auth %}
       <ProveedorAuth>
         <Switch>
+{%- if portada %}
+          <Route path="/">
+            <PaginaPortada />
+          </Route>
+{%- endif %}
 {%- if local %}
           <Route path="/login">
             <MarcoAcceso>
@@ -45,13 +62,43 @@ createRoot(raiz).render(
             </MarcoAcceso>
           </Route>
 {%- endif %}
+{%- if portada %}
+          <Route path={rutaApp} nest>
+            <Marco menu={entradasMenu}>
+              <RutasApp />
+            </Marco>
+          </Route>
+          <Route>
+            <main className="mx-auto max-w-6xl p-4 lg:p-8">
+              <PaginaNoEncontrada />
+            </main>
+          </Route>
+{%- else %}
           <Route>
             <Marco menu={entradasMenu}>
               <RutasApp />
             </Marco>
           </Route>
+{%- endif %}
         </Switch>
       </ProveedorAuth>
+{%- else %}
+      <Switch>
+        <Route path="/">
+          <PaginaPortada />
+        </Route>
+        <Route path={rutaApp} nest>
+          <Marco menu={entradasMenu}>
+            <RutasApp />
+          </Marco>
+        </Route>
+        <Route>
+          <main className="mx-auto max-w-6xl p-4 lg:p-8">
+            <PaginaNoEncontrada />
+          </main>
+        </Route>
+      </Switch>
+{%- endif %}
     </ProveedorDependencias>
   </StrictMode>,
 );

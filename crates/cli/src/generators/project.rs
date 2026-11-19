@@ -526,6 +526,44 @@ pub fn keep_web_blocks(base: &Path) -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
 
+/// `puerto nuevo --portada` (ADR-0028): `[proyecto] portada` and `ruta_app`, the welcome portada
+/// at `/` (`portada/bienvenida`) with its test, and `rutaApp` in `generado/rutas.tsx`.
+pub fn apply_portada(base: &Path, app_path: &str) -> Result<(), Box<dyn std::error::Error>> {
+    crate::validation::validate_app_path(app_path)?;
+    let mut config = crate::puerto_toml::read(base)?;
+    config.project.portada = true;
+    config.project.app_path = Some(app_path.to_string());
+    crate::puerto_toml::write(base, &config)?;
+    crate::generators::blocks::run_install(
+        "portada/bienvenida",
+        base,
+        crate::generators::conflict::OverwritePolicy::Force,
+    )?;
+    write_file(
+        &base
+            .join(layout::WEB_DIR)
+            .join("src/paginas/portada.test.tsx"),
+        &render("web/portada.test.tsx.tera", &tera::Context::new())?,
+    )?;
+    crate::generators::web::regenerate_web(base, &config)?;
+    write_main(base)
+}
+
+/// `web/src/main.tsx` of a project with auth or a portada: the pages outside the app's frame (the
+/// portada, the access pages) and the app in `Marco`. Without either, the template's stays.
+pub fn write_main(base: &Path) -> Result<(), Box<dyn std::error::Error>> {
+    let config = crate::puerto_toml::read(base)?;
+    let mut ctx = tera::Context::new();
+    ctx.insert("auth", &config.project.has_auth());
+    ctx.insert("local", &(config.project.auth.as_deref() == Some("local")));
+    ctx.insert("portada", &config.project.portada);
+    write_file(
+        &base.join(layout::WEB_DIR).join("src/main.tsx"),
+        &render("web/main.tsx.tera", &ctx)?,
+    )?;
+    Ok(())
+}
+
 /// `markdown` without the `## ` section that starts at `heading`, up to the next `## ` heading.
 fn without_section(markdown: &str, heading: &str) -> String {
     let Some(start) = markdown.find(&format!("{heading}\n")) else {

@@ -69,6 +69,25 @@ pub fn run_validate(cwd: &Path) -> Result<(), Box<dyn std::error::Error>> {
         }
     }
 
+    if config.project.portada {
+        if !config.project.web {
+            errors.push(
+                "proyecto.portada necesita proyecto.web = true: la portada es una página de web/"
+                    .into(),
+            );
+        } else if !cwd.join("web/src/paginas/portada.tsx").exists() {
+            errors.push("proyecto.portada: falta web/src/paginas/portada.tsx (puerto generar web-bloque portada/bienvenida)".into());
+        }
+    }
+    if let Some(path) = &config.project.app_path {
+        if !config.project.portada {
+            errors.push("proyecto.ruta_app solo vale con proyecto.portada = true: sin portada, la app va en /".into());
+        }
+        if let Err(e) = crate::validation::validate_app_path(path) {
+            errors.push(format!("proyecto.ruta_app: {e}"));
+        }
+    }
+
     let mut seen_entities: Vec<String> = vec![];
     for entity in &config.entity {
         if let Err(e) = crate::validation::validate_entity_name(&entity.name) {

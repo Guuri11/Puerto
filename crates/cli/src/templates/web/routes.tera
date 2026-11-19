@@ -20,6 +20,9 @@ import { PaginaPerfil } from "../paginas/perfil";
 {% endif -%}
 import { rutasPropias } from "../rutas";
 
+/** Dónde va la app: en la raíz o, con portada, en `[proyecto] ruta_app` (`puerto nuevo --portada`). */
+export const rutaApp = "{{ ruta_app }}";
+
 export const entradasMenu: EntradaMenu[] = [
 {%- for e in entities %}
   {

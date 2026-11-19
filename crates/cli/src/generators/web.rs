@@ -687,6 +687,7 @@ fn generated_ctx(config: &PuertoConfig) -> tera::Context {
     ctx.insert("panel_guarded", &sliced.iter().any(|e| e.list_guarded));
     ctx.insert("entities", &sliced);
     ctx.insert("roles", &roles);
+    ctx.insert("ruta_app", config.project.app_path());
     ctx
 }
 

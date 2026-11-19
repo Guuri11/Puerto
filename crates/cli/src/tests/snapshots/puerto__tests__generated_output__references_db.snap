@@ -10482,6 +10482,9 @@ import { PaginaNoEncontrada } from "../paginas/no-encontrada";
 import { PaginaPanel } from "../paginas/panel";
 import { rutasPropias } from "../rutas";
 
+/** Dónde va la app: en la raíz o, con portada, en `[proyecto] ruta_app` (`puerto nuevo --portada`). */
+export const rutaApp = "/";
+
 export const entradasMenu: EntradaMenu[] = [
   {
     etiqueta: "Clientes",

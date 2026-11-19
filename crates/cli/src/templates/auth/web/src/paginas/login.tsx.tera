@@ -5,14 +5,15 @@ import { aProblemaCuenta } from "../auth/mensajes";
 import { AlertaError, codigoError } from "../compartido/ui/alerta-error";
 import { ErrorCampo } from "../compartido/ui/error-campo";
 import { useDependencias } from "../dependencias";
+import { rutaApp } from "../generado/rutas";
 
 /**
  * La página a la que volver tras iniciar sesión: `?siguiente=`, si es una ruta de esta app — nunca
- * otro sitio (`//malo.example`).
+ * otro sitio (`//malo.example`); si no, la app.
  */
 export function rutaSiguiente(busqueda: string): string {
   const siguiente = new URLSearchParams(busqueda).get("siguiente");
-  return siguiente?.startsWith("/") && !siguiente.startsWith("//") ? siguiente : "/";
+  return siguiente?.startsWith("/") && !siguiente.startsWith("//") ? siguiente : rutaApp;
 }
 
 /** Adonde mandan `RequiereAuth` y un `401` a quien no tiene la sesión iniciada. */

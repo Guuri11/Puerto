@@ -16,6 +16,8 @@ pub enum Needs {
     Nothing,
     /// `[proyecto] auth`: the slot exists only with auth.
     Auth,
+    /// `[proyecto] portada`: the slot is a page of the portada.
+    Portada,
 }
 
 /// Where a block file's content comes from.
@@ -45,6 +47,7 @@ const MARCO: &str = "src/compartido/ui/marco.tsx";
 const PANEL: &str = "src/paginas/panel.tsx";
 const PERFIL: &str = "src/paginas/perfil.tsx";
 const TEMA: &str = "src/marca/tema.css";
+const PORTADA: &str = "src/paginas/portada.tsx";
 
 const fn block(
     id: &'static str,
@@ -111,6 +114,12 @@ pub const CATALOG: &[Block] = &[
         &[(PERFIL, Source::Variant)],
     ),
     block(
+        "portada/bienvenida",
+        "el logo, el nombre, el eslogan y «Entrar»",
+        Needs::Portada,
+        &[(PORTADA, Source::Variant)],
+    ),
+    block(
         "tema/puerto",
         "cian y ámbar, esquinas redondeadas",
         Needs::Nothing,
@@ -165,6 +174,7 @@ pub fn catalog_text() -> String {
         let needs = match block.needs {
             Needs::Nothing => "",
             Needs::Auth => " (auth)",
+            Needs::Portada => " (portada)",
         };
         text.push_str(&format!(
             "  {:width$}  {}{needs}\n",
@@ -254,6 +264,12 @@ pub fn run_install(
     if block.needs == Needs::Auth && auth.is_none() {
         return Err(format!(
             "'{id}' es una pantalla de auth, y este proyecto no tiene auth ([proyecto] auth en puerto.toml)"
+        )
+        .into());
+    }
+    if block.needs == Needs::Portada && !config.project.portada {
+        return Err(format!(
+            "'{id}' es de la portada, y este proyecto no tiene ([proyecto] portada: `puerto nuevo --portada`)"
         )
         .into());
     }

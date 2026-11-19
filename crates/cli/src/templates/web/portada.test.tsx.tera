@@ -1,0 +1,20 @@
+import { describe, expect, test } from "bun:test";
+import { screen } from "@testing-library/react";
+import { rutaApp } from "../generado/rutas";
+import { marca } from "../marca/marca";
+import { renderizarPantalla } from "../pruebas/renderizar";
+import { PaginaPortada } from "./portada";
+
+describe("PaginaPortada", () => {
+  test("debería mostrar la marca y llevar a la app al entrar", async () => {
+    // Actuar
+    renderizarPantalla(<PaginaPortada />, {});
+
+    // Comprobar
+    expect((await screen.findAllByText(marca.nombre)).length).toBeGreaterThan(0);
+    const entradas = screen.getAllByText("Entrar");
+    for (const entrada of entradas) {
+      expect(entrada.closest("a")?.getAttribute("href")).toBe(rutaApp);
+    }
+  });
+});

@@ -59,6 +59,9 @@ pub struct ValueObjectDefinition {
     pub inner_type: String,
 }
 
+/// Where the app goes under a portada unless `puerto nuevo --ruta-app` says otherwise.
+pub const DEFAULT_APP_PATH: &str = "/panel";
+
 #[derive(Debug, Clone, Deserialize, Serialize, Default)]
 pub struct Project {
     #[serde(rename = "nombre")]
@@ -76,6 +79,13 @@ pub struct Project {
     /// Auth (ADR-0021): `"oidc"` or `"local"`. Absent: no auth. Set by `puerto nuevo --auth <mode>`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub auth: Option<String>,
+    /// A public portada at `/` and the app under `app_path` (ADR-0028). Set by `puerto nuevo
+    /// --portada`.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub portada: bool,
+    /// Where the app goes when there is a portada: `/panel` unless `puerto nuevo --ruta-app` says.
+    #[serde(default, skip_serializing_if = "Option::is_none", rename = "ruta_app")]
+    pub app_path: Option<String>,
 }
 
 impl Project {
@@ -87,6 +97,15 @@ impl Project {
     /// Routes take `auth: BearerAuth` unless the entity lists them as `public`.
     pub fn has_auth(&self) -> bool {
         self.auth.is_some()
+    }
+
+    /// Where the frontend mounts the app: under the portada, or at the root without one.
+    pub fn app_path(&self) -> &str {
+        match (&self.app_path, self.portada) {
+            (Some(path), true) => path,
+            (None, true) => DEFAULT_APP_PATH,
+            _ => "/",
+        }
     }
 }
 
