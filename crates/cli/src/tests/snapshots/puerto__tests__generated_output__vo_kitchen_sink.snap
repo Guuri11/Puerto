@@ -3759,7 +3759,7 @@ describe("ContenedorFormularioCuenta", () => {
     expect((await screen.findByRole("alert")).textContent).toBe(codigo);
   });
 
-  test("debería decir que los valores ya están en uso cuando la API responde un duplicado", async () => {
+  test("debería decir bajo su input que Sku ya está en uso cuando la API responde un duplicado", async () => {
     // Preparar
     const peticion = MadreCuenta.peticion();
     const codigo = "cuenta.duplicado";
@@ -3772,7 +3772,10 @@ describe("ContenedorFormularioCuenta", () => {
     fireEvent.click(screen.getByText("Guardar"));
 
     // Comprobar
-    expect((await screen.findByRole("alert")).textContent).toBe(aProblema(codigo).texto);
+    expect(await screen.findByText(aProblema(codigo).texto)).toBeTruthy();
+    const campo = screen.getByLabelText("Sku");
+    expect(campo.getAttribute("aria-invalid")).toBe("true");
+    expect(screen.queryByRole("alert")).toBeNull();
   });
 
   test("debería mostrar el mensaje bajo su input cuando la API rechaza un campo", async () => {
@@ -4020,7 +4023,7 @@ const TEXTOS: Record<string, string> = {
   "cuenta.tag_invalido": "Tags: no válido",
   "cuenta.status_invalido": "Status: no válido",
   "cuenta.email_invalido": "Email: no válido",
-  "cuenta.duplicado": "Estos valores ya están en uso",
+  "cuenta.duplicado": "Sku: ya está en uso",
   "cuenta.no_encontrado": "Ya no existe",
   "cuenta.repositorio": "No se ha podido guardar; inténtalo más tarde",
   "cuenta.desconocido": "Algo ha ido mal",
@@ -4035,6 +4038,7 @@ const CAMPOS: Record<string, string> = {
   "cuenta.tag_invalido": "tags",
   "cuenta.status_invalido": "status",
   "cuenta.email_invalido": "email",
+  "cuenta.duplicado": "sku",
 };
 
 export function aProblema(codigo: string): ProblemaCuenta {

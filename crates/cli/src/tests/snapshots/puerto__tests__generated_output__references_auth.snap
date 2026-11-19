@@ -8484,7 +8484,7 @@ export interface ProblemaJugador {
 const TEXTOS: Record<string, string> = {
   "jugador.validacion.equipo_id_no_encontrado": "Equipo: no existe",
   "jugador.validacion.email_vacio": "Email: campo obligatorio",
-  "jugador.duplicado": "Estos valores ya están en uso",
+  "jugador.duplicado": "Equipo y dorsal: ya están en uso",
   "jugador.no_encontrado": "Ya no existe",
   "jugador.repositorio": "No se ha podido guardar; inténtalo más tarde",
   "jugador.desconocido": "Algo ha ido mal",

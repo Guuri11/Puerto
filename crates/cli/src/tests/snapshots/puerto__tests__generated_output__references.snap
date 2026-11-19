@@ -7652,7 +7652,7 @@ describe("ContenedorFormularioCliente", () => {
     expect((await screen.findByRole("alert")).textContent).toBe(codigo);
   });
 
-  test("debería decir que los valores ya están en uso cuando la API responde un duplicado", async () => {
+  test("debería decir bajo su input que Email ya está en uso cuando la API responde un duplicado", async () => {
     // Preparar
     const peticion = MadreCliente.peticion();
     const codigo = "cliente.duplicado";
@@ -7665,7 +7665,10 @@ describe("ContenedorFormularioCliente", () => {
     fireEvent.click(screen.getByText("Guardar"));
 
     // Comprobar
-    expect((await screen.findByRole("alert")).textContent).toBe(aProblema(codigo).texto);
+    expect(await screen.findByText(aProblema(codigo).texto)).toBeTruthy();
+    const campo = screen.getByLabelText("Email");
+    expect(campo.getAttribute("aria-invalid")).toBe("true");
+    expect(screen.queryByRole("alert")).toBeNull();
   });
 
   test("debería mostrar el mensaje bajo su input cuando la API rechaza un campo", async () => {
@@ -7908,7 +7911,7 @@ export interface ProblemaCliente {
 const TEXTOS: Record<string, string> = {
   "cliente.name_invalido": "Name: no válido",
   "cliente.validacion.email_vacio": "Email: campo obligatorio",
-  "cliente.duplicado": "Estos valores ya están en uso",
+  "cliente.duplicado": "Email: ya está en uso",
   "cliente.no_encontrado": "Ya no existe",
   "cliente.repositorio": "No se ha podido guardar; inténtalo más tarde",
   "cliente.desconocido": "Algo ha ido mal",
@@ -7918,6 +7921,7 @@ const TEXTOS: Record<string, string> = {
 const CAMPOS: Record<string, string> = {
   "cliente.name_invalido": "name",
   "cliente.validacion.email_vacio": "email",
+  "cliente.duplicado": "email",
 };
 
 export function aProblema(codigo: string): ProblemaCliente {
@@ -8320,7 +8324,7 @@ describe("ContenedorFormularioEnvio", () => {
     expect((await screen.findByRole("alert")).textContent).toBe(codigo);
   });
 
-  test("debería decir que los valores ya están en uso cuando la API responde un duplicado", async () => {
+  test("debería decir bajo su input que Pedido ya está en uso cuando la API responde un duplicado", async () => {
     // Preparar
     const peticion = MadreEnvio.peticion();
     const codigo = "envio.duplicado";
@@ -8333,7 +8337,10 @@ describe("ContenedorFormularioEnvio", () => {
     fireEvent.click(screen.getByText("Guardar"));
 
     // Comprobar
-    expect((await screen.findByRole("alert")).textContent).toBe(aProblema(codigo).texto);
+    expect(await screen.findByText(aProblema(codigo).texto)).toBeTruthy();
+    const campo = screen.getByLabelText("Pedido");
+    expect(campo.getAttribute("aria-invalid")).toBe("true");
+    expect(screen.queryByRole("alert")).toBeNull();
   });
 
   test("debería ofrecer cada pedido en sus selects", async () => {
@@ -8666,7 +8673,7 @@ const TEXTOS: Record<string, string> = {
   "envio.validacion.pedido_id_no_encontrado": "Pedido: no existe",
   "envio.validacion.destinatario_id_no_encontrado": "Destinatario: no existe",
   "envio.validacion.carrier_vacio": "Carrier: campo obligatorio",
-  "envio.duplicado": "Estos valores ya están en uso",
+  "envio.duplicado": "Pedido: ya está en uso",
   "envio.no_encontrado": "Ya no existe",
   "envio.repositorio": "No se ha podido guardar; inténtalo más tarde",
   "envio.desconocido": "Algo ha ido mal",
@@ -8677,6 +8684,7 @@ const CAMPOS: Record<string, string> = {
   "envio.validacion.pedido_id_no_encontrado": "pedidoId",
   "envio.validacion.destinatario_id_no_encontrado": "destinatarioId",
   "envio.validacion.carrier_vacio": "carrier",
+  "envio.duplicado": "pedidoId",
 };
 
 export function aProblema(codigo: string): ProblemaEnvio {

@@ -3830,7 +3830,7 @@ harían saltar las alertas en producción. Estos van con `warn!`; el resto (`NoD
 `DatosInvalidos`) sigue con `error!`. Tests: la plantilla registra cada variante con su nivel;
 snapshots.
 
-### 27.11 — El duplicado dice qué choca
+### 27.11 — El duplicado dice qué choca ✅
 
 `mensajes.ts` responde lo mismo a todos los `<e>.duplicado`. Con un campo único, el mensaje lo nombra
 y va bajo su input («Nombre: ya está en uso»). Con `unicos`, nombra la combinación («Sala y fecha:

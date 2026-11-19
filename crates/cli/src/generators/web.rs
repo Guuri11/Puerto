@@ -442,10 +442,18 @@ fn entity_template_ctx(
     ctx.insert("form_helpers_type_only", &form_helpers_type_only);
     ctx.insert("fill_helpers", &helpers(|f| &f.to_form_helpers));
     ctx.insert("display_helpers", &helpers(|f| &f.display_helpers));
-    let problems = web_problems(&entity, &eff, &web_fields);
+    let groups = config
+        .and_then(|c| c.entity.iter().find(|e| e.name == pascal))
+        .map(|e| e.uniques.clone())
+        .unwrap_or_default();
+    let problems = web_problems(&entity, &eff, &web_fields, &groups);
     ctx.insert(
         "field_problem",
         &problems.iter().find(|p| p.field.is_some()),
+    );
+    ctx.insert(
+        "duplicate",
+        &problems.iter().find(|p| p.code.ends_with(".duplicado")),
     );
     ctx.insert("problems", &problems);
     ctx.insert(
@@ -552,6 +560,7 @@ fn web_problems(
     entity: &WebEntityCtx,
     eff: &[Field],
     web_fields: &[WebFieldCtx],
+    groups: &[Vec<String>],
 ) -> Vec<WebProblemCtx> {
     let snake = &entity.snake;
     let mut problems: Vec<WebProblemCtx> = vec![];
@@ -587,8 +596,8 @@ fn web_problems(
             );
         }
     }
+    problems.push(duplicate_problem(snake, eff, web_fields, groups));
     for (code, text) in [
-        ("duplicado", DUPLICATE_TEXT),
         ("no_encontrado", "Ya no existe"),
         (
             "repositorio",
@@ -604,6 +613,69 @@ fn web_problems(
         });
     }
     problems
+}
+
+/// What a duplicate says (27.11): the API answers one `<entidad>.duplicado` whatever clashed, so it
+/// names the one unique field (under its input) or the fields of the one unique group (in the
+/// alert); with more than one, it cannot tell which, and says the values are taken.
+fn duplicate_problem(
+    snake: &str,
+    eff: &[Field],
+    web_fields: &[WebFieldCtx],
+    groups: &[Vec<String>],
+) -> WebProblemCtx {
+    let code = format!("{snake}.duplicado");
+    let label_of = |name: &str| {
+        eff.iter()
+            .zip(web_fields)
+            .find(|(f, _)| f.name == name)
+            .map(|(_, web)| web)
+    };
+    let unique: Vec<(&Field, &WebFieldCtx)> = eff
+        .iter()
+        .zip(web_fields)
+        .filter(|(f, _)| f.unique)
+        .collect();
+    match (unique.as_slice(), groups) {
+        ([(_, web)], []) => WebProblemCtx {
+            code,
+            field: (web.input != "checkbox").then(|| web.camel.clone()),
+            label: web.label.clone(),
+            text: format!("{}: ya está en uso", web.label),
+        },
+        ([], [group]) => {
+            let labels: Vec<String> = group
+                .iter()
+                .filter_map(|name| label_of(name))
+                .enumerate()
+                .map(|(i, web)| {
+                    // `Jugador y partido`: one capital, at the start of the sentence.
+                    if i == 0 {
+                        web.label.clone()
+                    } else {
+                        crate::generators::naming::uncapitalize(&web.label)
+                    }
+                })
+                .collect();
+            let joined = match labels.split_last() {
+                Some((last, [])) => last.clone(),
+                Some((last, rest)) => format!("{} y {last}", rest.join(", ")),
+                None => String::new(),
+            };
+            WebProblemCtx {
+                code,
+                field: None,
+                label: String::new(),
+                text: format!("{joined}: ya están en uso"),
+            }
+        }
+        _ => WebProblemCtx {
+            code,
+            field: None,
+            label: String::new(),
+            text: DUPLICATE_TEXT.to_string(),
+        },
+    }
 }
 
 /// Renders a TypeScript template and orders its imports the way Biome's `organizeImports` does,

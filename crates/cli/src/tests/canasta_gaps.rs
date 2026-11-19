@@ -509,3 +509,57 @@ fn validation_rejects_a_private_field_that_is_not_free_text() {
         );
     }
 }
+
+// ── 27.11: the duplicate says what clashes ──────────────────────────────────
+
+#[test]
+fn a_duplicate_names_the_unique_field_or_the_group_it_is_about() {
+    // Aforo: «Estos valores ya están en uso» for every duplicate, whatever clashed.
+    let messages = |output: &Path| read(output, "web/src/contextos/linea/mensajes.ts");
+    let form_test = |output: &Path| {
+        read(
+            output,
+            "web/src/contextos/linea/contenedores/formulario-linea.test.tsx",
+        )
+    };
+
+    // One unique field: the message names it, under its input.
+    let (dir, output) = linea_project("aforo_duplicate_field", false);
+    let one = messages(&output);
+    assert!(
+        one.contains("\"linea.duplicado\": \"Código: ya está en uso\","),
+        "{one}"
+    );
+    assert!(one.contains("\"linea.duplicado\": \"codigo\","), "{one}");
+    assert!(
+        form_test(&output)
+            .contains("debería decir bajo su input que Código ya está en uso cuando la API responde un duplicado"),
+        "the field test"
+    );
+    cleanup(&dir);
+
+    // One unique group: the combination, in the alert.
+    let (dir, output) = scaffold_linea(
+        "aforo_duplicate_group",
+        false,
+        &unique_shape(&["jugador,partido"]),
+    );
+    let group = messages(&output);
+    assert!(
+        group.contains("\"linea.duplicado\": \"Jugador y partido: ya están en uso\","),
+        "{group}"
+    );
+    assert!(
+        !group.contains("\"linea.duplicado\": \"jugador\""),
+        "{group}"
+    );
+    cleanup(&dir);
+
+    // Nothing to tell which: the values, as before.
+    let (dir, output) = scaffold_linea("aforo_duplicate_none", false, &unique_shape(&[]));
+    assert!(
+        messages(&output).contains("\"linea.duplicado\": \"Estos valores ya están en uso\","),
+        "the generic one"
+    );
+    cleanup(&dir);
+}

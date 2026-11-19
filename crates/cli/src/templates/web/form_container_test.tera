@@ -148,6 +148,27 @@ describe("ContenedorFormulario{{ pascal }}", () => {
     // Comprobar
     expect((await screen.findByRole("alert")).textContent).toBe(codigo);
   });
+{%- if duplicate.field %}
+
+  test("debería decir bajo su input que {{ duplicate.label }} ya está en uso cuando la API responde un duplicado", async () => {
+    // Preparar
+    const peticion = Madre{{ pascal }}.peticion();
+    const codigo = "{{ snake }}.duplicado";
+    const fallos = { "POST /{{ plural }}": codigo };
+    const api = apiFalsa([coleccion{{ pascal }}(){% if targets %}, ...referenciadosPor(peticion){% endif %}], fallos);
+    renderizarPantalla(<ContenedorFormulario{{ pascal }} />, { api });
+    await rellenar(peticion);
+
+    // Actuar
+    fireEvent.click(screen.getByText("Guardar"));
+
+    // Comprobar
+    expect(await screen.findByText(aProblema(codigo).texto)).toBeTruthy();
+    const campo = screen.getByLabelText("{{ duplicate.label }}");
+    expect(campo.getAttribute("aria-invalid")).toBe("true");
+    expect(screen.queryByRole("alert")).toBeNull();
+  });
+{%- else %}
 
   test("debería decir que los valores ya están en uso cuando la API responde un duplicado", async () => {
     // Preparar
@@ -164,6 +185,7 @@ describe("ContenedorFormulario{{ pascal }}", () => {
     // Comprobar
     expect((await screen.findByRole("alert")).textContent).toBe(aProblema(codigo).texto);
   });
+{%- endif %}
 {%- for t in targets %}
 
   test("debería ofrecer cada {{ t.words }} en sus selects", async () => {

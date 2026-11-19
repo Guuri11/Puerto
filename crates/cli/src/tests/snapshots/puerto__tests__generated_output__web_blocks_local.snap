@@ -9537,7 +9537,7 @@ describe("ContenedorFormularioProducto", () => {
     expect((await screen.findByRole("alert")).textContent).toBe(codigo);
   });
 
-  test("debería decir que los valores ya están en uso cuando la API responde un duplicado", async () => {
+  test("debería decir bajo su input que Sku ya está en uso cuando la API responde un duplicado", async () => {
     // Preparar
     const peticion = MadreProducto.peticion();
     const codigo = "producto.duplicado";
@@ -9550,7 +9550,10 @@ describe("ContenedorFormularioProducto", () => {
     fireEvent.click(screen.getByText("Guardar"));
 
     // Comprobar
-    expect((await screen.findByRole("alert")).textContent).toBe(aProblema(codigo).texto);
+    expect(await screen.findByText(aProblema(codigo).texto)).toBeTruthy();
+    const campo = screen.getByLabelText("Sku");
+    expect(campo.getAttribute("aria-invalid")).toBe("true");
+    expect(screen.queryByRole("alert")).toBeNull();
   });
 
   test("debería mostrar el mensaje bajo su input cuando la API rechaza un campo", async () => {
@@ -9812,7 +9815,7 @@ const TEXTOS: Record<string, string> = {
   "producto.name_invalido": "Name: no válido",
   "producto.validacion.sku_vacio": "Sku: campo obligatorio",
   "producto.status_invalido": "Status: no válido",
-  "producto.duplicado": "Estos valores ya están en uso",
+  "producto.duplicado": "Sku: ya está en uso",
   "producto.no_encontrado": "Ya no existe",
   "producto.repositorio": "No se ha podido guardar; inténtalo más tarde",
   "producto.desconocido": "Algo ha ido mal",
@@ -9823,6 +9826,7 @@ const CAMPOS: Record<string, string> = {
   "producto.name_invalido": "name",
   "producto.validacion.sku_vacio": "sku",
   "producto.status_invalido": "status",
+  "producto.duplicado": "sku",
 };
 
 export function aProblema(codigo: string): ProblemaProducto {

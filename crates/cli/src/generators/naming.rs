@@ -117,6 +117,18 @@ pub fn texto_variante(variant: &str) -> String {
     etiqueta(&pascal_to_snake(variant))
 }
 
+/// A label inside a sentence: `Partido` → `partido`. One with another capital (`DNI`, a name from
+/// `[[entidad.campos]] etiqueta`) stays as it is.
+pub fn uncapitalize(label: &str) -> String {
+    let mut chars = label.chars();
+    match chars.next() {
+        Some(first) if !chars.clone().any(char::is_uppercase) => {
+            first.to_lowercase().to_string() + chars.as_str()
+        }
+        _ => label.to_string(),
+    }
+}
+
 /// The first letter in upper case: a label (`in stock` → `In stock`).
 pub fn capitalize(s: &str) -> String {
     let mut chars = s.chars();
@@ -284,6 +296,13 @@ mod tests {
     fn should_leave_a_word_without_accent_as_it_is() {
         assert_eq!(etiqueta("ciudad"), "Ciudad");
         assert_eq!(etiqueta("in_stock"), "In stock");
+    }
+
+    #[test]
+    fn should_lower_a_label_inside_a_sentence_unless_it_has_another_capital() {
+        assert_eq!(uncapitalize("Partido"), "partido");
+        assert_eq!(uncapitalize("Código postal"), "código postal");
+        assert_eq!(uncapitalize("DNI"), "DNI");
     }
 
     #[test]
