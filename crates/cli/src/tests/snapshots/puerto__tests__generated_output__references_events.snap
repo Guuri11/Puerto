@@ -10397,6 +10397,7 @@ import { apiFalsa } from "../../../pruebas/api-falsa";
 import { coleccionCompra, MadreCompra } from "../../../pruebas/compra";
 import { coleccionProveedor, MadreProveedor } from "../../../pruebas/proveedor";
 import { renderizarPantalla } from "../../../pruebas/renderizar";
+import { aProblema } from "../mensajes";
 import { ContenedorFormularioCompra } from "./formulario-compra";
 
 function escribir(etiqueta: string, valor: string) {
@@ -10483,7 +10484,8 @@ describe("ContenedorFormularioCompra", () => {
   test("debería decir que los valores ya están en uso cuando la API responde un duplicado", async () => {
     // Preparar
     const peticion = MadreCompra.peticion();
-    const fallos = { "POST /compras": "compra.duplicado" };
+    const codigo = "compra.duplicado";
+    const fallos = { "POST /compras": codigo };
     const api = apiFalsa([coleccionCompra(), ...referenciadosPor(peticion)], fallos);
     renderizarPantalla(<ContenedorFormularioCompra />, { api });
     await rellenar(peticion);
@@ -10492,7 +10494,7 @@ describe("ContenedorFormularioCompra", () => {
     fireEvent.click(screen.getByText("Guardar"));
 
     // Comprobar
-    expect((await screen.findByRole("alert")).textContent).toBe("Estos valores ya están en uso");
+    expect((await screen.findByRole("alert")).textContent).toBe(aProblema(codigo).texto);
   });
 
   test("debería ofrecer cada proveedor en sus selects", async () => {
@@ -10511,7 +10513,8 @@ describe("ContenedorFormularioCompra", () => {
   test("debería mostrar el mensaje bajo su input cuando la API rechaza un campo", async () => {
     // Preparar
     const peticion = MadreCompra.peticion();
-    const fallos = { "POST /compras": "compra.validacion.proveedor_id_no_encontrado" };
+    const codigo = "compra.validacion.proveedor_id_no_encontrado";
+    const fallos = { "POST /compras": codigo };
     const api = apiFalsa([coleccionCompra(), ...referenciadosPor(peticion)], fallos);
     renderizarPantalla(<ContenedorFormularioCompra />, { api });
     await rellenar(peticion);
@@ -10520,7 +10523,7 @@ describe("ContenedorFormularioCompra", () => {
     fireEvent.click(screen.getByText("Guardar"));
 
     // Comprobar
-    expect(await screen.findByText("Proveedor: no existe")).toBeTruthy();
+    expect(await screen.findByText(aProblema(codigo).texto)).toBeTruthy();
     const campo = screen.getByLabelText("Proveedor");
     expect(campo.getAttribute("aria-invalid")).toBe("true");
     expect(screen.queryByRole("alert")).toBeNull();
@@ -11141,6 +11144,7 @@ import { coleccionCompra, MadreCompra } from "../../../pruebas/compra";
 import { coleccionEntrega, MadreEntrega } from "../../../pruebas/entrega";
 import { coleccionProveedor, MadreProveedor } from "../../../pruebas/proveedor";
 import { renderizarPantalla } from "../../../pruebas/renderizar";
+import { aProblema } from "../mensajes";
 import { ContenedorFormularioEntrega } from "./formulario-entrega";
 
 function escribir(etiqueta: string, valor: string) {
@@ -11227,7 +11231,8 @@ describe("ContenedorFormularioEntrega", () => {
   test("debería decir que los valores ya están en uso cuando la API responde un duplicado", async () => {
     // Preparar
     const peticion = MadreEntrega.peticion();
-    const fallos = { "POST /entregas": "entrega.duplicado" };
+    const codigo = "entrega.duplicado";
+    const fallos = { "POST /entregas": codigo };
     const api = apiFalsa([coleccionEntrega(), ...referenciadosPor(peticion)], fallos);
     renderizarPantalla(<ContenedorFormularioEntrega />, { api });
     await rellenar(peticion);
@@ -11236,7 +11241,7 @@ describe("ContenedorFormularioEntrega", () => {
     fireEvent.click(screen.getByText("Guardar"));
 
     // Comprobar
-    expect((await screen.findByRole("alert")).textContent).toBe("Estos valores ya están en uso");
+    expect((await screen.findByRole("alert")).textContent).toBe(aProblema(codigo).texto);
   });
 
   test("debería ofrecer cada compra en sus selects", async () => {
@@ -11268,7 +11273,8 @@ describe("ContenedorFormularioEntrega", () => {
   test("debería mostrar el mensaje bajo su input cuando la API rechaza un campo", async () => {
     // Preparar
     const peticion = MadreEntrega.peticion();
-    const fallos = { "POST /entregas": "entrega.validacion.compra_id_no_encontrado" };
+    const codigo = "entrega.validacion.compra_id_no_encontrado";
+    const fallos = { "POST /entregas": codigo };
     const api = apiFalsa([coleccionEntrega(), ...referenciadosPor(peticion)], fallos);
     renderizarPantalla(<ContenedorFormularioEntrega />, { api });
     await rellenar(peticion);
@@ -11277,7 +11283,7 @@ describe("ContenedorFormularioEntrega", () => {
     fireEvent.click(screen.getByText("Guardar"));
 
     // Comprobar
-    expect(await screen.findByText("Compra: no existe")).toBeTruthy();
+    expect(await screen.findByText(aProblema(codigo).texto)).toBeTruthy();
     const campo = screen.getByLabelText("Compra");
     expect(campo.getAttribute("aria-invalid")).toBe("true");
     expect(screen.queryByRole("alert")).toBeNull();
@@ -11857,6 +11863,7 @@ import type { Esquemas } from "../../../api/cliente";
 import { apiFalsa } from "../../../pruebas/api-falsa";
 import { coleccionProveedor, MadreProveedor } from "../../../pruebas/proveedor";
 import { renderizarPantalla } from "../../../pruebas/renderizar";
+import { aProblema } from "../mensajes";
 import { ContenedorFormularioProveedor } from "./formulario-proveedor";
 
 function escribir(etiqueta: string, valor: string) {
@@ -11925,7 +11932,8 @@ describe("ContenedorFormularioProveedor", () => {
   test("debería decir que los valores ya están en uso cuando la API responde un duplicado", async () => {
     // Preparar
     const peticion = MadreProveedor.peticion();
-    const fallos = { "POST /proveedores": "proveedor.duplicado" };
+    const codigo = "proveedor.duplicado";
+    const fallos = { "POST /proveedores": codigo };
     const api = apiFalsa([coleccionProveedor()], fallos);
     renderizarPantalla(<ContenedorFormularioProveedor />, { api });
     await rellenar(peticion);
@@ -11934,13 +11942,14 @@ describe("ContenedorFormularioProveedor", () => {
     fireEvent.click(screen.getByText("Guardar"));
 
     // Comprobar
-    expect((await screen.findByRole("alert")).textContent).toBe("Estos valores ya están en uso");
+    expect((await screen.findByRole("alert")).textContent).toBe(aProblema(codigo).texto);
   });
 
   test("debería mostrar el mensaje bajo su input cuando la API rechaza un campo", async () => {
     // Preparar
     const peticion = MadreProveedor.peticion();
-    const fallos = { "POST /proveedores": "proveedor.name_invalido" };
+    const codigo = "proveedor.name_invalido";
+    const fallos = { "POST /proveedores": codigo };
     const api = apiFalsa([coleccionProveedor()], fallos);
     renderizarPantalla(<ContenedorFormularioProveedor />, { api });
     await rellenar(peticion);
@@ -11949,7 +11958,7 @@ describe("ContenedorFormularioProveedor", () => {
     fireEvent.click(screen.getByText("Guardar"));
 
     // Comprobar
-    expect(await screen.findByText("Name: no válido")).toBeTruthy();
+    expect(await screen.findByText(aProblema(codigo).texto)).toBeTruthy();
     const campo = screen.getByLabelText("Name");
     expect(campo.getAttribute("aria-invalid")).toBe("true");
     expect(screen.queryByRole("alert")).toBeNull();

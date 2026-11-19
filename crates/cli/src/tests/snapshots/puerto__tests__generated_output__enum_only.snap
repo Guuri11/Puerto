@@ -2747,6 +2747,7 @@ import type { Esquemas } from "../../../api/cliente";
 import { apiFalsa } from "../../../pruebas/api-falsa";
 import { coleccionBillete, MadreBillete } from "../../../pruebas/billete";
 import { renderizarPantalla } from "../../../pruebas/renderizar";
+import { aProblema } from "../mensajes";
 import { ContenedorFormularioBillete } from "./formulario-billete";
 
 function escribir(etiqueta: string, valor: string) {
@@ -2814,7 +2815,8 @@ describe("ContenedorFormularioBillete", () => {
   test("debería decir que los valores ya están en uso cuando la API responde un duplicado", async () => {
     // Preparar
     const peticion = MadreBillete.peticion();
-    const fallos = { "POST /billetes": "billete.duplicado" };
+    const codigo = "billete.duplicado";
+    const fallos = { "POST /billetes": codigo };
     const api = apiFalsa([coleccionBillete()], fallos);
     renderizarPantalla(<ContenedorFormularioBillete />, { api });
     await rellenar(peticion);
@@ -2823,13 +2825,14 @@ describe("ContenedorFormularioBillete", () => {
     fireEvent.click(screen.getByText("Guardar"));
 
     // Comprobar
-    expect((await screen.findByRole("alert")).textContent).toBe("Estos valores ya están en uso");
+    expect((await screen.findByRole("alert")).textContent).toBe(aProblema(codigo).texto);
   });
 
   test("debería mostrar el mensaje bajo su input cuando la API rechaza un campo", async () => {
     // Preparar
     const peticion = MadreBillete.peticion();
-    const fallos = { "POST /billetes": "billete.state_invalido" };
+    const codigo = "billete.state_invalido";
+    const fallos = { "POST /billetes": codigo };
     const api = apiFalsa([coleccionBillete()], fallos);
     renderizarPantalla(<ContenedorFormularioBillete />, { api });
     await rellenar(peticion);
@@ -2838,7 +2841,7 @@ describe("ContenedorFormularioBillete", () => {
     fireEvent.click(screen.getByText("Guardar"));
 
     // Comprobar
-    expect(await screen.findByText("State: no válido")).toBeTruthy();
+    expect(await screen.findByText(aProblema(codigo).texto)).toBeTruthy();
     const campo = screen.getByLabelText("State");
     expect(campo.getAttribute("aria-invalid")).toBe("true");
     expect(screen.queryByRole("alert")).toBeNull();

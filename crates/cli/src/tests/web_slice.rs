@@ -594,6 +594,41 @@ fn messages_cover_every_code_of_errors_rs_and_name_the_field_it_is_about() {
 }
 
 #[test]
+fn form_tests_read_their_texts_from_mensajes_ts() {
+    // 27.3: they compared with the literal text, so changing a message broke the tests.
+    let (dir, output) = web_project("web_messages_in_tests");
+    let args = fields(&["title:String", "sku:Sku:String"]);
+    scaffold::run_scaffold("Producto", &output, &args, OverwritePolicy::Ask).unwrap();
+
+    let messages = read(&output, "web/src/contextos/producto/mensajes.ts");
+    let test = read(
+        &output,
+        "web/src/contextos/producto/contenedores/formulario-producto.test.tsx",
+    );
+    let texts = messages
+        .lines()
+        .skip_while(|l| !l.starts_with("const TEXTOS"))
+        .take_while(|l| !l.starts_with("};"))
+        .filter_map(|l| l.split('"').nth(3));
+    for text in texts {
+        assert!(
+            !test.contains(&format!("\"{text}\"")),
+            "the test writes '{text}':\n{test}"
+        );
+    }
+    assert!(
+        test.contains("import { aProblema } from \"../mensajes\";"),
+        "{test}"
+    );
+    assert!(test.contains(".toBe(aProblema(codigo).texto);"), "{test}");
+    assert!(
+        test.contains("await screen.findByText(aProblema(codigo).texto)"),
+        "{test}"
+    );
+    cleanup(&dir);
+}
+
+#[test]
 fn messages_of_an_entity_without_field_codes_map_no_field() {
     let (dir, output) = web_project("web_messages_no_fields");
     scaffold::run_scaffold(

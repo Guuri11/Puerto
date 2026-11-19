@@ -10,6 +10,7 @@ import { coleccion{{ t.pascal }}, Madre{{ t.pascal }} } from "../../../pruebas/{
 {%- endfor %}
 import { coleccion{{ pascal }}, Madre{{ pascal }} } from "../../../pruebas/{{ kebab }}";
 import { renderizarPantalla } from "../../../pruebas/renderizar";
+import { aProblema } from "../mensajes";
 import { ContenedorFormulario{{ pascal }} } from "./formulario-{{ kebab }}";
 
 function escribir(etiqueta: string, valor: string) {
@@ -115,7 +116,8 @@ describe("ContenedorFormulario{{ pascal }}", () => {
   test("debería decir que los valores ya están en uso cuando la API responde un duplicado", async () => {
     // Preparar
     const peticion = Madre{{ pascal }}.peticion();
-    const fallos = { "POST /{{ plural }}": "{{ snake }}.duplicado" };
+    const codigo = "{{ snake }}.duplicado";
+    const fallos = { "POST /{{ plural }}": codigo };
     const api = apiFalsa([coleccion{{ pascal }}(){% if targets %}, ...referenciadosPor(peticion){% endif %}], fallos);
     renderizarPantalla(<ContenedorFormulario{{ pascal }} />, { api });
     await rellenar(peticion);
@@ -124,7 +126,7 @@ describe("ContenedorFormulario{{ pascal }}", () => {
     fireEvent.click(screen.getByText("Guardar"));
 
     // Comprobar
-    expect((await screen.findByRole("alert")).textContent).toBe("{{ duplicate_text }}");
+    expect((await screen.findByRole("alert")).textContent).toBe(aProblema(codigo).texto);
   });
 {%- for t in targets %}
 
@@ -146,7 +148,8 @@ describe("ContenedorFormulario{{ pascal }}", () => {
   test("debería mostrar el mensaje bajo su input cuando la API rechaza un campo", async () => {
     // Preparar
     const peticion = Madre{{ pascal }}.peticion();
-    const fallos = { "POST /{{ plural }}": "{{ field_problem.code }}" };
+    const codigo = "{{ field_problem.code }}";
+    const fallos = { "POST /{{ plural }}": codigo };
     const api = apiFalsa([coleccion{{ pascal }}(){% if targets %}, ...referenciadosPor(peticion){% endif %}], fallos);
     renderizarPantalla(<ContenedorFormulario{{ pascal }} />, { api });
     await rellenar(peticion);
@@ -155,7 +158,7 @@ describe("ContenedorFormulario{{ pascal }}", () => {
     fireEvent.click(screen.getByText("Guardar"));
 
     // Comprobar
-    expect(await screen.findByText("{{ field_problem.text }}")).toBeTruthy();
+    expect(await screen.findByText(aProblema(codigo).texto)).toBeTruthy();
     const campo = screen.getByLabelText("{{ field_problem.label }}");
     expect(campo.getAttribute("aria-invalid")).toBe("true");
     expect(screen.queryByRole("alert")).toBeNull();

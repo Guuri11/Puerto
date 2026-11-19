@@ -3762,7 +3762,7 @@ por cada campo único (es del usuario, como el resto de la madre): por defecto, 
 uuid. `siembra.rs` lo llama. El `AGENTS.md` dice que, si una regla lo rechaza, se cambia en la madre.
 Tests: la madre lo trae, la siembra lo usa, y el escenario de Postgres pasa.
 
-### 27.3 — Los tests web sacan los textos de `mensajes.ts`
+### 27.3 — Los tests web sacan los textos de `mensajes.ts` ✅
 
 Los tests del formulario comparan con el texto literal («Estos valores ya están en uso»): cambiar un
 mensaje rompía 5 tests en Aforo. Comparan con `aProblema(codigo).texto`. Test: ningún test generado

@@ -420,7 +420,6 @@ fn entity_template_ctx(
         &problems.iter().find(|p| p.field.is_some()),
     );
     ctx.insert("problems", &problems);
-    ctx.insert("duplicate_text", DUPLICATE_TEXT);
     ctx.insert(
         "list_load_inline",
         &fits(&format!(

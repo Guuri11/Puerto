@@ -1217,6 +1217,19 @@ fn compiles_with_custom_use_case_after_scaffold() {
 /// Biome-clean. (`make web/sync` formats too — the net for names long enough to wrap a line.)
 fn assert_web_is_clean(output: &Path, name: &str) {
     let web = output.join("web");
+    // 27.3: the messages are the user's; the tests read them from mensajes.ts, so a changed one
+    // must not break them.
+    if let Ok(contexts) = fs::read_dir(web.join("src/contextos")) {
+        for context in contexts.flatten() {
+            let path = context.path().join("mensajes.ts");
+            if let Ok(messages) = fs::read_to_string(&path) {
+                let changed = messages
+                    .replace("Estos valores ya están en uso", "Ya hay uno igual")
+                    .replace(": obligatorio\"", ": rellénalo\"");
+                fs::write(&path, changed).unwrap();
+            }
+        }
+    }
     for args in [
         &["install"][..],
         &["run", "openapi:types"][..],
