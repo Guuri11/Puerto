@@ -496,6 +496,16 @@ fn run(command: Commands) -> Result<(), Box<dyn std::error::Error>> {
                     }
                 }
                 println!("Añade una entidad con: puerto generar scaffold <Nombre>");
+                use crate::generators::ports;
+                for warning in ports::taken(&path, ports::PROJECT_PORTS) {
+                    eprintln!("{warning}");
+                }
+                if web && ports::is_taken(ports::WEB_PORT) {
+                    eprintln!(
+                        "aviso: el puerto {} está ocupado; `make web/dev` usará el siguiente libre",
+                        ports::WEB_PORT
+                    );
+                }
             })
         }
         Commands::Generate {

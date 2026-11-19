@@ -18,7 +18,8 @@ use crate::generators::worker::{
 };
 use crate::puerto_toml::{Consumer, Field, Mail, PuertoConfig, parse_field_arg};
 
-/// The SMTP server development runs against (ADR-0020 § 5): SMTP on 1025, UI and API on 8025.
+/// The SMTP server development runs against (ADR-0020 § 5): SMTP on 1025, UI and API on 8025
+/// (`SMTP_HOST_PORT`, `MAILPIT_UI_PORT` in `.env`).
 pub const MAILPIT_IMAGE: &str = "axllent/mailpit:v1.31.1";
 
 /// A mail field as the templates see it.
@@ -204,8 +205,8 @@ fn mailpit_service(project: &str) -> String {
     image: {MAILPIT_IMAGE}
     container_name: {project}-mailpit
     ports:
-      - "1025:1025"
-      - "8025:8025"
+      - "${{SMTP_HOST_PORT:-1025}}:1025"
+      - "${{MAILPIT_UI_PORT:-8025}}:8025"
     restart: unless-stopped
 "#
     )
@@ -221,6 +222,7 @@ fn add_mail_env(base: &Path, project: &str) -> Result<(), Box<dyn std::error::Er
     let host = project.replace('_', "-");
     let vars = format!(
         "\n# Correo — Mailpit (docker-compose.yml) recoge cada correo en desarrollo: `make correo/ui`\n\
+         SMTP_HOST_PORT=1025\nMAILPIT_UI_PORT=8025\n\
          SMTP_URL=smtp://localhost:1025\nMAIL_FROM=no-reply@{host}.localhost\n"
     );
     for file in [".env", ".env.example"] {
@@ -257,7 +259,8 @@ const MAIL_MAKEFILE_TARGETS: &str = r#"
 .PHONY: correo/ui
 
 correo/ui: docker-compose/up ## Dónde llegan los correos enviados en desarrollo (Mailpit)
-	@echo "${GREEN}Mailpit: http://localhost:8025${NC}"
+	@set -a; [ ! -f .env ] || . ./.env; set +a; \
+	echo "${GREEN}Mailpit: http://localhost:$${MAILPIT_UI_PORT:-8025}${NC}"
 "#;
 
 fn add_mail_makefile_targets(base: &Path) -> Result<(), Box<dyn std::error::Error>> {
@@ -698,6 +701,9 @@ pub fn run_generate_mail_on(
             "  Mailpit añadido a docker-compose.yml; SMTP_URL y MAIL_FROM, a .env. \
              Mira los correos con `make correo/ui`."
         );
+        for warning in crate::generators::ports::taken(base, crate::generators::ports::MAIL_PORTS) {
+            eprintln!("{warning}");
+        }
     }
     Ok(())
 }

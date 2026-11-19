@@ -470,7 +470,7 @@ web/require-install:
 		exit 1; \
 	fi
 
-web/dev: web/require-install ## Arranca el servidor de desarrollo del frontend (http://localhost:5173, /api va a :8080)
+web/dev: web/require-install ## Arranca el servidor de desarrollo del frontend (http://localhost:5173, /api va a la API en SERVICE_PORT)
 	@echo "${GREEN}Arrancando el servidor de desarrollo del frontend...${NC}"
 	cd web && $(BUN) run dev
 

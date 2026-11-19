@@ -3737,7 +3737,7 @@ Lo que Aforo arregló a mano sirve de referencia: los commits de `~/dev/aforo` y
 
 ### Grupo A — Arreglos de lo que ya se genera
 
-### 27.1 — Los puertos, todos en `.env`
+### 27.1 — Los puertos, todos en `.env` ✅
 
 - `docker-compose.yml`: Mailpit escribe `"${SMTP_HOST_PORT:-1025}:1025"` y
   `"${MAILPIT_UI_PORT:-8025}:8025"` (hoy van fijos en `generators/mail.rs`). Dos proyectos con

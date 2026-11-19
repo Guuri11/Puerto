@@ -226,15 +226,27 @@ fn first_mail_of_a_project_without_database_creates_compose_with_mailpit_alone()
         compose.contains("image: axllent/mailpit:v1.31.1"),
         "{compose}"
     );
-    assert!(compose.contains("\"1025:1025\""), "{compose}");
-    assert!(compose.contains("\"8025:8025\""), "{compose}");
+    // Configurable like Postgres' DB_HOST_PORT: two projects with mail would clash otherwise.
+    assert!(
+        compose.contains("\"${SMTP_HOST_PORT:-1025}:1025\""),
+        "{compose}"
+    );
+    assert!(
+        compose.contains("\"${MAILPIT_UI_PORT:-8025}:8025\""),
+        "{compose}"
+    );
     assert!(!compose.contains("postgres"), "{compose}");
 
     let makefile = read(&output, "Makefile");
     assert!(makefile.contains("docker-compose/up:"), "{makefile}");
     assert!(makefile.contains("docker-compose/down:"), "{makefile}");
     assert!(makefile.contains("correo/ui:"), "{makefile}");
-    assert!(makefile.contains("http://localhost:8025"), "{makefile}");
+    // The UI's port comes from .env, which make does not read by itself.
+    assert!(makefile.contains(". ./.env"), "{makefile}");
+    assert!(
+        makefile.contains("http://localhost:$${MAILPIT_UI_PORT:-8025}"),
+        "{makefile}"
+    );
     cleanup(&dir);
 }
 
@@ -274,6 +286,8 @@ fn first_mail_points_env_at_mailpit() {
 
     for file in [".env", ".env.example"] {
         let env = read(&output, file);
+        assert!(env.contains("SMTP_HOST_PORT=1025\n"), "{file}: {env}");
+        assert!(env.contains("MAILPIT_UI_PORT=8025\n"), "{file}: {env}");
         assert!(
             env.contains("SMTP_URL=smtp://localhost:1025\n"),
             "{file}: {env}"

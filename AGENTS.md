@@ -488,7 +488,7 @@ make format/fix    # cargo fmt --all
   `infra_correo::<nombre>` (`EnviadorCorreo<Nombre>Plantilla` sobre `puerto-correo`, con tests de
   renderizado) y `contextos/correo/infraestructura/plantillas/<nombre>/{asunto.txt,cuerpo.html,
   cuerpo.txt}` — escritos una vez, del usuario. El primer correo añade `puerto-correo`, Mailpit a
-  `docker-compose.yml` (que se crea si no hay `--db`), `SMTP_URL` / `MAIL_FROM`, `make correo/ui` y
+  `docker-compose.yml` (que se crea si no hay `--db`; sus puertos, `SMTP_HOST_PORT` / `MAILPIT_UI_PORT`), `SMTP_URL` / `MAIL_FROM`, `make correo/ui` y
   una sección del `AGENTS.md` raíz. Una entidad no puede llamarse `Correo`. Con
   `--tras <tipo_evento> --para <campo>` (proyectos con eventos), también
   `presentacion/worker/src/consumidores/correo_<nombre>.rs` (`EnviarCorreo<Nombre>`: snapshot →

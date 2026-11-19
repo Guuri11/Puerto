@@ -16,6 +16,8 @@ DATABASE_URL=postgres://devuser:password@localhost:5432/snapshot
 WORKER_PORT=8081
 
 # Correo — Mailpit (docker-compose.yml) recoge cada correo en desarrollo: `make correo/ui`
+SMTP_HOST_PORT=1025
+MAILPIT_UI_PORT=8025
 SMTP_URL=smtp://localhost:1025
 MAIL_FROM=no-reply@snapshot.localhost
 
@@ -29,6 +31,8 @@ DATABASE_URL=postgres://devuser:password@localhost:5432/snapshot
 WORKER_PORT=8081
 
 # Correo — Mailpit (docker-compose.yml) recoge cada correo en desarrollo: `make correo/ui`
+SMTP_HOST_PORT=1025
+MAILPIT_UI_PORT=8025
 SMTP_URL=smtp://localhost:1025
 MAIL_FROM=no-reply@snapshot.localhost
 
@@ -500,7 +504,7 @@ web/require-install:
 		exit 1; \
 	fi
 
-web/dev: web/require-install ## Arranca el servidor de desarrollo del frontend (http://localhost:5173, /api va a :8080)
+web/dev: web/require-install ## Arranca el servidor de desarrollo del frontend (http://localhost:5173, /api va a la API en SERVICE_PORT)
 	@echo "${GREEN}Arrancando el servidor de desarrollo del frontend...${NC}"
 	cd web && $(BUN) run dev
 
@@ -598,7 +602,8 @@ eventos/descartados: docker-compose/up ## Lista los 20 eventos descartados más 
 .PHONY: correo/ui
 
 correo/ui: docker-compose/up ## Dónde llegan los correos enviados en desarrollo (Mailpit)
-	@echo "${GREEN}Mailpit: http://localhost:8025${NC}"
+	@set -a; [ ! -f .env ] || . ./.env; set +a; \
+	echo "${GREEN}Mailpit: http://localhost:$${MAILPIT_UI_PORT:-8025}${NC}"
 
 === contextos/correo/dominio/Cargo.toml ===
 [package]
@@ -4573,8 +4578,8 @@ services:
     image: axllent/mailpit:v1.31.1
     container_name: snapshot-mailpit
     ports:
-      - "1025:1025"
-      - "8025:8025"
+      - "${SMTP_HOST_PORT:-1025}:1025"
+      - "${MAILPIT_UI_PORT:-8025}:8025"
     restart: unless-stopped
 
 volumes:

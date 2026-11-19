@@ -830,6 +830,17 @@ fn template_never_embeds_installed_web_dependencies() {
 }
 
 #[test]
+fn vite_proxies_the_api_on_the_service_port_of_the_root_env() {
+    let vite = crate::TEMPLATE_DIR
+        .get_file("web/vite.config.ts")
+        .and_then(|f| f.contents_utf8())
+        .unwrap();
+    assert!(vite.contains("loadEnv(mode, \"..\", \"\")"), "{vite}");
+    assert!(vite.contains("SERVICE_PORT"), "{vite}");
+    assert!(!vite.contains("localhost:8080"), "{vite}");
+}
+
+#[test]
 fn makefile_runs_the_frontend_checks_when_web_exists() {
     let dir = temp_dir("web_makefile");
     cleanup(&dir);
