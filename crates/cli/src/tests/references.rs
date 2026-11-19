@@ -1087,6 +1087,59 @@ fn should_offer_one_targets_items_while_the_fake_api_answers_the_other_with_a_40
 }
 
 #[test]
+fn should_name_each_reference_of_a_list_by_its_label() {
+    // 27.7: the detail named a reference by its label (20.6), the list still showed the UUID.
+    let (dir, output) = pedido_project("references_web_list", false, false);
+
+    let container = read(
+        &output,
+        &format!("{PEDIDO_WEB}/contenedores/lista-pedido.tsx"),
+    );
+    // Once per target, the first page as the form's selects: whatever the number of references.
+    assert_eq!(
+        container
+            .matches(r#"const clientes = useCarga(() => desenvolver(api.GET("/clientes", PRIMERA_PAGINA)), [api]);"#)
+            .count(),
+        1,
+        "{container}"
+    );
+    assert!(
+        container.contains(r#"const etiquetasCliente = etiquetasReferencia(clientes, "nombre");"#),
+        "{container}"
+    );
+    let view = read(&output, &format!("{PEDIDO_WEB}/vistas/lista-pedido.tsx"));
+    // 16 columns in: past the line width, so one attribute per line.
+    assert!(
+        view.contains(
+            "<EnlaceReferencia\n                  ruta=\"/clientes\"\n                  id={pedido.clienteId}\n                  etiquetas={etiquetasCliente}\n                />"
+        ),
+        "{view}"
+    );
+    assert!(
+        view.contains("etiquetasCliente: Map<string, string>;"),
+        "{view}"
+    );
+    assert!(!view.contains("useDependencias"), "{view}");
+    let test = read(
+        &output,
+        &format!("{PEDIDO_WEB}/contenedores/lista-pedido.test.tsx"),
+    );
+    for name in [
+        "test(\"debería nombrar Cliente por su etiqueta\"",
+        "test(\"debería nombrar Reviewer por su etiqueta\"",
+        "test(\"debería nombrar Cliente por su id cuando no se puede cargar\"",
+    ] {
+        assert!(test.contains(name), "{test}");
+    }
+    let forms = read(&output, "web/src/compartido/formularios.ts");
+    assert!(
+        forms.contains("export function etiquetasReferencia<"),
+        "{forms}"
+    );
+    cleanup(&dir);
+}
+
+#[test]
 fn should_link_a_reference_to_its_target_and_say_when_it_is_missing() {
     let (dir, output) = pedido_project("references_web_detail", false, false);
 

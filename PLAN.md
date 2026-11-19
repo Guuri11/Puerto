@@ -3794,7 +3794,7 @@ la de `puerto.toml`), el parser y `validar` de `etiqueta`, snapshots.
 la zona horaria de quien lee. Test (`formularios.test.ts`): la fecha sale en castellano aunque
 `navigator.language` sea `en-US`.
 
-### 27.7 — Las listas muestran la etiqueta de cada referencia
+### 27.7 — Las listas muestran la etiqueta de cada referencia ✅
 
 La lista pinta el UUID; el detalle ya pinta la etiqueta (20.6). El contenedor de la lista carga cada
 objetivo una vez (`LIMITE_PAGINA_MAXIMO`, como `opcionesReferencia` del formulario) y la vista

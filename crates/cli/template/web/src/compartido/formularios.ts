@@ -96,3 +96,18 @@ export function opcionesReferencia<T extends { id: string }>(
       }))
     : [];
 }
+
+/**
+ * La etiqueta de cada objetivo cargado (su `campo`), por id: lo que nombra sus referencias en una
+ * lista. Ninguna hasta que se cargan, ni si la carga falla: cada enlace muestra entonces el id.
+ */
+export function etiquetasReferencia<T extends { id: string }>(
+  cargados:
+    | { estado: "cargando" }
+    | { estado: "error" }
+    | { estado: "listo"; datos: { elementos: T[] } },
+  campo: keyof T,
+): Map<string, string> {
+  const opciones = opcionesReferencia(cargados, (elemento) => String(elemento[campo]));
+  return new Map(opciones.map((opcion) => [opcion.id, opcion.etiqueta]));
+}

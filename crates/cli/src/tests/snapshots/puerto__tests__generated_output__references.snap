@@ -8477,7 +8477,9 @@ function FormularioEnvio({ existente }: { existente: Envio | null }) {
 import { describe, expect, test } from "bun:test";
 import { fireEvent, screen } from "@testing-library/react";
 import { apiFalsa } from "../../../pruebas/api-falsa";
+import { coleccionCliente, MadreCliente } from "../../../pruebas/cliente";
 import { coleccionEnvio, MadreEnvio } from "../../../pruebas/envio";
+import { coleccionPedido, MadrePedido } from "../../../pruebas/pedido";
 import { renderizarPantalla } from "../../../pruebas/renderizar";
 import { ContenedorListaEnvio } from "./lista-envio";
 
@@ -8544,17 +8546,62 @@ describe("ContenedorListaEnvio", () => {
     // Comprobar
     expect((await screen.findByRole("alert")).textContent).toBe("envio.repositorio");
   });
+
+  test("debería nombrar Pedido por su etiqueta", async () => {
+    // Preparar
+    const sembrado = MadreEnvio.aleatorio();
+    const objetivo = MadrePedido.aleatorio({ id: sembrado.pedidoId });
+    const api = apiFalsa([coleccionEnvio([sembrado]), coleccionPedido([objetivo])]);
+
+    // Actuar
+    renderizarPantalla(<ContenedorListaEnvio />, { api });
+
+    // Comprobar: por su href; dos referencias al mismo objetivo pueden tener la misma etiqueta.
+    const selector = `a[href="/pedidos/${sembrado.pedidoId}"]`;
+    expect(await screen.findByText(objetivo.id, { selector })).toBeTruthy();
+  });
+
+  test("debería nombrar Destinatario por su etiqueta", async () => {
+    // Preparar
+    const sembrado = MadreEnvio.aleatorio();
+    const objetivo = MadreCliente.aleatorio({ id: sembrado.destinatarioId ?? crypto.randomUUID() });
+    const api = apiFalsa([coleccionEnvio([sembrado]), coleccionCliente([objetivo])]);
+
+    // Actuar
+    renderizarPantalla(<ContenedorListaEnvio />, { api });
+
+    // Comprobar: por su href; dos referencias al mismo objetivo pueden tener la misma etiqueta.
+    const selector = `a[href="/clientes/${sembrado.destinatarioId}"]`;
+    expect(await screen.findByText(objetivo.name, { selector })).toBeTruthy();
+  });
+
+  test("debería nombrar Pedido por su id cuando no se puede cargar", async () => {
+    // Preparar: sin Pedido en la API falsa, su lista responde un 404.
+    const sembrado = MadreEnvio.aleatorio();
+    const api = apiFalsa([coleccionEnvio([sembrado])]);
+
+    // Actuar
+    renderizarPantalla(<ContenedorListaEnvio />, { api });
+
+    // Comprobar
+    const selector = `a[href="/pedidos/${sembrado.pedidoId}"]`;
+    expect(await screen.findByText(`${sembrado.pedidoId}`, { selector })).toBeTruthy();
+  });
 });
 
 === web/src/contextos/envio/contenedores/lista-envio.tsx ===
 import { Link, useLocation, useSearch } from "wouter";
-import { desenvolver, TAMANO_PAGINA } from "../../../api/http";
+import { desenvolver, LIMITE_PAGINA_MAXIMO, TAMANO_PAGINA } from "../../../api/http";
+import { etiquetasReferencia } from "../../../compartido/formularios";
 import { AlertaError } from "../../../compartido/ui/alerta-error";
 import { busquedaPagina, desplazamientoDeUrl, Paginacion } from "../../../compartido/ui/paginacion";
 import { SinElementos } from "../../../compartido/ui/sin-elementos";
 import { useCarga } from "../../../compartido/use-carga";
 import { useDependencias } from "../../../dependencias";
 import { VistaListaEnvio } from "../vistas/lista-envio";
+
+/** La primera página de cada entidad referenciada: las etiquetas de sus enlaces. */
+const PRIMERA_PAGINA = { params: { query: { limite: LIMITE_PAGINA_MAXIMO } } };
 
 /** La lista, página a página; la página va en la URL (`?pagina=2`): recargar y volver la mantienen. */
 export function ContenedorListaEnvio() {
@@ -8567,6 +8614,10 @@ export function ContenedorListaEnvio() {
     () => desenvolver(api.GET("/envios", { params: { query: consulta } })),
     [api, desplazamiento],
   );
+  const pedidos = useCarga(() => desenvolver(api.GET("/pedidos", PRIMERA_PAGINA)), [api]);
+  const etiquetasPedido = etiquetasReferencia(pedidos, "id");
+  const clientes = useCarga(() => desenvolver(api.GET("/clientes", PRIMERA_PAGINA)), [api]);
+  const etiquetasCliente = etiquetasReferencia(clientes, "name");
 
   return (
     <section className="space-y-4">
@@ -8583,7 +8634,11 @@ export function ContenedorListaEnvio() {
           <SinElementos mensaje="Todavía no hay envios." />
         ) : (
           <>
-            <VistaListaEnvio envios={envios.datos.elementos} />
+            <VistaListaEnvio
+              envios={envios.datos.elementos}
+              etiquetasPedido={etiquetasPedido}
+              etiquetasCliente={etiquetasCliente}
+            />
             <Paginacion
               total={envios.datos.total}
               limite={envios.datos.limite}
@@ -8788,10 +8843,20 @@ export function VistaFormularioEnvio({
 === web/src/contextos/envio/vistas/lista-envio.tsx ===
 import { Link } from "wouter";
 import type { Esquemas } from "../../../api/cliente";
+import { EnlaceReferencia } from "../../../compartido/ui/enlace-referencia";
 
 type Envio = Esquemas["DtoEnvio"];
 
-export function VistaListaEnvio({ envios }: { envios: Envio[] }) {
+/** Los `envios`, y la etiqueta de cada elemento que referencian, para sus enlaces. */
+export function VistaListaEnvio({
+  envios,
+  etiquetasPedido,
+  etiquetasCliente,
+}: {
+  envios: Envio[];
+  etiquetasPedido: Map<string, string>;
+  etiquetasCliente: Map<string, string>;
+}) {
   return (
     <div className="overflow-x-auto rounded-box bg-base-100">
       <table className="table">
@@ -8806,8 +8871,16 @@ export function VistaListaEnvio({ envios }: { envios: Envio[] }) {
         <tbody>
           {envios.map((envio) => (
             <tr key={envio.id}>
-              <td>{envio.pedidoId}</td>
-              <td>{envio.destinatarioId ?? "—"}</td>
+              <td>
+                <EnlaceReferencia ruta="/pedidos" id={envio.pedidoId} etiquetas={etiquetasPedido} />
+              </td>
+              <td>
+                <EnlaceReferencia
+                  ruta="/clientes"
+                  id={envio.destinatarioId}
+                  etiquetas={etiquetasCliente}
+                />
+              </td>
               <td>{envio.carrier}</td>
               <td className="text-right">
                 <Link href={`/envios/${envio.id}`} className="link">
@@ -9215,6 +9288,7 @@ function FormularioPedido({ existente }: { existente: Pedido | null }) {
 import { describe, expect, test } from "bun:test";
 import { fireEvent, screen } from "@testing-library/react";
 import { apiFalsa } from "../../../pruebas/api-falsa";
+import { coleccionCliente, MadreCliente } from "../../../pruebas/cliente";
 import { coleccionPedido, MadrePedido } from "../../../pruebas/pedido";
 import { renderizarPantalla } from "../../../pruebas/renderizar";
 import { ContenedorListaPedido } from "./lista-pedido";
@@ -9282,17 +9356,62 @@ describe("ContenedorListaPedido", () => {
     // Comprobar
     expect((await screen.findByRole("alert")).textContent).toBe("pedido.repositorio");
   });
+
+  test("debería nombrar Cliente por su etiqueta", async () => {
+    // Preparar
+    const sembrado = MadrePedido.aleatorio();
+    const objetivo = MadreCliente.aleatorio({ id: sembrado.clienteId });
+    const api = apiFalsa([coleccionPedido([sembrado]), coleccionCliente([objetivo])]);
+
+    // Actuar
+    renderizarPantalla(<ContenedorListaPedido />, { api });
+
+    // Comprobar: por su href; dos referencias al mismo objetivo pueden tener la misma etiqueta.
+    const selector = `a[href="/clientes/${sembrado.clienteId}"]`;
+    expect(await screen.findByText(objetivo.name, { selector })).toBeTruthy();
+  });
+
+  test("debería nombrar Reviewer por su etiqueta", async () => {
+    // Preparar
+    const sembrado = MadrePedido.aleatorio();
+    const objetivo = MadreCliente.aleatorio({ id: sembrado.reviewerId ?? crypto.randomUUID() });
+    const api = apiFalsa([coleccionPedido([sembrado]), coleccionCliente([objetivo])]);
+
+    // Actuar
+    renderizarPantalla(<ContenedorListaPedido />, { api });
+
+    // Comprobar: por su href; dos referencias al mismo objetivo pueden tener la misma etiqueta.
+    const selector = `a[href="/clientes/${sembrado.reviewerId}"]`;
+    expect(await screen.findByText(objetivo.name, { selector })).toBeTruthy();
+  });
+
+  test("debería nombrar Cliente por su id cuando no se puede cargar", async () => {
+    // Preparar: sin Cliente en la API falsa, su lista responde un 404.
+    const sembrado = MadrePedido.aleatorio();
+    const api = apiFalsa([coleccionPedido([sembrado])]);
+
+    // Actuar
+    renderizarPantalla(<ContenedorListaPedido />, { api });
+
+    // Comprobar
+    const selector = `a[href="/clientes/${sembrado.clienteId}"]`;
+    expect(await screen.findByText(`${sembrado.clienteId}`, { selector })).toBeTruthy();
+  });
 });
 
 === web/src/contextos/pedido/contenedores/lista-pedido.tsx ===
 import { Link, useLocation, useSearch } from "wouter";
-import { desenvolver, TAMANO_PAGINA } from "../../../api/http";
+import { desenvolver, LIMITE_PAGINA_MAXIMO, TAMANO_PAGINA } from "../../../api/http";
+import { etiquetasReferencia } from "../../../compartido/formularios";
 import { AlertaError } from "../../../compartido/ui/alerta-error";
 import { busquedaPagina, desplazamientoDeUrl, Paginacion } from "../../../compartido/ui/paginacion";
 import { SinElementos } from "../../../compartido/ui/sin-elementos";
 import { useCarga } from "../../../compartido/use-carga";
 import { useDependencias } from "../../../dependencias";
 import { VistaListaPedido } from "../vistas/lista-pedido";
+
+/** La primera página de cada entidad referenciada: las etiquetas de sus enlaces. */
+const PRIMERA_PAGINA = { params: { query: { limite: LIMITE_PAGINA_MAXIMO } } };
 
 /** La lista, página a página; la página va en la URL (`?pagina=2`): recargar y volver la mantienen. */
 export function ContenedorListaPedido() {
@@ -9305,6 +9424,8 @@ export function ContenedorListaPedido() {
     () => desenvolver(api.GET("/pedidos", { params: { query: consulta } })),
     [api, desplazamiento],
   );
+  const clientes = useCarga(() => desenvolver(api.GET("/clientes", PRIMERA_PAGINA)), [api]);
+  const etiquetasCliente = etiquetasReferencia(clientes, "name");
 
   return (
     <section className="space-y-4">
@@ -9321,7 +9442,10 @@ export function ContenedorListaPedido() {
           <SinElementos mensaje="Todavía no hay pedidos." />
         ) : (
           <>
-            <VistaListaPedido pedidos={pedidos.datos.elementos} />
+            <VistaListaPedido
+              pedidos={pedidos.datos.elementos}
+              etiquetasCliente={etiquetasCliente}
+            />
             <Paginacion
               total={pedidos.datos.total}
               limite={pedidos.datos.limite}
@@ -9522,10 +9646,18 @@ export function VistaFormularioPedido({
 === web/src/contextos/pedido/vistas/lista-pedido.tsx ===
 import { Link } from "wouter";
 import type { Esquemas } from "../../../api/cliente";
+import { EnlaceReferencia } from "../../../compartido/ui/enlace-referencia";
 
 type Pedido = Esquemas["DtoPedido"];
 
-export function VistaListaPedido({ pedidos }: { pedidos: Pedido[] }) {
+/** Los `pedidos`, y la etiqueta de cada elemento que referencian, para sus enlaces. */
+export function VistaListaPedido({
+  pedidos,
+  etiquetasCliente,
+}: {
+  pedidos: Pedido[];
+  etiquetasCliente: Map<string, string>;
+}) {
   return (
     <div className="overflow-x-auto rounded-box bg-base-100">
       <table className="table">
@@ -9540,8 +9672,20 @@ export function VistaListaPedido({ pedidos }: { pedidos: Pedido[] }) {
         <tbody>
           {pedidos.map((pedido) => (
             <tr key={pedido.id}>
-              <td>{pedido.clienteId}</td>
-              <td>{pedido.reviewerId ?? "—"}</td>
+              <td>
+                <EnlaceReferencia
+                  ruta="/clientes"
+                  id={pedido.clienteId}
+                  etiquetas={etiquetasCliente}
+                />
+              </td>
+              <td>
+                <EnlaceReferencia
+                  ruta="/clientes"
+                  id={pedido.reviewerId}
+                  etiquetas={etiquetasCliente}
+                />
+              </td>
               <td>{pedido.total}</td>
               <td className="text-right">
                 <Link href={`/pedidos/${pedido.id}`} className="link">

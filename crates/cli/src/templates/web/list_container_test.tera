@@ -4,6 +4,9 @@ import { apiFalsa } from "../../../pruebas/api-falsa";
 {% if access.create_roles -%}
 import { MadreUsuarioActual } from "../../../pruebas/auth";
 {% endif -%}
+{% for t in targets -%}
+import { coleccion{{ t.pascal }}, Madre{{ t.pascal }} } from "../../../pruebas/{{ t.kebab }}";
+{% endfor -%}
 import { coleccion{{ pascal }}, Madre{{ pascal }} } from "../../../pruebas/{{ kebab }}";
 import { renderizarPantalla } from "../../../pruebas/renderizar";
 import { ContenedorLista{{ pascal }} } from "./lista-{{ kebab }}";
@@ -86,4 +89,48 @@ describe("ContenedorLista{{ pascal }}", () => {
     expect(screen.queryByText("Crear {{ words }}")).toBeNull();
   });
 {%- endif %}
+{%- for r in references %}
+
+  test("debería nombrar {{ r.label }} por su etiqueta", async () => {
+    // Preparar
+    const sembrado = Madre{{ pascal }}.aleatorio();
+{%- if r.target_inline %}
+    const objetivo = Madre{{ r.target_pascal }}.aleatorio({ id: sembrado.{{ r.camel }}{% if not r.required %} ?? crypto.randomUUID(){% endif %} });
+{%- else %}
+    const objetivo = Madre{{ r.target_pascal }}.aleatorio({
+      id: sembrado.{{ r.camel }}{% if not r.required %} ?? crypto.randomUUID(){% endif %},
+    });
+{%- endif %}
+{%- if r.api_inline %}
+    const api = apiFalsa([coleccion{{ pascal }}([sembrado]), coleccion{{ r.target_pascal }}([objetivo])]);
+{%- else %}
+    const api = apiFalsa([
+      coleccion{{ pascal }}([sembrado]),
+      coleccion{{ r.target_pascal }}([objetivo]),
+    ]);
+{%- endif %}
+
+    // Actuar
+    renderizarPantalla(<ContenedorLista{{ pascal }} />, { api });
+
+    // Comprobar: por su href; dos referencias al mismo objetivo pueden tener la misma etiqueta.
+    const selector = `a[href="{{ r.ref_path }}/${sembrado.{{ r.camel }}}"]`;
+    expect(await screen.findByText(objetivo.{{ r.target_label }}, { selector })).toBeTruthy();
+  });
+{%- endfor %}
+{%- for r in references %}{% if loop.first %}
+
+  test("debería nombrar {{ r.label }} por su id cuando no se puede cargar", async () => {
+    // Preparar: sin {{ r.target_pascal }} en la API falsa, su lista responde un 404.
+    const sembrado = Madre{{ pascal }}.aleatorio();
+    const api = apiFalsa([coleccion{{ pascal }}([sembrado])]);
+
+    // Actuar
+    renderizarPantalla(<ContenedorLista{{ pascal }} />, { api });
+
+    // Comprobar
+    const selector = `a[href="{{ r.ref_path }}/${sembrado.{{ r.camel }}}"]`;
+    expect(await screen.findByText(`${sembrado.{{ r.camel }}}`, { selector })).toBeTruthy();
+  });
+{%- endif %}{% endfor %}
 });

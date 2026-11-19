@@ -8262,6 +8262,7 @@ function FormularioJugador({ existente }: { existente: Jugador | null }) {
 import { describe, expect, test } from "bun:test";
 import { fireEvent, screen } from "@testing-library/react";
 import { apiFalsa } from "../../../pruebas/api-falsa";
+import { coleccionEquipo, MadreEquipo } from "../../../pruebas/equipo";
 import { coleccionJugador, MadreJugador } from "../../../pruebas/jugador";
 import { renderizarPantalla } from "../../../pruebas/renderizar";
 import { ContenedorListaJugador } from "./lista-jugador";
@@ -8329,17 +8330,48 @@ describe("ContenedorListaJugador", () => {
     // Comprobar
     expect((await screen.findByRole("alert")).textContent).toBe("jugador.repositorio");
   });
+
+  test("debería nombrar Equipo por su etiqueta", async () => {
+    // Preparar
+    const sembrado = MadreJugador.aleatorio();
+    const objetivo = MadreEquipo.aleatorio({ id: sembrado.equipoId });
+    const api = apiFalsa([coleccionJugador([sembrado]), coleccionEquipo([objetivo])]);
+
+    // Actuar
+    renderizarPantalla(<ContenedorListaJugador />, { api });
+
+    // Comprobar: por su href; dos referencias al mismo objetivo pueden tener la misma etiqueta.
+    const selector = `a[href="/equipos/${sembrado.equipoId}"]`;
+    expect(await screen.findByText(objetivo.nombre, { selector })).toBeTruthy();
+  });
+
+  test("debería nombrar Equipo por su id cuando no se puede cargar", async () => {
+    // Preparar: sin Equipo en la API falsa, su lista responde un 404.
+    const sembrado = MadreJugador.aleatorio();
+    const api = apiFalsa([coleccionJugador([sembrado])]);
+
+    // Actuar
+    renderizarPantalla(<ContenedorListaJugador />, { api });
+
+    // Comprobar
+    const selector = `a[href="/equipos/${sembrado.equipoId}"]`;
+    expect(await screen.findByText(`${sembrado.equipoId}`, { selector })).toBeTruthy();
+  });
 });
 
 === web/src/contextos/jugador/contenedores/lista-jugador.tsx ===
 import { Link, useLocation, useSearch } from "wouter";
-import { desenvolver, TAMANO_PAGINA } from "../../../api/http";
+import { desenvolver, LIMITE_PAGINA_MAXIMO, TAMANO_PAGINA } from "../../../api/http";
+import { etiquetasReferencia } from "../../../compartido/formularios";
 import { AlertaError } from "../../../compartido/ui/alerta-error";
 import { busquedaPagina, desplazamientoDeUrl, Paginacion } from "../../../compartido/ui/paginacion";
 import { SinElementos } from "../../../compartido/ui/sin-elementos";
 import { useCarga } from "../../../compartido/use-carga";
 import { useDependencias } from "../../../dependencias";
 import { VistaListaJugador } from "../vistas/lista-jugador";
+
+/** La primera página de cada entidad referenciada: las etiquetas de sus enlaces. */
+const PRIMERA_PAGINA = { params: { query: { limite: LIMITE_PAGINA_MAXIMO } } };
 
 /** La lista, página a página; la página va en la URL (`?pagina=2`): recargar y volver la mantienen. */
 export function ContenedorListaJugador() {
@@ -8352,6 +8384,8 @@ export function ContenedorListaJugador() {
     () => desenvolver(api.GET("/jugadores", { params: { query: consulta } })),
     [api, desplazamiento],
   );
+  const equipos = useCarga(() => desenvolver(api.GET("/equipos", PRIMERA_PAGINA)), [api]);
+  const etiquetasEquipo = etiquetasReferencia(equipos, "nombre");
 
   return (
     <section className="space-y-4">
@@ -8368,7 +8402,10 @@ export function ContenedorListaJugador() {
           <SinElementos mensaje="Todavía no hay jugadores." />
         ) : (
           <>
-            <VistaListaJugador jugadores={jugadores.datos.elementos} />
+            <VistaListaJugador
+              jugadores={jugadores.datos.elementos}
+              etiquetasEquipo={etiquetasEquipo}
+            />
             <Paginacion
               total={jugadores.datos.total}
               limite={jugadores.datos.limite}
@@ -8561,10 +8598,18 @@ export function VistaFormularioJugador({
 === web/src/contextos/jugador/vistas/lista-jugador.tsx ===
 import { Link } from "wouter";
 import type { Esquemas } from "../../../api/cliente";
+import { EnlaceReferencia } from "../../../compartido/ui/enlace-referencia";
 
 type Jugador = Esquemas["DtoJugador"];
 
-export function VistaListaJugador({ jugadores }: { jugadores: Jugador[] }) {
+/** Los `jugadores`, y la etiqueta de cada elemento que referencian, para sus enlaces. */
+export function VistaListaJugador({
+  jugadores,
+  etiquetasEquipo,
+}: {
+  jugadores: Jugador[];
+  etiquetasEquipo: Map<string, string>;
+}) {
   return (
     <div className="overflow-x-auto rounded-box bg-base-100">
       <table className="table">
@@ -8579,7 +8624,13 @@ export function VistaListaJugador({ jugadores }: { jugadores: Jugador[] }) {
         <tbody>
           {jugadores.map((jugador) => (
             <tr key={jugador.id}>
-              <td>{jugador.equipoId}</td>
+              <td>
+                <EnlaceReferencia
+                  ruta="/equipos"
+                  id={jugador.equipoId}
+                  etiquetas={etiquetasEquipo}
+                />
+              </td>
               <td>{jugador.dorsal}</td>
               <td>{jugador.email}</td>
               <td className="text-right">

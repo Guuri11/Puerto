@@ -258,6 +258,8 @@ struct WebTargetCtx {
     seeds: Vec<String>,
     /// `coleccion{Target}([…seeds]),` fits on one line.
     seeds_inline: bool,
+    /// The list's `const etiquetas{Target} = etiquetasReferencia(…);` fits on one line.
+    labels_inline: bool,
 }
 
 /// A reference as the detail screen shows it (Phase 20.6): a link named by its target's label,
@@ -274,8 +276,9 @@ struct WebReferenceCtx {
     target_label: String,
     /// What the detail view calls to name it: `etiquetaCliente`.
     loader: String,
-    /// The view's `<EnlaceReferencia … />` fits on one line.
+    /// The detail view's `<EnlaceReferencia … />` fits on one line, and the list view's.
     link_inline: bool,
+    list_link_inline: bool,
     /// The detail test's `const objetivo = Madre….aleatorio({ id: … });` fits on one line, and so
     /// does its `const api = apiFalsa([…]);`.
     target_inline: bool,
@@ -312,6 +315,10 @@ fn web_targets(fields: &[Field], config: Option<&PuertoConfig>) -> Vec<WebTarget
             "  const {} = useCarga(() => desenvolver(api.GET(\"/{}\", PRIMERA_PAGINA)), [api]);",
             entity.plural_ident, entity.plural
         ));
+        let labels_inline = fits(&format!(
+            "  const etiquetas{} = etiquetasReferencia({}, \"{label}\");",
+            entity.pascal, entity.plural_ident
+        ));
         targets.push(WebTargetCtx {
             entity,
             label,
@@ -319,6 +326,7 @@ fn web_targets(fields: &[Field], config: Option<&PuertoConfig>) -> Vec<WebTarget
             load_inline,
             seeds: vec![seed],
             seeds_inline: false,
+            labels_inline,
         });
     }
     for t in &mut targets {
@@ -355,6 +363,10 @@ fn web_references(
                 link_inline: fits(&format!(
                     "        <EnlaceReferencia ruta=\"{}\" id={{{}.{}}} cargar={{{loader}}} />",
                     web.ref_path, entity.ident, web.camel
+                )),
+                list_link_inline: fits(&format!(
+                    "                <EnlaceReferencia ruta=\"{}\" id={{{}.{}}} etiquetas={{etiquetas{}}} />",
+                    web.ref_path, entity.ident, web.camel, target.entity.pascal
                 )),
                 target_inline: fits(&format!(
                     "    const objetivo = Madre{}.aleatorio({{ id: sembrado.{}{fallback} }});",
@@ -429,6 +441,19 @@ fn entity_template_ctx(
         &fits(&format!(
             "  const {} = useCarga(() => desenvolver(api.GET(\"/{}\", {{ params: {{ query: consulta }} }})), [api, desplazamiento]);",
             entity.plural_ident, entity.plural
+        )),
+    );
+    ctx.insert(
+        "list_view_inline",
+        &fits(&format!(
+            "            <VistaLista{} {}={{{}.datos.elementos}}{} />",
+            entity.pascal,
+            entity.plural_ident,
+            entity.plural_ident,
+            targets
+                .iter()
+                .map(|t| format!(" etiquetas{0}={{etiquetas{0}}}", t.entity.pascal))
+                .collect::<String>()
         )),
     );
     ctx.insert(

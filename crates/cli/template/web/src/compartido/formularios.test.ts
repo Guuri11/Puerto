@@ -3,6 +3,7 @@ import {
   aFechaHoraLocal,
   booleanoOpcional,
   deFechaHoraLocal,
+  etiquetasReferencia,
   fechaHoraOpcional,
   formatearEntradas,
   formatearFechaHora,
@@ -77,5 +78,12 @@ describe("formularios", () => {
       { id: "c1", etiqueta: "Ana" },
     ]);
     expect(opcionesReferencia({ estado: "cargando" }, (e: { id: string }) => e.id)).toEqual([]);
+  });
+
+  test("debería dar la etiqueta de cada objetivo por su id en cuanto se cargan", () => {
+    const datos = { elementos: [{ id: "c1", nombre: "Ana" }] };
+    expect(etiquetasReferencia({ estado: "listo", datos }, "nombre").get("c1")).toBe("Ana");
+    expect(etiquetasReferencia({ estado: "cargando" }, "id").size).toBe(0);
+    expect(etiquetasReferencia({ estado: "error" }, "id").size).toBe(0);
   });
 });

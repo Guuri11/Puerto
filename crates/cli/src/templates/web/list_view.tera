@@ -1,12 +1,30 @@
 import { Link } from "wouter";
 import type { Esquemas } from "../../../api/cliente";
+{%- if targets %}
+import { EnlaceReferencia } from "../../../compartido/ui/enlace-referencia";
+{%- endif %}
 {%- if display_helpers %}
 import { {{ display_helpers | join(sep=", ") }} } from "../../../compartido/formularios";
 {%- endif %}
 
 type {{ pascal }} = Esquemas["Dto{{ pascal }}"];
 
+{% if targets -%}
+/** Los `{{ plural_ident }}`, y la etiqueta de cada elemento que referencian, para sus enlaces. */
+export function VistaLista{{ pascal }}({
+  {{ plural_ident }},
+{%- for t in targets %}
+  etiquetas{{ t.pascal }},
+{%- endfor %}
+}: {
+  {{ plural_ident }}: {{ pascal }}[];
+{%- for t in targets %}
+  etiquetas{{ t.pascal }}: Map<string, string>;
+{%- endfor %}
+}) {
+{%- else -%}
 export function VistaLista{{ pascal }}({ {{ plural_ident }} }: { {{ plural_ident }}: {{ pascal }}[] }) {
+{%- endif %}
   return (
     <div className="overflow-x-auto rounded-box bg-base-100">
       <table className="table">
@@ -22,7 +40,23 @@ export function VistaLista{{ pascal }}({ {{ plural_ident }} }: { {{ plural_ident
           {{ "{" }}{{ plural_ident }}.map(({{ ident }}) => (
             <tr key={{ "{" }}{{ ident }}.id}>
 {%- for f in fields %}
+{%- if f.input == "reference" %}
+{%- for r in references %}{% if r.camel == f.camel %}
+              <td>
+{%- if r.list_link_inline %}
+                <EnlaceReferencia ruta="{{ r.ref_path }}" id={{ "{" }}{{ ident }}.{{ r.camel }}} etiquetas={etiquetas{{ r.target_pascal }}} />
+{%- else %}
+                <EnlaceReferencia
+                  ruta="{{ r.ref_path }}"
+                  id={{ "{" }}{{ ident }}.{{ r.camel }}}
+                  etiquetas={etiquetas{{ r.target_pascal }}}
+                />
+{%- endif %}
+              </td>
+{%- endif %}{% endfor %}
+{%- else %}
               <td>{{ "{" }}{{ f.display }}}</td>
+{%- endif %}
 {%- endfor %}
               <td className="text-right">
                 <Link href={`/{{ plural }}/${{ "{" }}{{ ident }}.id}`} className="link">

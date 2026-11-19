@@ -10628,6 +10628,7 @@ import { describe, expect, test } from "bun:test";
 import { fireEvent, screen } from "@testing-library/react";
 import { apiFalsa } from "../../../pruebas/api-falsa";
 import { coleccionCompra, MadreCompra } from "../../../pruebas/compra";
+import { coleccionProveedor, MadreProveedor } from "../../../pruebas/proveedor";
 import { renderizarPantalla } from "../../../pruebas/renderizar";
 import { ContenedorListaCompra } from "./lista-compra";
 
@@ -10694,17 +10695,62 @@ describe("ContenedorListaCompra", () => {
     // Comprobar
     expect((await screen.findByRole("alert")).textContent).toBe("compra.repositorio");
   });
+
+  test("debería nombrar Proveedor por su etiqueta", async () => {
+    // Preparar
+    const sembrado = MadreCompra.aleatorio();
+    const objetivo = MadreProveedor.aleatorio({ id: sembrado.proveedorId });
+    const api = apiFalsa([coleccionCompra([sembrado]), coleccionProveedor([objetivo])]);
+
+    // Actuar
+    renderizarPantalla(<ContenedorListaCompra />, { api });
+
+    // Comprobar: por su href; dos referencias al mismo objetivo pueden tener la misma etiqueta.
+    const selector = `a[href="/proveedores/${sembrado.proveedorId}"]`;
+    expect(await screen.findByText(objetivo.name, { selector })).toBeTruthy();
+  });
+
+  test("debería nombrar Approver por su etiqueta", async () => {
+    // Preparar
+    const sembrado = MadreCompra.aleatorio();
+    const objetivo = MadreProveedor.aleatorio({ id: sembrado.approverId ?? crypto.randomUUID() });
+    const api = apiFalsa([coleccionCompra([sembrado]), coleccionProveedor([objetivo])]);
+
+    // Actuar
+    renderizarPantalla(<ContenedorListaCompra />, { api });
+
+    // Comprobar: por su href; dos referencias al mismo objetivo pueden tener la misma etiqueta.
+    const selector = `a[href="/proveedores/${sembrado.approverId}"]`;
+    expect(await screen.findByText(objetivo.name, { selector })).toBeTruthy();
+  });
+
+  test("debería nombrar Proveedor por su id cuando no se puede cargar", async () => {
+    // Preparar: sin Proveedor en la API falsa, su lista responde un 404.
+    const sembrado = MadreCompra.aleatorio();
+    const api = apiFalsa([coleccionCompra([sembrado])]);
+
+    // Actuar
+    renderizarPantalla(<ContenedorListaCompra />, { api });
+
+    // Comprobar
+    const selector = `a[href="/proveedores/${sembrado.proveedorId}"]`;
+    expect(await screen.findByText(`${sembrado.proveedorId}`, { selector })).toBeTruthy();
+  });
 });
 
 === web/src/contextos/compra/contenedores/lista-compra.tsx ===
 import { Link, useLocation, useSearch } from "wouter";
-import { desenvolver, TAMANO_PAGINA } from "../../../api/http";
+import { desenvolver, LIMITE_PAGINA_MAXIMO, TAMANO_PAGINA } from "../../../api/http";
+import { etiquetasReferencia } from "../../../compartido/formularios";
 import { AlertaError } from "../../../compartido/ui/alerta-error";
 import { busquedaPagina, desplazamientoDeUrl, Paginacion } from "../../../compartido/ui/paginacion";
 import { SinElementos } from "../../../compartido/ui/sin-elementos";
 import { useCarga } from "../../../compartido/use-carga";
 import { useDependencias } from "../../../dependencias";
 import { VistaListaCompra } from "../vistas/lista-compra";
+
+/** La primera página de cada entidad referenciada: las etiquetas de sus enlaces. */
+const PRIMERA_PAGINA = { params: { query: { limite: LIMITE_PAGINA_MAXIMO } } };
 
 /** La lista, página a página; la página va en la URL (`?pagina=2`): recargar y volver la mantienen. */
 export function ContenedorListaCompra() {
@@ -10717,6 +10763,8 @@ export function ContenedorListaCompra() {
     () => desenvolver(api.GET("/compras", { params: { query: consulta } })),
     [api, desplazamiento],
   );
+  const proveedores = useCarga(() => desenvolver(api.GET("/proveedores", PRIMERA_PAGINA)), [api]);
+  const etiquetasProveedor = etiquetasReferencia(proveedores, "name");
 
   return (
     <section className="space-y-4">
@@ -10733,7 +10781,10 @@ export function ContenedorListaCompra() {
           <SinElementos mensaje="Todavía no hay compras." />
         ) : (
           <>
-            <VistaListaCompra compras={compras.datos.elementos} />
+            <VistaListaCompra
+              compras={compras.datos.elementos}
+              etiquetasProveedor={etiquetasProveedor}
+            />
             <Paginacion
               total={compras.datos.total}
               limite={compras.datos.limite}
@@ -10934,10 +10985,18 @@ export function VistaFormularioCompra({
 === web/src/contextos/compra/vistas/lista-compra.tsx ===
 import { Link } from "wouter";
 import type { Esquemas } from "../../../api/cliente";
+import { EnlaceReferencia } from "../../../compartido/ui/enlace-referencia";
 
 type Compra = Esquemas["DtoCompra"];
 
-export function VistaListaCompra({ compras }: { compras: Compra[] }) {
+/** Los `compras`, y la etiqueta de cada elemento que referencian, para sus enlaces. */
+export function VistaListaCompra({
+  compras,
+  etiquetasProveedor,
+}: {
+  compras: Compra[];
+  etiquetasProveedor: Map<string, string>;
+}) {
   return (
     <div className="overflow-x-auto rounded-box bg-base-100">
       <table className="table">
@@ -10952,8 +11011,20 @@ export function VistaListaCompra({ compras }: { compras: Compra[] }) {
         <tbody>
           {compras.map((compra) => (
             <tr key={compra.id}>
-              <td>{compra.proveedorId}</td>
-              <td>{compra.approverId ?? "—"}</td>
+              <td>
+                <EnlaceReferencia
+                  ruta="/proveedores"
+                  id={compra.proveedorId}
+                  etiquetas={etiquetasProveedor}
+                />
+              </td>
+              <td>
+                <EnlaceReferencia
+                  ruta="/proveedores"
+                  id={compra.approverId}
+                  etiquetas={etiquetasProveedor}
+                />
+              </td>
               <td>{compra.total}</td>
               <td className="text-right">
                 <Link href={`/compras/${compra.id}`} className="link">
@@ -11389,7 +11460,9 @@ function FormularioEntrega({ existente }: { existente: Entrega | null }) {
 import { describe, expect, test } from "bun:test";
 import { fireEvent, screen } from "@testing-library/react";
 import { apiFalsa } from "../../../pruebas/api-falsa";
+import { coleccionCompra, MadreCompra } from "../../../pruebas/compra";
 import { coleccionEntrega, MadreEntrega } from "../../../pruebas/entrega";
+import { coleccionProveedor, MadreProveedor } from "../../../pruebas/proveedor";
 import { renderizarPantalla } from "../../../pruebas/renderizar";
 import { ContenedorListaEntrega } from "./lista-entrega";
 
@@ -11456,17 +11529,64 @@ describe("ContenedorListaEntrega", () => {
     // Comprobar
     expect((await screen.findByRole("alert")).textContent).toBe("entrega.repositorio");
   });
+
+  test("debería nombrar Compra por su etiqueta", async () => {
+    // Preparar
+    const sembrado = MadreEntrega.aleatorio();
+    const objetivo = MadreCompra.aleatorio({ id: sembrado.compraId });
+    const api = apiFalsa([coleccionEntrega([sembrado]), coleccionCompra([objetivo])]);
+
+    // Actuar
+    renderizarPantalla(<ContenedorListaEntrega />, { api });
+
+    // Comprobar: por su href; dos referencias al mismo objetivo pueden tener la misma etiqueta.
+    const selector = `a[href="/compras/${sembrado.compraId}"]`;
+    expect(await screen.findByText(objetivo.id, { selector })).toBeTruthy();
+  });
+
+  test("debería nombrar Destinatario por su etiqueta", async () => {
+    // Preparar
+    const sembrado = MadreEntrega.aleatorio();
+    const objetivo = MadreProveedor.aleatorio({
+      id: sembrado.destinatarioId ?? crypto.randomUUID(),
+    });
+    const api = apiFalsa([coleccionEntrega([sembrado]), coleccionProveedor([objetivo])]);
+
+    // Actuar
+    renderizarPantalla(<ContenedorListaEntrega />, { api });
+
+    // Comprobar: por su href; dos referencias al mismo objetivo pueden tener la misma etiqueta.
+    const selector = `a[href="/proveedores/${sembrado.destinatarioId}"]`;
+    expect(await screen.findByText(objetivo.name, { selector })).toBeTruthy();
+  });
+
+  test("debería nombrar Compra por su id cuando no se puede cargar", async () => {
+    // Preparar: sin Compra en la API falsa, su lista responde un 404.
+    const sembrado = MadreEntrega.aleatorio();
+    const api = apiFalsa([coleccionEntrega([sembrado])]);
+
+    // Actuar
+    renderizarPantalla(<ContenedorListaEntrega />, { api });
+
+    // Comprobar
+    const selector = `a[href="/compras/${sembrado.compraId}"]`;
+    expect(await screen.findByText(`${sembrado.compraId}`, { selector })).toBeTruthy();
+  });
 });
 
 === web/src/contextos/entrega/contenedores/lista-entrega.tsx ===
 import { Link, useLocation, useSearch } from "wouter";
-import { desenvolver, TAMANO_PAGINA } from "../../../api/http";
+import { desenvolver, LIMITE_PAGINA_MAXIMO, TAMANO_PAGINA } from "../../../api/http";
+import { etiquetasReferencia } from "../../../compartido/formularios";
 import { AlertaError } from "../../../compartido/ui/alerta-error";
 import { busquedaPagina, desplazamientoDeUrl, Paginacion } from "../../../compartido/ui/paginacion";
 import { SinElementos } from "../../../compartido/ui/sin-elementos";
 import { useCarga } from "../../../compartido/use-carga";
 import { useDependencias } from "../../../dependencias";
 import { VistaListaEntrega } from "../vistas/lista-entrega";
+
+/** La primera página de cada entidad referenciada: las etiquetas de sus enlaces. */
+const PRIMERA_PAGINA = { params: { query: { limite: LIMITE_PAGINA_MAXIMO } } };
 
 /** La lista, página a página; la página va en la URL (`?pagina=2`): recargar y volver la mantienen. */
 export function ContenedorListaEntrega() {
@@ -11479,6 +11599,10 @@ export function ContenedorListaEntrega() {
     () => desenvolver(api.GET("/entregas", { params: { query: consulta } })),
     [api, desplazamiento],
   );
+  const compras = useCarga(() => desenvolver(api.GET("/compras", PRIMERA_PAGINA)), [api]);
+  const etiquetasCompra = etiquetasReferencia(compras, "id");
+  const proveedores = useCarga(() => desenvolver(api.GET("/proveedores", PRIMERA_PAGINA)), [api]);
+  const etiquetasProveedor = etiquetasReferencia(proveedores, "name");
 
   return (
     <section className="space-y-4">
@@ -11495,7 +11619,11 @@ export function ContenedorListaEntrega() {
           <SinElementos mensaje="Todavía no hay entregas." />
         ) : (
           <>
-            <VistaListaEntrega entregas={entregas.datos.elementos} />
+            <VistaListaEntrega
+              entregas={entregas.datos.elementos}
+              etiquetasCompra={etiquetasCompra}
+              etiquetasProveedor={etiquetasProveedor}
+            />
             <Paginacion
               total={entregas.datos.total}
               limite={entregas.datos.limite}
@@ -11704,10 +11832,20 @@ export function VistaFormularioEntrega({
 === web/src/contextos/entrega/vistas/lista-entrega.tsx ===
 import { Link } from "wouter";
 import type { Esquemas } from "../../../api/cliente";
+import { EnlaceReferencia } from "../../../compartido/ui/enlace-referencia";
 
 type Entrega = Esquemas["DtoEntrega"];
 
-export function VistaListaEntrega({ entregas }: { entregas: Entrega[] }) {
+/** Los `entregas`, y la etiqueta de cada elemento que referencian, para sus enlaces. */
+export function VistaListaEntrega({
+  entregas,
+  etiquetasCompra,
+  etiquetasProveedor,
+}: {
+  entregas: Entrega[];
+  etiquetasCompra: Map<string, string>;
+  etiquetasProveedor: Map<string, string>;
+}) {
   return (
     <div className="overflow-x-auto rounded-box bg-base-100">
       <table className="table">
@@ -11722,8 +11860,20 @@ export function VistaListaEntrega({ entregas }: { entregas: Entrega[] }) {
         <tbody>
           {entregas.map((entrega) => (
             <tr key={entrega.id}>
-              <td>{entrega.compraId}</td>
-              <td>{entrega.destinatarioId ?? "—"}</td>
+              <td>
+                <EnlaceReferencia
+                  ruta="/compras"
+                  id={entrega.compraId}
+                  etiquetas={etiquetasCompra}
+                />
+              </td>
+              <td>
+                <EnlaceReferencia
+                  ruta="/proveedores"
+                  id={entrega.destinatarioId}
+                  etiquetas={etiquetasProveedor}
+                />
+              </td>
               <td>{entrega.carrier}</td>
               <td className="text-right">
                 <Link href={`/entregas/${entrega.id}`} className="link">

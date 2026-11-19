@@ -23,6 +23,17 @@ describe("EnlaceReferencia", () => {
     expect(enlace.getAttribute("href")).toBe("/clientes/c1");
   });
 
+  test("debería nombrar el elemento referenciado con la etiqueta que le da su lista", () => {
+    // Preparar
+    const etiquetas = new Map([["c1", "Ana"]]);
+
+    // Actuar
+    render(<EnlaceReferencia ruta="/clientes" id="c1" etiquetas={etiquetas} />);
+
+    // Comprobar
+    expect(screen.getByRole("link", { name: "Ana" }).getAttribute("href")).toBe("/clientes/c1");
+  });
+
   test("debería dejar el id cuando el elemento referenciado no se puede cargar", async () => {
     // Preparar
     const cargar = () => Promise.reject(new Error("no está"));
