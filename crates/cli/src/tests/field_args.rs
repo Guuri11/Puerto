@@ -253,3 +253,35 @@ fn validate_rejects_a_label_that_is_blank_or_breaks_a_string() {
         assert!(err.contains("etiqueta"), "{bad:?}: {err}");
     }
 }
+
+#[test]
+fn validate_rejects_texts_of_variants_the_enum_does_not_have_or_that_break_a_string() {
+    // 27.9: `textos` gives a variant what the screens show.
+    let with_texts = |texts: &[(&str, &str)]| puerto_toml::Field {
+        texts: Some(
+            texts
+                .iter()
+                .map(|(v, t)| (v.to_string(), t.to_string()))
+                .collect(),
+        ),
+        ..puerto_toml::parse_field_arg("estado:Estado:enum:AlaVenta/Agotado").unwrap()
+    };
+
+    assert!(crate::validation::validate_field(&with_texts(&[("AlaVenta", "A la venta")])).is_ok());
+    for (bad, why) in [
+        (&[("Cancelado", "Cancelado")][..], "Cancelado"),
+        (&[("AlaVenta", "")][..], "AlaVenta"),
+        (&[("AlaVenta", "A \"la\" venta")][..], "AlaVenta"),
+    ] {
+        let err = crate::validation::validate_field(&with_texts(bad)).unwrap_err();
+        assert!(
+            err.contains(why) && err.contains("textos"),
+            "{bad:?}: {err}"
+        );
+    }
+    let not_an_enum = puerto_toml::Field {
+        texts: Some([("A".to_string(), "a".to_string())].into()),
+        ..puerto_toml::parse_field_arg("ciudad:String").unwrap()
+    };
+    assert!(crate::validation::validate_field(&not_an_enum).is_err());
+}

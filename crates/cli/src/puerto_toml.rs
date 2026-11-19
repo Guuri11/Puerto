@@ -181,6 +181,11 @@ pub struct Field {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[serde(rename = "etiqueta")]
     pub label: Option<String>,
+    /// What the screens show for each variant of an enum (27.9: `{ AlaVenta = "A la venta" }`);
+    /// a variant it leaves out, [`crate::generators::naming::texto_variante`].
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[serde(rename = "textos")]
+    pub texts: Option<BTreeMap<String, String>>,
 }
 
 /// Parse a CLI field argument into a `Field`.

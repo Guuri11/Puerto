@@ -3811,7 +3811,7 @@ lista muestra la etiqueta, y el id cuando falla.
   Aforo, quien compraba sin ser admin acababa en `auth.prohibido` con la compra ya guardada.
 - Tests: el menú y el panel con y sin el rol; crear sin el rol de `obtener` no termina en un 403.
 
-### 27.9 — Los enums se leen como texto
+### 27.9 — Los enums se leen como texto ✅
 
 - Una variante se muestra con su texto en la lista, el detalle y el `<select>` («AlaVenta» →
   «A la venta»). Por defecto, el nombre partido en palabras; `[[entidad.campos]]` puede darle el

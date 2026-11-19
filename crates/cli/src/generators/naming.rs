@@ -111,6 +111,12 @@ pub fn etiqueta(snake: &str) -> String {
     capitalize(&words.join(" "))
 }
 
+/// What a screen shows for an enum variant (27.9): its words, as [`etiqueta`] —
+/// `EnRevision` → `En revisión`. `[[entidad.campos]] textos` overrides it.
+pub fn texto_variante(variant: &str) -> String {
+    etiqueta(&pascal_to_snake(variant))
+}
+
 /// The first letter in upper case: a label (`in stock` → `In stock`).
 pub fn capitalize(s: &str) -> String {
     let mut chars = s.chars();
@@ -278,6 +284,13 @@ mod tests {
     fn should_leave_a_word_without_accent_as_it_is() {
         assert_eq!(etiqueta("ciudad"), "Ciudad");
         assert_eq!(etiqueta("in_stock"), "In stock");
+    }
+
+    #[test]
+    fn should_read_an_enum_variant_as_its_words() {
+        assert_eq!(texto_variante("Borrador"), "Borrador");
+        assert_eq!(texto_variante("EnRevision"), "En revisión");
+        assert_eq!(texto_variante("AlaVenta"), "Ala venta");
     }
 
     #[test]

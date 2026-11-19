@@ -101,6 +101,21 @@ describe("ContenedorFormulario{{ pascal }}", () => {
     await waitFor(() => expect(historial.at(-1)).toBe("{% if access.list_roles %}/?guardado{% else %}/{{ plural }}{% endif %}"));
   });
 {%- endif %}
+{%- for f in fields %}{% if f.is_enum and f.required %}
+
+  test("debería traer elegida la primera variante de {{ f.label }}", async () => {
+    // Preparar
+    const api = apiFalsa([coleccion{{ pascal }}()]);
+
+    // Actuar
+    renderizarPantalla(<ContenedorFormulario{{ pascal }} />, { api });
+
+    // Comprobar
+    await screen.findByText("Guardar");
+    const select = screen.getByLabelText("{{ f.label }}") as HTMLSelectElement;
+    expect(select.value).toBe("{{ f.options.0.value }}");
+  });
+{%- endif %}{% endfor %}
 
   test("debería guardar la edición cuando se envía el formulario", async () => {
     // Preparar

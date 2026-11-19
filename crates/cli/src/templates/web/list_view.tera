@@ -8,6 +8,15 @@ import { {{ display_helpers | join(sep=", ") }} } from "../../../compartido/form
 {%- endif %}
 
 type {{ pascal }} = Esquemas["Dto{{ pascal }}"];
+{%- for f in fields %}{% if f.is_enum %}
+
+/** Lo que se lee de cada variante de `{{ f.camel }}`. */
+const {{ f.texts_const }}: Record<string, string> = {
+{%- for o in f.options %}
+  {{ o.value }}: "{{ o.label }}",
+{%- endfor %}
+};
+{%- endif %}{% endfor %}
 
 {% if targets -%}
 /** Los `{{ plural_ident }}`, y la etiqueta de cada elemento que referencian, para sus enlaces. */

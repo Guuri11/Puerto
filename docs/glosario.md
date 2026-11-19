@@ -370,6 +370,7 @@ Los de 27.1 y 27.2 vienen del plan. El resto se decidió por el camino, con las 
 | API falsa | `fetchFalso`, `Coleccion.acciones`, el fallo de una acción `"POST /productos/{id}/<accion>"` |
 | referencias en una lista | `etiquetasReferencia(cargados, campo)`, `etiquetas<Objetivo>` (`etiquetasCliente`), `EnlaceReferencia etiquetas` |
 | logs | `guardar rechazado` (un duplicado o una referencia inexistente, con `warn!`) |
+| las etiquetas y los enums (27.5, 27.9) | `naming::etiqueta`, `naming::texto_variante`, `TEXTOS_<CAMPO>` (`TEXTOS_ESTADO`, en las vistas de lista y de detalle) |
 | la web y los roles (27.8) | `useEntradasMenu`, `MarcoApp`, `ROLES_LISTA`, la ruta `/?guardado`, el local `entradas` |
 | decididos por Sergio | `[[entidad.campos]] etiqueta` (27.5) y `textos` (27.9: `{ AlaVenta = "A la venta" }`); el mensaje `<Etiqueta>: campo obligatorio`; `CONFIRM=DESTRUIR make db/reiniciar` (27.22, en inglés como toda variable de entorno); tras crear sin poder ver el detalle ni la lista, el panel con el aviso `Guardado` (27.8) |
 

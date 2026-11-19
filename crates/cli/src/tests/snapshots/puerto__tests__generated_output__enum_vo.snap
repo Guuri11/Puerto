@@ -2916,6 +2916,19 @@ describe("ContenedorFormularioPedido", () => {
     expect(historial.at(-1)).toBe(`/pedidos/${creado?.id}`);
   });
 
+  test("debería traer elegida la primera variante de Status", async () => {
+    // Preparar
+    const api = apiFalsa([coleccionPedido()]);
+
+    // Actuar
+    renderizarPantalla(<ContenedorFormularioPedido />, { api });
+
+    // Comprobar
+    await screen.findByText("Guardar");
+    const select = screen.getByLabelText("Status") as HTMLSelectElement;
+    expect(select.value).toBe("Pending");
+  });
+
   test("debería guardar la edición cuando se envía el formulario", async () => {
     // Preparar
     const sembrado = MadrePedido.aleatorio();
@@ -3225,13 +3238,20 @@ import type { Esquemas } from "../../../api/cliente";
 
 type Pedido = Esquemas["DtoPedido"];
 
+/** Lo que se lee de cada variante de `status`. */
+const TEXTOS_STATUS: Record<string, string> = {
+  Pending: "Pending",
+  Confirmed: "Confirmed",
+  Cancelled: "Cancelled",
+};
+
 export function VistaDetallePedido({ pedido }: { pedido: Pedido }) {
   return (
     <dl className="grid grid-cols-[max-content_1fr] gap-x-6 gap-y-2">
       <dt className="font-semibold">Reference</dt>
       <dd>{pedido.reference}</dd>
       <dt className="font-semibold">Status</dt>
-      <dd>{pedido.status}</dd>
+      <dd>{TEXTOS_STATUS[pedido.status] ?? pedido.status}</dd>
     </dl>
   );
 }
@@ -3255,7 +3275,7 @@ export function aFormularioPedido(pedido: Pedido | null): ValoresFormularioPedid
   if (pedido === null) {
     return {
       reference: "",
-      status: "",
+      status: "Pending",
     };
   }
   return {
@@ -3315,7 +3335,6 @@ export function VistaFormularioPedido({
           value={valores.status}
           onChange={(event) => alCambiar({ ...valores, status: event.target.value })}
         >
-          <option value="">Elige una opción</option>
           <option value="Pending">Pending</option>
           <option value="Confirmed">Confirmed</option>
           <option value="Cancelled">Cancelled</option>
@@ -3335,6 +3354,13 @@ import type { Esquemas } from "../../../api/cliente";
 
 type Pedido = Esquemas["DtoPedido"];
 
+/** Lo que se lee de cada variante de `status`. */
+const TEXTOS_STATUS: Record<string, string> = {
+  Pending: "Pending",
+  Confirmed: "Confirmed",
+  Cancelled: "Cancelled",
+};
+
 export function VistaListaPedido({ pedidos }: { pedidos: Pedido[] }) {
   return (
     <div className="overflow-x-auto rounded-box bg-base-100">
@@ -3350,7 +3376,7 @@ export function VistaListaPedido({ pedidos }: { pedidos: Pedido[] }) {
           {pedidos.map((pedido) => (
             <tr key={pedido.id}>
               <td>{pedido.reference}</td>
-              <td>{pedido.status}</td>
+              <td>{TEXTOS_STATUS[pedido.status] ?? pedido.status}</td>
               <td className="text-right">
                 <Link href={`/pedidos/${pedido.id}`} className="link">
                   Ver

@@ -423,8 +423,7 @@ pub fn validate_field(field: &Field) -> Result<(), String> {
         validate_reference_shape(field)?;
     }
     if let Some(label) = &field.label {
-        // It is written into the screens' string literals.
-        if label.trim().is_empty() || label.contains(['"', '\\', '\n', '\r']) {
+        if !is_screen_text(label) {
             return Err(format!(
                 "la etiqueta del campo '{}' no puede estar vacía ni llevar comillas, `\\` o saltos \
                  de línea: {label:?}",
@@ -432,7 +431,32 @@ pub fn validate_field(field: &Field) -> Result<(), String> {
             ));
         }
     }
+    if let Some(texts) = &field.texts {
+        let variants = field.enum_variants.as_deref().unwrap_or_default();
+        for (variant, text) in texts {
+            if !variants.contains(variant) {
+                return Err(format!(
+                    "los textos del campo '{}' nombran '{variant}', que no es una de sus variantes \
+                     ({})",
+                    field.name,
+                    variants.join(", ")
+                ));
+            }
+            if !is_screen_text(text) {
+                return Err(format!(
+                    "los textos del campo '{}': el de '{variant}' no puede estar vacío ni llevar \
+                     comillas, `\\` o saltos de línea: {text:?}",
+                    field.name
+                ));
+            }
+        }
+    }
     Ok(())
+}
+
+/// A text the screens write into a string literal: not blank, nothing that would end it.
+fn is_screen_text(text: &str) -> bool {
+    !text.trim().is_empty() && !text.contains(['"', '\\', '\n', '\r'])
 }
 
 /// A reference field on its own (ADR-0022): a PascalCase target, the id's type, not also a value

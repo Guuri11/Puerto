@@ -3438,6 +3438,19 @@ describe("ContenedorFormularioCase", () => {
     expect(historial.at(-1)).toBe(`/cases/${creado?.id}`);
   });
 
+  test("debería traer elegida la primera variante de Status", async () => {
+    // Preparar
+    const api = apiFalsa([coleccionCase()]);
+
+    // Actuar
+    renderizarPantalla(<ContenedorFormularioCase />, { api });
+
+    // Comprobar
+    await screen.findByText("Guardar");
+    const select = screen.getByLabelText("Status") as HTMLSelectElement;
+    expect(select.value).toBe("Open");
+  });
+
   test("debería guardar la edición cuando se envía el formulario", async () => {
     // Preparar
     const sembrado = MadreCase.aleatorio();
@@ -3748,6 +3761,12 @@ import { formatearEntradas, formatearFechaHora } from "../../../compartido/formu
 
 type Case = Esquemas["DtoCase"];
 
+/** Lo que se lee de cada variante de `status`. */
+const TEXTOS_STATUS: Record<string, string> = {
+  Open: "Open",
+  Closed: "Closed",
+};
+
 export function VistaDetalleCase({ caseElemento }: { caseElemento: Case }) {
   return (
     <dl className="grid grid-cols-[max-content_1fr] gap-x-6 gap-y-2">
@@ -3772,7 +3791,7 @@ export function VistaDetalleCase({ caseElemento }: { caseElemento: Case }) {
       <dt className="font-semibold">Meta</dt>
       <dd>{formatearEntradas(caseElemento.meta, ", ")}</dd>
       <dt className="font-semibold">Status</dt>
-      <dd>{caseElemento.status}</dd>
+      <dd>{TEXTOS_STATUS[caseElemento.status] ?? caseElemento.status}</dd>
       <dt className="font-semibold">Middle name</dt>
       <dd>{caseElemento.middleName ?? "—"}</dd>
       <dt className="font-semibold">Labels</dt>
@@ -3833,7 +3852,7 @@ export function aFormularioCase(caseElemento: Case | null): ValoresFormularioCas
       tags: "",
       scores: "",
       meta: "",
-      status: "",
+      status: "Open",
       middleName: "",
       labels: "",
     };
@@ -4021,7 +4040,6 @@ export function VistaFormularioCase({
           value={valores.status}
           onChange={(event) => alCambiar({ ...valores, status: event.target.value })}
         >
-          <option value="">Elige una opción</option>
           <option value="Open">Open</option>
           <option value="Closed">Closed</option>
         </select>
@@ -4063,6 +4081,12 @@ import { formatearEntradas, formatearFechaHora } from "../../../compartido/formu
 
 type Case = Esquemas["DtoCase"];
 
+/** Lo que se lee de cada variante de `status`. */
+const TEXTOS_STATUS: Record<string, string> = {
+  Open: "Open",
+  Closed: "Closed",
+};
+
 export function VistaListaCase({ cases }: { cases: Case[] }) {
   return (
     <div className="overflow-x-auto rounded-box bg-base-100">
@@ -4098,7 +4122,7 @@ export function VistaListaCase({ cases }: { cases: Case[] }) {
               <td>{caseElemento.tags.join(", ")}</td>
               <td>{caseElemento.scores.join(", ")}</td>
               <td>{formatearEntradas(caseElemento.meta, ", ")}</td>
-              <td>{caseElemento.status}</td>
+              <td>{TEXTOS_STATUS[caseElemento.status] ?? caseElemento.status}</td>
               <td>{caseElemento.middleName ?? "—"}</td>
               <td>{caseElemento.labels.join(", ")}</td>
               <td className="text-right">

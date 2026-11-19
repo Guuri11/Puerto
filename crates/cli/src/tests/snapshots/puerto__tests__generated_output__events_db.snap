@@ -4802,6 +4802,19 @@ describe("ContenedorFormularioProducto", () => {
     expect(historial.at(-1)).toBe(`/productos/${creado?.id}`);
   });
 
+  test("debería traer elegida la primera variante de Status", async () => {
+    // Preparar
+    const api = apiFalsa([coleccionProducto()]);
+
+    // Actuar
+    renderizarPantalla(<ContenedorFormularioProducto />, { api });
+
+    // Comprobar
+    await screen.findByText("Guardar");
+    const select = screen.getByLabelText("Status") as HTMLSelectElement;
+    expect(select.value).toBe("Draft");
+  });
+
   test("debería guardar la edición cuando se envía el formulario", async () => {
     // Preparar
     const sembrado = MadreProducto.aleatorio();
@@ -5114,6 +5127,12 @@ import { formatearEntradas, formatearFechaHora } from "../../../compartido/formu
 
 type Producto = Esquemas["DtoProducto"];
 
+/** Lo que se lee de cada variante de `status`. */
+const TEXTOS_STATUS: Record<string, string> = {
+  Draft: "Draft",
+  Published: "Published",
+};
+
 export function VistaDetalleProducto({ producto }: { producto: Producto }) {
   return (
     <dl className="grid grid-cols-[max-content_1fr] gap-x-6 gap-y-2">
@@ -5124,7 +5143,7 @@ export function VistaDetalleProducto({ producto }: { producto: Producto }) {
       <dt className="font-semibold">Price</dt>
       <dd>{producto.price}</dd>
       <dt className="font-semibold">Status</dt>
-      <dd>{producto.status}</dd>
+      <dd>{TEXTOS_STATUS[producto.status] ?? producto.status}</dd>
       <dt className="font-semibold">Tags</dt>
       <dd>{producto.tags.join(", ")}</dd>
       <dt className="font-semibold">Released at</dt>
@@ -5168,7 +5187,7 @@ export function aFormularioProducto(producto: Producto | null): ValoresFormulari
       name: "",
       sku: "",
       price: "",
-      status: "",
+      status: "Draft",
       tags: "",
       releasedAt: "",
       meta: "",
@@ -5265,7 +5284,6 @@ export function VistaFormularioProducto({
           value={valores.status}
           onChange={(event) => alCambiar({ ...valores, status: event.target.value })}
         >
-          <option value="">Elige una opción</option>
           <option value="Draft">Draft</option>
           <option value="Published">Published</option>
         </select>
@@ -5318,6 +5336,12 @@ import { formatearEntradas, formatearFechaHora } from "../../../compartido/formu
 
 type Producto = Esquemas["DtoProducto"];
 
+/** Lo que se lee de cada variante de `status`. */
+const TEXTOS_STATUS: Record<string, string> = {
+  Draft: "Draft",
+  Published: "Published",
+};
+
 export function VistaListaProducto({ productos }: { productos: Producto[] }) {
   return (
     <div className="overflow-x-auto rounded-box bg-base-100">
@@ -5340,7 +5364,7 @@ export function VistaListaProducto({ productos }: { productos: Producto[] }) {
               <td>{producto.name}</td>
               <td>{producto.sku}</td>
               <td>{producto.price}</td>
-              <td>{producto.status}</td>
+              <td>{TEXTOS_STATUS[producto.status] ?? producto.status}</td>
               <td>{producto.tags.join(", ")}</td>
               <td>{producto.releasedAt == null ? "—" : formatearFechaHora(producto.releasedAt)}</td>
               <td>{formatearEntradas(producto.meta, ", ")}</td>

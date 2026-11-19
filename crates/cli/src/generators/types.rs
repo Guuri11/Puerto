@@ -698,11 +698,15 @@ pub struct WebFieldCtx {
     pub decimal: bool,
     /// The input must be filled: not an `Option`, a `Vec`, a map or a checkbox.
     pub required: bool,
-    /// A `select`'s options, after an empty one labelled `placeholder`.
+    /// A `select`'s options, after an empty one labelled `placeholder` (none for a required enum:
+    /// it starts on its first variant).
     pub options: Vec<WebOption>,
     pub placeholder: String,
+    /// An enum: what each variant reads as on a screen (27.9), in the views' `TEXTOS_<CAMPO>`.
+    pub is_enum: bool,
+    pub texts_const: String,
     /// The form value of a new, empty form.
-    pub empty_form: &'static str,
+    pub empty_form: String,
     /// The form value read out of `{entity}` (the entity's variable) and out of `peticion`. An
     /// `Option` is an optional property that the API answers as `null` when it is absent.
     pub to_form: String,
@@ -879,7 +883,11 @@ pub fn web_field_ctx(field: &Field, entity_ident: &str) -> WebFieldCtx {
             .iter()
             .map(|v| WebOption {
                 value: v.clone(),
-                label: v.clone(),
+                label: field
+                    .texts
+                    .as_ref()
+                    .and_then(|texts| texts.get(v).cloned())
+                    .unwrap_or_else(|| crate::generators::naming::texto_variante(v)),
             })
             .collect(),
         (_, "select") => vec![
@@ -903,8 +911,20 @@ pub fn web_field_ctx(field: &Field, entity_ident: &str) -> WebFieldCtx {
     );
     // A request always holds a private field.
     let (request_to_form, _) = web_to_form(shape, optional, false, &format!("peticion.{camel}"));
-    let (display, display_helpers) =
-        web_display(shape, optional, &format!("{entity_ident}.{camel}"));
+    let texts_const = format!("TEXTOS_{}", field.name.to_uppercase());
+    let access = format!("{entity_ident}.{camel}");
+    let (display, display_helpers) = if shape == WebShape::Enum {
+        // A variant the texts do not know (an older API) shows as it is.
+        let shown = format!("{texts_const}[{access}] ?? {access}");
+        let display = if optional {
+            format!("{access} == null ? \"—\" : {shown}")
+        } else {
+            shown
+        };
+        (display, vec![])
+    } else {
+        web_display(shape, optional, &access)
+    };
 
     WebFieldCtx {
         label: field
@@ -919,13 +939,20 @@ pub fn web_field_ctx(field: &Field, entity_ident: &str) -> WebFieldCtx {
                 WebShape::Checkbox | WebShape::List { .. } | WebShape::Map
             ),
         // No article and no adjective: the entity's gender is unknown (Fase 22).
-        placeholder: if (target.is_some() || shape == WebShape::Enum) && !optional {
+        placeholder: if target.is_some() && !optional {
             "Elige una opción".to_string()
         } else {
             "—".to_string()
         },
         options,
-        empty_form: if input == "checkbox" { "false" } else { "\"\"" },
+        // A required enum starts on its first variant: an empty one could not be sent.
+        empty_form: match (input, shape, variants.first()) {
+            ("checkbox", _, _) => "false".to_string(),
+            (_, WebShape::Enum, Some(first)) if !optional => ts_string(first),
+            _ => "\"\"".to_string(),
+        },
+        is_enum: shape == WebShape::Enum,
+        texts_const,
         to_form,
         request_to_form,
         from_form,
@@ -1010,6 +1037,7 @@ mod tests {
                 enum_variants: None,
                 references: None,
                 label: None,
+                texts: None,
             },
             Field {
                 name: "price".into(),
@@ -1021,6 +1049,7 @@ mod tests {
                 enum_variants: None,
                 references: None,
                 label: None,
+                texts: None,
             },
         ];
         assert!(validate_fields(&fields).is_ok());
@@ -1040,6 +1069,7 @@ mod tests {
                 enum_variants: None,
                 references: None,
                 label: None,
+                texts: None,
             },
             Field {
                 name: "bad".into(),
@@ -1051,6 +1081,7 @@ mod tests {
                 enum_variants: None,
                 references: None,
                 label: None,
+                texts: None,
             },
         ];
         let err = validate_fields(&fields).unwrap_err();
@@ -1443,7 +1474,7 @@ mod tests {
         assert_eq!(id.mother, "crypto.randomUUID()");
 
         let name = web_field_ctx(&field("String", Some("Name")), "p");
-        assert_eq!((name.input, name.empty_form), ("text", "\"\""));
+        assert_eq!((name.input, name.empty_form.as_str()), ("text", "\"\""));
         assert_eq!(
             (name.mother.as_str(), name.to_form.as_str()),
             ("\"example\"", "p.x")
@@ -1551,10 +1582,8 @@ mod tests {
         assert_eq!(ctx.input, "select");
         assert!(ctx.required);
         assert_eq!(ctx.from_form, format!("valores.{}", ctx.camel));
-        assert_eq!(
-            ctx.placeholder, "Elige una opción",
-            "no article: the gender is unknown"
-        );
+        // 27.9: a required enum starts on its first variant, with no empty option to choose.
+        assert_eq!(ctx.empty_form, "\"Active\"");
         assert_eq!(
             ctx.options.first().map(|o| o.value.as_str()),
             Some("Active")

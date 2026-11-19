@@ -691,6 +691,50 @@ fn labels_carry_their_accents_and_puerto_toml_can_name_them() {
 }
 
 #[test]
+fn enums_read_as_text_and_a_required_one_starts_on_its_first_variant() {
+    // 27.9: «AlaVenta» on every screen, and a create form that asked to «Elige una opción».
+    let (dir, output) = web_project("web_enum_texts");
+    let mut args = fields(&[
+        "estado:Estado:enum:AlaVenta/EnRevision",
+        "nivel:Nivel:opt:String",
+    ]);
+    args[0].texts = Some([("AlaVenta".to_string(), "A la venta".to_string())].into());
+    scaffold::run_scaffold("Concierto", &output, &args, OverwritePolicy::Ask).unwrap();
+
+    let texts = "const TEXTOS_ESTADO: Record<string, string> = {\n  AlaVenta: \"A la venta\",\n  EnRevision: \"En revisión\",\n};";
+    for view in ["lista-concierto", "detalle-concierto"] {
+        let source = read(
+            &output,
+            &format!("web/src/contextos/concierto/vistas/{view}.tsx"),
+        );
+        assert!(source.contains(texts), "{view}:\n{source}");
+        assert!(
+            source.contains("{TEXTOS_ESTADO[concierto.estado] ?? concierto.estado}"),
+            "{view}:\n{source}"
+        );
+    }
+    let form = read(
+        &output,
+        "web/src/contextos/concierto/vistas/formulario-concierto.tsx",
+    );
+    assert!(
+        form.contains("<option value=\"AlaVenta\">A la venta</option>"),
+        "{form}"
+    );
+    assert!(form.contains("estado: \"AlaVenta\","), "{form}");
+    assert!(!form.contains("Elige una opción"), "{form}");
+    let test = read(
+        &output,
+        "web/src/contextos/concierto/contenedores/formulario-concierto.test.tsx",
+    );
+    assert!(
+        test.contains("debería traer elegida la primera variante de Estado"),
+        "{test}"
+    );
+    cleanup(&dir);
+}
+
+#[test]
 fn messages_of_an_entity_without_field_codes_map_no_field() {
     let (dir, output) = web_project("web_messages_no_fields");
     scaffold::run_scaffold(

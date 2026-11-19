@@ -9145,6 +9145,19 @@ describe("ContenedorFormularioBillete", () => {
     expect(historial.at(-1)).toBe(`/billetes/${creado?.id}`);
   });
 
+  test("debería traer elegida la primera variante de State", async () => {
+    // Preparar
+    const api = apiFalsa([coleccionBillete()]);
+
+    // Actuar
+    renderizarPantalla(<ContenedorFormularioBillete />, { api });
+
+    // Comprobar
+    await screen.findByText("Guardar");
+    const select = screen.getByLabelText("State") as HTMLSelectElement;
+    expect(select.value).toBe("Open");
+  });
+
   test("debería guardar la edición cuando se envía el formulario", async () => {
     // Preparar
     const sembrado = MadreBillete.aleatorio();
@@ -9452,11 +9465,17 @@ import type { Esquemas } from "../../../api/cliente";
 
 type Billete = Esquemas["DtoBillete"];
 
+/** Lo que se lee de cada variante de `state`. */
+const TEXTOS_STATE: Record<string, string> = {
+  Open: "Open",
+  Closed: "Closed",
+};
+
 export function VistaDetalleBillete({ billete }: { billete: Billete }) {
   return (
     <dl className="grid grid-cols-[max-content_1fr] gap-x-6 gap-y-2">
       <dt className="font-semibold">State</dt>
-      <dd>{billete.state}</dd>
+      <dd>{TEXTOS_STATE[billete.state] ?? billete.state}</dd>
     </dl>
   );
 }
@@ -9478,7 +9497,7 @@ export interface ValoresFormularioBillete {
 export function aFormularioBillete(billete: Billete | null): ValoresFormularioBillete {
   if (billete === null) {
     return {
-      state: "",
+      state: "Open",
     };
   }
   return {
@@ -9524,7 +9543,6 @@ export function VistaFormularioBillete({
           value={valores.state}
           onChange={(event) => alCambiar({ ...valores, state: event.target.value })}
         >
-          <option value="">Elige una opción</option>
           <option value="Open">Open</option>
           <option value="Closed">Closed</option>
         </select>
@@ -9543,6 +9561,12 @@ import type { Esquemas } from "../../../api/cliente";
 
 type Billete = Esquemas["DtoBillete"];
 
+/** Lo que se lee de cada variante de `state`. */
+const TEXTOS_STATE: Record<string, string> = {
+  Open: "Open",
+  Closed: "Closed",
+};
+
 export function VistaListaBillete({ billetes }: { billetes: Billete[] }) {
   return (
     <div className="overflow-x-auto rounded-box bg-base-100">
@@ -9556,7 +9580,7 @@ export function VistaListaBillete({ billetes }: { billetes: Billete[] }) {
         <tbody>
           {billetes.map((billete) => (
             <tr key={billete.id}>
-              <td>{billete.state}</td>
+              <td>{TEXTOS_STATE[billete.state] ?? billete.state}</td>
               <td className="text-right">
                 <Link href={`/billetes/${billete.id}`} className="link">
                   Ver
@@ -9734,6 +9758,19 @@ describe("ContenedorFormularioCliente", () => {
     const [creado] = guardados.elementos.values();
     expect(creado).toMatchObject(peticion);
     expect(historial.at(-1)).toBe(`/clientes/${creado?.id}`);
+  });
+
+  test("debería traer elegida la primera variante de Status", async () => {
+    // Preparar
+    const api = apiFalsa([coleccionCliente()]);
+
+    // Actuar
+    renderizarPantalla(<ContenedorFormularioCliente />, { api });
+
+    // Comprobar
+    await screen.findByText("Guardar");
+    const select = screen.getByLabelText("Status") as HTMLSelectElement;
+    expect(select.value).toBe("Active");
   });
 
   test("debería guardar la edición cuando se envía el formulario", async () => {
@@ -10058,6 +10095,12 @@ import { formatearFechaHora } from "../../../compartido/formularios";
 
 type Cliente = Esquemas["DtoCliente"];
 
+/** Lo que se lee de cada variante de `status`. */
+const TEXTOS_STATUS: Record<string, string> = {
+  Active: "Active",
+  Inactive: "Inactive",
+};
+
 export function VistaDetalleCliente({ cliente }: { cliente: Cliente }) {
   return (
     <dl className="grid grid-cols-[max-content_1fr] gap-x-6 gap-y-2">
@@ -10076,7 +10119,7 @@ export function VistaDetalleCliente({ cliente }: { cliente: Cliente }) {
       <dt className="font-semibold">Labels</dt>
       <dd>{cliente.labels.join(", ")}</dd>
       <dt className="font-semibold">Status</dt>
-      <dd>{cliente.status}</dd>
+      <dd>{TEXTOS_STATUS[cliente.status] ?? cliente.status}</dd>
     </dl>
   );
 }
@@ -10119,7 +10162,7 @@ export function aFormularioCliente(cliente: Cliente | null): ValoresFormularioCl
       joined: "",
       middle: "",
       labels: "",
-      status: "",
+      status: "Active",
     };
   }
   return {
@@ -10261,7 +10304,6 @@ export function VistaFormularioCliente({
           value={valores.status}
           onChange={(event) => alCambiar({ ...valores, status: event.target.value })}
         >
-          <option value="">Elige una opción</option>
           <option value="Active">Active</option>
           <option value="Inactive">Inactive</option>
         </select>
@@ -10280,6 +10322,12 @@ import type { Esquemas } from "../../../api/cliente";
 import { formatearFechaHora } from "../../../compartido/formularios";
 
 type Cliente = Esquemas["DtoCliente"];
+
+/** Lo que se lee de cada variante de `status`. */
+const TEXTOS_STATUS: Record<string, string> = {
+  Active: "Active",
+  Inactive: "Inactive",
+};
 
 export function VistaListaCliente({ clientes }: { clientes: Cliente[] }) {
   return (
@@ -10308,7 +10356,7 @@ export function VistaListaCliente({ clientes }: { clientes: Cliente[] }) {
               <td>{formatearFechaHora(cliente.joined)}</td>
               <td>{cliente.middle ?? "—"}</td>
               <td>{cliente.labels.join(", ")}</td>
-              <td>{cliente.status}</td>
+              <td>{TEXTOS_STATUS[cliente.status] ?? cliente.status}</td>
               <td className="text-right">
                 <Link href={`/clientes/${cliente.id}`} className="link">
                   Ver

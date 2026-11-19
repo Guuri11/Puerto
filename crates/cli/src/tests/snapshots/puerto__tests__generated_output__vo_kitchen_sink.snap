@@ -3714,6 +3714,19 @@ describe("ContenedorFormularioCuenta", () => {
     expect(historial.at(-1)).toBe(`/cuentas/${creado?.id}`);
   });
 
+  test("debería traer elegida la primera variante de Status", async () => {
+    // Preparar
+    const api = apiFalsa([coleccionCuenta()]);
+
+    // Actuar
+    renderizarPantalla(<ContenedorFormularioCuenta />, { api });
+
+    // Comprobar
+    await screen.findByText("Guardar");
+    const select = screen.getByLabelText("Status") as HTMLSelectElement;
+    expect(select.value).toBe("Active");
+  });
+
   test("debería guardar la edición cuando se envía el formulario", async () => {
     // Preparar
     const sembrado = MadreCuenta.aleatorio();
@@ -4033,6 +4046,12 @@ import type { Esquemas } from "../../../api/cliente";
 
 type Cuenta = Esquemas["DtoCuenta"];
 
+/** Lo que se lee de cada variante de `status`. */
+const TEXTOS_STATUS: Record<string, string> = {
+  Active: "Active",
+  Archived: "Archived",
+};
+
 export function VistaDetalleCuenta({ cuenta }: { cuenta: Cuenta }) {
   return (
     <dl className="grid grid-cols-[max-content_1fr] gap-x-6 gap-y-2">
@@ -4051,7 +4070,7 @@ export function VistaDetalleCuenta({ cuenta }: { cuenta: Cuenta }) {
       <dt className="font-semibold">Tags</dt>
       <dd>{cuenta.tags.join(", ")}</dd>
       <dt className="font-semibold">Status</dt>
-      <dd>{cuenta.status}</dd>
+      <dd>{TEXTOS_STATUS[cuenta.status] ?? cuenta.status}</dd>
       <dt className="font-semibold">Email</dt>
       <dd>{cuenta.email}</dd>
     </dl>
@@ -4091,7 +4110,7 @@ export function aFormularioCuenta(cuenta: Cuenta | null): ValoresFormularioCuent
       note: "",
       middleName: "",
       tags: "",
-      status: "",
+      status: "Active",
       email: "",
     };
   }
@@ -4235,7 +4254,6 @@ export function VistaFormularioCuenta({
           value={valores.status}
           onChange={(event) => alCambiar({ ...valores, status: event.target.value })}
         >
-          <option value="">Elige una opción</option>
           <option value="Active">Active</option>
           <option value="Archived">Archived</option>
         </select>
@@ -4266,6 +4284,12 @@ import type { Esquemas } from "../../../api/cliente";
 
 type Cuenta = Esquemas["DtoCuenta"];
 
+/** Lo que se lee de cada variante de `status`. */
+const TEXTOS_STATUS: Record<string, string> = {
+  Active: "Active",
+  Archived: "Archived",
+};
+
 export function VistaListaCuenta({ cuentas }: { cuentas: Cuenta[] }) {
   return (
     <div className="overflow-x-auto rounded-box bg-base-100">
@@ -4294,7 +4318,7 @@ export function VistaListaCuenta({ cuentas }: { cuentas: Cuenta[] }) {
               <td>{cuenta.note ?? "—"}</td>
               <td>{cuenta.middleName ?? "—"}</td>
               <td>{cuenta.tags.join(", ")}</td>
-              <td>{cuenta.status}</td>
+              <td>{TEXTOS_STATUS[cuenta.status] ?? cuenta.status}</td>
               <td>{cuenta.email}</td>
               <td className="text-right">
                 <Link href={`/cuentas/${cuenta.id}`} className="link">

@@ -64,6 +64,8 @@ tipo = "Option<String>"  # campo nullable
 # etiqueta = "Resumen"   # opcional (27.5): lo que dicen las pantallas; sin ella, el nombre con sus
                          # tildes (`naming::etiqueta`: anio → Año, codigo_postal → Código postal).
                          # Sin comillas, `\` ni saltos de línea
+# textos = { AlaVenta = "A la venta" }   # opcional, objetos valor enum (27.9): lo que se lee de cada
+                         # variante; sin él, su nombre en palabras (EnRevision → En revisión)
 
 [[entidad.campos]]
 nombre = "etiquetas"

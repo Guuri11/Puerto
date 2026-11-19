@@ -38,6 +38,7 @@ pub fn effective_fields(fields: &[Field]) -> Vec<Field> {
             enum_variants: None,
             references: None,
             label: None,
+            texts: None,
         }]
     } else {
         fields.to_vec()
