@@ -8,20 +8,24 @@ export interface Coleccion<T extends { id: string }> {
   elementos: Map<string, T>;
   /** Los campos que `POST <ruta>/{id}/<accion>` pone en el elemento, por acción. */
   acciones: Record<string, Partial<T>>;
+  /** Lo que `PUT <ruta>/{id}` conserva aunque no se mande: los campos generados (27.17). */
+  conservados: string[];
 }
 
 /**
- * Los elementos bajo `ruta` (`/productos`) de `entidad` (`producto`), empezando por `semilla`, y
- * las `acciones` que entiende: `{ cancelar: { estado: "Cancelado" } }`.
+ * Los elementos bajo `ruta` (`/productos`) de `entidad` (`producto`), empezando por `semilla`, las
+ * `acciones` que entiende (`{ cancelar: { estado: "Cancelado" } }`) y los campos que actualizar
+ * `conservados` (`["codigo"]`).
  */
 export function coleccion<T extends { id: string }>(
   ruta: string,
   entidad: string,
   semilla: T[] = [],
   acciones: Record<string, Partial<T>> = {},
+  conservados: string[] = [],
 ): Coleccion<T> {
   const elementos = new Map(semilla.map((elemento) => [elemento.id, elemento]));
-  return { ruta, noEncontrado: `${entidad}.no_encontrado`, elementos, acciones };
+  return { ruta, noEncontrado: `${entidad}.no_encontrado`, elementos, acciones, conservados };
 }
 
 /** Un `ClienteApi` sobre {@link fetchFalso}. */
@@ -84,8 +88,13 @@ async function servirElemento(objetivo: Coleccion<{ id: string }>, peticion: Req
     return new Response(null, { status: 204 });
   }
   if (peticion.method === "PUT") {
-    // Como la API, actualizar reemplaza todos los campos: el que no se manda queda vacío.
-    const actualizado = { ...(await peticion.json()), id };
+    // Como la API, actualizar reemplaza todos los campos: el que no se manda queda vacío, salvo
+    // los que la API pone ella (los generados), que se conservan.
+    const previo: Record<string, unknown> = encontrado;
+    const conservado = Object.fromEntries(
+      objetivo.conservados.map((campo) => [campo, previo[campo]]),
+    );
+    const actualizado = { ...conservado, ...(await peticion.json()), id };
     objetivo.elementos.set(id, actualizado);
     return Response.json(actualizado);
   }

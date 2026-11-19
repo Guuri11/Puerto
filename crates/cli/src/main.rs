@@ -126,6 +126,18 @@ enum GenerateAction {
         /// separados por comas (p. ej. email,telefono). Solo campos de texto
         #[arg(value_name = "CAMPOS", long = "privado", value_delimiter = ',')]
         private: Vec<String>,
+        /// Lo que pone `crear` en vez de pedirlo, separado por comas (p. ej. estado=Pendiente): una
+        /// variante o un valor de su tipo. Actualizar sí lo cambia
+        #[arg(
+            value_name = "CAMPO=VALOR",
+            long = "por-defecto",
+            value_delimiter = ','
+        )]
+        defaults: Vec<String>,
+        /// Los String únicos que inventa el dominio al crear, separados por comas (p. ej. codigo):
+        /// `<Entidad>::generar_<campo>()`, en dominio/src/generados.rs
+        #[arg(value_name = "CAMPOS", long = "generado", value_delimiter = ',')]
+        generated: Vec<String>,
         /// Los campos, tras --. Primitivos: titulo:String precio:i64! nota:opt:String etiquetas:vec:String
         /// Objetos valor: nombre:Nombre:String edad:Edad:i64 estado:Estado:enum:Activo/Inactivo apodo:Apodo:opt:String
         /// Objeto valor compartido (el tipo sale de puerto.toml): email:Email
@@ -261,6 +273,18 @@ enum GenerateAction {
         /// separados por comas (p. ej. email,telefono). Solo campos de texto
         #[arg(value_name = "CAMPOS", long = "privado", value_delimiter = ',')]
         private: Vec<String>,
+        /// Lo que pone `crear` en vez de pedirlo, separado por comas (p. ej. estado=Pendiente): una
+        /// variante o un valor de su tipo. Actualizar sí lo cambia
+        #[arg(
+            value_name = "CAMPO=VALOR",
+            long = "por-defecto",
+            value_delimiter = ','
+        )]
+        defaults: Vec<String>,
+        /// Los String únicos que inventa el dominio al crear, separados por comas (p. ej. codigo):
+        /// `<Entidad>::generar_<campo>()`, en dominio/src/generados.rs
+        #[arg(value_name = "CAMPOS", long = "generado", value_delimiter = ',')]
+        generated: Vec<String>,
         /// Los campos, tras --. La misma sintaxis que `generar scaffold`. Se escriben en
         /// puerto.toml, así que `generar aplicacion/repositorio/presentacion` los ven.
         #[arg(value_name = "CAMPOS", raw = true)]
@@ -552,6 +576,8 @@ fn run(command: Commands) -> Result<(), Box<dyn std::error::Error>> {
                     unique,
                     order,
                     private,
+                    defaults,
+                    generated,
                     fields,
                 },
         } => {
@@ -565,7 +591,8 @@ fn run(command: Commands) -> Result<(), Box<dyn std::error::Error>> {
                 .and_then(|_| parse_cli_fields(&cwd, &fields))
                 .and_then(|parsed| {
                     let access = scaffold::ScaffoldAccess::from_args(&public, &role)?;
-                    let shape = scaffold::EntityShape::from_args(&unique, &order, &private);
+                    let shape = scaffold::EntityShape::from_args(&unique, &order, &private)
+                        .with_server_set(&defaults, &generated);
                     scaffold::run_scaffold_with_options(
                         &name, &cwd, &parsed, policy, &access, &shape,
                     )
@@ -670,6 +697,8 @@ fn run(command: Commands) -> Result<(), Box<dyn std::error::Error>> {
                     unique,
                     order,
                     private,
+                    defaults,
+                    generated,
                     fields,
                 },
         } => {
@@ -677,7 +706,8 @@ fn run(command: Commands) -> Result<(), Box<dyn std::error::Error>> {
             commands::list::require_puerto_project(&cwd)
                 .and_then(|_| parse_cli_fields(&cwd, &fields))
                 .and_then(|parsed| {
-                    let shape = scaffold::EntityShape::from_args(&unique, &order, &private);
+                    let shape = scaffold::EntityShape::from_args(&unique, &order, &private)
+                        .with_server_set(&defaults, &generated);
                     scaffold::run_generate_domain_with(&name, &cwd, &parsed, &shape)
                 })
                 .map(|()| format_after_generation(&cwd))

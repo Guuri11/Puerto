@@ -8,7 +8,7 @@ type Peticion{{ pascal }} = Esquemas["PeticionCrear{{ pascal }}"];
 export const Madre{{ pascal }} = {
   peticion(cambios: Partial<Peticion{{ pascal }}> = {}): Peticion{{ pascal }} {
     return {
-{%- for f in fields %}
+{%- for f in create_fields %}
       {{ f.camel }}: {{ f.mother }},
 {%- endfor %}
       ...cambios,
@@ -16,11 +16,29 @@ export const Madre{{ pascal }} = {
   },
 
   aleatorio(cambios: Partial<{{ pascal }}> = {}): {{ pascal }} {
+{%- set server_set = fields | filter(attribute="defaulted", value=true) | concat(with=fields | filter(attribute="generated", value=true)) %}
+{%- if server_set %}
+    return {
+      id: crypto.randomUUID(),
+      ...Madre{{ pascal }}.peticion(),
+{%- for f in server_set %}
+      {{ f.camel }}: {{ f.mother }},
+{%- endfor %}
+      ...cambios,
+    };
+{%- else %}
     return { id: crypto.randomUUID(), ...Madre{{ pascal }}.peticion(), ...cambios };
+{%- endif %}
   },
 };
 
 /** El `/{{ plural }}` de la API falsa, con `semilla`. */
 export function coleccion{{ pascal }}(semilla: {{ pascal }}[] = []) {
+{%- set generated = fields | filter(attribute="generated", value=true) %}
+{%- if generated %}
+  // Lo que actualizar conserva: los campos que genera la API (27.17).
+  return coleccion("/{{ plural }}", "{{ snake }}", semilla, {}, [{% for f in generated %}"{{ f.camel }}"{% if not loop.last %}, {% endif %}{% endfor %}]);
+{%- else %}
   return coleccion("/{{ plural }}", "{{ snake }}", semilla);
+{%- endif %}
 }

@@ -285,6 +285,11 @@ pub fn run_validate(cwd: &Path) -> Result<(), Box<dyn std::error::Error>> {
             }
         }
 
+        for field in &entity.fields {
+            if let Err(e) = crate::validation::validate_server_set(field) {
+                errors.push(format!("entidad '{}': {e}", entity.name));
+            }
+        }
         for field in entity.fields.iter().filter(|f| f.references.is_some()) {
             if let Err(e) = crate::validation::validate_field(field) {
                 errors.push(format!("entidad '{}': {e}", entity.name));

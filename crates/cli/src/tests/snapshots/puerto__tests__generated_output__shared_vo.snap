@@ -87,7 +87,10 @@ Un único sobre varios campos (una línea por jugador y partido) es `--unico jug
 en `scaffold` o `dominio` (se puede repetir): un índice único parcial en Postgres, comprobado
 también por el repositorio en memoria; queda en `[[entidad]] unicos`. El orden de la lista es
 `--orden=-puntos,nombre` (`-`, descendente; después, los más recientes primero): queda en
-`[[entidad]] orden`.
+`[[entidad]] orden`. Lo que pone el servidor no lo pide `crear`: `--por-defecto estado=Pendiente`
+le da un valor al crear (actualizar sí lo cambia) y `--generado codigo` (un `String` único) lo
+inventa `<Entidad>::generar_codigo()`, en `dominio/src/generados.rs`, que es tuyo; actualizar lo
+conserva. Quedan en el campo (`por_defecto`, `generado`).
 
 En un proyecto con auth, `scaffold` también acepta `--publico <caso_de_uso>[,…]` (sin token),
 `--rol <caso_de_uso>=<rol>[,…]` (ver la sección Auth) y `--privado <campo>[,…]`: un campo de texto
@@ -3734,6 +3737,22 @@ function sembrarCosas() {
 }
 
 describe("fetchFalso", () => {
+  test("debería conservar al actualizar solo lo que la colección conserva", async () => {
+    // Preparar
+    const semilla: { id: string; codigo: string; nota?: string }[] = [
+      { id: "1", codigo: "AB12", nota: "vieja" },
+    ];
+    const cosas = coleccion("/cosas", "cosa", semilla, {}, ["codigo"]);
+    const pedido = new Request("http://localhost/api/cosas/1", { method: "PUT", body: "{}" });
+
+    // Actuar
+    const respuesta = await fetchFalso([cosas])(pedido);
+
+    // Comprobar: `nota` no se mandó, así que queda vacía; `codigo` la pone la API.
+    expect(respuesta.status).toBe(200);
+    expect(cosas.elementos.get("1")).toEqual({ id: "1", codigo: "AB12" });
+  });
+
   test("debería poner en el elemento los campos de la acción cuando se le pide", async () => {
     // Preparar
     const cosas = sembrarCosas();
@@ -3784,20 +3803,24 @@ export interface Coleccion<T extends { id: string }> {
   elementos: Map<string, T>;
   /** Los campos que `POST <ruta>/{id}/<accion>` pone en el elemento, por acción. */
   acciones: Record<string, Partial<T>>;
+  /** Lo que `PUT <ruta>/{id}` conserva aunque no se mande: los campos generados (27.17). */
+  conservados: string[];
 }
 
 /**
- * Los elementos bajo `ruta` (`/productos`) de `entidad` (`producto`), empezando por `semilla`, y
- * las `acciones` que entiende: `{ cancelar: { estado: "Cancelado" } }`.
+ * Los elementos bajo `ruta` (`/productos`) de `entidad` (`producto`), empezando por `semilla`, las
+ * `acciones` que entiende (`{ cancelar: { estado: "Cancelado" } }`) y los campos que actualizar
+ * `conservados` (`["codigo"]`).
  */
 export function coleccion<T extends { id: string }>(
   ruta: string,
   entidad: string,
   semilla: T[] = [],
   acciones: Record<string, Partial<T>> = {},
+  conservados: string[] = [],
 ): Coleccion<T> {
   const elementos = new Map(semilla.map((elemento) => [elemento.id, elemento]));
-  return { ruta, noEncontrado: `${entidad}.no_encontrado`, elementos, acciones };
+  return { ruta, noEncontrado: `${entidad}.no_encontrado`, elementos, acciones, conservados };
 }
 
 /** Un `ClienteApi` sobre {@link fetchFalso}. */
@@ -3860,8 +3883,13 @@ async function servirElemento(objetivo: Coleccion<{ id: string }>, peticion: Req
     return new Response(null, { status: 204 });
   }
   if (peticion.method === "PUT") {
-    // Como la API, actualizar reemplaza todos los campos: el que no se manda queda vacío.
-    const actualizado = { ...(await peticion.json()), id };
+    // Como la API, actualizar reemplaza todos los campos: el que no se manda queda vacío, salvo
+    // los que la API pone ella (los generados), que se conservan.
+    const previo: Record<string, unknown> = encontrado;
+    const conservado = Object.fromEntries(
+      objetivo.conservados.map((campo) => [campo, previo[campo]]),
+    );
+    const actualizado = { ...conservado, ...(await peticion.json()), id };
     objetivo.elementos.set(id, actualizado);
     return Response.json(actualizado);
   }

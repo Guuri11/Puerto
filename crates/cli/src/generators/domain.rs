@@ -217,7 +217,15 @@ pub(crate) fn generate_use_case_trait(
     fields: &[Field],
     actor: bool,
 ) -> Result<String, RenderError> {
-    let eff = effective_fields(fields);
+    // 27.17: crear does not ask for what the server sets; actualizar keeps a generated field.
+    let eff: Vec<Field> = effective_fields(fields)
+        .into_iter()
+        .filter(|f| match template {
+            t if t.ends_with("use_case_create.tera") => !f.generated && f.default.is_none(),
+            t if t.ends_with("use_case_update.tera") => !f.generated,
+            _ => true,
+        })
+        .collect();
     let mut extra_imports: Vec<String> = vec![];
     for imp in eff.iter().filter_map(type_import) {
         if !template_imports.contains(&imp) && !extra_imports.iter().any(|i| i == imp) {
@@ -338,7 +346,7 @@ pub fn write_domain_files(
         .collect();
     let mut reference_imports = vec![];
     push_reference_imports(&mut reference_imports, &eff);
-    ctx.insert("fields", &field_ctxs);
+    crate::generators::types::insert_field_lists(&mut ctx, &field_ctxs);
     ctx.insert("reference_imports", &reference_imports);
     let config = crate::puerto_toml::read(base).ok();
     let events = config.as_ref().is_some_and(|c| c.project.has_events());
@@ -388,6 +396,19 @@ pub fn write_domain_files(
         &base.join(layout::mother(snake)),
         &generate_mother(pascal, snake, fields, shared_vos)?,
     )?;
+    // 27.17: written once — the user's from then on, like a transition's method.
+    let generated: Vec<&str> = eff
+        .iter()
+        .filter(|f| f.generated)
+        .map(|f| f.name.as_str())
+        .collect();
+    let generados = base.join(layout::domain_file(snake, "generados"));
+    if !generated.is_empty() && !generados.exists() {
+        let mut ctx = entity_ctx(pascal, snake);
+        ctx.insert("words", &crate::generators::naming::snake_to_words(snake));
+        ctx.insert("generated", &generated);
+        write_file(&generados, &render("domain/generated.tera", &ctx)?)?;
+    }
     write_shared_vo_files(base, shared_vos)?;
     crate::generators::crates::finish(base, snake, Layer::Domain, &ContextDeps::read(base, fields))
 }

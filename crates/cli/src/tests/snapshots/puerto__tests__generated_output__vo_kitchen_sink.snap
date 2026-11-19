@@ -87,7 +87,10 @@ Un único sobre varios campos (una línea por jugador y partido) es `--unico jug
 en `scaffold` o `dominio` (se puede repetir): un índice único parcial en Postgres, comprobado
 también por el repositorio en memoria; queda en `[[entidad]] unicos`. El orden de la lista es
 `--orden=-puntos,nombre` (`-`, descendente; después, los más recientes primero): queda en
-`[[entidad]] orden`.
+`[[entidad]] orden`. Lo que pone el servidor no lo pide `crear`: `--por-defecto estado=Pendiente`
+le da un valor al crear (actualizar sí lo cambia) y `--generado codigo` (un `String` único) lo
+inventa `<Entidad>::generar_codigo()`, en `dominio/src/generados.rs`, que es tuyo; actualizar lo
+conserva. Quedan en el campo (`por_defecto`, `generado`).
 
 En un proyecto con auth, `scaffold` también acepta `--publico <caso_de_uso>[,…]` (sin token),
 `--rol <caso_de_uso>=<rol>[,…]` (ver la sección Auth) y `--privado <campo>[,…]`: un campo de texto
@@ -330,7 +333,7 @@ use async_trait::async_trait;
 use dominio_cuenta::errores::ErrorCuenta;
 use dominio_cuenta::modelo::{Cuenta, IdCuenta, PropsCuenta};
 use dominio_cuenta::repositorio::RepositorioCuenta;
-use dominio_cuenta::valores::{Contact, Fee, MiddleName, Name, Sku, Status, Tag};
+use dominio_cuenta::valores::{Contact, Fee, MiddleName, Name, Status, Tag};
 use nucleo::valores::Email;
 use std::sync::Arc;
 
@@ -340,7 +343,6 @@ pub struct ParamsActualizarCuenta {
     pub title: String,
     pub price: i64,
     pub name: String,
-    pub sku: String,
     pub note: Option<String>,
     pub middle_name: Option<String>,
     pub tags: Vec<String>,
@@ -385,7 +387,6 @@ impl ActualizarCuenta for ActualizarCuentaImpl {
             .await?
             .ok_or(ErrorCuenta::NoEncontrado)?;
         let name = Name::new(params.name)?;
-        let sku = Sku::new(params.sku)?;
         let middle_name = params.middle_name.map(MiddleName::new).transpose()?;
         let tags: Vec<Tag> = params
             .tags
@@ -396,6 +397,7 @@ impl ActualizarCuenta for ActualizarCuentaImpl {
         let email = Email::new(params.email).map_err(|_| ErrorCuenta::EmailInvalido)?;
         let contact = Contact::new(params.contact)?;
         let fee = Fee::new(params.fee)?;
+        let sku = entidad.sku.clone();
         entidad.actualizar(PropsCuenta {
             title: params.title,
             price: params.price,
@@ -445,7 +447,6 @@ mod tests {
                 title: props.title,
                 price: props.price,
                 name: props.name.valor().to_string(),
-                sku: props.sku.valor().to_string(),
                 note: props.note,
                 middle_name: props.middle_name.as_ref().map(|v| v.valor().to_string()),
                 tags: props
@@ -486,7 +487,6 @@ mod tests {
                 title: props.title,
                 price: props.price,
                 name: props.name.valor().to_string(),
-                sku: props.sku.valor().to_string(),
                 note: props.note,
                 middle_name: props.middle_name.as_ref().map(|v| v.valor().to_string()),
                 tags: props
@@ -527,7 +527,6 @@ mod tests {
                 title: "".to_string(),
                 price: props.price,
                 name: props.name.valor().to_string(),
-                sku: props.sku.valor().to_string(),
                 note: props.note,
                 middle_name: props.middle_name.as_ref().map(|v| v.valor().to_string()),
                 tags: props
@@ -571,7 +570,6 @@ mod tests {
                 title: props.title,
                 price: props.price,
                 name: "".to_string(),
-                sku: props.sku.valor().to_string(),
                 note: props.note,
                 middle_name: props.middle_name.as_ref().map(|v| v.valor().to_string()),
                 tags: props
@@ -589,47 +587,6 @@ mod tests {
         // Comprobar
         assert!(resultado.is_err());
         assert_eq!(resultado.unwrap_err().to_string(), "cuenta.name_invalido");
-    }
-
-    #[tokio::test]
-    async fn deberia_devolver_error_cuando_sku_es_una_cadena_vacia() {
-        // Preparar
-        let props = MadreCuenta::new().construir_props();
-        let entidad = MadreCuenta::aleatorio();
-        let id_entidad = entidad.id;
-        let mut repositorio_doble = MockRepositorioCuenta::new();
-        repositorio_doble
-            .expect_buscar_por_id()
-            .returning(move |_| Ok(Some(entidad.clone())));
-        let caso_de_uso = ActualizarCuentaImpl {
-            repositorio: Arc::new(repositorio_doble),
-        };
-
-        // Actuar
-        let resultado = caso_de_uso
-            .ejecutar(ParamsActualizarCuenta {
-                id: id_entidad,
-                title: props.title,
-                price: props.price,
-                name: props.name.valor().to_string(),
-                sku: "".to_string(),
-                note: props.note,
-                middle_name: props.middle_name.as_ref().map(|v| v.valor().to_string()),
-                tags: props
-                    .tags
-                    .iter()
-                    .map(|v| v.valor().to_string())
-                    .collect::<Vec<_>>(),
-                status: props.status.as_str().to_string(),
-                email: props.email.valor().to_string(),
-                contact: props.contact.valor().to_string(),
-                fee: props.fee.valor(),
-            })
-            .await;
-
-        // Comprobar
-        assert!(resultado.is_err());
-        assert_eq!(resultado.unwrap_err().to_string(), "cuenta.sku_invalido");
     }
 
     #[tokio::test]
@@ -653,7 +610,6 @@ mod tests {
                 title: props.title,
                 price: props.price,
                 name: props.name.valor().to_string(),
-                sku: props.sku.valor().to_string(),
                 note: props.note,
                 middle_name: props.middle_name.as_ref().map(|v| v.valor().to_string()),
                 tags: props
@@ -694,7 +650,6 @@ mod tests {
                 title: props.title,
                 price: props.price,
                 name: props.name.valor().to_string(),
-                sku: props.sku.valor().to_string(),
                 note: props.note,
                 middle_name: props.middle_name.as_ref().map(|v| v.valor().to_string()),
                 tags: props
@@ -832,11 +787,9 @@ pub struct ParamsCrearCuenta {
     pub title: String,
     pub price: i64,
     pub name: String,
-    pub sku: String,
     pub note: Option<String>,
     pub middle_name: Option<String>,
     pub tags: Vec<String>,
-    pub status: String,
     pub email: String,
     pub contact: String,
     pub fee: i64,
@@ -872,14 +825,12 @@ impl CrearCuenta for CrearCuentaImpl {
     #[tracing::instrument(name = "crear_cuenta", skip_all, err(level = "warn"))]
     async fn ejecutar(&self, params: ParamsCrearCuenta) -> Result<Cuenta, ErrorCuenta> {
         let name = Name::new(params.name)?;
-        let sku = Sku::new(params.sku)?;
         let middle_name = params.middle_name.map(MiddleName::new).transpose()?;
         let tags: Vec<Tag> = params
             .tags
             .into_iter()
             .map(Tag::new)
             .collect::<Result<Vec<_>, _>>()?;
-        let status = params.status.parse::<Status>()?;
         let email = Email::new(params.email).map_err(|_| ErrorCuenta::EmailInvalido)?;
         let contact = Contact::new(params.contact)?;
         let fee = Fee::new(params.fee)?;
@@ -887,11 +838,11 @@ impl CrearCuenta for CrearCuentaImpl {
             title: params.title,
             price: params.price,
             name,
-            sku,
+            sku: Sku::new(Cuenta::generar_sku())?,
             note: params.note,
             middle_name,
             tags,
-            status,
+            status: Status::Archived,
             email,
             contact,
             fee,
@@ -924,7 +875,6 @@ mod tests {
                 title: props.title,
                 price: props.price,
                 name: props.name.valor().to_string(),
-                sku: props.sku.valor().to_string(),
                 note: props.note,
                 middle_name: props.middle_name.as_ref().map(|v| v.valor().to_string()),
                 tags: props
@@ -932,7 +882,6 @@ mod tests {
                     .iter()
                     .map(|v| v.valor().to_string())
                     .collect::<Vec<_>>(),
-                status: props.status.as_str().to_string(),
                 email: props.email.valor().to_string(),
                 contact: props.contact.valor().to_string(),
                 fee: props.fee.valor(),
@@ -965,7 +914,6 @@ mod tests {
                 title: props.title,
                 price: props.price,
                 name: props.name.valor().to_string(),
-                sku: props.sku.valor().to_string(),
                 note: props.note,
                 middle_name: props.middle_name.as_ref().map(|v| v.valor().to_string()),
                 tags: props
@@ -973,7 +921,6 @@ mod tests {
                     .iter()
                     .map(|v| v.valor().to_string())
                     .collect::<Vec<_>>(),
-                status: props.status.as_str().to_string(),
                 email: props.email.valor().to_string(),
                 contact: props.contact.valor().to_string(),
                 fee: props.fee.valor(),
@@ -1000,7 +947,6 @@ mod tests {
                 title: "".to_string(),
                 price: props.price,
                 name: props.name.valor().to_string(),
-                sku: props.sku.valor().to_string(),
                 note: props.note,
                 middle_name: props.middle_name.as_ref().map(|v| v.valor().to_string()),
                 tags: props
@@ -1008,7 +954,6 @@ mod tests {
                     .iter()
                     .map(|v| v.valor().to_string())
                     .collect::<Vec<_>>(),
-                status: props.status.as_str().to_string(),
                 email: props.email.valor().to_string(),
                 contact: props.contact.valor().to_string(),
                 fee: props.fee.valor(),
@@ -1038,7 +983,6 @@ mod tests {
                 title: props.title,
                 price: props.price,
                 name: "".to_string(),
-                sku: props.sku.valor().to_string(),
                 note: props.note,
                 middle_name: props.middle_name.as_ref().map(|v| v.valor().to_string()),
                 tags: props
@@ -1046,7 +990,6 @@ mod tests {
                     .iter()
                     .map(|v| v.valor().to_string())
                     .collect::<Vec<_>>(),
-                status: props.status.as_str().to_string(),
                 email: props.email.valor().to_string(),
                 contact: props.contact.valor().to_string(),
                 fee: props.fee.valor(),
@@ -1056,76 +999,6 @@ mod tests {
         // Comprobar
         assert!(resultado.is_err());
         assert_eq!(resultado.unwrap_err().to_string(), "cuenta.name_invalido");
-    }
-
-    #[tokio::test]
-    async fn deberia_devolver_error_cuando_sku_es_una_cadena_vacia() {
-        // Preparar
-        let props = MadreCuenta::new().construir_props();
-        let repositorio_doble = MockRepositorioCuenta::new();
-        let caso_de_uso = CrearCuentaImpl {
-            repositorio: Arc::new(repositorio_doble),
-        };
-
-        // Actuar
-        let resultado = caso_de_uso
-            .ejecutar(ParamsCrearCuenta {
-                title: props.title,
-                price: props.price,
-                name: props.name.valor().to_string(),
-                sku: "".to_string(),
-                note: props.note,
-                middle_name: props.middle_name.as_ref().map(|v| v.valor().to_string()),
-                tags: props
-                    .tags
-                    .iter()
-                    .map(|v| v.valor().to_string())
-                    .collect::<Vec<_>>(),
-                status: props.status.as_str().to_string(),
-                email: props.email.valor().to_string(),
-                contact: props.contact.valor().to_string(),
-                fee: props.fee.valor(),
-            })
-            .await;
-
-        // Comprobar
-        assert!(resultado.is_err());
-        assert_eq!(resultado.unwrap_err().to_string(), "cuenta.sku_invalido");
-    }
-
-    #[tokio::test]
-    async fn deberia_devolver_error_cuando_status_es_una_cadena_vacia() {
-        // Preparar
-        let props = MadreCuenta::new().construir_props();
-        let repositorio_doble = MockRepositorioCuenta::new();
-        let caso_de_uso = CrearCuentaImpl {
-            repositorio: Arc::new(repositorio_doble),
-        };
-
-        // Actuar
-        let resultado = caso_de_uso
-            .ejecutar(ParamsCrearCuenta {
-                title: props.title,
-                price: props.price,
-                name: props.name.valor().to_string(),
-                sku: props.sku.valor().to_string(),
-                note: props.note,
-                middle_name: props.middle_name.as_ref().map(|v| v.valor().to_string()),
-                tags: props
-                    .tags
-                    .iter()
-                    .map(|v| v.valor().to_string())
-                    .collect::<Vec<_>>(),
-                status: "".to_string(),
-                email: props.email.valor().to_string(),
-                contact: props.contact.valor().to_string(),
-                fee: props.fee.valor(),
-            })
-            .await;
-
-        // Comprobar
-        assert!(resultado.is_err());
-        assert_eq!(resultado.unwrap_err().to_string(), "cuenta.status_invalido");
     }
 
     #[tokio::test]
@@ -1143,7 +1016,6 @@ mod tests {
                 title: props.title,
                 price: props.price,
                 name: props.name.valor().to_string(),
-                sku: props.sku.valor().to_string(),
                 note: props.note,
                 middle_name: props.middle_name.as_ref().map(|v| v.valor().to_string()),
                 tags: props
@@ -1151,7 +1023,6 @@ mod tests {
                     .iter()
                     .map(|v| v.valor().to_string())
                     .collect::<Vec<_>>(),
-                status: props.status.as_str().to_string(),
                 email: "".to_string(),
                 contact: props.contact.valor().to_string(),
                 fee: props.fee.valor(),
@@ -1178,7 +1049,6 @@ mod tests {
                 title: props.title,
                 price: props.price,
                 name: props.name.valor().to_string(),
-                sku: props.sku.valor().to_string(),
                 note: props.note,
                 middle_name: props.middle_name.as_ref().map(|v| v.valor().to_string()),
                 tags: props
@@ -1186,7 +1056,6 @@ mod tests {
                     .iter()
                     .map(|v| v.valor().to_string())
                     .collect::<Vec<_>>(),
-                status: props.status.as_str().to_string(),
                 email: props.email.valor().to_string(),
                 contact: "".to_string(),
                 fee: props.fee.valor(),
@@ -1540,8 +1409,45 @@ mod tests {
     }
 }
 
+=== contextos/cuenta/dominio/src/generados.rs ===
+//! Los valores que pone el dominio al crear cuenta (`generado = true` en puerto.toml, 27.17):
+//! `crear_cuenta` los pide aquí, y `actualizar_cuenta` conserva el que tenía. Es tuyo:
+//! `puerto` lo escribe una vez. Si cambias la forma de uno, la regla de su objeto valor tiene que
+//! aceptarla.
+
+use crate::modelo::Cuenta;
+
+impl Cuenta {
+    /// 8 caracteres `A-Z0-9`, de un uuid: no se repiten en la práctica, y el índice único lo
+    /// comprueba.
+    pub fn generar_sku() -> String {
+        uuid::Uuid::new_v4().simple().to_string()[..8].to_uppercase()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn deberia_generar_sku_con_ocho_mayusculas_o_digitos() {
+        // Actuar
+        let valor = Cuenta::generar_sku();
+
+        // Comprobar
+        assert_eq!(valor.len(), 8, "{valor}");
+        assert!(
+            valor
+                .chars()
+                .all(|c| c.is_ascii_uppercase() || c.is_ascii_digit()),
+            "{valor}"
+        );
+    }
+}
+
 === contextos/cuenta/dominio/src/lib.rs ===
 pub mod errores;
+pub mod generados;
 pub mod modelo;
 pub mod repositorio;
 pub mod valores;
@@ -2484,11 +2390,9 @@ pub struct PeticionCrearCuenta {
     pub title: String,
     pub price: i64,
     pub name: String,
-    pub sku: String,
     pub note: Option<String>,
     pub middle_name: Option<String>,
     pub tags: Vec<String>,
-    pub status: String,
     pub email: String,
     pub contact: String,
     pub fee: i64,
@@ -2526,7 +2430,6 @@ pub struct PeticionActualizarCuenta {
     pub title: String,
     pub price: i64,
     pub name: String,
-    pub sku: String,
     pub note: Option<String>,
     pub middle_name: Option<String>,
     pub tags: Vec<String>,
@@ -2901,11 +2804,9 @@ impl ApiCuenta {
                 title: cuerpo.title.clone(),
                 price: cuerpo.price,
                 name: cuerpo.name.clone(),
-                sku: cuerpo.sku.clone(),
                 note: cuerpo.note.clone(),
                 middle_name: cuerpo.middle_name.clone(),
                 tags: cuerpo.tags.clone(),
-                status: cuerpo.status.clone(),
                 email: cuerpo.email.clone(),
                 contact: cuerpo.contact.clone(),
                 fee: cuerpo.fee,
@@ -2977,7 +2878,6 @@ impl ApiCuenta {
                 title: cuerpo.title.clone(),
                 price: cuerpo.price,
                 name: cuerpo.name.clone(),
-                sku: cuerpo.sku.clone(),
                 note: cuerpo.note.clone(),
                 middle_name: cuerpo.middle_name.clone(),
                 tags: cuerpo.tags.clone(),
@@ -3061,11 +2961,9 @@ mod tests {
             title: "example".to_string(),
             price: 42,
             name: "example".to_string(),
-            sku: "example".to_string(),
             note: None,
             middle_name: None,
             tags: vec![],
-            status: "example".to_string(),
             email: "example".to_string(),
             contact: "ana@ejemplo.es".to_string(),
             fee: 42,
@@ -3077,7 +2975,6 @@ mod tests {
             title: "example".to_string(),
             price: 42,
             name: "example".to_string(),
-            sku: "example".to_string(),
             note: None,
             middle_name: None,
             tags: vec![],
@@ -3800,6 +3697,7 @@ nombre = "sku"
 tipo = "String"
 unico = true
 objeto_valor = "Sku"
+generado = true
 
 [[entidad.campos]]
 nombre = "note"
@@ -3824,6 +3722,7 @@ variantes = [
     "Active",
     "Archived",
 ]
+por_defecto = "Archived"
 
 [[entidad.campos]]
 nombre = "email"
@@ -4000,11 +3899,9 @@ async function rellenar(peticion: Esquemas["PeticionCrearCuenta"]) {
   escribir("Title", peticion.title);
   escribir("Price", String(peticion.price));
   escribir("Name", peticion.name);
-  escribir("Sku", peticion.sku);
   escribir("Note", textoDe(peticion.note));
   escribir("Middle name", textoDe(peticion.middleName));
   escribir("Tags", peticion.tags.join(", "));
-  escribir("Status", peticion.status);
   escribir("Email", peticion.email);
   escribir("Contact", peticion.contact);
   escribir("Fee", aImporte(peticion.fee));
@@ -4028,19 +3925,6 @@ describe("ContenedorFormularioCuenta", () => {
     const [creado] = guardados.elementos.values();
     expect(creado).toMatchObject(peticion);
     expect(historial.at(-1)).toBe(`/cuentas/${creado?.id}`);
-  });
-
-  test("debería traer elegida la primera variante de Status", async () => {
-    // Preparar
-    const api = apiFalsa([coleccionCuenta()]);
-
-    // Actuar
-    renderizarPantalla(<ContenedorFormularioCuenta />, { api });
-
-    // Comprobar
-    await screen.findByText("Guardar");
-    const select = screen.getByLabelText("Status") as HTMLSelectElement;
-    expect(select.value).toBe("Active");
   });
 
   test("debería guardar la edición cuando se envía el formulario", async () => {
@@ -4075,7 +3959,7 @@ describe("ContenedorFormularioCuenta", () => {
     expect((await screen.findByRole("alert")).textContent).toBe(codigo);
   });
 
-  test("debería decir bajo su input que Sku ya está en uso cuando la API responde un duplicado", async () => {
+  test("debería decir que los valores ya están en uso cuando la API responde un duplicado", async () => {
     // Preparar
     const peticion = MadreCuenta.peticion();
     const codigo = "cuenta.duplicado";
@@ -4088,10 +3972,7 @@ describe("ContenedorFormularioCuenta", () => {
     fireEvent.click(screen.getByText("Guardar"));
 
     // Comprobar
-    expect(await screen.findByText(aProblema(codigo).texto)).toBeTruthy();
-    const campo = screen.getByLabelText("Sku");
-    expect(campo.getAttribute("aria-invalid")).toBe("true");
-    expect(screen.queryByRole("alert")).toBeNull();
+    expect((await screen.findByRole("alert")).textContent).toBe(aProblema(codigo).texto);
   });
 
   test("debería mostrar el mensaje bajo su input cuando la API rechaza un campo", async () => {
@@ -4188,6 +4069,7 @@ function FormularioCuenta({ existente }: { existente: Cuenta | null }) {
         <VistaFormularioCuenta
           valores={valores}
           guardando={guardando}
+          creando={existente === null}
           problema={problema}
           alCambiar={setValores}
           alEnviar={guardar}
@@ -4351,14 +4233,12 @@ const TEXTOS: Record<string, string> = {
 const CAMPOS: Record<string, string> = {
   "cuenta.validacion.title_vacio": "title",
   "cuenta.name_invalido": "name",
-  "cuenta.sku_invalido": "sku",
   "cuenta.middle_name_invalido": "middleName",
   "cuenta.tag_invalido": "tags",
   "cuenta.status_invalido": "status",
   "cuenta.email_invalido": "email",
   "cuenta.contact_invalido": "contact",
   "cuenta.fee_invalido": "fee",
-  "cuenta.duplicado": "sku",
 };
 
 export function aProblema(codigo: string): ProblemaCuenta {
@@ -4419,14 +4299,13 @@ import { ErrorCampo } from "../../../compartido/ui/error-campo";
 import type { ProblemaCuenta } from "../mensajes";
 
 type Cuenta = Esquemas["DtoCuenta"];
-type PeticionCuenta = Esquemas["PeticionCrearCuenta"];
+type PeticionCuenta = Esquemas["PeticionActualizarCuenta"];
 
 /** Lo que guardan los inputs: el texto de cada input, `checked` en una casilla. */
 export interface ValoresFormularioCuenta {
   title: string;
   price: string;
   name: string;
-  sku: string;
   note: string;
   middleName: string;
   tags: string;
@@ -4443,11 +4322,10 @@ export function aFormularioCuenta(cuenta: Cuenta | null): ValoresFormularioCuent
       title: "",
       price: "",
       name: "",
-      sku: "",
       note: "",
       middleName: "",
       tags: "",
-      status: "Active",
+      status: "Archived",
       email: "",
       contact: "",
       fee: "",
@@ -4457,7 +4335,6 @@ export function aFormularioCuenta(cuenta: Cuenta | null): ValoresFormularioCuent
     title: cuenta.title,
     price: String(cuenta.price),
     name: cuenta.name,
-    sku: cuenta.sku,
     note: textoDe(cuenta.note),
     middleName: textoDe(cuenta.middleName),
     tags: cuenta.tags.join(", "),
@@ -4474,7 +4351,6 @@ export function aPeticionCuenta(valores: ValoresFormularioCuenta): PeticionCuent
     title: valores.title,
     price: Number(valores.price),
     name: valores.name,
-    sku: valores.sku,
     note: textoOpcional(valores.note),
     middleName: textoOpcional(valores.middleName),
     tags: separarLista(valores.tags),
@@ -4488,12 +4364,15 @@ export function aPeticionCuenta(valores: ValoresFormularioCuenta): PeticionCuent
 export function VistaFormularioCuenta({
   valores,
   guardando,
+  creando,
   problema,
   alCambiar,
   alEnviar,
 }: {
   valores: ValoresFormularioCuenta;
   guardando: boolean;
+  /** Crear no pide lo que pone el servidor (`por_defecto`): sus inputs solo se ven al editar. */
+  creando: boolean;
   /** Lo que dijo la API del último envío: se muestra bajo su input. */
   problema: ProblemaCuenta | null;
   alCambiar: (valores: ValoresFormularioCuenta) => void;
@@ -4544,18 +4423,6 @@ export function VistaFormularioCuenta({
       </label>
       <ErrorCampo problema={problema} campo="name" />
       <label className="fieldset">
-        <span className="fieldset-legend">Sku</span>
-        <input
-          className="input w-full"
-          type="text"
-          aria-invalid={problema?.campo === "sku"}
-          required
-          value={valores.sku}
-          onChange={(event) => alCambiar({ ...valores, sku: event.target.value })}
-        />
-      </label>
-      <ErrorCampo problema={problema} campo="sku" />
-      <label className="fieldset">
         <span className="fieldset-legend">Note</span>
         <input
           className="input w-full"
@@ -4588,7 +4455,7 @@ export function VistaFormularioCuenta({
         />
       </label>
       <ErrorCampo problema={problema} campo="tags" />
-      <label className="fieldset">
+      <label className="fieldset" hidden={creando}>
         <span className="fieldset-legend">Status</span>
         <select
           className="select w-full"
@@ -4785,6 +4652,22 @@ function sembrarCosas() {
 }
 
 describe("fetchFalso", () => {
+  test("debería conservar al actualizar solo lo que la colección conserva", async () => {
+    // Preparar
+    const semilla: { id: string; codigo: string; nota?: string }[] = [
+      { id: "1", codigo: "AB12", nota: "vieja" },
+    ];
+    const cosas = coleccion("/cosas", "cosa", semilla, {}, ["codigo"]);
+    const pedido = new Request("http://localhost/api/cosas/1", { method: "PUT", body: "{}" });
+
+    // Actuar
+    const respuesta = await fetchFalso([cosas])(pedido);
+
+    // Comprobar: `nota` no se mandó, así que queda vacía; `codigo` la pone la API.
+    expect(respuesta.status).toBe(200);
+    expect(cosas.elementos.get("1")).toEqual({ id: "1", codigo: "AB12" });
+  });
+
   test("debería poner en el elemento los campos de la acción cuando se le pide", async () => {
     // Preparar
     const cosas = sembrarCosas();
@@ -4835,20 +4718,24 @@ export interface Coleccion<T extends { id: string }> {
   elementos: Map<string, T>;
   /** Los campos que `POST <ruta>/{id}/<accion>` pone en el elemento, por acción. */
   acciones: Record<string, Partial<T>>;
+  /** Lo que `PUT <ruta>/{id}` conserva aunque no se mande: los campos generados (27.17). */
+  conservados: string[];
 }
 
 /**
- * Los elementos bajo `ruta` (`/productos`) de `entidad` (`producto`), empezando por `semilla`, y
- * las `acciones` que entiende: `{ cancelar: { estado: "Cancelado" } }`.
+ * Los elementos bajo `ruta` (`/productos`) de `entidad` (`producto`), empezando por `semilla`, las
+ * `acciones` que entiende (`{ cancelar: { estado: "Cancelado" } }`) y los campos que actualizar
+ * `conservados` (`["codigo"]`).
  */
 export function coleccion<T extends { id: string }>(
   ruta: string,
   entidad: string,
   semilla: T[] = [],
   acciones: Record<string, Partial<T>> = {},
+  conservados: string[] = [],
 ): Coleccion<T> {
   const elementos = new Map(semilla.map((elemento) => [elemento.id, elemento]));
-  return { ruta, noEncontrado: `${entidad}.no_encontrado`, elementos, acciones };
+  return { ruta, noEncontrado: `${entidad}.no_encontrado`, elementos, acciones, conservados };
 }
 
 /** Un `ClienteApi` sobre {@link fetchFalso}. */
@@ -4911,8 +4798,13 @@ async function servirElemento(objetivo: Coleccion<{ id: string }>, peticion: Req
     return new Response(null, { status: 204 });
   }
   if (peticion.method === "PUT") {
-    // Como la API, actualizar reemplaza todos los campos: el que no se manda queda vacío.
-    const actualizado = { ...(await peticion.json()), id };
+    // Como la API, actualizar reemplaza todos los campos: el que no se manda queda vacío, salvo
+    // los que la API pone ella (los generados), que se conservan.
+    const previo: Record<string, unknown> = encontrado;
+    const conservado = Object.fromEntries(
+      objetivo.conservados.map((campo) => [campo, previo[campo]]),
+    );
+    const actualizado = { ...conservado, ...(await peticion.json()), id };
     objetivo.elementos.set(id, actualizado);
     return Response.json(actualizado);
   }
@@ -4953,11 +4845,9 @@ export const MadreCuenta = {
       title: "example",
       price: 42,
       name: "example",
-      sku: "example",
       note: "example",
       middleName: "example",
       tags: ["example"],
-      status: "Active",
       email: "example",
       contact: "ana@ejemplo.es",
       fee: 1250,
@@ -4966,11 +4856,18 @@ export const MadreCuenta = {
   },
 
   aleatorio(cambios: Partial<Cuenta> = {}): Cuenta {
-    return { id: crypto.randomUUID(), ...MadreCuenta.peticion(), ...cambios };
+    return {
+      id: crypto.randomUUID(),
+      ...MadreCuenta.peticion(),
+      status: "Active",
+      sku: "example",
+      ...cambios,
+    };
   },
 };
 
 /** El `/cuentas` de la API falsa, con `semilla`. */
 export function coleccionCuenta(semilla: Cuenta[] = []) {
-  return coleccion("/cuentas", "cuenta", semilla);
+  // Lo que actualizar conserva: los campos que genera la API (27.17).
+  return coleccion("/cuentas", "cuenta", semilla, {}, ["sku"]);
 }

@@ -53,7 +53,15 @@ pub(super) struct Scenario<'a> {
 
 pub(super) type Access<'a> = (&'a str, &'a [&'a str], &'a [&'a str]);
 
-pub(super) type Shape<'a> = (&'a str, &'a [&'a str], &'a [&'a str], &'a [&'a str]);
+/// `(entity, --unico, --orden, --privado, --por-defecto, --generado)`.
+pub(super) type Shape<'a> = (
+    &'a str,
+    &'a [&'a str],
+    &'a [&'a str],
+    &'a [&'a str],
+    &'a [&'a str],
+    &'a [&'a str],
+);
 
 pub(super) type Transition<'a> = (&'a str, &'a str, Option<&'a str>, &'a [&'a str], bool);
 
@@ -354,7 +362,8 @@ pub(super) const VO_KITCHEN_SINK: Scenario = Scenario {
             "fee:Fee:dinero",
         ],
     )],
-    shapes: &[],
+    // 27.17: the server sets them — `status` on create, `sku` made up by the domain.
+    shapes: &[("Cuenta", &[], &[], &[], &["status=Archived"], &["sku"])],
     portada: None,
     blocks: &[],
 };
@@ -605,7 +614,15 @@ pub(super) const POSTGRES_EVERY_TYPE: Scenario = Scenario {
         ),
         ("Billete", &["state:State:enum:Open/Closed"]),
     ],
-    shapes: &[],
+    // 27.17: a generated unique `String`, and defaults of a `bool` and an `f64`.
+    shapes: &[(
+        "Producto",
+        &[],
+        &[],
+        &[],
+        &["active=true", "rating=2"],
+        &["sku"],
+    )],
     portada: None,
     blocks: &[],
 };
@@ -865,7 +882,14 @@ pub(super) const REFERENCES_AUTH: Scenario = Scenario {
         ("Equipo", &[], &["obtener_equipo=admin"]),
     ],
     // canasta: one shirt number per team, listed by number; a player's email for signed-in callers.
-    shapes: &[("Jugador", &["equipo_id,dorsal"], &["-dorsal"], &["email"])],
+    shapes: &[(
+        "Jugador",
+        &["equipo_id,dorsal"],
+        &["-dorsal"],
+        &["email"],
+        &[],
+        &[],
+    )],
     portada: None,
     blocks: &[],
 };
@@ -1010,8 +1034,8 @@ pub(super) fn apply_scenario(scenario: &Scenario, output: &Path) {
         let shape = scenario
             .shapes
             .iter()
-            .find(|(name, _, _, _)| name == entity)
-            .map(|(_, uniques, order, private)| {
+            .find(|(name, ..)| name == entity)
+            .map(|(_, uniques, order, private, defaults, generated)| {
                 let strings =
                     |args: &[&str]| args.iter().map(|a| a.to_string()).collect::<Vec<_>>();
                 scaffold::EntityShape::from_args(
@@ -1019,6 +1043,7 @@ pub(super) fn apply_scenario(scenario: &Scenario, output: &Path) {
                     &strings(order),
                     &strings(private),
                 )
+                .with_server_set(&strings(defaults), &strings(generated))
             })
             .unwrap_or_default();
         scaffold::run_scaffold_with_options(

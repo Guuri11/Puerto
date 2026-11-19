@@ -34,7 +34,7 @@ impl Dto{{ pascal }} {
 #[derive(Debug, Object)]
 #[oai(rename_all = "camelCase")]
 pub struct PeticionCrear{{ pascal }} {
-{% for f in fields %}    pub {{ f.name }}: {{ f.field_type }},
+{% for f in create_fields %}    pub {{ f.name }}: {{ f.field_type }},
 {% endfor %}}
 {% if is_crud %}
 
@@ -71,6 +71,6 @@ impl DtoPagina{{ pascal }} {
 #[derive(Debug, Object)]
 #[oai(rename_all = "camelCase")]
 pub struct PeticionActualizar{{ pascal }} {
-{% for f in fields %}    pub {{ f.name }}: {{ f.field_type }},
+{% for f in update_fields %}    pub {{ f.name }}: {{ f.field_type }},
 {% endfor %}}
 {% endif %}

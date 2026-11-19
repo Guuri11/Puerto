@@ -71,6 +71,7 @@ mod references;
 mod repository_errors;
 mod runtime_crates;
 mod scaffolding;
+mod server_fields;
 mod startup_errors;
 mod transitions;
 mod typed_fields;

@@ -1,7 +1,7 @@
-{% import "application/macros.tera" as macros %}{% set required = fields | filter(attribute="required_string", value=true) %}{% set string_vos = fields | filter(attribute="string_vo", value=true) %}use std::sync::Arc;
+{% import "application/macros.tera" as macros %}{% set asked = update_fields %}{% set required = asked | filter(attribute="required_string", value=true) %}{% set string_vos = asked | filter(attribute="string_vo", value=true) %}use std::sync::Arc;
 
 use async_trait::async_trait;
-{% for import in vo_imports %}use {{ import }};
+{% for import in update_vo_imports %}use {{ import }};
 {% endfor %}
 use dominio_{{ snake }}::{
     errores::Error{{ pascal }},
@@ -18,10 +18,11 @@ impl Actualizar{{ pascal }} for Actualizar{{ pascal }}Impl {
     #[tracing::instrument(name = "actualizar_{{ snake }}", skip_all, fields(id = %params.id), err(level = "warn"))]
     async fn ejecutar(&self, params: ParamsActualizar{{ pascal }}) -> Result<{{ pascal }}, Error{{ pascal }}> {
         let mut entidad = self.repositorio.buscar_por_id(params.id).await?.ok_or(Error{{ pascal }}::NoEncontrado)?;
-{% for f in fields | filter(attribute="is_vo", value=true) %}let {{ f.name }}{% if f.is_vec_vo %}: Vec<{{ f.vo }}>{% endif %} = {{ f.from_params }};
+{% for f in asked | filter(attribute="is_vo", value=true) %}let {{ f.name }}{% if f.is_vec_vo %}: Vec<{{ f.vo }}>{% endif %} = {{ f.from_params }};
+{% endfor %}{% for f in fields | filter(attribute="generated", value=true) %}        let {{ f.name }} = entidad.{{ f.name }}.clone();
 {% endfor %}        entidad
             .actualizar(Props{{ pascal }} {
-{% for f in fields %}                {{ f.name }}{% if not f.is_vo %}: params.{{ f.name }}{% endif %},
+{% for f in fields %}                {{ f.name }}{% if f.in_update and not f.is_vo %}: params.{{ f.name }}{% endif %},
 {% endfor %}            })?;
         self.repositorio.guardar(&entidad).await?;
         Ok(entidad)
@@ -61,7 +62,7 @@ mod tests {
             .ejecutar(ParamsActualizar{{ pascal }} {
 {% if actor %}                actor: MadrePrincipal::aleatorio(),
 {% endif %}            id: id_entidad,
-{{ macros::params_madre(fields=fields) }}            })
+{{ macros::params_madre(fields=asked) }}            })
             .await;
 
         // Comprobar
@@ -83,7 +84,7 @@ mod tests {
             .ejecutar(ParamsActualizar{{ pascal }} {
 {% if actor %}                actor: MadrePrincipal::aleatorio(),
 {% endif %}            id: Id{{ pascal }}::generar(),
-{{ macros::params_madre(fields=fields) }}            })
+{{ macros::params_madre(fields=asked) }}            })
             .await;
 
         // Comprobar
@@ -94,7 +95,7 @@ mod tests {
     #[tokio::test]
     async fn deberia_devolver_error_cuando_{{ f.name }}_es_una_cadena_vacia() {
         // Preparar
-{% if fields | length > 1 %}        let props = Madre{{ pascal }}::new().construir_props();
+{% if asked | length > 1 %}        let props = Madre{{ pascal }}::new().construir_props();
 {% endif %}        let entidad = Madre{{ pascal }}::aleatorio();
         let id_entidad = entidad.id;
         let mut repositorio_doble = MockRepositorio{{ pascal }}::new();
@@ -110,7 +111,7 @@ mod tests {
             .ejecutar(ParamsActualizar{{ pascal }} {
 {% if actor %}                actor: MadrePrincipal::aleatorio(),
 {% endif %}            id: id_entidad,
-{{ macros::params_madre(fields=fields, empty=f.name) }}            })
+{{ macros::params_madre(fields=asked, empty=f.name) }}            })
             .await;
 
         // Comprobar

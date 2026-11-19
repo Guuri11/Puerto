@@ -552,6 +552,16 @@ fn entity_template_ctx(
         &web_references(&entity, &web_fields, &eff, &targets),
     );
     ctx.insert("fields", &web_fields);
+    // 27.17: what the form edits (not a generated field) and what creating sends.
+    let form_fields: Vec<&WebFieldCtx> = web_fields.iter().filter(|f| !f.generated).collect();
+    let create_fields: Vec<&WebFieldCtx> = form_fields
+        .iter()
+        .copied()
+        .filter(|f| !f.defaulted)
+        .collect();
+    ctx.insert("defaulted", &web_fields.iter().any(|f| f.defaulted));
+    ctx.insert("form_fields", &form_fields);
+    ctx.insert("create_fields", &create_fields);
     ctx.insert("targets", &targets);
     ctx
 }
@@ -582,8 +592,9 @@ fn web_problems(
     let snake = &entity.snake;
     let mut problems: Vec<WebProblemCtx> = vec![];
     for (f, web) in eff.iter().zip(web_fields) {
-        // A checkbox has no message under it; its code (a bool VO never fails) goes to the alert.
-        let field = (web.input != "checkbox").then(|| web.camel.clone());
+        // A checkbox has no message under it; its code (a bool VO never fails) goes to the alert, and
+        // so do a generated field's (27.17), which has no input.
+        let field = (web.input != "checkbox" && !web.generated).then(|| web.camel.clone());
         let mut add = |code: String, text: String| {
             if !problems.iter().any(|p| p.code == code) {
                 problems.push(WebProblemCtx {
@@ -672,7 +683,7 @@ fn duplicate_problem(
     match (unique.as_slice(), groups) {
         ([(_, web)], []) => WebProblemCtx {
             code,
-            field: (web.input != "checkbox").then(|| web.camel.clone()),
+            field: (web.input != "checkbox" && !web.generated).then(|| web.camel.clone()),
             label: web.label.clone(),
             text: format!("{}: ya está en uso", web.label),
         },

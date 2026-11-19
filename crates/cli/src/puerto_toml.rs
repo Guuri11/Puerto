@@ -230,6 +230,22 @@ pub struct Field {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[serde(rename = "etiqueta")]
     pub label: Option<String>,
+    /// The value `crear` gives it (27.17, `--por-defecto`): a variant, or a literal of its type. The
+    /// field is not in what `crear` asks for; `actualizar` still changes it.
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        rename = "por_defecto"
+    )]
+    pub default: Option<String>,
+    /// A unique `String` the domain makes up (27.17, `--generado`): `crear` asks
+    /// `<Entity>::generar_<field>()` (`dominio/src/generados.rs`) and `actualizar` keeps it.
+    #[serde(
+        default,
+        skip_serializing_if = "std::ops::Not::not",
+        rename = "generado"
+    )]
+    pub generated: bool,
     /// Its shared value object's `ejemplo` (27.15), never written: [`read`] and
     /// [`apply_shared_vo_inference`] give it to every field of that value object.
     #[serde(skip)]

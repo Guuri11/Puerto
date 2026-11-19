@@ -129,6 +129,9 @@ function Formulario{{ pascal }}({ existente }: { existente: {{ pascal }} | null 
           }}
 {%- endif %}
           guardando={guardando}
+{%- if defaulted %}
+          creando={existente === null}
+{%- endif %}
           problema={problema}
           alCambiar={setValores}
           alEnviar={guardar}

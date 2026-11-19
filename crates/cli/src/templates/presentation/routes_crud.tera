@@ -54,7 +54,7 @@ impl Api{{ pascal }} {
             .crear_{{ snake }}
             .ejecutar(ParamsCrear{{ pascal }} {
 {% if access.create.protected %}                actor: auth.0,
-{% endif %}{% for f in fields %}                {{ f.name }}: {{ f.from_body }},
+{% endif %}{% for f in create_fields %}                {{ f.name }}: {{ f.from_body }},
 {% endfor %}            })
             .await
         {
@@ -120,7 +120,7 @@ impl Api{{ pascal }} {
             .ejecutar(ParamsActualizar{{ pascal }} {
 {% if access.update.protected %}                actor: auth.0,
 {% endif %}                id: Id{{ pascal }}::from_uuid(id.0),
-{% for f in fields %}                {{ f.name }}: {{ f.from_body }},
+{% for f in update_fields %}                {{ f.name }}: {{ f.from_body }},
 {% endfor %}            })
             .await
         {
@@ -237,13 +237,13 @@ mod tests {
 
     fn peticion_crear() -> PeticionCrear{{ pascal }} {
         PeticionCrear{{ pascal }} {
-{% for f in fields %}            {{ f.name }}: {{ f.default_literal }},
+{% for f in create_fields %}            {{ f.name }}: {{ f.default_literal }},
 {% endfor %}        }
     }
 
     fn peticion_actualizar() -> PeticionActualizar{{ pascal }} {
         PeticionActualizar{{ pascal }} {
-{% for f in fields %}            {{ f.name }}: {{ f.default_literal }},
+{% for f in update_fields %}            {{ f.name }}: {{ f.default_literal }},
 {% endfor %}        }
     }
 

@@ -60,7 +60,7 @@ pub(crate) fn build_error_mapper_ctx(pascal: &str, snake: &str, fields: &[Field]
 fn simple_ctx(pascal: &str, snake: &str, eff: &[Field]) -> tera::Context {
     let fields: Vec<FieldCtx> = eff.iter().map(|f| field_ctx(f, pascal, &[])).collect();
     let mut ctx = build_simple_ctx(pascal, snake);
-    ctx.insert("fields", &fields);
+    crate::generators::types::insert_field_lists(&mut ctx, &fields);
     ctx
 }
 

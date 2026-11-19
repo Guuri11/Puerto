@@ -109,6 +109,10 @@ pub struct EntityShape {
     pub uniques: Vec<Vec<String>>,
     pub order: Vec<String>,
     pub private: Vec<String>,
+    /// `--por-defecto estado=Pendiente` (27.17): `(field, value)`.
+    pub defaults: Vec<(String, String)>,
+    /// `--generado codigo` (27.17).
+    pub generated: Vec<String>,
 }
 
 impl EntityShape {
@@ -123,7 +127,21 @@ impl EntityShape {
                 .collect(),
             order: trimmed(order),
             private: trimmed(private),
+            ..Default::default()
         }
+    }
+
+    /// `--por-defecto <field>=<value>,…` and `--generado <field>,…` (27.17) as the CLI got them.
+    pub fn with_server_set(mut self, defaults: &[String], generated: &[String]) -> Self {
+        self.defaults = defaults
+            .iter()
+            .map(|arg| match arg.split_once('=') {
+                Some((field, value)) => (field.trim().to_string(), value.trim().to_string()),
+                None => (arg.trim().to_string(), String::new()),
+            })
+            .collect();
+        self.generated = generated.iter().map(|g| g.trim().to_string()).collect();
+        self
     }
 
     fn is_empty(&self) -> bool {
@@ -139,26 +157,60 @@ impl EntityShape {
         fields: Vec<Field>,
         declared: &[Field],
     ) -> Result<Vec<Field>, String> {
-        if let Some(unknown) = self
-            .private
-            .iter()
-            .find(|name| !fields.iter().any(|f| &&f.name == name))
-        {
-            return Err(format!(
-                "{pascal}: privado: '{unknown}' no es un campo de {pascal}"
-            ));
-        }
-        Ok(fields
+        let named = |flag: &str, names: Vec<&String>| -> Result<(), String> {
+            match names
+                .into_iter()
+                .find(|name| !fields.iter().any(|f| &f.name == *name))
+            {
+                Some(unknown) => Err(format!(
+                    "{pascal}: {flag}: '{unknown}' no es un campo de {pascal}"
+                )),
+                None => Ok(()),
+            }
+        };
+        named("privado", self.private.iter().collect())?;
+        named(
+            "por-defecto",
+            self.defaults.iter().map(|(f, _)| f).collect(),
+        )?;
+        named("generado", self.generated.iter().collect())?;
+        let before = |f: &Field| declared.iter().find(|d| d.name == f.name);
+        // 27.17: without the flags, a field keeps what the block said of it.
+        let server_set = self.defaults.is_empty() && self.generated.is_empty();
+        let marked: Vec<Field> = fields
             .into_iter()
             .map(|f| Field {
                 private: if self.private.is_empty() {
-                    f.private || declared.iter().any(|d| d.name == f.name && d.private)
+                    f.private || before(&f).is_some_and(|d| d.private)
                 } else {
                     self.private.contains(&f.name)
                 },
+                default: if server_set {
+                    f.default
+                        .clone()
+                        .or_else(|| before(&f).and_then(|d| d.default.clone()))
+                } else {
+                    self.defaults
+                        .iter()
+                        .find(|(name, _)| *name == f.name)
+                        .map(|(_, value)| value.clone())
+                },
+                generated: if server_set {
+                    f.generated || before(&f).is_some_and(|d| d.generated)
+                } else {
+                    self.generated.contains(&f.name)
+                },
                 ..f
             })
-            .collect())
+            .collect();
+        let errors: Vec<String> = marked
+            .iter()
+            .filter_map(|f| crate::validation::validate_server_set(f).err())
+            .collect();
+        if !errors.is_empty() {
+            return Err(format!("{pascal}: {}", errors.join("\n  ")));
+        }
+        Ok(marked)
     }
 }
 

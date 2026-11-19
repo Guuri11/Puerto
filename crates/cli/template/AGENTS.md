@@ -82,7 +82,10 @@ Un único sobre varios campos (una línea por jugador y partido) es `--unico jug
 en `scaffold` o `dominio` (se puede repetir): un índice único parcial en Postgres, comprobado
 también por el repositorio en memoria; queda en `[[entidad]] unicos`. El orden de la lista es
 `--orden=-puntos,nombre` (`-`, descendente; después, los más recientes primero): queda en
-`[[entidad]] orden`.
+`[[entidad]] orden`. Lo que pone el servidor no lo pide `crear`: `--por-defecto estado=Pendiente`
+le da un valor al crear (actualizar sí lo cambia) y `--generado codigo` (un `String` único) lo
+inventa `<Entidad>::generar_codigo()`, en `dominio/src/generados.rs`, que es tuyo; actualizar lo
+conserva. Quedan en el campo (`por_defecto`, `generado`).
 
 En un proyecto con auth, `scaffold` también acepta `--publico <caso_de_uso>[,…]` (sin token),
 `--rol <caso_de_uso>=<rol>[,…]` (ver la sección Auth) y `--privado <campo>[,…]`: un campo de texto

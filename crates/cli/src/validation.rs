@@ -330,6 +330,55 @@ pub fn validate_shared_vo_inner_type(inner_type: &str) -> Result<(), String> {
     Ok(())
 }
 
+/// A field the server sets (27.17): a `por_defecto` is a variant of its enum or a literal of its
+/// `String` (not blank), `i64`, `f64` or `bool`; a `generado` is a unique `String` or its value
+/// object, never an enum; a field is not both, nor a reference.
+pub fn validate_server_set(field: &Field) -> Result<(), String> {
+    let name = &field.name;
+    if field.generated && field.default.is_some() {
+        return Err(format!(
+            "el campo '{name}' es generado y tiene un por_defecto: elige uno de los dos"
+        ));
+    }
+    let set = field.generated || field.default.is_some();
+    if set && field.references.is_some() {
+        return Err(format!(
+            "el campo '{name}' es una referencia: no la pone el servidor"
+        ));
+    }
+    if field.generated
+        && (field.field_type != "String"
+            || !field.unique
+            || crate::generators::types::is_enum_vo(field))
+    {
+        return Err(format!(
+            "el campo '{name}' no puede ser generado: solo un String único (o su objeto valor, no \
+             un enum)"
+        ));
+    }
+    if let Some(value) = &field.default {
+        let valid = if crate::generators::types::is_enum_vo(field) {
+            field
+                .enum_variants
+                .as_deref()
+                .is_some_and(|variants| variants.contains(value))
+        } else {
+            validate_vo_example(&field.field_type, value).is_ok()
+        };
+        if !valid {
+            return Err(format!(
+                "el por_defecto '{value}' del campo '{name}' no es {}",
+                if crate::generators::types::is_enum_vo(field) {
+                    "una de sus variantes".to_string()
+                } else {
+                    format!("un valor de tipo '{}'", field.field_type)
+                }
+            ));
+        }
+    }
+    Ok(())
+}
+
 /// A value object's class (27.16): `enum`, or one with a rule, on the primitive that rule reads.
 pub fn validate_vo_class(class: &str, inner_type: &str) -> Result<(), String> {
     if class == "enum" {

@@ -53,7 +53,7 @@ function referenciadosPor(dueno: Partial<Esquemas["Dto{{ pascal }}"]>) {
 /** Rellena el formulario vacío con `peticion`, como lo haría quien lo usa. */
 async function rellenar(peticion: Esquemas["PeticionCrear{{ pascal }}"]) {
   await screen.findByText("Guardar");
-{%- for f in fields %}
+{%- for f in create_fields %}
 {%- if f.input == "checkbox" %}
   if (peticion.{{ f.camel }}) fireEvent.click(screen.getByLabelText("{{ f.label }}"));
 {%- elif f.input == "reference" %}
@@ -101,7 +101,7 @@ describe("ContenedorFormulario{{ pascal }}", () => {
     await waitFor(() => expect(historial.at(-1)).toBe("{% if access.list_roles %}/?guardado{% else %}/{{ plural }}{% endif %}"));
   });
 {%- endif %}
-{%- for f in fields %}{% if f.is_enum and f.required %}
+{%- for f in create_fields %}{% if f.is_enum and f.required %}
 
   test("debería traer elegida la primera variante de {{ f.label }}", async () => {
     // Preparar

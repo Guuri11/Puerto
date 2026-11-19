@@ -1,0 +1,36 @@
+//! Los valores que pone el dominio al crear {{ words }} (`generado = true` en puerto.toml, 27.17):
+//! `crear_{{ snake }}` los pide aquí, y `actualizar_{{ snake }}` conserva el que tenía. Es tuyo:
+//! `puerto` lo escribe una vez. Si cambias la forma de uno, la regla de su objeto valor tiene que
+//! aceptarla.
+
+use crate::modelo::{{ pascal }};
+
+impl {{ pascal }} {
+{%- for f in generated %}
+    /// 8 caracteres `A-Z0-9`, de un uuid: no se repiten en la práctica, y el índice único lo
+    /// comprueba.
+    pub fn generar_{{ f }}() -> String {
+        uuid::Uuid::new_v4().simple().to_string()[..8].to_uppercase()
+    }
+{%- endfor %}
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+{%- for f in generated %}
+
+    #[test]
+    fn deberia_generar_{{ f }}_con_ocho_mayusculas_o_digitos() {
+        // Actuar
+        let valor = {{ pascal }}::generar_{{ f }}();
+
+        // Comprobar
+        assert_eq!(valor.len(), 8, "{valor}");
+        assert!(
+            valor.chars().all(|c| c.is_ascii_uppercase() || c.is_ascii_digit()),
+            "{valor}"
+        );
+    }
+{%- endfor %}
+}

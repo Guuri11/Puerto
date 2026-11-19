@@ -6,11 +6,11 @@ import { ErrorCampo } from "../../../compartido/ui/error-campo";
 import type { Problema{{ pascal }} } from "../mensajes";
 
 type {{ pascal }} = Esquemas["Dto{{ pascal }}"];
-type Peticion{{ pascal }} = Esquemas["PeticionCrear{{ pascal }}"];
+type Peticion{{ pascal }} = Esquemas["{% if defaulted %}PeticionActualizar{% else %}PeticionCrear{% endif %}{{ pascal }}"];
 
 /** Lo que guardan los inputs: el texto de cada input, `checked` en una casilla. */
 export interface ValoresFormulario{{ pascal }} {
-{%- for f in fields %}
+{%- for f in form_fields %}
   {{ f.camel }}: {% if f.input == "checkbox" %}boolean{% else %}string{% endif %};
 {%- endfor %}
 }
@@ -25,13 +25,13 @@ export function aFormulario{{ pascal }}(
 {%- endif %}
   if ({{ ident }} === null) {
     return {
-{%- for f in fields %}
+{%- for f in form_fields %}
       {{ f.camel }}: {{ f.empty_form }},
 {%- endfor %}
     };
   }
   return {
-{%- for f in fields %}
+{%- for f in form_fields %}
     {{ f.camel }}: {{ f.to_form }},
 {%- endfor %}
   };
@@ -40,7 +40,7 @@ export function aFormulario{{ pascal }}(
 {% if targets -%}
 /** Lo que ofrece el select de cada referencia. */
 export interface OpcionesFormulario{{ pascal }} {
-{%- for f in fields %}{% if f.input == "reference" %}
+{%- for f in form_fields %}{% if f.input == "reference" %}
   {{ f.camel }}: OpcionReferencia[];
 {%- endif %}{% endfor %}
 }
@@ -55,7 +55,7 @@ export function aPeticion{{ pascal }}(
 ): Peticion{{ pascal }} {
 {%- endif %}
   return {
-{%- for f in fields %}
+{%- for f in form_fields %}
     {{ f.camel }}: {{ f.from_form }},
 {%- endfor %}
   };
@@ -67,6 +67,9 @@ export function VistaFormulario{{ pascal }}({
   opciones,
 {%- endif %}
   guardando,
+{%- if defaulted %}
+  creando,
+{%- endif %}
   problema,
   alCambiar,
   alEnviar,
@@ -76,6 +79,10 @@ export function VistaFormulario{{ pascal }}({
   opciones: OpcionesFormulario{{ pascal }};
 {%- endif %}
   guardando: boolean;
+{%- if defaulted %}
+  /** Crear no pide lo que pone el servidor (`por_defecto`): sus inputs solo se ven al editar. */
+  creando: boolean;
+{%- endif %}
   /** Lo que dijo la API del último envío: se muestra bajo su input. */
   problema: Problema{{ pascal }} | null;
   alCambiar: (valores: ValoresFormulario{{ pascal }}) => void;
@@ -89,9 +96,9 @@ export function VistaFormulario{{ pascal }}({
         alEnviar();
       }}
     >
-{%- for f in fields %}
+{%- for f in form_fields %}
 {%- if f.input == "checkbox" %}
-      <label className="label">
+      <label className="label"{% if f.defaulted %} hidden={creando}{% endif %}>
         <input
           className="checkbox"
           type="checkbox"
@@ -101,7 +108,7 @@ export function VistaFormulario{{ pascal }}({
         {{ f.label }}
       </label>
 {%- elif f.input == "select" %}
-      <label className="fieldset">
+      <label className="fieldset"{% if f.defaulted %} hidden={creando}{% endif %}>
         <span className="fieldset-legend">{{ f.label }}</span>
         <select
           className="select w-full"
@@ -122,7 +129,7 @@ export function VistaFormulario{{ pascal }}({
       </label>
       <ErrorCampo problema={problema} campo="{{ f.camel }}" />
 {%- elif f.input == "reference" %}
-      <label className="fieldset">
+      <label className="fieldset"{% if f.defaulted %} hidden={creando}{% endif %}>
         <span className="fieldset-legend">{{ f.label }}</span>
         <select
           className="select w-full"
@@ -143,7 +150,7 @@ export function VistaFormulario{{ pascal }}({
       </label>
       <ErrorCampo problema={problema} campo="{{ f.camel }}" />
 {%- elif f.input == "textarea" %}
-      <label className="fieldset">
+      <label className="fieldset"{% if f.defaulted %} hidden={creando}{% endif %}>
         <span className="fieldset-legend">{{ f.label }}</span>
         <textarea
           className="textarea w-full"
@@ -155,7 +162,7 @@ export function VistaFormulario{{ pascal }}({
       </label>
       <ErrorCampo problema={problema} campo="{{ f.camel }}" />
 {%- else %}
-      <label className="fieldset">
+      <label className="fieldset"{% if f.defaulted %} hidden={creando}{% endif %}>
         <span className="fieldset-legend">{{ f.label }}</span>
         <input
           className="input w-full"

@@ -1,4 +1,4 @@
-{% import "application/macros.tera" as macros %}{% set required = fields | filter(attribute="required_string", value=true) %}{% set string_vos = fields | filter(attribute="string_vo", value=true) %}use std::sync::Arc;
+{% import "application/macros.tera" as macros %}{% set asked = create_fields %}{% set required = asked | filter(attribute="required_string", value=true) %}{% set string_vos = asked | filter(attribute="string_vo", value=true) %}use std::sync::Arc;
 
 use async_trait::async_trait;
 {% for import in vo_imports %}use {{ import }};
@@ -17,9 +17,9 @@ pub struct Crear{{ pascal }}Impl {
 impl Crear{{ pascal }} for Crear{{ pascal }}Impl {
     #[tracing::instrument(name = "crear_{{ snake }}", skip_all, err(level = "warn"))]
     async fn ejecutar(&self, params: ParamsCrear{{ pascal }}) -> Result<{{ pascal }}, Error{{ pascal }}> {
-{% for f in fields | filter(attribute="is_vo", value=true) %}let {{ f.name }}{% if f.is_vec_vo %}: Vec<{{ f.vo }}>{% endif %} = {{ f.from_params }};
+{% for f in asked | filter(attribute="is_vo", value=true) %}let {{ f.name }}{% if f.is_vec_vo %}: Vec<{{ f.vo }}>{% endif %} = {{ f.from_params }};
 {% endfor %}        let entidad = {{ pascal }}::new(Props{{ pascal }} {
-{% for f in fields %}            {{ f.name }}{% if not f.is_vo %}: params.{{ f.name }}{% endif %},
+{% for f in fields %}            {{ f.name }}{% if not f.in_create %}: {{ f.server_value }}{% elif not f.is_vo %}: params.{{ f.name }}{% endif %},
 {% endfor %}        })?;
         self.repositorio.guardar(&entidad).await?;
         Ok(entidad)
@@ -49,11 +49,11 @@ mod tests {
         let resultado = caso_de_uso
             .ejecutar(ParamsCrear{{ pascal }} {
 {% if actor %}                actor: MadrePrincipal::aleatorio(),
-{% endif %}{{ macros::params_madre(fields=fields) }}            })
+{% endif %}{{ macros::params_madre(fields=asked) }}            })
             .await;
 
         // Comprobar
-        assert!(resultado.is_ok());{% set enum_vos = fields | filter(attribute="is_enum_vo", value=true) %}{% set checked = required | concat(with=string_vos) | concat(with=enum_vos) %}{% if checked %}
+        assert!(resultado.is_ok());{% set enum_vos = asked | filter(attribute="is_enum_vo", value=true) %}{% set checked = required | concat(with=string_vos) | concat(with=enum_vos) %}{% if checked %}
         assert_eq!(resultado.unwrap().{{ checked.0.name }}, Madre{{ pascal }}::new().construir_props().{{ checked.0.name }});{% endif %}
     }
 
@@ -73,14 +73,14 @@ mod tests {
         let resultado = caso_de_uso
             .ejecutar(ParamsCrear{{ pascal }} {
 {% if actor %}                actor: MadrePrincipal::aleatorio(),
-{% endif %}{{ macros::params_madre(fields=fields) }}            })
+{% endif %}{{ macros::params_madre(fields=asked) }}            })
             .await;
 
         // Comprobar
         assert!(resultado.is_err());
         assert_eq!(resultado.unwrap_err().to_string(), "{{ snake }}.duplicado");
     }
-{% for r in fields | filter(attribute="is_ref", value=true) %}
+{% for r in asked | filter(attribute="is_ref", value=true) %}
     #[tokio::test]
     async fn deberia_devolver_un_error_de_validacion_cuando_{{ r.name }}_no_existe() {
         // Preparar: en el almacén no hay {{ r.ref_target }} con ese id.
@@ -97,7 +97,7 @@ mod tests {
         let resultado = caso_de_uso
             .ejecutar(ParamsCrear{{ pascal }} {
 {% if actor %}                actor: MadrePrincipal::aleatorio(),
-{% endif %}{{ macros::params_madre(fields=fields) }}            })
+{% endif %}{{ macros::params_madre(fields=asked) }}            })
             .await;
 
         // Comprobar
@@ -107,11 +107,11 @@ mod tests {
             "{{ snake }}.validacion.{{ r.name }}_no_encontrado"
         );
     }
-{% endfor %}{% for f in required | concat(with=fields | filter(attribute="is_vo", value=true) | filter(attribute="field_type", value="String")) %}
+{% endfor %}{% for f in required | concat(with=asked | filter(attribute="is_vo", value=true) | filter(attribute="field_type", value="String")) %}
     #[tokio::test]
     async fn deberia_devolver_error_cuando_{{ f.name }}_es_una_cadena_vacia() {
         // Preparar
-{% if fields | length > 1 %}        let props = Madre{{ pascal }}::new().construir_props();
+{% if asked | length > 1 %}        let props = Madre{{ pascal }}::new().construir_props();
 {% endif %}        let repositorio_doble = MockRepositorio{{ pascal }}::new();
         let caso_de_uso = Crear{{ pascal }}Impl {
             repositorio: Arc::new(repositorio_doble),
@@ -121,7 +121,7 @@ mod tests {
         let resultado = caso_de_uso
             .ejecutar(ParamsCrear{{ pascal }} {
 {% if actor %}                actor: MadrePrincipal::aleatorio(),
-{% endif %}{{ macros::params_madre(fields=fields, empty=f.name) }}            })
+{% endif %}{{ macros::params_madre(fields=asked, empty=f.name) }}            })
             .await;
 
         // Comprobar

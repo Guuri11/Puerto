@@ -380,6 +380,45 @@ pub struct FieldCtx {
     pub mother_storage: String,
     pub mother_param: String,
     pub mother_build: String,
+    /// What `crear` asks for (27.17): neither a `por_defecto` nor a `generado` field.
+    pub in_create: bool,
+    /// What `actualizar` asks for: not a `generado` field, which keeps its value.
+    pub in_update: bool,
+    pub generated: bool,
+    /// The domain value `crear` gives a field it does not ask for: its default
+    /// (`EstadoEntrada::Pendiente`) or `<Entity>::generar_<field>()`, in its value object.
+    pub server_value: String,
+}
+
+/// [`FieldCtx::server_value`] (27.17); `""` for a field `crear` asks for.
+fn server_value(field: &Field, pascal: &str, shared_vos: &[ValueObjectDefinition]) -> String {
+    let primitive = if field.generated {
+        format!("{pascal}::generar_{}()", field.name)
+    } else if let Some(value) = &field.default {
+        if is_enum_vo(field) {
+            return format!(
+                "{}::{value}",
+                field.value_object.as_deref().unwrap_or_default()
+            );
+        }
+        match field.field_type.as_str() {
+            "String" => format!("{value:?}.to_string()"),
+            "f64" => value
+                .parse::<f64>()
+                .map_or_else(|_| value.clone(), |v| format!("{v:?}")),
+            _ => value.clone(),
+        }
+    } else {
+        return String::new();
+    };
+    let Some(vo) = field.value_object.as_deref() else {
+        return primitive;
+    };
+    if is_shared_vo(field, shared_vos) {
+        format!("{vo}::new({primitive}).map_err(|_| Error{pascal}::{vo}Invalido)?")
+    } else {
+        format!("{vo}::new({primitive})?")
+    }
 }
 
 pub fn field_ctx(field: &Field, pascal: &str, shared_vos: &[ValueObjectDefinition]) -> FieldCtx {
@@ -466,7 +505,20 @@ pub fn field_ctx(field: &Field, pascal: &str, shared_vos: &[ValueObjectDefinitio
             storage => storage.to_string(),
         },
         mother_build: mother_build(field),
+        in_create: !field.generated && field.default.is_none(),
+        in_update: !field.generated,
+        generated: field.generated,
+        server_value: server_value(field, pascal, shared_vos),
     }
+}
+
+/// Inserts `fields` and what crear and actualizar ask for of them (27.17).
+pub fn insert_field_lists(ctx: &mut tera::Context, fields: &[FieldCtx]) {
+    let create: Vec<&FieldCtx> = fields.iter().filter(|f| f.in_create).collect();
+    let update: Vec<&FieldCtx> = fields.iter().filter(|f| f.in_update).collect();
+    ctx.insert("fields", fields);
+    ctx.insert("create_fields", &create);
+    ctx.insert("update_fields", &update);
 }
 
 /// The Object Mother stores every field as `Option<…>`, so an `Option` primitive is stored as its
@@ -780,6 +832,9 @@ pub struct WebFieldCtx {
     pub display_helpers: Vec<&'static str>,
     /// A reference: the target's list path, which its detail page sits under (`/customers`).
     pub ref_path: String,
+    /// 27.17: a `por_defecto` field is hidden when creating; a `generado` one is in no form.
+    pub defaulted: bool,
+    pub generated: bool,
 }
 
 /// A JSON string literal (double quotes, as Biome writes them).
@@ -1020,13 +1075,20 @@ pub fn web_field_ctx(field: &Field, entity_ident: &str) -> WebFieldCtx {
             "—".to_string()
         },
         options,
-        // A required enum starts on its first variant: an empty one could not be sent.
+        // A required enum starts on its first variant: an empty one could not be sent. A field the
+        // server defaults (27.17) starts on its default: its input is hidden when creating.
         empty_form: match (input, shape, variants.first()) {
+            ("checkbox", _, _) if field.default.is_some() => {
+                field.default.clone().unwrap_or_default()
+            }
+            _ if field.default.is_some() => ts_string(field.default.as_deref().unwrap_or_default()),
             ("checkbox", _, _) => "false".to_string(),
             (_, WebShape::Enum, Some(first)) if !optional => ts_string(first),
             _ => "\"\"".to_string(),
         },
         is_enum: shape == WebShape::Enum,
+        defaulted: field.default.is_some(),
+        generated: field.generated,
         texts_const,
         to_form,
         request_to_form,
@@ -1114,6 +1176,8 @@ mod tests {
                 label: None,
                 texts: None,
                 example: None,
+                default: None,
+                generated: false,
             },
             Field {
                 name: "price".into(),
@@ -1127,6 +1191,8 @@ mod tests {
                 label: None,
                 texts: None,
                 example: None,
+                default: None,
+                generated: false,
             },
         ];
         assert!(validate_fields(&fields).is_ok());
@@ -1148,6 +1214,8 @@ mod tests {
                 label: None,
                 texts: None,
                 example: None,
+                default: None,
+                generated: false,
             },
             Field {
                 name: "bad".into(),
@@ -1161,6 +1229,8 @@ mod tests {
                 label: None,
                 texts: None,
                 example: None,
+                default: None,
+                generated: false,
             },
         ];
         let err = validate_fields(&fields).unwrap_err();

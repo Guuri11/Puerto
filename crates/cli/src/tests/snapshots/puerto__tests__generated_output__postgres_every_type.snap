@@ -103,7 +103,10 @@ Un único sobre varios campos (una línea por jugador y partido) es `--unico jug
 en `scaffold` o `dominio` (se puede repetir): un índice único parcial en Postgres, comprobado
 también por el repositorio en memoria; queda en `[[entidad]] unicos`. El orden de la lista es
 `--orden=-puntos,nombre` (`-`, descendente; después, los más recientes primero): queda en
-`[[entidad]] orden`.
+`[[entidad]] orden`. Lo que pone el servidor no lo pide `crear`: `--por-defecto estado=Pendiente`
+le da un valor al crear (actualizar sí lo cambia) y `--generado codigo` (un `String` único) lo
+inventa `<Entidad>::generar_codigo()`, en `dominio/src/generados.rs`, que es tuyo; actualizar lo
+conserva. Quedan en el campo (`por_defecto`, `generado`).
 
 En un proyecto con auth, `scaffold` también acepta `--publico <caso_de_uso>[,…]` (sin token),
 `--rol <caso_de_uso>=<rol>[,…]` (ver la sección Auth) y `--privado <campo>[,…]`: un campo de texto
@@ -5624,7 +5627,6 @@ use uuid::Uuid;
 pub struct ParamsActualizarProducto {
     pub id: IdProducto,
     pub title: String,
-    pub sku: String,
     pub price: i64,
     pub rating: f64,
     pub active: bool,
@@ -5672,9 +5674,10 @@ impl ActualizarProducto for ActualizarProductoImpl {
             .buscar_por_id(params.id)
             .await?
             .ok_or(ErrorProducto::NoEncontrado)?;
+        let sku = entidad.sku.clone();
         entidad.actualizar(PropsProducto {
             title: params.title,
-            sku: params.sku,
+            sku,
             price: params.price,
             rating: params.rating,
             active: params.active,
@@ -5722,7 +5725,6 @@ mod tests {
             .ejecutar(ParamsActualizarProducto {
                 id: id_entidad,
                 title: props.title,
-                sku: props.sku,
                 price: props.price,
                 rating: props.rating,
                 active: props.active,
@@ -5761,7 +5763,6 @@ mod tests {
             .ejecutar(ParamsActualizarProducto {
                 id: IdProducto::generar(),
                 title: props.title,
-                sku: props.sku,
                 price: props.price,
                 rating: props.rating,
                 active: props.active,
@@ -5800,7 +5801,6 @@ mod tests {
             .ejecutar(ParamsActualizarProducto {
                 id: id_entidad,
                 title: "".to_string(),
-                sku: props.sku,
                 price: props.price,
                 rating: props.rating,
                 active: props.active,
@@ -5820,48 +5820,6 @@ mod tests {
         assert_eq!(
             resultado.unwrap_err().to_string(),
             "producto.validacion.title_vacio"
-        );
-    }
-
-    #[tokio::test]
-    async fn deberia_devolver_error_cuando_sku_es_una_cadena_vacia() {
-        // Preparar
-        let props = MadreProducto::new().construir_props();
-        let entidad = MadreProducto::aleatorio();
-        let id_entidad = entidad.id;
-        let mut repositorio_doble = MockRepositorioProducto::new();
-        repositorio_doble
-            .expect_buscar_por_id()
-            .returning(move |_| Ok(Some(entidad.clone())));
-        let caso_de_uso = ActualizarProductoImpl {
-            repositorio: Arc::new(repositorio_doble),
-        };
-
-        // Actuar
-        let resultado = caso_de_uso
-            .ejecutar(ParamsActualizarProducto {
-                id: id_entidad,
-                title: props.title,
-                sku: "".to_string(),
-                price: props.price,
-                rating: props.rating,
-                active: props.active,
-                ref_id: props.ref_id,
-                published_at: props.published_at,
-                summary: props.summary,
-                views: props.views,
-                expires_at: props.expires_at,
-                tags: props.tags,
-                scores: props.scores,
-                meta: props.meta,
-            })
-            .await;
-
-        // Comprobar
-        assert!(resultado.is_err());
-        assert_eq!(
-            resultado.unwrap_err().to_string(),
-            "producto.validacion.sku_vacio"
         );
     }
 }
@@ -6049,10 +6007,7 @@ use uuid::Uuid;
 #[derive(Debug, Clone)]
 pub struct ParamsCrearProducto {
     pub title: String,
-    pub sku: String,
     pub price: i64,
-    pub rating: f64,
-    pub active: bool,
     pub ref_id: Uuid,
     pub published_at: DateTime<Utc>,
     pub summary: Option<String>,
@@ -6094,10 +6049,10 @@ impl CrearProducto for CrearProductoImpl {
     async fn ejecutar(&self, params: ParamsCrearProducto) -> Result<Producto, ErrorProducto> {
         let entidad = Producto::new(PropsProducto {
             title: params.title,
-            sku: params.sku,
+            sku: Producto::generar_sku(),
             price: params.price,
-            rating: params.rating,
-            active: params.active,
+            rating: 2.0,
+            active: true,
             ref_id: params.ref_id,
             published_at: params.published_at,
             summary: params.summary,
@@ -6133,10 +6088,7 @@ mod tests {
         let resultado = caso_de_uso
             .ejecutar(ParamsCrearProducto {
                 title: props.title,
-                sku: props.sku,
                 price: props.price,
-                rating: props.rating,
-                active: props.active,
                 ref_id: props.ref_id,
                 published_at: props.published_at,
                 summary: props.summary,
@@ -6172,10 +6124,7 @@ mod tests {
         let resultado = caso_de_uso
             .ejecutar(ParamsCrearProducto {
                 title: props.title,
-                sku: props.sku,
                 price: props.price,
-                rating: props.rating,
-                active: props.active,
                 ref_id: props.ref_id,
                 published_at: props.published_at,
                 summary: props.summary,
@@ -6205,10 +6154,7 @@ mod tests {
         let resultado = caso_de_uso
             .ejecutar(ParamsCrearProducto {
                 title: "".to_string(),
-                sku: props.sku,
                 price: props.price,
-                rating: props.rating,
-                active: props.active,
                 ref_id: props.ref_id,
                 published_at: props.published_at,
                 summary: props.summary,
@@ -6225,42 +6171,6 @@ mod tests {
         assert_eq!(
             resultado.unwrap_err().to_string(),
             "producto.validacion.title_vacio"
-        );
-    }
-
-    #[tokio::test]
-    async fn deberia_devolver_error_cuando_sku_es_una_cadena_vacia() {
-        // Preparar
-        let props = MadreProducto::new().construir_props();
-        let repositorio_doble = MockRepositorioProducto::new();
-        let caso_de_uso = CrearProductoImpl {
-            repositorio: Arc::new(repositorio_doble),
-        };
-
-        // Actuar
-        let resultado = caso_de_uso
-            .ejecutar(ParamsCrearProducto {
-                title: props.title,
-                sku: "".to_string(),
-                price: props.price,
-                rating: props.rating,
-                active: props.active,
-                ref_id: props.ref_id,
-                published_at: props.published_at,
-                summary: props.summary,
-                views: props.views,
-                expires_at: props.expires_at,
-                tags: props.tags,
-                scores: props.scores,
-                meta: props.meta,
-            })
-            .await;
-
-        // Comprobar
-        assert!(resultado.is_err());
-        assert_eq!(
-            resultado.unwrap_err().to_string(),
-            "producto.validacion.sku_vacio"
         );
     }
 }
@@ -6594,8 +6504,45 @@ mod tests {
     }
 }
 
+=== contextos/producto/dominio/src/generados.rs ===
+//! Los valores que pone el dominio al crear producto (`generado = true` en puerto.toml, 27.17):
+//! `crear_producto` los pide aquí, y `actualizar_producto` conserva el que tenía. Es tuyo:
+//! `puerto` lo escribe una vez. Si cambias la forma de uno, la regla de su objeto valor tiene que
+//! aceptarla.
+
+use crate::modelo::Producto;
+
+impl Producto {
+    /// 8 caracteres `A-Z0-9`, de un uuid: no se repiten en la práctica, y el índice único lo
+    /// comprueba.
+    pub fn generar_sku() -> String {
+        uuid::Uuid::new_v4().simple().to_string()[..8].to_uppercase()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn deberia_generar_sku_con_ocho_mayusculas_o_digitos() {
+        // Actuar
+        let valor = Producto::generar_sku();
+
+        // Comprobar
+        assert_eq!(valor.len(), 8, "{valor}");
+        assert!(
+            valor
+                .chars()
+                .all(|c| c.is_ascii_uppercase() || c.is_ascii_digit()),
+            "{valor}"
+        );
+    }
+}
+
 === contextos/producto/dominio/src/lib.rs ===
 pub mod errores;
+pub mod generados;
 pub mod modelo;
 pub mod repositorio;
 
@@ -7539,10 +7486,7 @@ impl DtoProducto {
 #[oai(rename_all = "camelCase")]
 pub struct PeticionCrearProducto {
     pub title: String,
-    pub sku: String,
     pub price: i64,
-    pub rating: f64,
-    pub active: bool,
     pub ref_id: Uuid,
     pub published_at: DateTime<Utc>,
     pub summary: Option<String>,
@@ -7583,7 +7527,6 @@ impl DtoPaginaProducto {
 #[oai(rename_all = "camelCase")]
 pub struct PeticionActualizarProducto {
     pub title: String,
-    pub sku: String,
     pub price: i64,
     pub rating: f64,
     pub active: bool,
@@ -7878,10 +7821,7 @@ impl ApiProducto {
             .crear_producto
             .ejecutar(ParamsCrearProducto {
                 title: cuerpo.title.clone(),
-                sku: cuerpo.sku.clone(),
                 price: cuerpo.price,
-                rating: cuerpo.rating,
-                active: cuerpo.active,
                 ref_id: cuerpo.ref_id,
                 published_at: cuerpo.published_at,
                 summary: cuerpo.summary.clone(),
@@ -7960,7 +7900,6 @@ impl ApiProducto {
             .ejecutar(ParamsActualizarProducto {
                 id: IdProducto::from_uuid(id.0),
                 title: cuerpo.title.clone(),
-                sku: cuerpo.sku.clone(),
                 price: cuerpo.price,
                 rating: cuerpo.rating,
                 active: cuerpo.active,
@@ -8053,10 +7992,7 @@ mod tests {
     fn peticion_crear() -> PeticionCrearProducto {
         PeticionCrearProducto {
             title: "example".to_string(),
-            sku: "example".to_string(),
             price: 42,
-            rating: 1.5,
-            active: true,
             ref_id: Uuid::new_v4(),
             published_at: Utc::now(),
             summary: None,
@@ -8071,7 +8007,6 @@ mod tests {
     fn peticion_actualizar() -> PeticionActualizarProducto {
         PeticionActualizarProducto {
             title: "example".to_string(),
-            sku: "example".to_string(),
             price: 42,
             rating: 1.5,
             active: true,
@@ -9067,6 +9002,7 @@ tipo = "String"
 nombre = "sku"
 tipo = "String"
 unico = true
+generado = true
 
 [[entidad.campos]]
 nombre = "price"
@@ -9076,10 +9012,12 @@ unico = true
 [[entidad.campos]]
 nombre = "rating"
 tipo = "f64"
+por_defecto = "2"
 
 [[entidad.campos]]
 nombre = "active"
 tipo = "bool"
+por_defecto = "true"
 
 [[entidad.campos]]
 nombre = "ref_id"
@@ -10761,10 +10699,7 @@ function escribir(etiqueta: string, valor: string) {
 async function rellenar(peticion: Esquemas["PeticionCrearProducto"]) {
   await screen.findByText("Guardar");
   escribir("Title", peticion.title);
-  escribir("Sku", peticion.sku);
   escribir("Price", String(peticion.price));
-  escribir("Rating", String(peticion.rating));
-  if (peticion.active) fireEvent.click(screen.getByLabelText("Active"));
   escribir("Ref id", peticion.refId);
   escribir("Published at", aFechaHoraLocal(peticion.publishedAt));
   escribir("Summary", textoDe(peticion.summary));
@@ -10937,6 +10872,7 @@ function FormularioProducto({ existente }: { existente: Producto | null }) {
         <VistaFormularioProducto
           valores={valores}
           guardando={guardando}
+          creando={existente === null}
           problema={problema}
           alCambiar={setValores}
           alEnviar={guardar}
@@ -11092,7 +11028,6 @@ const TEXTOS: Record<string, string> = {
 /** El input del que trata el código de cada campo. */
 const CAMPOS: Record<string, string> = {
   "producto.validacion.title_vacio": "title",
-  "producto.validacion.sku_vacio": "sku",
 };
 
 export function aProblema(codigo: string): ProblemaProducto {
@@ -11156,12 +11091,11 @@ import { ErrorCampo } from "../../../compartido/ui/error-campo";
 import type { ProblemaProducto } from "../mensajes";
 
 type Producto = Esquemas["DtoProducto"];
-type PeticionProducto = Esquemas["PeticionCrearProducto"];
+type PeticionProducto = Esquemas["PeticionActualizarProducto"];
 
 /** Lo que guardan los inputs: el texto de cada input, `checked` en una casilla. */
 export interface ValoresFormularioProducto {
   title: string;
-  sku: string;
   price: string;
   rating: string;
   active: boolean;
@@ -11180,10 +11114,9 @@ export function aFormularioProducto(producto: Producto | null): ValoresFormulari
   if (producto === null) {
     return {
       title: "",
-      sku: "",
       price: "",
-      rating: "",
-      active: false,
+      rating: "2",
+      active: true,
       refId: "",
       publishedAt: "",
       summary: "",
@@ -11196,7 +11129,6 @@ export function aFormularioProducto(producto: Producto | null): ValoresFormulari
   }
   return {
     title: producto.title,
-    sku: producto.sku,
     price: String(producto.price),
     rating: String(producto.rating),
     active: producto.active,
@@ -11215,7 +11147,6 @@ export function aFormularioProducto(producto: Producto | null): ValoresFormulari
 export function aPeticionProducto(valores: ValoresFormularioProducto): PeticionProducto {
   return {
     title: valores.title,
-    sku: valores.sku,
     price: Number(valores.price),
     rating: Number(valores.rating),
     active: valores.active,
@@ -11233,12 +11164,15 @@ export function aPeticionProducto(valores: ValoresFormularioProducto): PeticionP
 export function VistaFormularioProducto({
   valores,
   guardando,
+  creando,
   problema,
   alCambiar,
   alEnviar,
 }: {
   valores: ValoresFormularioProducto;
   guardando: boolean;
+  /** Crear no pide lo que pone el servidor (`por_defecto`): sus inputs solo se ven al editar. */
+  creando: boolean;
   /** Lo que dijo la API del último envío: se muestra bajo su input. */
   problema: ProblemaProducto | null;
   alCambiar: (valores: ValoresFormularioProducto) => void;
@@ -11265,18 +11199,6 @@ export function VistaFormularioProducto({
       </label>
       <ErrorCampo problema={problema} campo="title" />
       <label className="fieldset">
-        <span className="fieldset-legend">Sku</span>
-        <input
-          className="input w-full"
-          type="text"
-          aria-invalid={problema?.campo === "sku"}
-          required
-          value={valores.sku}
-          onChange={(event) => alCambiar({ ...valores, sku: event.target.value })}
-        />
-      </label>
-      <ErrorCampo problema={problema} campo="sku" />
-      <label className="fieldset">
         <span className="fieldset-legend">Price</span>
         <input
           className="input w-full"
@@ -11288,7 +11210,7 @@ export function VistaFormularioProducto({
         />
       </label>
       <ErrorCampo problema={problema} campo="price" />
-      <label className="fieldset">
+      <label className="fieldset" hidden={creando}>
         <span className="fieldset-legend">Rating</span>
         <input
           className="input w-full"
@@ -11301,7 +11223,7 @@ export function VistaFormularioProducto({
         />
       </label>
       <ErrorCampo problema={problema} campo="rating" />
-      <label className="label">
+      <label className="label" hidden={creando}>
         <input
           className="checkbox"
           type="checkbox"
@@ -11583,6 +11505,22 @@ function sembrarCosas() {
 }
 
 describe("fetchFalso", () => {
+  test("debería conservar al actualizar solo lo que la colección conserva", async () => {
+    // Preparar
+    const semilla: { id: string; codigo: string; nota?: string }[] = [
+      { id: "1", codigo: "AB12", nota: "vieja" },
+    ];
+    const cosas = coleccion("/cosas", "cosa", semilla, {}, ["codigo"]);
+    const pedido = new Request("http://localhost/api/cosas/1", { method: "PUT", body: "{}" });
+
+    // Actuar
+    const respuesta = await fetchFalso([cosas])(pedido);
+
+    // Comprobar: `nota` no se mandó, así que queda vacía; `codigo` la pone la API.
+    expect(respuesta.status).toBe(200);
+    expect(cosas.elementos.get("1")).toEqual({ id: "1", codigo: "AB12" });
+  });
+
   test("debería poner en el elemento los campos de la acción cuando se le pide", async () => {
     // Preparar
     const cosas = sembrarCosas();
@@ -11633,20 +11571,24 @@ export interface Coleccion<T extends { id: string }> {
   elementos: Map<string, T>;
   /** Los campos que `POST <ruta>/{id}/<accion>` pone en el elemento, por acción. */
   acciones: Record<string, Partial<T>>;
+  /** Lo que `PUT <ruta>/{id}` conserva aunque no se mande: los campos generados (27.17). */
+  conservados: string[];
 }
 
 /**
- * Los elementos bajo `ruta` (`/productos`) de `entidad` (`producto`), empezando por `semilla`, y
- * las `acciones` que entiende: `{ cancelar: { estado: "Cancelado" } }`.
+ * Los elementos bajo `ruta` (`/productos`) de `entidad` (`producto`), empezando por `semilla`, las
+ * `acciones` que entiende (`{ cancelar: { estado: "Cancelado" } }`) y los campos que actualizar
+ * `conservados` (`["codigo"]`).
  */
 export function coleccion<T extends { id: string }>(
   ruta: string,
   entidad: string,
   semilla: T[] = [],
   acciones: Record<string, Partial<T>> = {},
+  conservados: string[] = [],
 ): Coleccion<T> {
   const elementos = new Map(semilla.map((elemento) => [elemento.id, elemento]));
-  return { ruta, noEncontrado: `${entidad}.no_encontrado`, elementos, acciones };
+  return { ruta, noEncontrado: `${entidad}.no_encontrado`, elementos, acciones, conservados };
 }
 
 /** Un `ClienteApi` sobre {@link fetchFalso}. */
@@ -11709,8 +11651,13 @@ async function servirElemento(objetivo: Coleccion<{ id: string }>, peticion: Req
     return new Response(null, { status: 204 });
   }
   if (peticion.method === "PUT") {
-    // Como la API, actualizar reemplaza todos los campos: el que no se manda queda vacío.
-    const actualizado = { ...(await peticion.json()), id };
+    // Como la API, actualizar reemplaza todos los campos: el que no se manda queda vacío, salvo
+    // los que la API pone ella (los generados), que se conservan.
+    const previo: Record<string, unknown> = encontrado;
+    const conservado = Object.fromEntries(
+      objetivo.conservados.map((campo) => [campo, previo[campo]]),
+    );
+    const actualizado = { ...conservado, ...(await peticion.json()), id };
     objetivo.elementos.set(id, actualizado);
     return Response.json(actualizado);
   }
@@ -11809,10 +11756,7 @@ export const MadreProducto = {
   peticion(cambios: Partial<PeticionProducto> = {}): PeticionProducto {
     return {
       title: "example",
-      sku: "example",
       price: 42,
-      rating: 1.5,
-      active: true,
       refId: crypto.randomUUID(),
       publishedAt: "2026-01-01T10:00:00.000Z",
       summary: "example",
@@ -11826,11 +11770,19 @@ export const MadreProducto = {
   },
 
   aleatorio(cambios: Partial<Producto> = {}): Producto {
-    return { id: crypto.randomUUID(), ...MadreProducto.peticion(), ...cambios };
+    return {
+      id: crypto.randomUUID(),
+      ...MadreProducto.peticion(),
+      rating: 1.5,
+      active: true,
+      sku: "example",
+      ...cambios,
+    };
   },
 };
 
 /** El `/productos` de la API falsa, con `semilla`. */
 export function coleccionProducto(semilla: Producto[] = []) {
-  return coleccion("/productos", "producto", semilla);
+  // Lo que actualizar conserva: los campos que genera la API (27.17).
+  return coleccion("/productos", "producto", semilla, {}, ["sku"]);
 }

@@ -4007,7 +4007,7 @@ madre, una ruta, la siembra y la web de una entidad con el ejemplo.
   `_unico()` y la web. Compile matrix: los dos en `vo_kitchen_sink`, un compartido `dinero` en
   `shared_vo` y un `email` único en `postgres_every_type`.
 
-### 27.17 — Campos que pone el servidor
+### 27.17 — Campos que pone el servidor ✅
 
 En Aforo, el comprador elegía el `estado` y se inventaba el `codigo`.
 
@@ -4020,6 +4020,25 @@ En Aforo, el comprador elegía el `estado` y se inventaba el `codigo`.
 - Tests: el parser, `validar` (`por_defecto` tiene que ser una variante o un literal válido;
   `generado` solo en `String` único), la petición, los params, el formulario, el caso de uso y
   snapshots.
+
+**Decidido (2026-11-19, con Sergio).** `por_defecto` / `generado`, como flags del scaffold:
+`--por-defecto estado=Pendiente[,…]` y `--generado codigo[,…]` (se guardan en el campo; un
+re-scaffold sin ellos conserva los del bloque, como `--privado`).
+
+- **`por_defecto`:** una variante de un enum, o un literal de un `String` (no vacío), `i64`, `f64` o
+  `bool` (también envueltos en su objeto valor). Fuera de `PeticionCrear`, `ParamsCrear` y los
+  tests de crear; `crear` lo pone (`EstadoEntrada::Pendiente`). Sigue en actualizar.
+- **`generado`:** solo en un `String` único o en su objeto valor (no enum). Fuera de las dos
+  peticiones y de los dos `Params`; `crear` lo pide a `<Entidad>::generar_<campo>()` y `actualizar`
+  conserva el que tenía. `dominio/src/generados.rs` (`pub mod generados;`, escrito una vez, del
+  usuario) trae cada `generar_<campo>`: 8 caracteres `A-Z0-9` de un uuid, con su test.
+- **Web:** un `generado` no está en el formulario; un `por_defecto` solo al editar
+  (`VistaFormulario` gana `creando`), y `aPeticion` da entonces una `PeticionActualizar`. La madre
+  de la web (`peticion`) no los lleva; `aleatorio` sí.
+- **`validar`:** lo de arriba, y que un campo no tenga los dos ni sea una referencia.
+- **Tests:** el parser de los flags, `validar`, la petición, los params, crear y actualizar, el
+  fichero de `generados.rs`, la web; compile matrix con los dos en un escenario con web y otro en
+  Postgres.
 
 ### 27.18 — El propietario de una fila
 

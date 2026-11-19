@@ -27,24 +27,31 @@ fn use_case_context(
 ) -> tera::Context {
     let eff = effective_fields(fields);
 
-    let mut vo_imports: Vec<String> = vec![];
-    for import in eff
-        .iter()
-        .filter(|f| is_value_object(f))
-        .map(|f| vo_import_path(f, snake, shared_vos, false))
-    {
-        if !vo_imports.contains(&import) {
-            vo_imports.push(import);
+    let imports_of = |keep: &dyn Fn(&Field) -> bool| {
+        let mut imports: Vec<String> = vec![];
+        for import in eff
+            .iter()
+            .filter(|f| is_value_object(f) && keep(f))
+            .map(|f| vo_import_path(f, snake, shared_vos, false))
+        {
+            if !imports.contains(&import) {
+                imports.push(import);
+            }
         }
-    }
+        imports
+    };
+    let vo_imports = imports_of(&|_| true);
+    // `actualizar` keeps a generated field (27.17): it never builds its value object.
+    let update_vo_imports = imports_of(&|f| !f.generated);
 
     let field_ctxs: Vec<FieldCtx> = eff
         .iter()
         .map(|f| field_ctx(f, pascal, shared_vos))
         .collect();
     let mut ctx = entity_ctx(pascal, snake);
-    ctx.insert("fields", &field_ctxs);
+    crate::generators::types::insert_field_lists(&mut ctx, &field_ctxs);
     ctx.insert("vo_imports", &vo_imports);
+    ctx.insert("update_vo_imports", &update_vo_imports);
     // Every reference's id: the list's filter test names the optional ones too.
     let mut reference_imports = vec![];
     crate::generators::domain::push_reference_imports(&mut reference_imports, &eff);
@@ -174,7 +181,7 @@ fn render_contract(
     let mut reference_imports = vec![];
     crate::generators::domain::push_reference_imports(&mut reference_imports, &eff);
     let mut ctx = entity_ctx(pascal, snake);
-    ctx.insert("fields", &field_ctxs);
+    crate::generators::types::insert_field_lists(&mut ctx, &field_ctxs);
     ctx.insert("reference_imports", &reference_imports);
     ctx.insert("actor", &actor);
     render(&template, &ctx)

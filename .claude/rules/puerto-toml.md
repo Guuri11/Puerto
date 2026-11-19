@@ -60,6 +60,11 @@ tipo = "i64"
 nombre = "sku"
 tipo = "String"
 unico = true             # índice único en la base de datos
+# por_defecto = "Pendiente"   # 27.17 (`--por-defecto campo=valor`): lo pone `crear` — fuera de
+                         # PeticionCrear y ParamsCrear; actualizar lo cambia. Una variante o un literal
+# generado = true        # 27.17 (`--generado campo`): un String único (o su VO, no enum) que inventa
+                         # `<Entidad>::generar_<campo>()` (dominio/src/generados.rs); fuera de las dos
+                         # peticiones, y actualizar lo conserva
 # privado = true         # proyectos con auth, campos de texto (String, Option<String>, su objeto valor
                          # no enum): `Option` en Dto<Entidad>; una ruta pública recibe
                          # `auth: BearerAuthOpcional` y sin sesión responde from_dominio_publico (el
