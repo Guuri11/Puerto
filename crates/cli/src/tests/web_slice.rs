@@ -590,7 +590,9 @@ fn messages_cover_every_code_of_errors_rs_and_name_the_field_it_is_about() {
             "{code} has no message"
         );
     }
-    assert!(messages.contains("\"producto.validacion.title_vacio\": \"Title: obligatorio\","));
+    assert!(
+        messages.contains("\"producto.validacion.title_vacio\": \"Title: campo obligatorio\",")
+    );
     assert!(messages.contains("\"producto.validacion.title_vacio\": \"title\","));
     assert!(messages.contains("\"producto.sku_invalido\": \"Sku: no válido\","));
     assert!(messages.contains("\"producto.status_invalido\": \"status\","));
@@ -653,6 +655,37 @@ fn form_tests_read_their_texts_from_mensajes_ts() {
     assert!(
         test.contains("await screen.findByText(aProblema(codigo).texto)"),
         "{test}"
+    );
+    cleanup(&dir);
+}
+
+#[test]
+fn labels_carry_their_accents_and_puerto_toml_can_name_them() {
+    // 27.5: «Titulo», «Direccion», «anio»; and «Ciudad: obligatorio» did not agree.
+    let (dir, output) = web_project("web_labels");
+    let mut args = fields(&["titulo:String", "anio:i64", "ciudad:String"]);
+    args[2].label = Some("Localidad".into());
+    scaffold::run_scaffold("Producto", &output, &args, OverwritePolicy::Ask).unwrap();
+
+    let view = read(
+        &output,
+        "web/src/contextos/producto/vistas/formulario-producto.tsx",
+    );
+    for label in ["Título", "Año", "Localidad"] {
+        assert!(
+            view.contains(&format!(">{label}<")) || view.contains(label),
+            "{label}:\n{view}"
+        );
+    }
+    assert!(!view.contains("Ciudad"), "{view}");
+    let messages = read(&output, "web/src/contextos/producto/mensajes.ts");
+    assert!(
+        messages.contains("\"producto.validacion.titulo_vacio\": \"Título: campo obligatorio\","),
+        "{messages}"
+    );
+    assert!(
+        read(&output, "puerto.toml").contains("etiqueta = \"Localidad\""),
+        "the manifest keeps it"
     );
     cleanup(&dir);
 }

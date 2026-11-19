@@ -11673,7 +11673,7 @@ export interface ProblemaEntrega {
 const TEXTOS: Record<string, string> = {
   "entrega.validacion.compra_id_no_encontrado": "Compra: no existe",
   "entrega.validacion.destinatario_id_no_encontrado": "Destinatario: no existe",
-  "entrega.validacion.carrier_vacio": "Carrier: obligatorio",
+  "entrega.validacion.carrier_vacio": "Carrier: campo obligatorio",
   "entrega.duplicado": "Estos valores ya están en uso",
   "entrega.no_encontrado": "Ya no existe",
   "entrega.repositorio": "No se ha podido guardar; inténtalo más tarde",
@@ -12357,7 +12357,7 @@ export interface ProblemaProveedor {
  */
 const TEXTOS: Record<string, string> = {
   "proveedor.name_invalido": "Name: no válido",
-  "proveedor.validacion.email_vacio": "Email: obligatorio",
+  "proveedor.validacion.email_vacio": "Email: campo obligatorio",
   "proveedor.duplicado": "Estos valores ya están en uso",
   "proveedor.no_encontrado": "Ya no existe",
   "proveedor.repositorio": "No se ha podido guardar; inténtalo más tarde",

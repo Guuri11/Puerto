@@ -3167,7 +3167,7 @@ export interface ProblemaReserva {
  * no está aquí se muestra tal cual.
  */
 const TEXTOS: Record<string, string> = {
-  "reserva.validacion.reference_vacio": "Reference: obligatorio",
+  "reserva.validacion.reference_vacio": "Reference: campo obligatorio",
   "reserva.tenant_id_invalido": "Tenant id: no válido",
   "reserva.duplicado": "Estos valores ya están en uso",
   "reserva.no_encontrado": "Ya no existe",

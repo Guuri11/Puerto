@@ -4000,7 +4000,7 @@ export interface ProblemaCuenta {
  * no está aquí se muestra tal cual.
  */
 const TEXTOS: Record<string, string> = {
-  "cuenta.validacion.title_vacio": "Title: obligatorio",
+  "cuenta.validacion.title_vacio": "Title: campo obligatorio",
   "cuenta.name_invalido": "Name: no válido",
   "cuenta.sku_invalido": "Sku: no válido",
   "cuenta.middle_name_invalido": "Middle name: no válido",

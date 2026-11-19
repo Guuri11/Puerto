@@ -1237,7 +1237,7 @@ fn assert_web_is_clean(output: &Path, name: &str) {
             if let Ok(messages) = fs::read_to_string(&path) {
                 let changed = messages
                     .replace("Estos valores ya están en uso", "Ya hay uno igual")
-                    .replace(": obligatorio\"", ": rellénalo\"");
+                    .replace(": campo obligatorio\"", ": rellénalo\"");
                 fs::write(&path, changed).unwrap();
             }
         }

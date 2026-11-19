@@ -813,10 +813,10 @@ fn web_display(shape: WebShape, optional: bool, access: &str) -> (String, Vec<&'
 pub fn web_field_ctx(field: &Field, entity_ident: &str) -> WebFieldCtx {
     let camel = crate::generators::naming::snake_to_camel(&field.name);
     // A reference is named after what it points to: `customer_id` is the `Customer` input.
-    let words = crate::generators::naming::snake_to_words(match field.references {
+    let named = match field.references {
         Some(_) => field.name.strip_suffix("_id").unwrap_or(&field.name),
         None => &field.name,
-    });
+    };
     // A reference's target list path, which its detail page sits under (`/clientes`).
     let target = field.references.as_deref().map(|target| {
         crate::generators::naming::pluralize(&crate::generators::naming::pascal_to_snake(target))
@@ -907,7 +907,10 @@ pub fn web_field_ctx(field: &Field, entity_ident: &str) -> WebFieldCtx {
         web_display(shape, optional, &format!("{entity_ident}.{camel}"));
 
     WebFieldCtx {
-        label: crate::generators::naming::capitalize(&words),
+        label: field
+            .label
+            .clone()
+            .unwrap_or_else(|| crate::generators::naming::etiqueta(named)),
         input,
         decimal: vo_inner_type(field) == "f64",
         required: !optional
@@ -1006,6 +1009,7 @@ mod tests {
                 value_object_kind: None,
                 enum_variants: None,
                 references: None,
+                label: None,
             },
             Field {
                 name: "price".into(),
@@ -1016,6 +1020,7 @@ mod tests {
                 value_object_kind: None,
                 enum_variants: None,
                 references: None,
+                label: None,
             },
         ];
         assert!(validate_fields(&fields).is_ok());
@@ -1034,6 +1039,7 @@ mod tests {
                 value_object_kind: None,
                 enum_variants: None,
                 references: None,
+                label: None,
             },
             Field {
                 name: "bad".into(),
@@ -1044,6 +1050,7 @@ mod tests {
                 value_object_kind: None,
                 enum_variants: None,
                 references: None,
+                label: None,
             },
         ];
         let err = validate_fields(&fields).unwrap_err();

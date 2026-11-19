@@ -51,6 +51,66 @@ pub fn snake_to_words(snake: &str) -> String {
         .join(" ")
 }
 
+/// Words a field name writes without their accent (identifiers have none, ADR-0024), as a screen
+/// or a mail shows them. `anio` is how an identifier writes `año`.
+const ACCENTED: &[(&str, &str)] = &[
+    ("anio", "año"),
+    ("articulo", "artículo"),
+    ("capitulo", "capítulo"),
+    ("categoria", "categoría"),
+    ("codigo", "código"),
+    ("contrasena", "contraseña"),
+    ("credito", "crédito"),
+    ("descripcion", "descripción"),
+    ("dia", "día"),
+    ("direccion", "dirección"),
+    ("duracion", "duración"),
+    ("edicion", "edición"),
+    ("electronico", "electrónico"),
+    ("genero", "género"),
+    ("informacion", "información"),
+    ("linea", "línea"),
+    ("maximo", "máximo"),
+    ("metodo", "método"),
+    ("minimo", "mínimo"),
+    ("movil", "móvil"),
+    ("musica", "música"),
+    ("numero", "número"),
+    ("pagina", "página"),
+    ("pais", "país"),
+    ("publicacion", "publicación"),
+    ("publico", "público"),
+    ("razon", "razón"),
+    ("region", "región"),
+    ("revision", "revisión"),
+    ("sesion", "sesión"),
+    ("telefono", "teléfono"),
+    ("titulo", "título"),
+    ("ubicacion", "ubicación"),
+    ("ultima", "última"),
+    ("ultimo", "último"),
+    ("unico", "único"),
+    ("valoracion", "valoración"),
+    ("version", "versión"),
+];
+
+/// What a screen or a mail calls a field (27.5): its words, each with its accent, the first one
+/// capitalized — `anio_de_publicacion` → `Año de publicación`. `[[entidad.campos]] etiqueta`
+/// overrides it.
+pub fn etiqueta(snake: &str) -> String {
+    let words: Vec<&str> = snake
+        .split('_')
+        .filter(|w| !w.is_empty())
+        .map(|w| {
+            ACCENTED
+                .iter()
+                .find(|(plain, _)| *plain == w)
+                .map_or(w, |(_, accented)| *accented)
+        })
+        .collect();
+    capitalize(&words.join(" "))
+}
+
 /// The first letter in upper case: a label (`in stock` → `In stock`).
 pub fn capitalize(s: &str) -> String {
     let mut chars = s.chars();
@@ -185,4 +245,45 @@ pub fn write_file(path: &Path, content: &str) -> Result<(), std::io::Error> {
         fs::create_dir_all(parent).map_err(with_path)?;
     }
     fs::write(path, content).map_err(with_path)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn should_write_each_word_of_the_dictionary_with_its_accent() {
+        for (field, label) in [
+            ("titulo", "Título"),
+            ("direccion", "Dirección"),
+            ("codigo", "Código"),
+            ("genero", "Género"),
+            ("descripcion", "Descripción"),
+            ("telefono", "Teléfono"),
+            ("numero", "Número"),
+            ("categoria", "Categoría"),
+            ("pais", "País"),
+            ("dia", "Día"),
+            ("anio", "Año"),
+            ("linea", "Línea"),
+            ("ultimo", "Último"),
+            ("publico", "Público"),
+            ("musica", "Música"),
+        ] {
+            assert_eq!(etiqueta(field), label, "{field}");
+        }
+    }
+
+    #[test]
+    fn should_leave_a_word_without_accent_as_it_is() {
+        assert_eq!(etiqueta("ciudad"), "Ciudad");
+        assert_eq!(etiqueta("in_stock"), "In stock");
+    }
+
+    #[test]
+    fn should_accent_every_word_of_a_compound_and_capitalize_only_the_first() {
+        assert_eq!(etiqueta("codigo_postal"), "Código postal");
+        assert_eq!(etiqueta("fecha_ultima_revision"), "Fecha última revisión");
+        assert_eq!(etiqueta("anio_de_publicacion"), "Año de publicación");
+    }
 }

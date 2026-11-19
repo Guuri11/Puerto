@@ -7907,7 +7907,7 @@ export interface ProblemaCliente {
  */
 const TEXTOS: Record<string, string> = {
   "cliente.name_invalido": "Name: no válido",
-  "cliente.validacion.email_vacio": "Email: obligatorio",
+  "cliente.validacion.email_vacio": "Email: campo obligatorio",
   "cliente.duplicado": "Estos valores ya están en uso",
   "cliente.no_encontrado": "Ya no existe",
   "cliente.repositorio": "No se ha podido guardar; inténtalo más tarde",
@@ -8665,7 +8665,7 @@ export interface ProblemaEnvio {
 const TEXTOS: Record<string, string> = {
   "envio.validacion.pedido_id_no_encontrado": "Pedido: no existe",
   "envio.validacion.destinatario_id_no_encontrado": "Destinatario: no existe",
-  "envio.validacion.carrier_vacio": "Carrier: obligatorio",
+  "envio.validacion.carrier_vacio": "Carrier: campo obligatorio",
   "envio.duplicado": "Estos valores ya están en uso",
   "envio.no_encontrado": "Ya no existe",
   "envio.repositorio": "No se ha podido guardar; inténtalo más tarde",

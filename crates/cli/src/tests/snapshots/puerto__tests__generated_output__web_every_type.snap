@@ -3720,7 +3720,7 @@ export interface ProblemaCase {
  * no está aquí se muestra tal cual.
  */
 const TEXTOS: Record<string, string> = {
-  "case.validacion.title_vacio": "Title: obligatorio",
+  "case.validacion.title_vacio": "Title: campo obligatorio",
   "case.status_invalido": "Status: no válido",
   "case.middle_name_invalido": "Middle name: no válido",
   "case.label_invalido": "Labels: no válido",

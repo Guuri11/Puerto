@@ -177,6 +177,10 @@ pub struct Field {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[serde(rename = "referencia")]
     pub references: Option<String>,
+    /// What the screens call it (27.5); without it, [`crate::generators::naming::etiqueta`].
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[serde(rename = "etiqueta")]
+    pub label: Option<String>,
 }
 
 /// Parse a CLI field argument into a `Field`.

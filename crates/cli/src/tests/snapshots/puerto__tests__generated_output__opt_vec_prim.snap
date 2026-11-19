@@ -3230,7 +3230,7 @@ export interface ProblemaArticle {
  * no está aquí se muestra tal cual.
  */
 const TEXTOS: Record<string, string> = {
-  "article.validacion.title_vacio": "Title: obligatorio",
+  "article.validacion.title_vacio": "Title: campo obligatorio",
   "article.duplicado": "Estos valores ya están en uso",
   "article.no_encontrado": "Ya no existe",
   "article.repositorio": "No se ha podido guardar; inténtalo más tarde",

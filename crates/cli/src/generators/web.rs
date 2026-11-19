@@ -571,7 +571,7 @@ fn web_problems(
         if f.field_type == "String" && f.value_object.is_none() {
             add(
                 format!("{snake}.validacion.{}_vacio", f.name),
-                format!("{}: obligatorio", web.label),
+                format!("{}: campo obligatorio", web.label),
             );
         }
         if f.references.is_some() {

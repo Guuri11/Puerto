@@ -2850,7 +2850,7 @@ export interface ProblemaPersona {
  * no está aquí se muestra tal cual.
  */
 const TEXTOS: Record<string, string> = {
-  "persona.validacion.name_vacio": "Name: obligatorio",
+  "persona.validacion.name_vacio": "Name: campo obligatorio",
   "persona.duplicado": "Estos valores ya están en uso",
   "persona.no_encontrado": "Ya no existe",
   "persona.repositorio": "No se ha podido guardar; inténtalo más tarde",

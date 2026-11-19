@@ -422,6 +422,16 @@ pub fn validate_field(field: &Field) -> Result<(), String> {
     if field.references.is_some() {
         validate_reference_shape(field)?;
     }
+    if let Some(label) = &field.label {
+        // It is written into the screens' string literals.
+        if label.trim().is_empty() || label.contains(['"', '\\', '\n', '\r']) {
+            return Err(format!(
+                "la etiqueta del campo '{}' no puede estar vacía ni llevar comillas, `\\` o saltos \
+                 de línea: {label:?}",
+                field.name
+            ));
+        }
+    }
     Ok(())
 }
 

@@ -3775,7 +3775,7 @@ elemento los campos de esa acción (`{ cancelar: { estado: "Cancelado" } }`) y r
 sigue funcionando con `POST <ruta>`. Lo usa 27.12. Test: una acción cambia el elemento; una acción
 desconocida responde 404.
 
-### 27.5 — Las etiquetas, con tildes
+### 27.5 — Las etiquetas, con tildes ✅
 
 `naming::etiqueta(campo)` (hoy «Titulo», «Direccion», «Genero», «Codigo», y «anio» sale tal cual):
 palabras separadas, la primera en mayúscula, y un diccionario de las palabras habituales que llevan

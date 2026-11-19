@@ -8565,7 +8565,7 @@ export interface ProblemaProducto {
  */
 const TEXTOS: Record<string, string> = {
   "producto.name_invalido": "Name: no válido",
-  "producto.validacion.sku_vacio": "Sku: obligatorio",
+  "producto.validacion.sku_vacio": "Sku: campo obligatorio",
   "producto.status_invalido": "Status: no válido",
   "producto.duplicado": "Estos valores ya están en uso",
   "producto.no_encontrado": "Ya no existe",

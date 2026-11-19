@@ -3274,7 +3274,7 @@ export interface ProblemaPersona {
  * no está aquí se muestra tal cual.
  */
 const TEXTOS: Record<string, string> = {
-  "persona.validacion.name_vacio": "Name: obligatorio",
+  "persona.validacion.name_vacio": "Name: campo obligatorio",
   "persona.middle_name_invalido": "Middle name: no válido",
   "persona.tag_invalido": "Tags: no válido",
   "persona.duplicado": "Estos valores ya están en uso",

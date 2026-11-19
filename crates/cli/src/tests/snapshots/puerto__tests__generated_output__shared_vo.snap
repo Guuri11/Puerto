@@ -3333,7 +3333,7 @@ export interface ProblemaCliente {
  * no está aquí se muestra tal cual.
  */
 const TEXTOS: Record<string, string> = {
-  "cliente.validacion.name_vacio": "Name: obligatorio",
+  "cliente.validacion.name_vacio": "Name: campo obligatorio",
   "cliente.email_invalido": "Email: no válido",
   "cliente.money_invalido": "Credit: no válido",
   "cliente.duplicado": "Estos valores ya están en uso",

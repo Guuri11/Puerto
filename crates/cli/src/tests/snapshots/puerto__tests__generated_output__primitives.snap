@@ -3024,7 +3024,7 @@ async function rellenar(peticion: Esquemas["PeticionCrearProducto"]) {
   escribir("Rate", String(peticion.rate));
   escribir("Released at", aFechaHoraLocal(peticion.releasedAt));
   escribir("Meta", formatearEntradas(peticion.meta));
-  escribir("Categoria id", peticion.categoriaId);
+  escribir("Categoría id", peticion.categoriaId);
 }
 
 describe("ContenedorFormularioProducto", () => {
@@ -3333,7 +3333,7 @@ export interface ProblemaProducto {
  * no está aquí se muestra tal cual.
  */
 const TEXTOS: Record<string, string> = {
-  "producto.validacion.title_vacio": "Title: obligatorio",
+  "producto.validacion.title_vacio": "Title: campo obligatorio",
   "producto.duplicado": "Estos valores ya están en uso",
   "producto.no_encontrado": "Ya no existe",
   "producto.repositorio": "No se ha podido guardar; inténtalo más tarde",
@@ -3370,7 +3370,7 @@ export function VistaDetalleProducto({ producto }: { producto: Producto }) {
       <dd>{formatearFechaHora(producto.releasedAt)}</dd>
       <dt className="font-semibold">Meta</dt>
       <dd>{formatearEntradas(producto.meta, ", ")}</dd>
-      <dt className="font-semibold">Categoria id</dt>
+      <dt className="font-semibold">Categoría id</dt>
       <dd>{producto.categoriaId}</dd>
     </dl>
   );
@@ -3530,7 +3530,7 @@ export function VistaFormularioProducto({
       </label>
       <ErrorCampo problema={problema} campo="meta" />
       <label className="fieldset">
-        <span className="fieldset-legend">Categoria id</span>
+        <span className="fieldset-legend">Categoría id</span>
         <input
           className="input w-full"
           type="text"
@@ -3567,7 +3567,7 @@ export function VistaListaProducto({ productos }: { productos: Producto[] }) {
             <th>Rate</th>
             <th>Released at</th>
             <th>Meta</th>
-            <th>Categoria id</th>
+            <th>Categoría id</th>
             <th />
           </tr>
         </thead>

@@ -3217,7 +3217,7 @@ export interface ProblemaProducto {
  * no está aquí se muestra tal cual.
  */
 const TEXTOS: Record<string, string> = {
-  "producto.validacion.title_vacio": "Title: obligatorio",
+  "producto.validacion.title_vacio": "Title: campo obligatorio",
   "producto.duplicado": "Estos valores ya están en uso",
   "producto.no_encontrado": "Ya no existe",
   "producto.repositorio": "No se ha podido guardar; inténtalo más tarde",

@@ -238,3 +238,18 @@ fn validate_cli_fields_rejects_unknown_type() {
     }];
     assert!(crate::generators::types::validate_fields(&fields).is_err());
 }
+
+#[test]
+fn validate_rejects_a_label_that_is_blank_or_breaks_a_string() {
+    // 27.5: `etiqueta` lands in the screens' string literals and test names.
+    let with_label = |label: &str| puerto_toml::Field {
+        label: Some(label.into()),
+        ..puerto_toml::parse_field_arg("ciudad:String").unwrap()
+    };
+
+    assert!(crate::validation::validate_field(&with_label("Localidad")).is_ok());
+    for bad in ["", "  ", "Ciudad \"natal\"", "Ciudad\\", "Ciudad\nnatal"] {
+        let err = crate::validation::validate_field(&with_label(bad)).unwrap_err();
+        assert!(err.contains("etiqueta"), "{bad:?}: {err}");
+    }
+}

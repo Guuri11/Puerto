@@ -3465,7 +3465,7 @@ export interface ProblemaLineaPedido {
  * no está aquí se muestra tal cual.
  */
 const TEXTOS: Record<string, string> = {
-  "linea_pedido.validacion.title_vacio": "Title: obligatorio",
+  "linea_pedido.validacion.title_vacio": "Title: campo obligatorio",
   "linea_pedido.sku_invalido": "Sku: no válido",
   "linea_pedido.duplicado": "Estos valores ya están en uso",
   "linea_pedido.no_encontrado": "Ya no existe",

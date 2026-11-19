@@ -3202,7 +3202,7 @@ export interface ProblemaPedido {
  * no está aquí se muestra tal cual.
  */
 const TEXTOS: Record<string, string> = {
-  "pedido.validacion.reference_vacio": "Reference: obligatorio",
+  "pedido.validacion.reference_vacio": "Reference: campo obligatorio",
   "pedido.status_invalido": "Status: no válido",
   "pedido.duplicado": "Estos valores ya están en uso",
   "pedido.no_encontrado": "Ya no existe",

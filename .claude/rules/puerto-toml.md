@@ -61,6 +61,9 @@ unico = true             # índice único en la base de datos
 [[entidad.campos]]
 nombre = "descripcion"
 tipo = "Option<String>"  # campo nullable
+# etiqueta = "Resumen"   # opcional (27.5): lo que dicen las pantallas; sin ella, el nombre con sus
+                         # tildes (`naming::etiqueta`: anio → Año, codigo_postal → Código postal).
+                         # Sin comillas, `\` ni saltos de línea
 
 [[entidad.campos]]
 nombre = "etiquetas"

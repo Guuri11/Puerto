@@ -7750,7 +7750,7 @@ export interface ProblemaEquipo {
  * no está aquí se muestra tal cual.
  */
 const TEXTOS: Record<string, string> = {
-  "equipo.validacion.nombre_vacio": "Nombre: obligatorio",
+  "equipo.validacion.nombre_vacio": "Nombre: campo obligatorio",
   "equipo.duplicado": "Estos valores ya están en uso",
   "equipo.no_encontrado": "Ya no existe",
   "equipo.repositorio": "No se ha podido guardar; inténtalo más tarde",
@@ -8483,7 +8483,7 @@ export interface ProblemaJugador {
  */
 const TEXTOS: Record<string, string> = {
   "jugador.validacion.equipo_id_no_encontrado": "Equipo: no existe",
-  "jugador.validacion.email_vacio": "Email: obligatorio",
+  "jugador.validacion.email_vacio": "Email: campo obligatorio",
   "jugador.duplicado": "Estos valores ya están en uso",
   "jugador.no_encontrado": "Ya no existe",
   "jugador.repositorio": "No se ha podido guardar; inténtalo más tarde",

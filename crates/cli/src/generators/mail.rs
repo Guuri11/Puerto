@@ -111,14 +111,9 @@ fn imports(fields: &[MailField]) -> Vec<String> {
     imports
 }
 
-/// `order_shipped` → `Order shipped`.
+/// `order_shipped` → `Order shipped`, with the accents of [`crate::generators::naming::etiqueta`].
 fn humanize(snake: &str) -> String {
-    let words = snake.replace('_', " ");
-    let mut chars = words.chars();
-    match chars.next() {
-        Some(first) => first.to_uppercase().chain(chars).collect(),
-        None => words,
-    }
+    crate::generators::naming::etiqueta(snake)
 }
 
 fn is_optional(field: &MailField) -> bool {
