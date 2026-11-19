@@ -358,6 +358,19 @@ ruta quieres el SaaS».
 | nombres | `PaginaPortada`, `SeccionCabecera`, `SeccionCaracteristicas`, `SeccionPrecios`, `SeccionPreguntas`, `SeccionLlamada`, `SeccionPie`, `rutaApp`; en `puerto.toml`, `[proyecto] portada`, `ruta_app` |
 | textos | `Entrar`, `Ir al panel`, `Características`, `Precios`, `Preguntas frecuentes` |
 
+## Fase 27 — lo que encontró Aforo (2026-11-19)
+
+Los de 27.1 y 27.2 vienen del plan. El resto se decidió por el camino, con las mismas reglas
+(Sergio puede cambiarlos); las palabras de «Por decidir» de la Fase 27 se preguntan antes.
+
+| Dónde | Nombre |
+|---|---|
+| `.env` | `SMTP_HOST_PORT`, `MAILPIT_UI_PORT` |
+| madre | `Madre<Entidad>::<campo>_unico()` (un campo `unico`) |
+| API falsa | `fetchFalso`, `Coleccion.acciones`, el fallo de una acción `"POST /productos/{id}/<accion>"` |
+| referencias en una lista | `etiquetasReferencia(cargados, campo)`, `etiquetas<Objetivo>` (`etiquetasCliente`), `EnlaceReferencia etiquetas` |
+| logs | `guardar rechazado` (un duplicado o una referencia inexistente, con `warn!`) |
+
 ## Pendiente
 
 Nada por ahora. Una palabra nueva se pregunta antes de usarla.
