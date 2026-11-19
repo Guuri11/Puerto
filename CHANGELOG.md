@@ -1,3 +1,41 @@
+## [0.27.0] - 2026-11-19
+
+Un escaparate de bloques para el frontend generado: otras pantallas de la app, una portada pública
+con sus secciones y seis temas, cada uno instalado por la CLI sin tocar nada más (PLAN Fase 26,
+ADR-0028). Se ven en https://puerto-rs.vercel.app/bloques/. El backend no cambia.
+
+### Added
+
+- **`puerto generar web-bloque`**: sin argumento, el catálogo; con `<hueco>/<variante> --forzar`,
+  instala un bloque: el fichero de su hueco y nada más, porque cada variante conserva el
+  componente, las props y los textos que buscan los tests de su hueco. Sin `--forzar` no pisa un
+  fichero con otro contenido. Huecos y variantes: `acceso/{dividido,centrado}` y
+  `perfil/{tarjeta,banda}` (con auth), `marco/{lateral,superior}`, `panel/{tarjetas,resumen}` y
+  `tema/{puerto,bosque,ciruela,coral,pizarra,miel}`; la primera de cada hueco es la de siempre.
+- **La portada pública**: `puerto nuevo` pregunta, con web, si es un SaaS con portada pública
+  (`--portada`, `--sin-portada`; `--ruta-app <ruta>` la implica). La portada va en `/`
+  (`paginas/portada.tsx`, una bienvenida con su test) y la app debajo de `ruta_app` (`/panel` por
+  defecto), montada con el `nest` de wouter: las pantallas no cambian. `[proyecto] portada` y
+  `ruta_app` en `puerto.toml`; `puerto validar` los comprueba.
+- **Las secciones de la portada**: `portada/producto` cambia la bienvenida por una web de producto,
+  con una sección por fichero en `web/src/portada/` (cabecera, características, precios, preguntas
+  frecuentes, llamada a la acción y pie), y `cabecera/dividida` es otra cabecera.
+- **El escaparate**, en la web (`/bloques/`): cada bloque pintado en claro y en oscuro, en escritorio
+  y en móvil, con su comando, el código de sus ficheros y un texto para un agente. Lo construye
+  `make site/data` instalando cada bloque con la CLI.
+
+### Changed
+
+- `generado/rutas.tsx` exporta `rutaApp` (`"/"` sin portada), y el login de `--auth local` vuelve a
+  ella cuando no hay `?siguiente=`. Sin portada, va a `/` como antes.
+- `puerto nuevo` escribe el `main.tsx` de auth con la misma plantilla que el de la portada: sin
+  portada, sale igual que en 0.26.
+
+Para añadir la portada a un proyecto de 0.26: pon `portada = true` y `ruta_app = "/panel"` en
+`[proyecto]`, ejecuta `puerto generar web-bloque portada/bienvenida` y `puerto generar bootstrap`,
+y copia `web/src/main.tsx` y `web/src/paginas/portada.test.tsx` de un proyecto nuevo creado con las
+mismas opciones y `--portada`.
+
 ## [0.26.0] - 2026-11-18
 
 Un proyecto nuevo con `web/` se ve como un producto: su marca en un solo sitio, un marco lateral,

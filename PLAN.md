@@ -3609,7 +3609,7 @@ una referencia en las listas (hoy muestran su id; el detalle ya la muestra).
 
 ## Fase 26 — Los bloques web: un escaparate de pantallas, secciones y temas (ADR-0028)
 
-**Estado:** hecha (2026-11-19), sin publicar. Decidido por Sergio el 2026-11-19: además de la marca, un
+**Estado:** hecha y publicada en la 0.27.0 (2026-11-19). Decidido por Sergio el 2026-11-19: además de la marca, un
 escaparate al estilo de shadcnblocks en la web de Puerto, del que cada proyecto elige lo que quiere.
 Tres clases de bloques en la primera tanda: pantallas de la app, secciones de marketing para una
 portada pública y temas. Se instalan con la CLI (`puerto generar web-bloque`), no con un registro de

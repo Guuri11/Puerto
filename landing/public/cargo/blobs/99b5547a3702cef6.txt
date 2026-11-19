@@ -1,0 +1,46 @@
+// GENERADO por puerto. Edita puerto.toml y después ejecuta `puerto generar bootstrap`.
+
+import { Route, Switch } from "wouter";
+import { contarTotal, PAGINA_DE_UNO } from "../api/http";
+import type { EntradaMenu } from "../compartido/ui/marco";
+import { ContenedorDetallePedido } from "../contextos/pedido/contenedores/detalle-pedido";
+import { ContenedorFormularioPedido } from "../contextos/pedido/contenedores/formulario-pedido";
+import { ContenedorListaPedido } from "../contextos/pedido/contenedores/lista-pedido";
+import { PaginaNoEncontrada } from "../paginas/no-encontrada";
+import { PaginaPanel } from "../paginas/panel";
+import { rutasPropias } from "../rutas";
+
+/** Dónde va la app: en la raíz o, con portada, en `[proyecto] ruta_app` (`puerto nuevo --portada`). */
+export const rutaApp = "/";
+
+export const entradasMenu: EntradaMenu[] = [
+  {
+    etiqueta: "Pedidos",
+    href: "/pedidos",
+    total: ({ api }) => contarTotal(api.GET("/pedidos", PAGINA_DE_UNO)),
+  },
+];
+
+export function RutasApp() {
+  return (
+    <Switch>
+      <Route path="/">
+        <PaginaPanel entradas={entradasMenu} />
+      </Route>
+      {rutasPropias}
+      <Route path="/pedidos">
+        <ContenedorListaPedido />
+      </Route>
+      <Route path="/pedidos/nuevo">
+        <ContenedorFormularioPedido />
+      </Route>
+      <Route path="/pedidos/:id/editar">
+        {(params) => <ContenedorFormularioPedido id={params.id} />}
+      </Route>
+      <Route path="/pedidos/:id">{(params) => <ContenedorDetallePedido id={params.id} />}</Route>
+      <Route>
+        <PaginaNoEncontrada />
+      </Route>
+    </Switch>
+  );
+}

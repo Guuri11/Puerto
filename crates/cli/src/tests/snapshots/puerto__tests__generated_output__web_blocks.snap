@@ -347,9 +347,9 @@ poem-openapi = { version = "5", features = ["swagger-ui", "uuid", "chrono"] }
 
 # El runtime de Puerto (ADR-0017 de Puerto): lo que comparten todos los proyectos de Puerto vive
 # en estos crates, en la misma versión minor que la CLI `puerto` que generó este proyecto.
-puerto-nucleo = "0.26"
-puerto-web = "0.26"
-puerto-auth = "0.26"
+puerto-nucleo = "0.27"
+puerto-web = "0.27"
+puerto-auth = "0.27"
 
 # Los crates de este proyecto: cada `Cargo.toml` los nombra con `{ workspace = true }`.
 cableado = { path = "presentacion/cableado" }
