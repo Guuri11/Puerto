@@ -3929,7 +3929,7 @@ ni `roles`, y la deriva de auth no busca su handler. Tests: los params, `rutas.r
 ni botón. Compile matrix: un caso de uso interno en `auth_oidc` y una transición interna
 (`agotar`) en `auth_oidc_events`.
 
-### 27.14 — Lo que necesita un consumidor
+### 27.14 — Lo que necesita un consumidor ✅
 
 - `puerto-nucleo`: `Principal::sistema(nombre)` (id nil, sujeto `sistema:<nombre>`) para que el worker
   llame a casos de uso protegidos. Aforo se lo inventó con `Principal::new(Uuid::nil(), …)`.
@@ -3941,6 +3941,26 @@ ni botón. Compile matrix: un caso de uso interno en `auth_oidc` y una transici�
   `consumidores/comun.rs`, que `validar` no confunda con un consumidor).
 - Tests: el runtime (`sistema`, el helper con 0, 1 y varias páginas); el `Cargo.toml` y el fichero
   del consumidor con `--usa`.
+
+**Decidido (2026-11-19, con Sergio).**
+
+- `Principal::sistema(nombre)`: `id_usuario` nil, `sujeto` `sistema:<nombre>`, sin roles (los
+  roles los comprueba la ruta, y el worker no pasa por ninguna).
+- `puerto_nucleo::todas_las_paginas(leer)`: `leer` es un `FnMut(PeticionPagina) -> impl
+  Future<Output = Result<Pagina<T>, E>>` (`|pagina| self.listar.ejecutar(…)`); pide páginas de
+  `LIMITE_PAGINA_MAXIMO` hasta que una viene corta o se llega a `total`, y devuelve todos los
+  elementos. No un cierre `async`: rustc aún no prueba `Send` su futuro dentro de un método
+  `async_trait` como `ManejadorEvento::manejar` (lifetimes de rango superior); este sí lo es.
+- `--usa` nombra **casos de uso**, no contextos: `--usa obtener_concierto,listar_entradas`. Cada uno
+  es un campo `Arc<dyn …>` del consumidor; `construir(pool)` los saca de
+  `cableado::<c>::construir(pool)` (sin `pool` para una entidad en memoria), y los tests generados
+  le dan un doble a cada uno. El `Cargo.toml` del worker gana `cableado` y cada `aplicacion_<c>`
+  (en dev, con `pruebas`). Rechaza un caso de uso que no declara ninguna entidad; los internos
+  (27.13) valen, son justo para esto. No se guarda en `puerto.toml`: el consumidor
+  es del usuario desde que se escribe, y las dependencias no se quitan nunca. Un proyecto con auth
+  dice en el comentario de `construir` que el `actor` es `Principal::sistema("<consumidor>")`.
+- `consumidores/comun.rs`: lo escribe `puerto nuevo --eventos` (y `generar consumidor` si falta),
+  con su `pub mod comun;`. Ningún consumidor puede llamarse `comun`, y `validar` no lo toma por uno.
 
 ### 27.15 — Un ejemplo por objeto valor compartido
 

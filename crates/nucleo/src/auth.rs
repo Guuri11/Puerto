@@ -39,6 +39,13 @@ impl Principal {
         }
     }
 
+    /// Who acts when no one called: the worker, a job. `id_usuario` is nil (no `User` row), the
+    /// subject `sistema:<nombre>`, and no roles — roles guard routes, and this caller takes none.
+    /// A consumer passes it as the `actor` of the protected use cases it calls (27.14).
+    pub fn sistema(nombre: &str) -> Self {
+        Self::new(Uuid::nil(), format!("sistema:{nombre}"))
+    }
+
     pub fn con_id_usuario(mut self, id_usuario: Uuid) -> Self {
         self.id_usuario = id_usuario;
         self
@@ -285,6 +292,18 @@ mod tests {
         assert_eq!(principal.email.as_deref(), Some("ada@example.com"));
         assert_eq!(principal.nombre.as_deref(), Some("Ada Lovelace"));
         assert_eq!(principal.roles, vec!["admin", "editor"]);
+    }
+
+    #[test]
+    fn should_name_the_system_caller_with_a_nil_id_and_no_roles() {
+        // Act
+        let principal = Principal::sistema("control_aforo");
+
+        // Assert
+        assert_eq!(principal.id_usuario, Uuid::nil());
+        assert_eq!(principal.sujeto, "sistema:control_aforo");
+        assert!(principal.roles.is_empty());
+        assert_eq!((principal.email, principal.nombre), (None, None));
     }
 
     #[test]

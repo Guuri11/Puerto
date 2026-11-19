@@ -312,7 +312,7 @@ fn generate_consumer_keeps_the_modules_sorted_and_shares_the_dead_letter_sink() 
 
     let modules = read(&output, "presentacion/worker/src/consumidores.rs");
     assert!(
-        modules.ends_with("pub mod audit;\npub mod notify_new_producto;\n"),
+        modules.ends_with("pub mod audit;\npub mod comun;\npub mod notify_new_producto;\n"),
         "{modules}"
     );
     let registry = read(&output, "presentacion/worker/src/generado/registro.rs");
@@ -610,5 +610,115 @@ fn validate_rejects_a_declared_consumer_whose_handler_is_missing() {
         err.contains("falta presentacion/worker/src/consumidores/audit.rs"),
         "{err}"
     );
+    cleanup(&dir);
+}
+
+// ── 27.14: what a consumer needs ───────────────────────────────────────────
+
+const CONTROL_STOCK: &str = "presentacion/worker/src/consumidores/control_stock.rs";
+
+#[test]
+fn generate_consumer_with_use_cases_holds_builds_and_doubles_them() {
+    let (dir, output) = producto_project("consumer_uses");
+    scaffold::run_use_case_with("Producto", "agotar_producto", true, &output).unwrap();
+
+    scaffold::run_generate_consumer_with(
+        "control_stock",
+        &on(&["producto_creado"]),
+        &on(&["obtener_producto", "agotar_producto"]),
+        &output,
+    )
+    .unwrap();
+
+    let consumer = read(&output, CONTROL_STOCK);
+    assert!(consumer.contains("pub struct ControlStock {"), "{consumer}");
+    assert!(consumer.contains("pub obtener_producto: Arc<dyn ObtenerProducto>,"));
+    assert!(consumer.contains("pub agotar_producto: Arc<dyn AgotarProducto>,"));
+    assert!(consumer.contains("use aplicacion_producto::obtener_producto::ObtenerProducto;"));
+    assert!(consumer.contains("let producto = cableado::producto::construir(pool);"));
+    assert!(consumer.contains("obtener_producto: producto.obtener_producto,"));
+    assert!(consumer.contains("obtener_producto: Arc::new(MockObtenerProducto::new()),"));
+    assert!(
+        !consumer.contains("Principal::sistema"),
+        "no auth: {consumer}"
+    );
+    let manifest = read(&output, "presentacion/worker/Cargo.toml");
+    assert!(
+        manifest.contains("cableado = { workspace = true }"),
+        "{manifest}"
+    );
+    assert!(manifest.contains("aplicacion_producto = { workspace = true }"));
+    assert!(
+        manifest.contains("aplicacion_producto = { workspace = true, features = [\"pruebas\"] }")
+    );
+    // The handler is the user's from now on: the manifest records only its subscriptions.
+    let config = puerto_toml::read(&output).unwrap();
+    assert_eq!(config.consumer[0].events, on(&["producto_creado"]));
+    cleanup(&dir);
+}
+
+#[test]
+fn generate_consumer_refuses_a_use_case_no_entity_declares_and_writes_nothing() {
+    let (dir, output) = producto_project("consumer_uses_unknown");
+    let manifest = read(&output, "puerto.toml");
+
+    let err = error_of(scaffold::run_generate_consumer_with(
+        "control_stock",
+        &on(&["producto_creado"]),
+        &on(&["obtener_producto", "teletransportar_producto"]),
+        &output,
+    ));
+
+    assert!(err.contains("teletransportar_producto"), "{err}");
+    assert!(!output.join(CONTROL_STOCK).exists());
+    assert_eq!(read(&output, "puerto.toml"), manifest);
+    cleanup(&dir);
+}
+
+#[test]
+fn a_consumer_of_an_auth_project_acts_as_the_system() {
+    let (dir, output) = events_project("consumer_uses_auth", "db");
+    crate::generators::auth::apply_auth_to_new_project(&output, "oidc").unwrap();
+    let fields = [scaffold_test_field("name", "String")];
+    scaffold::run_scaffold("Producto", &output, &fields, OverwritePolicy::Ask).unwrap();
+
+    scaffold::run_generate_consumer_with(
+        "control_stock",
+        &on(&["producto_creado"]),
+        &on(&["listar_productos"]),
+        &output,
+    )
+    .unwrap();
+
+    let consumer = read(&output, CONTROL_STOCK);
+    assert!(
+        consumer.contains("Principal::sistema(\"control_stock\")"),
+        "{consumer}"
+    );
+    assert!(consumer.contains("todas_las_paginas"), "a list: {consumer}");
+    cleanup(&dir);
+}
+
+#[test]
+fn the_worker_has_a_module_for_what_consumers_share_and_it_is_no_consumer() {
+    let (dir, output) = producto_project("consumer_comun");
+    let comun = read(&output, "presentacion/worker/src/consumidores/comun.rs");
+    assert!(comun.starts_with("//!"), "{comun}");
+
+    let err = error_of(scaffold::run_generate_consumer(
+        "comun",
+        &on(&["producto_creado"]),
+        &output,
+    ));
+    assert!(err.contains("comun"), "{err}");
+
+    scaffold::run_generate_consumer("notify_new_producto", &on(&["producto_creado"]), &output)
+        .unwrap();
+    let modules = read(&output, "presentacion/worker/src/consumidores.rs");
+    assert!(
+        modules.contains("pub mod comun;\npub mod notify_new_producto;\n"),
+        "{modules}"
+    );
+    assert!(validate::run_validate(&output).is_ok());
     cleanup(&dir);
 }

@@ -73,7 +73,7 @@ comprueba que los dos siguen de acuerdo. `puerto listar` muestra lo que declara,
 | `puerto generar migracion <nombre>` | una migración SQL vacía (proyectos `db`) |
 | `puerto generar bootstrap` | vuelve a cablear `presentacion/cableado` y `generado/bootstrap.rs` a partir de `puerto.toml` |
 | `puerto generar evento <Entidad> <nombre>` | un evento de dominio propio (proyectos con `eventos`) |
-| `puerto generar consumidor <nombre> --tras <tipo_evento>[,…]` | un consumidor del worker (proyectos con `eventos`) |
+| `puerto generar consumidor <nombre> --tras <tipo_evento>[,…] [--usa <caso_de_uso>[,…]]` | un consumidor del worker (proyectos con `eventos`); con `--usa`, los casos de uso que llama, sacados de `cableado` |
 | `puerto generar correo <nombre> [-- campos…] [--tras <tipo_evento> --para <campo>]` | un correo: su puerto, sus plantillas, su adaptador SMTP; con `--tras`, lo envía el worker |
 | `puerto generar snippets` | snippets de editor para los patrones de abajo (Zed, VS Code) |
 | `puerto validar` | comprueba nombres, tipos y que el manifiesto y el código están de acuerdo |

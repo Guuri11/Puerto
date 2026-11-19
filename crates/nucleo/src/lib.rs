@@ -16,4 +16,6 @@ pub use error_repositorio::ErrorRepositorio;
 pub use eventos::{
     ErrorDecodificacion, EventoDominio, ManejadorEvento, ResultadoManejo, SobreEvento,
 };
-pub use paginacion::{LIMITE_PAGINA_MAXIMO, LIMITE_PAGINA_POR_DEFECTO, Pagina, PeticionPagina};
+pub use paginacion::{
+    LIMITE_PAGINA_MAXIMO, LIMITE_PAGINA_POR_DEFECTO, Pagina, PeticionPagina, todas_las_paginas,
+};

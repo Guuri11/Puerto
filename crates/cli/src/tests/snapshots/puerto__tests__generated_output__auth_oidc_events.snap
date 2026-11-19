@@ -116,7 +116,7 @@ comprueba que los dos siguen de acuerdo. `puerto listar` muestra lo que declara,
 | `puerto generar migracion <nombre>` | una migración SQL vacía (proyectos `db`) |
 | `puerto generar bootstrap` | vuelve a cablear `presentacion/cableado` y `generado/bootstrap.rs` a partir de `puerto.toml` |
 | `puerto generar evento <Entidad> <nombre>` | un evento de dominio propio (proyectos con `eventos`) |
-| `puerto generar consumidor <nombre> --tras <tipo_evento>[,…]` | un consumidor del worker (proyectos con `eventos`) |
+| `puerto generar consumidor <nombre> --tras <tipo_evento>[,…] [--usa <caso_de_uso>[,…]]` | un consumidor del worker (proyectos con `eventos`); con `--usa`, los casos de uso que llama, sacados de `cableado` |
 | `puerto generar correo <nombre> [-- campos…] [--tras <tipo_evento> --para <campo>]` | un correo: su puerto, sus plantillas, su adaptador SMTP; con `--tras`, lo envía el worker |
 | `puerto generar snippets` | snippets de editor para los patrones de abajo (Zed, VS Code) |
 | `puerto validar` | comprueba nombres, tipos y que el manifiesto y el código están de acuerdo |
@@ -6281,7 +6281,8 @@ presentacion/worker/src/
 ├── generado/registro.rs     # GENERADO: el relay y cada `[[consumidor]]`; no lo edites a mano
 ├── consumidores.rs          # `pub mod <consumidor>;`, sin `mod.rs`
 └── consumidores/
-    └── <consumidor>.rs      # Tuyo: un `ManejadorEvento`, lo escribe una vez `puerto generar consumidor`
+    ├── <consumidor>.rs      # Tuyo: un `ManejadorEvento`, lo escribe una vez `puerto generar consumidor`
+    └── comun.rs             # Tuyo: lo que comparten varios consumidores (no es un consumidor)
 ```
 
 ## Reglas críticas
@@ -6298,10 +6299,17 @@ presentacion/worker/src/
   decodifica es `MOTIVO_PAYLOAD_INVALIDO`. Nada se tira sin una fila en `descartados`
   (`make eventos/descartados`).
 - **Lo que necesita un consumidor se construye en su `construir(pool)`**, que `generado/registro.rs`
-  llama al arrancar: guárdalo en un campo del struct (`cableado::<contexto>::construir(pool)` da los
-  casos de uso de un contexto, como `Arc<dyn …>`; añade `cableado = { workspace = true }` a
-  `presentacion/worker/Cargo.toml` la primera vez). Sus tests construyen el struct con dobles
-  (`dobles::Mock<Caso>`), sin base de datos.
+  llama al arrancar: guárdalo en un campo del struct. `puerto generar consumidor … --usa
+  <caso_de_uso>[,…]` lo escribe: un campo `Arc<dyn …>` por caso de uso, sacado de
+  `cableado::<contexto>::construir(pool)`, `cableado` y los `aplicacion_*` en el `Cargo.toml` del
+  worker, y sus tests con un doble cada uno (`dobles::Mock<Caso>`), sin base de datos. Para uno que
+  añades después, lo mismo a mano.
+- **El worker no tiene usuario**: a un caso de uso protegido le pasa como `actor`
+  `Principal::sistema("<consumidor>")`, y una lista entera se lee con
+  `puerto_nucleo::todas_las_paginas(|pagina| self.listar….ejecutar(Params… { pagina, … }))`.
+  Un caso de uso que solo llama el worker es `--interno`: sin ruta ni `actor`.
+- **Lo que comparten varios consumidores va en `consumidores/comun.rs`** (`use super::comun::…`),
+  no dentro de uno de ellos.
 - **Decodifica el snapshot, nunca el modelo de dominio**:
   `evento.decodificar::<SnapshotProducto>()`. El snapshot es el contrato público del evento.
 
@@ -6341,15 +6349,24 @@ sqlx = { workspace = true }
 async-trait = { workspace = true }
 tokio = { workspace = true }
 tracing = { workspace = true }
+cableado = { workspace = true }
+aplicacion_producto = { workspace = true }
 dominio_producto = { workspace = true }
 
 [dev-dependencies]
 serde_json = { workspace = true }
+aplicacion_producto = { workspace = true, features = ["pruebas"] }
 dominio_producto = { workspace = true, features = ["pruebas"] }
 
 === presentacion/worker/src/consumidores.rs ===
 //! Un módulo por cada `[[consumidor]]` de puerto.toml: los añade `puerto generar consumidor`.
+pub mod comun;
 pub mod notify_new_producto;
+
+=== presentacion/worker/src/consumidores/comun.rs ===
+//! Lo que comparten varios consumidores: una consulta, una regla del worker, un helper de sus
+//! tests. Es tuyo: `puerto` lo escribe una vez y no lo toma por un consumidor (ninguno puede
+//! llamarse `comun`). Úsalo desde un consumidor con `use super::comun::…;`.
 
 === presentacion/worker/src/consumidores/notify_new_producto.rs ===
 //! `notify_new_producto`: reacciona a `producto_creado`, `producto_published`. Lo escribe una vez
@@ -6363,6 +6380,10 @@ pub mod notify_new_producto;
 //! con una espera creciente y después lo descarta); `ResultadoManejo::descartar(…)` para uno que no
 //! pasará nunca.
 
+use std::sync::Arc;
+
+use aplicacion_producto::listar_productos::ListarProductos;
+use aplicacion_producto::obtener_producto::ObtenerProducto;
 use async_trait::async_trait;
 use dominio_producto::eventos::{PRODUCTO_CREADO, PRODUCTO_PUBLISHED, SnapshotProducto};
 use puerto_nucleo::eventos::{
@@ -6370,14 +6391,27 @@ use puerto_nucleo::eventos::{
 };
 use sqlx::PgPool;
 
-pub struct NotifyNewProducto;
+/// Los casos de uso a los que llama, como puertos: los tests le dan un doble a cada uno.
+// Quita el `allow` cuando `manejar` los llame: hasta entonces nadie los lee.
+#[allow(dead_code)]
+pub struct NotifyNewProducto {
+    pub obtener_producto: Arc<dyn ObtenerProducto>,
+    pub listar_productos: Arc<dyn ListarProductos>,
+}
 
 impl NotifyNewProducto {
-    /// Lo llama `generado/registro.rs` al arrancar el worker, con su pool. Lo que necesite el
-    /// consumidor se construye aquí y se guarda en sus campos: `cableado::<contexto>::construir(pool)`
-    /// da los casos de uso de un contexto (con `cableado` en el `Cargo.toml` del worker).
-    pub fn construir(_pool: &PgPool) -> Self {
-        Self
+    /// Lo llama `generado/registro.rs` al arrancar el worker, con su pool: saca sus casos de uso de
+    /// `cableado`, que los construye como la API.
+    /// Un caso de uso protegido pide un `actor`; aquí no hay petición ni usuario, así que es
+    /// `puerto_nucleo::auth::Principal::sistema("notify_new_producto")`.
+    /// Una lista entera, sin paginar a mano:
+    /// `puerto_nucleo::todas_las_paginas(|pagina| self.listar_productos.ejecutar(ParamsListarProductos { pagina, … }))`.
+    pub fn construir(pool: &PgPool) -> Self {
+        let producto = cableado::producto::construir(pool);
+        Self {
+            obtener_producto: producto.obtener_producto,
+            listar_productos: producto.listar_productos,
+        }
     }
 }
 
@@ -6416,8 +6450,19 @@ impl ManejadorEvento for NotifyNewProducto {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use aplicacion_producto::listar_productos::dobles::MockListarProductos;
+    use aplicacion_producto::obtener_producto::dobles::MockObtenerProducto;
     use dominio_producto::eventos::EventoProducto;
     use dominio_producto::pruebas::madres::MadreProducto;
+
+    /// El consumidor sobre dobles sin expectativas: un caso de uso al que llame sin que el test lo
+    /// prepare hace fallar el test.
+    fn consumidor() -> NotifyNewProducto {
+        NotifyNewProducto {
+            obtener_producto: Arc::new(MockObtenerProducto::new()),
+            listar_productos: Arc::new(MockListarProductos::new()),
+        }
+    }
 
     fn producto_creado() -> SobreEvento {
         let snapshot = SnapshotProducto::from_entidad(&MadreProducto::aleatorio());
@@ -6430,7 +6475,7 @@ mod tests {
         let evento = producto_creado();
 
         // Actuar
-        let resultado = NotifyNewProducto.manejar(&evento).await;
+        let resultado = consumidor().manejar(&evento).await;
 
         // Comprobar
         assert_eq!(resultado, ResultadoManejo::Ack);
@@ -6442,8 +6487,8 @@ mod tests {
         let evento = producto_creado();
 
         // Actuar
-        let primero = NotifyNewProducto.manejar(&evento).await;
-        let segundo = NotifyNewProducto.manejar(&evento).await;
+        let primero = consumidor().manejar(&evento).await;
+        let segundo = consumidor().manejar(&evento).await;
 
         // Comprobar
         assert_eq!(
@@ -6459,7 +6504,7 @@ mod tests {
         evento.payload = serde_json::json!({ "unexpected": true });
 
         // Actuar
-        let resultado = NotifyNewProducto.manejar(&evento).await;
+        let resultado = consumidor().manejar(&evento).await;
 
         // Comprobar
         assert!(

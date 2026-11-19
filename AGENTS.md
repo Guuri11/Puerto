@@ -280,6 +280,7 @@ puerto generar transicion Concierto cancelar [--evento concierto_cancelado] [--r
 puerto generar transicion Concierto agotar --interno   # Sin ruta ni botón: la llama el worker (27.13; también `caso-de-uso … --interno`)
 puerto generar evento <Entidad> <nombre>            # Proyectos con eventos: un evento propio (producto_publicado) + regenera eventos.rs
 puerto generar consumidor <nombre> --tras producto_creado,producto_publicado   # Proyectos con eventos: un consumidor del worker + regenera registro.rs
+puerto generar consumidor <nombre> --tras producto_creado --usa obtener_producto,listar_productos   # + los casos de uso que llama, de cableado (27.14)
 puerto generar correo <nombre> [-- nombre:String plazas:i64 plan:opt:String]  # Un correo: puerto, enviador con plantillas, plantillas; el primero añade Mailpit
 puerto generar correo <nombre> --tras cliente_creado --para email   # Proyectos con eventos: + el consumidor correo_<nombre> que lo envía una vez por evento
 puerto generar dominio <Nombre>                     # Solo el crate de dominio: modelo, errores, repositorio, madre
@@ -480,6 +481,12 @@ make format/fix    # cargo fmt --all
   monta como `(api_<c>, api_<caso>)`; `rutas.rs` no cambia) y, con pantallas,
   `contenedores/<verbo>-<entidad>.tsx` (`Boton<Caso>`, `DialogoConfirmar` con `textoCancelar` y el
   rechazo dentro), una línea en el `card-actions` del detalle y otra en `mensajes.ts`
+- Lo que necesita un consumidor (27.14): `puerto_nucleo::auth::Principal::sistema(nombre)` (el
+  `actor` del worker), `puerto_nucleo::todas_las_paginas(|pagina| …)` (una lista entera),
+  `generar consumidor … --usa <caso_de_uso>,…` (un campo `Arc<dyn …>` por caso de uso, sacado de
+  `cableado::<c>::construir`, `cableado` y `aplicacion_<c>` en el `Cargo.toml` del worker, un doble
+  en sus tests) y `consumidores/comun.rs` (lo que comparten, escrito una vez; ningún consumidor se
+  llama `comun`)
 - `--interno` (27.13) en `generar caso-de-uso` y `generar transicion`: `[[entidad]] internos`, los
   `Params` sin `actor`, sin campo en `Api<Entidad>` (tampoco tras `scaffold --forzar`) y, en una
   transición, sin `Api<Caso>` ni botón; `cableado` los construye igual

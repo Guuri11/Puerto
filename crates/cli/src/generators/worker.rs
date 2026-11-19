@@ -37,6 +37,45 @@ const RESERVED_CONSUMER_TYPES: &[&str] = &[
     "ConfigWorker",
 ];
 
+/// A use case a consumer holds (`generar consumidor --usa`, 27.14), and where `cableado` builds it.
+#[derive(Debug, Clone, Serialize)]
+pub struct UsedUseCase {
+    pub uc: String,
+    pub uc_pascal: String,
+    pub entity_snake: String,
+    /// `cableado::<entity>::construir` takes the pool: the entity is in Postgres.
+    pub db: bool,
+    /// Its params carry an `actor`: a protected use case of an auth project.
+    pub actor: bool,
+    /// A CRUD list: `todas_las_paginas` reads it whole.
+    pub list: bool,
+}
+
+/// The use cases `names` name, each with the entity that declares it; an unknown one is an error.
+fn used_use_cases(config: &PuertoConfig, names: &[String]) -> Result<Vec<UsedUseCase>, String> {
+    let mut used = vec![];
+    for name in names {
+        let Some(entity) = config.entity.iter().find(|e| e.use_cases.contains(name)) else {
+            return Err(format!(
+                "--usa: ningún [[entidad]] de puerto.toml declara el caso de uso '{name}'"
+            ));
+        };
+        let snake = pascal_to_snake(&entity.name);
+        if used.iter().any(|u: &UsedUseCase| &u.uc == name) {
+            continue;
+        }
+        used.push(UsedUseCase {
+            uc: name.clone(),
+            uc_pascal: to_pascal_case(name),
+            db: entity.db,
+            actor: config.project.has_auth() && !entity.internal.contains(name),
+            list: *name == crate::generators::naming::crud_use_case("list", &snake),
+            entity_snake: snake,
+        });
+    }
+    Ok(used)
+}
+
 /// An event type some entity declares, and where its constant lives.
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct DeclaredEvent {
@@ -276,6 +315,7 @@ fn braced(names: &[String]) -> String {
 pub fn generate_consumer(
     name: &str,
     events: &[DeclaredEvent],
+    uses: &[UsedUseCase],
 ) -> Result<String, Box<dyn std::error::Error>> {
     let Some(first) = events.first() else {
         return Err(format!("el consumidor '{name}' no se suscribe a ningún evento").into());
@@ -304,6 +344,17 @@ pub fn generate_consumer(
     ctx.insert("events", events);
     ctx.insert("first", first);
     ctx.insert("imports", &imports);
+    ctx.insert("uses", uses);
+    // `cableado::<c>::construir` once per context, in the order the use cases name them.
+    let mut contexts: Vec<(&str, bool)> = vec![];
+    for u in uses {
+        if !contexts.iter().any(|(c, _)| *c == u.entity_snake) {
+            contexts.push((&u.entity_snake, u.db));
+        }
+    }
+    ctx.insert("contexts", &contexts);
+    ctx.insert("actor", &uses.iter().any(|u| u.actor));
+    ctx.insert("list", &uses.iter().find(|u| u.list));
     Ok(render("worker/consumer.tera", &ctx)?)
 }
 
@@ -393,6 +444,59 @@ fn add_worker_dependencies(
     Ok(())
 }
 
+/// `consumidores/comun.rs` and its `pub mod`, unless they are there: `puerto nuevo --eventos`, and
+/// `generar consumidor` in a worker written before them.
+fn write_shared_module(base: &Path) -> Result<(), Box<dyn std::error::Error>> {
+    let path = base.join(layout::consumer(SHARED_CONSUMER_MODULE));
+    if !path.exists() {
+        write_file(&path, &render("worker/shared.tera", &tera::Context::new())?)?;
+    }
+    let modules = base.join(layout::CONSUMERS_RS);
+    fs::write(
+        &modules,
+        with_module(&fs::read_to_string(&modules)?, SHARED_CONSUMER_MODULE),
+    )?;
+    Ok(())
+}
+
+/// What a consumer that holds use cases names: `cableado`, and the application crate of each (its
+/// doubles in the tests). Added to `presentacion/worker/Cargo.toml`, never removed.
+fn add_used_dependencies(
+    base: &Path,
+    uses: &[UsedUseCase],
+) -> Result<(), Box<dyn std::error::Error>> {
+    use crate::generators::bootstrap::add_crate_dependency;
+    if uses.is_empty() {
+        return Ok(());
+    }
+    let manifest = layout::WORKER_MANIFEST;
+    add_crate_dependency(
+        base,
+        manifest,
+        "dependencies",
+        "cableado",
+        "{ workspace = true }",
+    )?;
+    for u in uses {
+        let name = layout::crate_name(&u.entity_snake, Layer::Application);
+        add_crate_dependency(
+            base,
+            manifest,
+            "dependencies",
+            &name,
+            "{ workspace = true }",
+        )?;
+        add_crate_dependency(
+            base,
+            manifest,
+            "dev-dependencies",
+            &name,
+            "{ workspace = true, features = [\"pruebas\"] }",
+        )?;
+    }
+    Ok(())
+}
+
 /// `consumers.rs` with `pub mod {name};` among its module declarations, sorted as rustfmt keeps
 /// them; every other line stays where it was, ahead of them.
 pub(crate) fn with_module(src: &str, name: &str) -> String {
@@ -459,6 +563,7 @@ pub fn apply_worker_to_new_project(base: &Path) -> Result<(), Box<dyn std::error
     ] {
         write_file(&base.join(path), &render(template, &ctx)?)?;
     }
+    write_shared_module(base)?;
     write_file(
         &base.join(layout::REGISTRY_RS),
         &generate_registry(&config)?,
@@ -554,12 +659,26 @@ fn add_redpanda_to_compose(
     Ok(())
 }
 
-/// `puerto generar consumidor <name> --tras <event_type>[,…]`: declares the consumer, writes its
-/// handler, declares its module and regenerates the registry. Refuses an existing name, an event
-/// no entity declares, and a file already on disk (it is never overwritten).
+/// The module of what several consumers share (27.14): written once, never a consumer.
+pub const SHARED_CONSUMER_MODULE: &str = "comun";
+
+#[cfg(test)]
 pub fn run_generate_consumer(
     name: &str,
     events: &[String],
+    base: &Path,
+) -> Result<(), Box<dyn std::error::Error>> {
+    run_generate_consumer_with(name, events, &[], base)
+}
+
+/// `puerto generar consumidor <name> --tras <event_type>[,…] [--usa <use_case>[,…]]`: declares the
+/// consumer, writes its handler (holding the `uses` use cases, built from `cableado`), declares its
+/// module and regenerates the registry. Refuses an existing name, an event no entity declares, a
+/// use case no entity declares, and a file already on disk (it is never overwritten).
+pub fn run_generate_consumer_with(
+    name: &str,
+    events: &[String],
+    uses: &[String],
     base: &Path,
 ) -> Result<(), Box<dyn std::error::Error>> {
     let config = crate::puerto_toml::read(base)?;
@@ -571,6 +690,12 @@ pub fn run_generate_consumer(
         );
     }
     crate::validation::validate_consumer_name(name)?;
+    if name == SHARED_CONSUMER_MODULE {
+        return Err(format!(
+            "'{name}' es el módulo de lo que comparten los consumidores              (presentacion/worker/src/consumidores/{name}.rs). Elige otro nombre"
+        )
+        .into());
+    }
     let pascal = to_pascal_case(name);
     let taken = RESERVED_CONSUMER_TYPES.contains(&pascal.as_str())
         || config.entity.iter().any(|e| {
@@ -614,6 +739,7 @@ pub fn run_generate_consumer(
         events: unique,
     };
     let subscribed = subscribed(&consumer, &declared_events(&config))?;
+    let uses = used_use_cases(&config, uses)?;
 
     let path = base.join(layout::consumer(name));
     if path.exists() {
@@ -623,12 +749,14 @@ pub fn run_generate_consumer(
         )
         .into());
     }
-    let content = generate_consumer(name, &subscribed)?;
+    let content = generate_consumer(name, &subscribed, &uses)?;
 
     crate::puerto_toml::add_consumer(base, consumer)?;
     write_file(&path, &content)?;
     let modules = base.join(layout::CONSUMERS_RS);
     fs::write(&modules, with_module(&fs::read_to_string(&modules)?, name))?;
+    write_shared_module(base)?;
+    add_used_dependencies(base, &uses)?;
     regenerate_registry(base, &crate::puerto_toml::read(base)?)?;
 
     println!(

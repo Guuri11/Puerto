@@ -194,6 +194,10 @@ enum GenerateAction {
             required = true
         )]
         on: Vec<String>,
+        /// Los casos de uso que llama, separados por comas (p. ej. obtener_concierto,listar_entradas):
+        /// un campo cada uno, que `construir` saca de `cableado`, y un doble en sus tests
+        #[arg(value_name = "CASOS_DE_USO", long = "usa", value_delimiter = ',')]
+        uses: Vec<String>,
     },
     /// Añade un correo: su puerto, su implementación con plantillas y las plantillas (asunto.txt,
     /// cuerpo.html, cuerpo.txt). El primero añade además Mailpit, y SMTP_URL / MAIL_FROM a .env
@@ -610,11 +614,11 @@ fn run(command: Commands) -> Result<(), Box<dyn std::error::Error>> {
                 .map(|()| format_after_generation(&cwd))
         }
         Commands::Generate {
-            action: GenerateAction::Consumer { name, on },
+            action: GenerateAction::Consumer { name, on, uses },
         } => {
             let cwd = std::env::current_dir()?;
             commands::list::require_puerto_project(&cwd)
-                .and_then(|_| scaffold::run_generate_consumer(&name, &on, &cwd))
+                .and_then(|_| scaffold::run_generate_consumer_with(&name, &on, &uses, &cwd))
                 .map(|()| format_after_generation(&cwd))
         }
         Commands::Generate {

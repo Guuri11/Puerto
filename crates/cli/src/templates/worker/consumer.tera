@@ -9,23 +9,62 @@
 //! con una espera creciente y después lo descarta); `ResultadoManejo::descartar(…)` para uno que no
 //! pasará nunca.
 
-use async_trait::async_trait;
+{% if uses %}use std::sync::Arc;
+
+{% endif %}use async_trait::async_trait;
+{% for u in uses -%}
+use aplicacion_{{ u.entity_snake }}::{{ u.uc }}::{{ u.uc_pascal }};
+{% endfor -%}
 {% for import in imports -%}
 use {{ import }};
 {% endfor -%}
 use puerto_nucleo::eventos::{SobreEvento, ManejadorEvento, ResultadoManejo, MOTIVO_PAYLOAD_INVALIDO};
 use sqlx::PgPool;
+{% if uses %}
+/// Los casos de uso a los que llama, como puertos: los tests le dan un doble a cada uno.
+// Quita el `allow` cuando `manejar` los llame: hasta entonces nadie los lee.
+#[allow(dead_code)]
+pub struct {{ pascal }} {
+{%- for u in uses %}
+    pub {{ u.uc }}: Arc<dyn {{ u.uc_pascal }}>,
+{%- endfor %}
+}
 
+impl {{ pascal }} {
+    /// Lo llama `generado/registro.rs` al arrancar el worker, con su pool: saca sus casos de uso de
+    /// `cableado`, que los construye como la API.
+{%- if actor %}
+    /// Un caso de uso protegido pide un `actor`; aquí no hay petición ni usuario, así que es
+    /// `puerto_nucleo::auth::Principal::sistema("{{ name }}")`.
+{%- endif %}
+{%- if list %}
+    /// Una lista entera, sin paginar a mano:
+    /// `puerto_nucleo::todas_las_paginas(|pagina| self.{{ list.uc }}.ejecutar(Params{{ list.uc_pascal }} { pagina, … }))`.
+{%- endif %}
+    pub fn construir(pool: &PgPool) -> Self {
+{%- for c in contexts %}
+        let {{ c.0 }} = cableado::{{ c.0 }}::construir({% if c.1 %}pool{% endif %});
+{%- endfor %}
+        Self {
+{%- for u in uses %}
+            {{ u.uc }}: {{ u.entity_snake }}.{{ u.uc }},
+{%- endfor %}
+        }
+    }
+}
+{% else %}
 pub struct {{ pascal }};
 
 impl {{ pascal }} {
     /// Lo llama `generado/registro.rs` al arrancar el worker, con su pool. Lo que necesite el
     /// consumidor se construye aquí y se guarda en sus campos: `cableado::<contexto>::construir(pool)`
-    /// da los casos de uso de un contexto (con `cableado` en el `Cargo.toml` del worker).
+    /// da los casos de uso de un contexto (con `cableado` en el `Cargo.toml` del worker;
+    /// `puerto generar consumidor … --usa <caso_de_uso>,…` lo escribe todo).
     pub fn construir(_pool: &PgPool) -> Self {
         Self
     }
 }
+{% endif %}
 
 #[async_trait]
 impl ManejadorEvento for {{ pascal }} {
@@ -55,6 +94,21 @@ mod tests {
     use super::*;
     use dominio_{{ first.entity_snake }}::eventos::Evento{{ first.entity_pascal }};
     use dominio_{{ first.entity_snake }}::pruebas::madres::Madre{{ first.entity_pascal }};
+{%- for u in uses %}
+    use aplicacion_{{ u.entity_snake }}::{{ u.uc }}::dobles::Mock{{ u.uc_pascal }};
+{%- endfor %}
+{%- if uses %}
+
+    /// El consumidor sobre dobles sin expectativas: un caso de uso al que llame sin que el test lo
+    /// prepare hace fallar el test.
+    fn consumidor() -> {{ pascal }} {
+        {{ pascal }} {
+{%- for u in uses %}
+            {{ u.uc }}: Arc::new(Mock{{ u.uc_pascal }}::new()),
+{%- endfor %}
+        }
+    }
+{%- endif %}
 
     fn {{ first.const_lower }}() -> SobreEvento {
         let snapshot = Snapshot{{ first.entity_pascal }}::from_entidad(&Madre{{ first.entity_pascal }}::aleatorio());
@@ -67,7 +121,7 @@ mod tests {
         let evento = {{ first.const_lower }}();
 
         // Actuar
-        let resultado = {{ pascal }}.manejar(&evento).await;
+        let resultado = {% if uses %}consumidor(){% else %}{{ pascal }}{% endif %}.manejar(&evento).await;
 
         // Comprobar
         assert_eq!(resultado, ResultadoManejo::Ack);
@@ -79,8 +133,8 @@ mod tests {
         let evento = {{ first.const_lower }}();
 
         // Actuar
-        let primero = {{ pascal }}.manejar(&evento).await;
-        let segundo = {{ pascal }}.manejar(&evento).await;
+        let primero = {% if uses %}consumidor(){% else %}{{ pascal }}{% endif %}.manejar(&evento).await;
+        let segundo = {% if uses %}consumidor(){% else %}{{ pascal }}{% endif %}.manejar(&evento).await;
 
         // Comprobar
         assert_eq!((primero, segundo), (ResultadoManejo::Ack, ResultadoManejo::Ack));
@@ -93,7 +147,7 @@ mod tests {
         evento.payload = serde_json::json!({ "unexpected": true });
 
         // Actuar
-        let resultado = {{ pascal }}.manejar(&evento).await;
+        let resultado = {% if uses %}consumidor(){% else %}{{ pascal }}{% endif %}.manejar(&evento).await;
 
         // Comprobar
         assert!(

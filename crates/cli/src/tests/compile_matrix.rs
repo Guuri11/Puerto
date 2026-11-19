@@ -40,8 +40,8 @@ pub(super) struct Scenario<'a> {
     pub(super) internal_use_cases: &'a [(&'a str, &'a str)],
     /// Custom events declared after scaffolding (`puerto generar evento`): `(PascalEntity, name)`.
     pub(super) entity_events: &'a [(&'a str, &'a str)],
-    /// Worker consumers added last (`puerto generar consumidor`): `(name, event types)`.
-    pub(super) consumers: &'a [(&'a str, &'a [&'a str])],
+    /// Worker consumers added last (`puerto generar consumidor`): `(name, event types, --usa)`.
+    pub(super) consumers: &'a [(&'a str, &'a [&'a str], &'a [&'a str])],
     /// Mails added after the consumers (`puerto generar correo`): `(name, CLI field args, --tras,
     /// --to)`.
     pub(super) mails: &'a [Mail<'a>],
@@ -610,9 +610,11 @@ pub(super) const EVENTS_DB: Scenario = Scenario {
     transitions: &[],
     entity_events: &[("Producto", "producto_published")],
     internal_use_cases: &[],
+    // 27.14: it holds two use cases, built from `cableado` (with the caller in auth projects).
     consumers: &[(
         "notify_new_producto",
         &["producto_creado", "producto_published"],
+        &["obtener_producto", "listar_productos"],
     )],
     entities: &[(
         "Producto",
@@ -1038,9 +1040,10 @@ pub(super) fn apply_scenario(scenario: &Scenario, output: &Path) {
         format();
     }
 
-    for (name, events) in scenario.consumers {
-        let events: Vec<String> = events.iter().map(|e| e.to_string()).collect();
-        scaffold::run_generate_consumer(name, &events, output).unwrap();
+    for (name, events, uses) in scenario.consumers {
+        let strings = |args: &[&str]| args.iter().map(|a| a.to_string()).collect::<Vec<_>>();
+        scaffold::run_generate_consumer_with(name, &strings(events), &strings(uses), output)
+            .unwrap();
         format();
     }
 

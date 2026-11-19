@@ -69,6 +69,37 @@ impl<T> Pagina<T> {
     }
 }
 
+/// Every item of a list: `leer` once per page of [`LIMITE_PAGINA_MAXIMO`], from the start, until a
+/// page comes back short or `total` items are read; the first error stops it. For code no caller
+/// pages for — a consumer of the worker, a job:
+///
+/// `todas_las_paginas(|pagina| self.listar.ejecutar(ParamsListar… { pagina, … }))`.
+///
+/// A plain closure returning the future, not an `async` closure: rustc cannot yet prove the latter
+/// `Send` inside an `async_trait` method such as `ManejadorEvento::manejar` (higher-ranked
+/// lifetimes), and this one is `Send` when its future is.
+pub async fn todas_las_paginas<T, E, F, Fut>(mut leer: F) -> Result<Vec<T>, E>
+where
+    F: FnMut(PeticionPagina) -> Fut,
+    Fut: std::future::Future<Output = Result<Pagina<T>, E>>,
+{
+    let mut elementos = Vec::new();
+    loop {
+        // shortcut: a list past u32::MAX items stays on its last offset; none fits in memory anyway.
+        let desplazamiento = u32::try_from(elementos.len()).unwrap_or(u32::MAX);
+        let pagina = leer(PeticionPagina::new(
+            Some(LIMITE_PAGINA_MAXIMO),
+            Some(desplazamiento),
+        ))
+        .await?;
+        let corta = pagina.elementos.len() < pagina.limite as usize;
+        elementos.extend(pagina.elementos);
+        if corta || elementos.len() as u64 >= pagina.total {
+            return Ok(elementos);
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -105,5 +136,134 @@ mod tests {
                 desplazamiento: 4
             }
         );
+    }
+
+    /// A list of `total` numbers, read through `todas_las_paginas`: the requests it got, and what
+    /// it answered.
+    async fn leer_todo(total: u32) -> (Vec<PeticionPagina>, Result<Vec<u32>, String>) {
+        let mut pedidas = vec![];
+        let leido = todas_las_paginas(|pagina: PeticionPagina| {
+            pedidas.push(pagina);
+            let desde = pagina.desplazamiento().min(total);
+            let hasta = (desde + pagina.limite()).min(total);
+            let elementos = (desde..hasta).collect();
+            std::future::ready(Ok::<_, String>(Pagina::new(
+                elementos,
+                u64::from(total),
+                pagina,
+            )))
+        })
+        .await;
+        (pedidas, leido)
+    }
+
+    fn desplazamientos(pedidas: &[PeticionPagina]) -> Vec<u32> {
+        pedidas.iter().map(PeticionPagina::desplazamiento).collect()
+    }
+
+    #[tokio::test]
+    async fn should_ask_once_when_the_list_is_empty() {
+        let (pedidas, leido) = leer_todo(0).await;
+
+        assert_eq!(leido, Ok(vec![]));
+        assert_eq!(desplazamientos(&pedidas), [0]);
+    }
+
+    #[tokio::test]
+    async fn should_ask_once_for_a_list_that_fits_in_one_page() {
+        let (pedidas, leido) = leer_todo(7).await;
+
+        assert_eq!(leido, Ok((0..7).collect()));
+        assert_eq!(desplazamientos(&pedidas), [0]);
+        assert!(pedidas.iter().all(|p| p.limite() == LIMITE_PAGINA_MAXIMO));
+    }
+
+    #[tokio::test]
+    async fn should_read_every_page_in_order_when_the_list_is_longer_than_one() {
+        let (pedidas, leido) = leer_todo(250).await;
+
+        assert_eq!(leido, Ok((0..250).collect()));
+        assert_eq!(desplazamientos(&pedidas), [0, 100, 200]);
+    }
+
+    #[tokio::test]
+    async fn should_stop_at_the_total_when_the_last_page_is_full() {
+        let (pedidas, leido) = leer_todo(200).await;
+
+        assert_eq!(leido.map(|e| e.len()), Ok(200));
+        assert_eq!(desplazamientos(&pedidas), [0, 100]);
+    }
+
+    #[tokio::test]
+    async fn should_stop_at_a_short_page_when_the_list_shrinks_while_it_is_read() {
+        // The total says 300, but the second page comes back short: someone deleted rows.
+        let mut pedidas = 0;
+        let leido = todas_las_paginas(|pagina: PeticionPagina| {
+            pedidas += 1;
+            let elementos = if pagina.desplazamiento() == 0 {
+                vec![0; 100]
+            } else {
+                vec![1; 40]
+            };
+            std::future::ready(Ok::<_, String>(Pagina::new(elementos, 300, pagina)))
+        })
+        .await;
+
+        assert_eq!(leido.map(|e| e.len()), Ok(140));
+        assert_eq!(pedidas, 2);
+    }
+
+    #[tokio::test]
+    async fn should_answer_the_first_error_and_ask_no_more() {
+        let mut pedidas = 0;
+        let leido: Result<Vec<u32>, &str> = todas_las_paginas(|pagina: PeticionPagina| {
+            pedidas += 1;
+            std::future::ready(match pagina.desplazamiento() {
+                0 => Ok(Pagina::new(vec![7; 100], 300, pagina)),
+                _ => Err("repositorio"),
+            })
+        })
+        .await;
+
+        assert_eq!(leido, Err("repositorio"));
+        assert_eq!(pedidas, 2);
+    }
+
+    /// What a consumer of the worker does: an `async_trait` method (its future must be `Send`)
+    /// reading through a port it holds.
+    #[tokio::test]
+    async fn should_be_send_when_it_reads_through_a_port_from_an_async_trait() {
+        #[async_trait::async_trait]
+        trait Listar: Send + Sync {
+            async fn ejecutar(&self, pagina: PeticionPagina) -> Result<Pagina<u32>, String>;
+        }
+        struct Doce;
+        #[async_trait::async_trait]
+        impl Listar for Doce {
+            async fn ejecutar(&self, pagina: PeticionPagina) -> Result<Pagina<u32>, String> {
+                Ok(Pagina::new((0..12).collect(), 12, pagina))
+            }
+        }
+        struct Consumidor {
+            listar: std::sync::Arc<dyn Listar>,
+        }
+        #[async_trait::async_trait]
+        trait Manejar {
+            async fn manejar(&self) -> usize;
+        }
+        #[async_trait::async_trait]
+        impl Manejar for Consumidor {
+            async fn manejar(&self) -> usize {
+                todas_las_paginas(|pagina| self.listar.ejecutar(pagina))
+                    .await
+                    .map_or(0, |e| e.len())
+            }
+        }
+
+        let consumidor = Consumidor {
+            listar: std::sync::Arc::new(Doce),
+        };
+
+        assert_eq!(consumidor.manejar().await, 12);
     }
 }

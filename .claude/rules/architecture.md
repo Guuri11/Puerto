@@ -328,6 +328,7 @@ presentacion/worker/src/
   generado/registro.rs       # GENERADO desde [[consumidor]]: el relay + un consumidor cada uno — nunca a mano
   consumidores.rs            # pub mod <consumidor>; (ordenados)
   consumidores/<nombre>.rs   # el ManejadorEvento del usuario, escrito una vez por `puerto generar consumidor`
+  consumidores/comun.rs      # lo que comparten varios consumidores (27.14), del usuario; no es un consumidor
 ```
 
 - Un consumidor compara `event.tipo_evento` con las constantes `<ENTIDAD>_<VERBO>` de la entidad,
@@ -340,8 +341,10 @@ presentacion/worker/src/
   `puerto-eventos`; los adaptadores del transporte `db`, de `puerto_sqlx::eventos`
 - `registro.rs` construye cada consumidor con `<Consumidor>::construir(&pool)`, que es del usuario:
   ahí saca de `cableado::<c>::construir(pool)` los casos de uso que necesita y los guarda en sus
-  campos (el usuario añade `cableado` al `Cargo.toml` del worker cuando lo necesita: una dependencia
-  sin usar es un aviso de Cargo)
+  campos. `generar consumidor … --usa <caso_de_uso>,…` (27.14) lo escribe, con `cableado` y los
+  `aplicacion_<c>` en el `Cargo.toml` del worker y un doble por caso de uso en sus tests. El worker
+  no tiene usuario: el `actor` de un caso de uso protegido es `Principal::sistema("<consumidor>")`,
+  y una lista entera se lee con `puerto_nucleo::todas_las_paginas`
 - `kafka` (`puerto-kafka`): el relay sigue leyendo `OutboxPostgres` y los descartados siguen en
   `DescartadosPostgres`; los eventos van a `<KAFKA_TOPIC_PREFIX>.<agregado>` con el id del agregado
   como clave, y un consumidor es el grupo `<prefijo>.<consumidor>`. Reparte un registro cada vez:
