@@ -1,0 +1,86 @@
+import { useState } from "react";
+import { desenvolver } from "../../../api/http";
+{% if protected -%}
+import { useAuth } from "../../../auth/auth";
+{% endif -%}
+import { AlertaError, codigoError } from "../../../compartido/ui/alerta-error";
+import { DialogoConfirmar } from "../../../compartido/ui/dialogo-confirmar";
+import { useDependencias } from "../../../dependencias";
+import { aProblema } from "../mensajes";
+
+/**
+ * «{{ label }}», tras confirmarlo; si la API lo rechaza, el diálogo se queda abierto y dice
+ * por qué. `alTerminar`, cuando se hizo.
+ */
+{%- if signature_inline %}
+export function Boton{{ uc_pascal }}({ id, alTerminar }: { id: string; alTerminar: () => void }) {
+{%- else %}
+export function Boton{{ uc_pascal }}({
+  id,
+  alTerminar,
+}: {
+  id: string;
+  alTerminar: () => void;
+}) {
+{%- endif %}
+  const { api } = useDependencias();
+{%- if roles %}
+  const { puede } = useAuth();
+{%- elif protected %}
+  const { usuario } = useAuth();
+{%- endif %}
+  const [confirmando, setConfirmando] = useState(false);
+  const [fallo, setFallo] = useState<unknown>(null);
+
+  const confirmar = async () => {
+    setFallo(null);
+    try {
+{%- if post_inline %}
+      await desenvolver(api.POST("/{{ plural }}/{id}/{{ verb }}", { params: { path: { id } } }));
+{%- else %}
+      await desenvolver(
+        api.POST("/{{ plural }}/{id}/{{ verb }}", { params: { path: { id } } }),
+      );
+{%- endif %}
+      setConfirmando(false);
+      alTerminar();
+    } catch (error) {
+      setFallo(error);
+    }
+  };
+  const volver = () => {
+    setConfirmando(false);
+    setFallo(null);
+  };
+{%- if roles %}
+
+{%- if roles | length == 1 %}
+  if (!puede("{{ roles.0 }}")) return null;
+{%- else %}
+  if (!({% for r in roles %}puede("{{ r }}"){% if not loop.last %} && {% endif %}{% endfor %})) return null;
+{%- endif %}
+{%- elif protected %}
+
+  if (usuario === null) return null;
+{%- endif %}
+
+  return (
+    <>
+      <button type="button" className="btn btn-warning" onClick={() => setConfirmando(true)}>
+        {{ label }}
+      </button>
+      <DialogoConfirmar
+        abierto={confirmando}
+        mensaje="¿{{ label }}?"
+        textoConfirmar="{{ label }}"
+        textoCancelar="Volver"
+        alConfirmar={confirmar}
+        alCancelar={volver}
+      >
+        {fallo !== null && (
+          <AlertaError error={fallo} mensaje={aProblema(codigoError(fallo)).texto} />
+        )}
+      </DialogoConfirmar>
+    </>
+  );
+}

@@ -1,0 +1,58 @@
+use crate::errores::Error{{ pascal }};
+{% if events %}use crate::eventos::{Evento{{ pascal }}, Snapshot{{ pascal }}};
+{% endif %}use crate::modelo::{{ pascal }};
+
+/// La transición `{{ verb }}` (`puerto generar transicion`): un `impl` aparte, así que `modelo.rs`
+/// no cambia. La regla y el cambio son tuyos.
+impl {{ pascal }} {
+    pub fn {{ verb }}(&mut self) -> Result<{% if events %}Evento{{ pascal }}{% else %}(){% endif %}, Error{{ pascal }}> {
+        // La regla: cuándo no se puede {{ verb_words }}. La API responde 422 con este código:
+        // if <no se puede> {
+        //     return Err(Error{{ pascal }}::Validacion("no_se_puede_{{ verb }}".into()));
+        // }
+        // El cambio: los campos que pasan a otro valor (p. ej. un estado).
+        self.actualizado_en = chrono::Utc::now();
+        Ok({% if events %}Evento{{ pascal }}::{{ variant }}(Snapshot{{ pascal }}::from_entidad(self)){% else %}(){% endif %})
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::pruebas::madres::Madre{{ pascal }};
+{% if events %}    use puerto_nucleo::EventoDominio;
+{% endif %}
+    #[test]
+    fn deberia_{{ verb }}_{{ snake }}_cuando_se_puede() {
+        // Preparar
+        let mut entidad = Madre{{ pascal }}::aleatorio();
+
+        // Actuar
+        let resultado = entidad.{{ verb }}();
+
+        // Comprobar
+{% if events %}        match resultado {
+            Ok(evento) => {
+                assert_eq!(evento.tipo_evento(), "{{ event_type }}");
+                assert_eq!(evento.id_agregado(), entidad.id.valor());
+            }
+            Err(e) => panic!("{{ verb }} falló: {e}"),
+        }
+{% else %}        assert!(resultado.is_ok(), "{{ verb }} falló: {resultado:?}");
+{% endif %}    }
+
+    #[test]
+    #[ignore = "escribe la regla"]
+    fn deberia_rechazar_{{ verb }}_{{ snake }}_cuando_no_se_puede() {
+        // Preparar: {{ words }} que la regla rechaza (`Madre{{ pascal }}::new().con_…(…).construir()`)
+        let mut entidad = Madre{{ pascal }}::aleatorio();
+
+        // Actuar
+        let resultado = entidad.{{ verb }}();
+
+        // Comprobar
+        match resultado {
+            Err(e) => assert_eq!(e.to_string(), "{{ snake }}.validacion.no_se_puede_{{ verb }}"),
+            Ok(_) => panic!("{{ verb }} debería rechazarlo"),
+        }
+    }
+}

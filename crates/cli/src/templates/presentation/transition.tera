@@ -1,0 +1,224 @@
+// La variante de éxito lleva el DTO entero (ver `respuestas.rs`).
+#![allow(clippy::large_enum_variant)]
+
+use std::sync::Arc;
+
+use aplicacion_{{ snake }}::{{ uc }}::{{ "{" }}{{ uc_pascal }}, Params{{ uc_pascal }}};
+use dominio_{{ snake }}::modelo::Id{{ pascal }};
+use poem::http::StatusCode;
+use poem_openapi::{ApiResponse, OpenApi, Tags, param::Path, payload::Json};
+{% if protected %}use puerto_web::auth::BearerAuth;
+{% endif %}{% if roles %}use puerto_web::requiere_rol;
+{% endif %}use puerto_web::RespuestaError;
+use uuid::Uuid;
+
+use crate::dto::Dto{{ pascal }};
+use crate::errores::a_respuesta_error;
+
+/// La misma etiqueta que `rutas.rs`: poem-openapi junta las dos por su nombre.
+#[derive(Tags)]
+enum ApiTags {
+    {{ pascal }},
+}
+
+/// La ruta de la transición `{{ verb }}` (`puerto generar transicion`). Va en su propio `Api` para
+/// que `rutas.rs` no cambie; `generado/bootstrap.rs` la monta junto a `Api{{ pascal }}`.
+pub struct Api{{ uc_pascal }} {
+    pub {{ uc }}: Arc<dyn {{ uc_pascal }}>,
+}
+
+#[OpenApi]
+impl Api{{ uc_pascal }} {
+    /// {{ verb_label }}: {{ pascal }}
+    #[oai(path = "/{{ plural }}/:id/{{ verb }}", method = "post", tag = "ApiTags::{{ pascal }}")]
+{% for role in roles %}    #[requiere_rol("{{ role }}")]
+{% endfor %}    async fn {{ verb }}(&self, {% if protected %}auth: BearerAuth, {% endif %}id: Path<Uuid>) -> Respuesta{{ uc_pascal }} {
+        match self
+            .{{ uc }}
+            .ejecutar(Params{{ uc_pascal }} { {% if protected %}actor: auth.0, {% endif %}id: Id{{ pascal }}::from_uuid(id.0) })
+            .await
+        {
+            Ok(entidad) => Respuesta{{ uc_pascal }}::Ok(Json(Dto{{ pascal }}::from_dominio(&entidad))),
+            Err(err) => {
+                let (status, error) = a_respuesta_error(err);
+                tracing::warn!(codigo = %error.0.codigo, "{{ uc }} falló");
+                Respuesta{{ uc_pascal }}::from_status(status, error)
+            }
+        }
+    }
+}
+
+#[derive(ApiResponse)]
+pub enum Respuesta{{ uc_pascal }} {
+    #[oai(status = 200)]
+    Ok(Json<Dto{{ pascal }}>),
+    #[oai(status = 422)]
+    NoProcesable(Json<RespuestaError>),
+    #[oai(status = 401)]
+    NoAutorizado(Json<RespuestaError>),
+    #[oai(status = 403)]
+    Prohibido(Json<RespuestaError>),
+    #[oai(status = 404)]
+    NoEncontrado(Json<RespuestaError>),
+    #[oai(status = 409)]
+    Conflicto(Json<RespuestaError>),
+{% if protected %}    /// No se pudo comprobar el token: el proveedor o la base de datos no responden (`BearerAuth`).
+    #[oai(status = 503)]
+    NoDisponible(Json<RespuestaError>),
+{% endif %}    #[oai(status = 500)]
+    ErrorInterno(Json<RespuestaError>),
+}
+
+impl Respuesta{{ uc_pascal }} {
+    pub fn from_status(status: StatusCode, error: Json<RespuestaError>) -> Self {
+        match status {
+            StatusCode::UNPROCESSABLE_ENTITY => Self::NoProcesable(error),
+            StatusCode::UNAUTHORIZED => Self::NoAutorizado(error),
+            StatusCode::FORBIDDEN => Self::Prohibido(error),
+            StatusCode::NOT_FOUND => Self::NoEncontrado(error),
+            StatusCode::CONFLICT => Self::Conflicto(error),
+{% if protected %}            StatusCode::SERVICE_UNAVAILABLE => Self::NoDisponible(error),
+{% endif %}            _ => Self::ErrorInterno(error),
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use aplicacion_{{ snake }}::{{ uc }}::dobles::Mock{{ uc_pascal }};
+    use dominio_{{ snake }}::errores::Error{{ pascal }};
+    use dominio_{{ snake }}::pruebas::madres::Madre{{ pascal }};
+{% if protected %}    use poem::{EndpointExt, Route, test::TestClient};
+    use poem_openapi::OpenApiService;
+    use puerto_nucleo::auth::dobles::{MadrePrincipal, MockAutenticador};
+    use puerto_nucleo::auth::{Autenticador, ErrorAuth};
+{% else %}    use poem::{Route, test::TestClient};
+    use poem_openapi::OpenApiService;
+{% endif %}
+    use super::*;
+{% if protected %}
+    /// Acepta `llamante`{% if roles %} (con los roles de la ruta){% endif %} y `nadie` (sin roles).
+    fn autenticador() -> Arc<dyn Autenticador> {
+        let mut doble = MockAutenticador::new();
+        doble.expect_autenticar().returning(|token| match token {
+            "llamante" => Ok({% if roles %}MadrePrincipal::new()
+                .con_roles([{% for role in roles %}"{{ role }}"{% if not loop.last %}, {% endif %}{% endfor %}])
+                .construir(){% else %}MadrePrincipal::aleatorio(){% endif %}),
+            "nadie" => Ok(MadrePrincipal::aleatorio()),
+            _ => Err(ErrorAuth::Invalido),
+        });
+        Arc::new(doble)
+    }
+
+    /// La ruta sobre `caso_de_uso`; `autorizacion`, la cabecera de cada petición (`None`: ninguna).
+    fn cliente(caso_de_uso: Mock{{ uc_pascal }}, autorizacion: Option<&str>) -> TestClient<impl poem::Endpoint> {
+        let api = Api{{ uc_pascal }} { {{ uc }}: Arc::new(caso_de_uso) };
+        let cliente = TestClient::new(
+            Route::new()
+                .nest("/", OpenApiService::new(api, "test", "1.0"))
+                .data(autenticador()),
+        );
+        match autorizacion {
+            Some(valor) => cliente.default_header("Authorization", valor),
+            None => cliente,
+        }
+    }
+{% else %}
+    /// La ruta sobre `caso_de_uso`.
+    fn cliente(caso_de_uso: Mock{{ uc_pascal }}) -> TestClient<Route> {
+        let api = Api{{ uc_pascal }} { {{ uc }}: Arc::new(caso_de_uso) };
+        TestClient::new(Route::new().nest("/", OpenApiService::new(api, "test", "1.0")))
+    }
+{% endif %}
+    fn ruta() -> String {
+        format!("/{{ plural }}/{}/{{ verb }}", Uuid::new_v4())
+    }
+
+    /// El caso de uso, respondiendo `resultado`.
+    fn caso_de_uso(resultado: Result<(), Error{{ pascal }}>) -> Mock{{ uc_pascal }} {
+        let mut doble = Mock{{ uc_pascal }}::new();
+        doble
+            .expect_ejecutar()
+            .return_once(move |_| resultado.map(|()| Madre{{ pascal }}::aleatorio()));
+        doble
+    }
+
+    #[tokio::test]
+    async fn deberia_responder_200_cuando_se_puede_{{ verb }}_{{ snake }}() {
+        // Preparar
+        let cliente = cliente(caso_de_uso(Ok(())){% if protected %}, Some("Bearer llamante"){% endif %});
+
+        // Actuar
+        let respuesta = cliente.post(ruta()).send().await;
+
+        // Comprobar
+        respuesta.assert_status_is_ok();
+    }
+
+    #[tokio::test]
+    async fn deberia_responder_404_cuando_{{ snake }}_no_existe() {
+        // Preparar
+        let cliente = cliente(caso_de_uso(Err(Error{{ pascal }}::NoEncontrado)){% if protected %}, Some("Bearer llamante"){% endif %});
+
+        // Actuar
+        let respuesta = cliente.post(ruta()).send().await;
+
+        // Comprobar
+        respuesta.assert_status(StatusCode::NOT_FOUND);
+    }
+
+    #[tokio::test]
+    async fn deberia_responder_422_cuando_{{ snake }}_no_se_puede_{{ verb }}() {
+        // Preparar
+        let rechazo = Error{{ pascal }}::Validacion("no_se_puede_{{ verb }}".into());
+        let cliente = cliente(caso_de_uso(Err(rechazo)){% if protected %}, Some("Bearer llamante"){% endif %});
+
+        // Actuar
+        let respuesta = cliente.post(ruta()).send().await;
+
+        // Comprobar
+        respuesta.assert_status(StatusCode::UNPROCESSABLE_ENTITY);
+        respuesta
+            .json()
+            .await
+            .value()
+            .object()
+            .get("codigo")
+            .assert_string("{{ snake }}.validacion.no_se_puede_{{ verb }}");
+    }
+{%- if protected %}
+
+    #[tokio::test]
+    async fn deberia_responder_401_cuando_se_pide_{{ verb }}_sin_token() {
+        // Preparar — sin expectativas: nunca se llega al caso de uso
+        let cliente = cliente(Mock{{ uc_pascal }}::new(), None);
+
+        // Actuar
+        let respuesta = cliente.post(ruta()).send().await;
+
+        // Comprobar
+        respuesta.assert_status(StatusCode::UNAUTHORIZED);
+    }
+{%- endif %}
+{%- if roles %}
+
+    #[tokio::test]
+    async fn deberia_responder_403_cuando_se_pide_{{ verb }}_sin_el_rol() {
+        // Preparar — sin expectativas: nunca se llega al caso de uso
+        let cliente = cliente(Mock{{ uc_pascal }}::new(), Some("Bearer nadie"));
+
+        // Actuar
+        let respuesta = cliente.post(ruta()).send().await;
+
+        // Comprobar
+        respuesta.assert_status(StatusCode::FORBIDDEN);
+        respuesta
+            .json()
+            .await
+            .value()
+            .object()
+            .get("codigo")
+            .assert_string("auth.prohibido");
+    }
+{%- endif %}
+}

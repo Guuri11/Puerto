@@ -73,6 +73,7 @@ comprueba que los dos siguen de acuerdo. `puerto listar` muestra lo que declara,
 | `puerto generar scaffold <Nombre> [-- campos…]` | todas las capas de una entidad CRUD (crear, obtener, listar, actualizar, borrar) + la migración de su tabla con `db` |
 | `puerto generar dominio <Nombre> [-- campos…]` | solo la capa de dominio, y la entidad en `puerto.toml`; después `puerto generar aplicacion <Nombre>`, `puerto generar repositorio <Nombre>`, `puerto generar presentacion <Nombre>`: una capa cada vez, y cada una comprueba la anterior |
 | `puerto generar caso-de-uso <Entidad> <accion>` | un caso de uso más: su fichero (trait + doble, la impl por rellenar; ver más abajo) y un campo en `Api<Entidad>` |
+| `puerto generar transicion <Entidad> <verbo> [--evento <tipo>] [--rol <rol>]` | un cambio de estado de punta a punta (`cancelar`): el método `<verbo>` de la entidad en `dominio/src/<verbo>.rs` (la regla, por escribir), el caso de uso `<verbo>_<entidad>` con sus tests, `POST /<plural>/{id}/<verbo>` en `rest/src/<verbo>_<entidad>.rs` y, con pantallas, su botón en el detalle |
 | `puerto generar objeto-valor <Nombre> <tipo>` | un objeto valor compartido (`[[objeto_valor]]`), reutilizable por todas las entidades |
 | `puerto generar migracion <nombre>` | una migración SQL vacía (proyectos `db`) |
 | `puerto generar bootstrap` | vuelve a cablear `presentacion/cableado` y `generado/bootstrap.rs` a partir de `puerto.toml` |
@@ -136,7 +137,7 @@ apuntándole. La lista filtra por cada referencia: `GET /pedidos?clienteId=…` 
 | **Se reescriben en cada ejecución**: no los edites a mano | `presentacion/cableado/` (también su `Cargo.toml`), `presentacion/api/src/generado/bootstrap.rs`, `contextos/<c>/dominio/src/eventos.rs`, `presentacion/worker/src/generado/registro.rs` | editando `puerto.toml` y ejecutando después el comando que los escribe (`generar bootstrap`, `generar evento`, `generar consumidor`) |
 | **Los ficheros de la entidad**: son tuyos, pero `scaffold --forzar` los reescribe | los cuatro crates de un contexto: los casos de uso CRUD, el modelo, los errores, el repositorio, las rutas, los DTO, los mapeos, la madre, y sus `Cargo.toml` y `lib.rs` | editándolos; `--forzar` solo mientras sigan siendo lo que escribió el generador |
 | **Parcheados**: se añade una línea y se conserva el resto | el `Cargo.toml` raíz (miembros, `[workspace.dependencies]`), `presentacion/api/Cargo.toml` y `presentacion/worker/Cargo.toml` (el crate de un contexto), el `lib.rs` del crate de aplicación, `rutas.rs` (los campos de `Api<Entidad>`), `presentacion/worker/src/consumidores.rs`, `puerto.toml` | editándolos libremente; conserva las líneas que añadió Puerto |
-| **Se escriben una vez**: tuyos desde el principio | `presentacion/api/src/app.rs` (tus middleware y rutas), la impl de un `generar caso-de-uso`, los consumidores, los correos y sus plantillas, las migraciones, los ficheros de auth | editándolos |
+| **Se escriben una vez**: tuyos desde el principio | `presentacion/api/src/app.rs` (tus middleware y rutas), la impl de un `generar caso-de-uso`, los ficheros de una transición (su método, su caso de uso, su ruta, su botón), los consumidores, los correos y sus plantillas, las migraciones, los ficheros de auth | editándolos |
 
 Con `web/`: `web/src/generado/*`, `web/src/api/esquema.d.ts` y `docs/api/openapi.json` también se
 reescriben (`generar bootstrap`, `make web/sync`); las pantallas de una entidad son ficheros suyos
@@ -164,8 +165,9 @@ cableado a mano: si el cableado, un `lib.rs` o `Api<Entidad>` necesitan una lín
 comando.
 
 1. **Modélalo en el generador.** Una entidad nueva: `puerto generar scaffold <Nombre> -- …` con sus
-   campos, objetos valor y enums. Una operación más sobre una entidad:
-   `puerto generar caso-de-uso <Entidad> <accion>`.
+   campos, objetos valor y enums. Un cambio de estado (cancelar, publicar, archivar):
+   `puerto generar transicion <Entidad> <verbo>`, que solo deja por escribir la regla. Cualquier
+   otra operación sobre una entidad: `puerto generar caso-de-uso <Entidad> <accion>`.
 2. **Enumera los escenarios** antes del código: el camino feliz, la entrada vacía o inválida, los
    límites, los cambios de estado y la regresión que pida un arreglo.
 3. **Rojo.** Una entidad generada con `scaffold` ya tiene tests de lo que generó; añade los tuyos al
@@ -471,6 +473,142 @@ mod tests {
         assert_eq!(
             resultado.unwrap_err().to_string(),
             "producto.validacion.title_vacio"
+        );
+    }
+}
+
+=== contextos/producto/aplicacion/src/archivar_producto.rs ===
+use std::sync::Arc;
+
+use async_trait::async_trait;
+
+use dominio_producto::{
+    errores::ErrorProducto,
+    modelo::{IdProducto, Producto},
+    repositorio::RepositorioProducto,
+};
+
+#[derive(Debug, Clone)]
+pub struct ParamsArchivarProducto {
+    pub id: IdProducto,
+}
+
+/// La transición `archivar` de Producto (`puerto generar transicion`): la regla está en
+/// `dominio_producto::archivar`.
+#[async_trait]
+pub trait ArchivarProducto: Send + Sync {
+    async fn ejecutar(&self, params: ParamsArchivarProducto) -> Result<Producto, ErrorProducto>;
+}
+
+#[cfg(any(test, feature = "pruebas"))]
+pub mod dobles {
+    use mockall::mock;
+
+    use super::*;
+
+    mock! {
+        pub ArchivarProducto {}
+
+        #[async_trait]
+        impl ArchivarProducto for ArchivarProducto {
+            async fn ejecutar(&self, params: ParamsArchivarProducto) -> Result<Producto, ErrorProducto>;
+        }
+    }
+}
+
+pub struct ArchivarProductoImpl {
+    pub repositorio: Arc<dyn RepositorioProducto>,
+}
+
+#[async_trait]
+impl ArchivarProducto for ArchivarProductoImpl {
+    #[tracing::instrument(name = "archivar_producto", skip_all, fields(id = %params.id), err(level = "warn"))]
+    async fn ejecutar(&self, params: ParamsArchivarProducto) -> Result<Producto, ErrorProducto> {
+        let mut entidad = self
+            .repositorio
+            .buscar_por_id(params.id)
+            .await?
+            .ok_or(ErrorProducto::NoEncontrado)?;
+        entidad.archivar()?;
+        self.repositorio.guardar(&entidad).await?;
+        Ok(entidad)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use dominio_producto::{
+        pruebas::madres::MadreProducto, repositorio::dobles::MockRepositorioProducto,
+    };
+
+    /// El repositorio que encuentra `encontrado` y guarda `guardados` veces.
+    fn repositorio(encontrado: Option<Producto>, guardados: usize) -> MockRepositorioProducto {
+        let mut repositorio_doble = MockRepositorioProducto::new();
+        repositorio_doble
+            .expect_buscar_por_id()
+            .returning(move |_| Ok(encontrado.clone()));
+        repositorio_doble
+            .expect_guardar()
+            .times(guardados)
+            .returning(|_| Ok(()));
+        repositorio_doble
+    }
+
+    fn params(id: IdProducto) -> ParamsArchivarProducto {
+        ParamsArchivarProducto { id }
+    }
+
+    #[tokio::test]
+    async fn deberia_archivar_producto_cuando_existe() {
+        // Preparar
+        let entidad = MadreProducto::aleatorio();
+        let id = entidad.id;
+        let caso_de_uso = ArchivarProductoImpl {
+            repositorio: Arc::new(repositorio(Some(entidad), 1)),
+        };
+
+        // Actuar
+        let resultado = caso_de_uso.ejecutar(params(id)).await;
+
+        // Comprobar
+        assert_eq!(resultado.map(|e| e.id).ok(), Some(id));
+    }
+
+    #[tokio::test]
+    async fn deberia_devolver_no_encontrado_cuando_producto_no_existe() {
+        // Preparar
+        let caso_de_uso = ArchivarProductoImpl {
+            repositorio: Arc::new(repositorio(None, 0)),
+        };
+
+        // Actuar
+        let resultado = caso_de_uso.ejecutar(params(IdProducto::generar())).await;
+
+        // Comprobar
+        assert_eq!(
+            resultado.map(|_| ()).unwrap_err().to_string(),
+            "producto.no_encontrado"
+        );
+    }
+
+    #[tokio::test]
+    #[ignore = "escribe la regla"]
+    async fn deberia_rechazar_sin_guardar_nada_cuando_producto_no_se_puede_archivar() {
+        // Preparar: producto que la regla rechaza (`MadreProducto::new().con_…(…).construir()`)
+        let entidad = MadreProducto::aleatorio();
+        let id = entidad.id;
+        let caso_de_uso = ArchivarProductoImpl {
+            repositorio: Arc::new(repositorio(Some(entidad), 0)),
+        };
+
+        // Actuar
+        let resultado = caso_de_uso.ejecutar(params(id)).await;
+
+        // Comprobar
+        assert_eq!(
+            resultado.map(|_| ()).unwrap_err().to_string(),
+            "producto.validacion.no_se_puede_archivar"
         );
     }
 }
@@ -782,6 +920,7 @@ mod tests {
 
 === contextos/producto/aplicacion/src/lib.rs ===
 pub mod actualizar_producto;
+pub mod archivar_producto;
 pub mod archive_producto;
 pub mod borrar_producto;
 pub mod crear_producto;
@@ -1055,6 +1194,57 @@ pruebas = ["dep:mockall"]
 mockall = { workspace = true }
 tokio = { workspace = true }
 
+=== contextos/producto/dominio/src/archivar.rs ===
+use crate::errores::ErrorProducto;
+use crate::modelo::Producto;
+
+/// La transición `archivar` (`puerto generar transicion`): un `impl` aparte, así que `modelo.rs`
+/// no cambia. La regla y el cambio son tuyos.
+impl Producto {
+    pub fn archivar(&mut self) -> Result<(), ErrorProducto> {
+        // La regla: cuándo no se puede archivar. La API responde 422 con este código:
+        // if <no se puede> {
+        //     return Err(ErrorProducto::Validacion("no_se_puede_archivar".into()));
+        // }
+        // El cambio: los campos que pasan a otro valor (p. ej. un estado).
+        self.actualizado_en = chrono::Utc::now();
+        Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::pruebas::madres::MadreProducto;
+
+    #[test]
+    fn deberia_archivar_producto_cuando_se_puede() {
+        // Preparar
+        let mut entidad = MadreProducto::aleatorio();
+
+        // Actuar
+        let resultado = entidad.archivar();
+
+        // Comprobar
+        assert!(resultado.is_ok(), "archivar falló: {resultado:?}");
+    }
+
+    #[test]
+    #[ignore = "escribe la regla"]
+    fn deberia_rechazar_archivar_producto_cuando_no_se_puede() {
+        // Preparar: producto que la regla rechaza (`MadreProducto::new().con_…(…).construir()`)
+        let mut entidad = MadreProducto::aleatorio();
+
+        // Actuar
+        let resultado = entidad.archivar();
+
+        // Comprobar
+        match resultado {
+            Err(e) => assert_eq!(e.to_string(), "producto.validacion.no_se_puede_archivar"),
+            Ok(_) => panic!("archivar debería rechazarlo"),
+        }
+    }
+}
+
 === contextos/producto/dominio/src/errores.rs ===
 use puerto_nucleo::ErrorRepositorio;
 use thiserror::Error;
@@ -1110,6 +1300,7 @@ mod tests {
 }
 
 === contextos/producto/dominio/src/lib.rs ===
+pub mod archivar;
 pub mod errores;
 pub mod modelo;
 pub mod repositorio;
@@ -1576,6 +1767,167 @@ dominio_producto = { workspace = true, features = ["pruebas"] }
 poem = { workspace = true, features = ["test"] }
 tokio = { workspace = true }
 
+=== contextos/producto/rest/src/archivar_producto.rs ===
+// La variante de éxito lleva el DTO entero (ver `respuestas.rs`).
+#![allow(clippy::large_enum_variant)]
+
+use std::sync::Arc;
+
+use aplicacion_producto::archivar_producto::{ArchivarProducto, ParamsArchivarProducto};
+use dominio_producto::modelo::IdProducto;
+use poem::http::StatusCode;
+use poem_openapi::{ApiResponse, OpenApi, Tags, param::Path, payload::Json};
+use puerto_web::RespuestaError;
+use uuid::Uuid;
+
+use crate::dto::DtoProducto;
+use crate::errores::a_respuesta_error;
+
+/// La misma etiqueta que `rutas.rs`: poem-openapi junta las dos por su nombre.
+#[derive(Tags)]
+enum ApiTags {
+    Producto,
+}
+
+/// La ruta de la transición `archivar` (`puerto generar transicion`). Va en su propio `Api` para
+/// que `rutas.rs` no cambie; `generado/bootstrap.rs` la monta junto a `ApiProducto`.
+pub struct ApiArchivarProducto {
+    pub archivar_producto: Arc<dyn ArchivarProducto>,
+}
+
+#[OpenApi]
+impl ApiArchivarProducto {
+    /// Archivar: Producto
+    #[oai(
+        path = "/productos/:id/archivar",
+        method = "post",
+        tag = "ApiTags::Producto"
+    )]
+    async fn archivar(&self, id: Path<Uuid>) -> RespuestaArchivarProducto {
+        match self
+            .archivar_producto
+            .ejecutar(ParamsArchivarProducto {
+                id: IdProducto::from_uuid(id.0),
+            })
+            .await
+        {
+            Ok(entidad) => RespuestaArchivarProducto::Ok(Json(DtoProducto::from_dominio(&entidad))),
+            Err(err) => {
+                let (status, error) = a_respuesta_error(err);
+                tracing::warn!(codigo = %error.0.codigo, "archivar_producto falló");
+                RespuestaArchivarProducto::from_status(status, error)
+            }
+        }
+    }
+}
+
+#[derive(ApiResponse)]
+pub enum RespuestaArchivarProducto {
+    #[oai(status = 200)]
+    Ok(Json<DtoProducto>),
+    #[oai(status = 422)]
+    NoProcesable(Json<RespuestaError>),
+    #[oai(status = 401)]
+    NoAutorizado(Json<RespuestaError>),
+    #[oai(status = 403)]
+    Prohibido(Json<RespuestaError>),
+    #[oai(status = 404)]
+    NoEncontrado(Json<RespuestaError>),
+    #[oai(status = 409)]
+    Conflicto(Json<RespuestaError>),
+    #[oai(status = 500)]
+    ErrorInterno(Json<RespuestaError>),
+}
+
+impl RespuestaArchivarProducto {
+    pub fn from_status(status: StatusCode, error: Json<RespuestaError>) -> Self {
+        match status {
+            StatusCode::UNPROCESSABLE_ENTITY => Self::NoProcesable(error),
+            StatusCode::UNAUTHORIZED => Self::NoAutorizado(error),
+            StatusCode::FORBIDDEN => Self::Prohibido(error),
+            StatusCode::NOT_FOUND => Self::NoEncontrado(error),
+            StatusCode::CONFLICT => Self::Conflicto(error),
+            _ => Self::ErrorInterno(error),
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use aplicacion_producto::archivar_producto::dobles::MockArchivarProducto;
+    use dominio_producto::errores::ErrorProducto;
+    use dominio_producto::pruebas::madres::MadreProducto;
+    use poem::{Route, test::TestClient};
+    use poem_openapi::OpenApiService;
+
+    use super::*;
+
+    /// La ruta sobre `caso_de_uso`.
+    fn cliente(caso_de_uso: MockArchivarProducto) -> TestClient<Route> {
+        let api = ApiArchivarProducto {
+            archivar_producto: Arc::new(caso_de_uso),
+        };
+        TestClient::new(Route::new().nest("/", OpenApiService::new(api, "test", "1.0")))
+    }
+
+    fn ruta() -> String {
+        format!("/productos/{}/archivar", Uuid::new_v4())
+    }
+
+    /// El caso de uso, respondiendo `resultado`.
+    fn caso_de_uso(resultado: Result<(), ErrorProducto>) -> MockArchivarProducto {
+        let mut doble = MockArchivarProducto::new();
+        doble
+            .expect_ejecutar()
+            .return_once(move |_| resultado.map(|()| MadreProducto::aleatorio()));
+        doble
+    }
+
+    #[tokio::test]
+    async fn deberia_responder_200_cuando_se_puede_archivar_producto() {
+        // Preparar
+        let cliente = cliente(caso_de_uso(Ok(())));
+
+        // Actuar
+        let respuesta = cliente.post(ruta()).send().await;
+
+        // Comprobar
+        respuesta.assert_status_is_ok();
+    }
+
+    #[tokio::test]
+    async fn deberia_responder_404_cuando_producto_no_existe() {
+        // Preparar
+        let cliente = cliente(caso_de_uso(Err(ErrorProducto::NoEncontrado)));
+
+        // Actuar
+        let respuesta = cliente.post(ruta()).send().await;
+
+        // Comprobar
+        respuesta.assert_status(StatusCode::NOT_FOUND);
+    }
+
+    #[tokio::test]
+    async fn deberia_responder_422_cuando_producto_no_se_puede_archivar() {
+        // Preparar
+        let rechazo = ErrorProducto::Validacion("no_se_puede_archivar".into());
+        let cliente = cliente(caso_de_uso(Err(rechazo)));
+
+        // Actuar
+        let respuesta = cliente.post(ruta()).send().await;
+
+        // Comprobar
+        respuesta.assert_status(StatusCode::UNPROCESSABLE_ENTITY);
+        respuesta
+            .json()
+            .await
+            .value()
+            .object()
+            .get("codigo")
+            .assert_string("producto.validacion.no_se_puede_archivar");
+    }
+}
+
 === contextos/producto/rest/src/dto.rs ===
 use dominio_producto::modelo::Producto;
 use poem_openapi::Object;
@@ -1718,6 +2070,7 @@ mod tests {
 }
 
 === contextos/producto/rest/src/lib.rs ===
+pub mod archivar_producto;
 pub mod dto;
 pub mod errores;
 pub mod respuestas;
@@ -2549,6 +2902,7 @@ aplicacion_producto = { workspace = true, features = ["pruebas"] }
 // GENERADO por puerto. Edita puerto.toml y después ejecuta `puerto generar bootstrap`.
 use poem::Endpoint;
 use poem_openapi::OpenApiService;
+use rest_producto::archivar_producto::ApiArchivarProducto;
 use rest_producto::rutas::ApiProducto;
 use rest_saludo::rutas::ApiSaludo;
 
@@ -2568,12 +2922,15 @@ pub async fn construir_app(config: puerto_web::Config) -> Result<impl Endpoint, 
         borrar_producto: casos_producto.borrar_producto,
         archive_producto: casos_producto.archive_producto,
     };
+    let api_archivar_producto = ApiArchivarProducto {
+        archivar_producto: casos_producto.archivar_producto,
+    };
 
     let disponible = puerto_web::health::siempre_disponible();
 
     // `app.rs` es del proyecto: el middleware y las rutas que se añadan allí envuelven todo esto.
     Ok(crate::app::configurar(puerto_web::rutas(
-        servicio_openapi((api_saludo, api_producto)),
+        servicio_openapi((api_saludo, (api_producto, api_archivar_producto))),
         &config,
         disponible,
     )))
@@ -2591,6 +2948,7 @@ mod tests {
     use std::sync::Arc;
 
     use aplicacion_producto::actualizar_producto::dobles::MockActualizarProducto;
+    use aplicacion_producto::archivar_producto::dobles::MockArchivarProducto;
     use aplicacion_producto::archive_producto::dobles::MockArchiveProducto;
     use aplicacion_producto::borrar_producto::dobles::MockBorrarProducto;
     use aplicacion_producto::crear_producto::dobles::MockCrearProducto;
@@ -2617,7 +2975,10 @@ mod tests {
             borrar_producto: Arc::new(MockBorrarProducto::new()),
             archive_producto: Arc::new(MockArchiveProducto::new()),
         };
-        let spec = servicio_openapi((api_saludo, api_producto)).spec();
+        let api_archivar_producto = ApiArchivarProducto {
+            archivar_producto: Arc::new(MockArchivarProducto::new()),
+        };
+        let spec = servicio_openapi((api_saludo, (api_producto, api_archivar_producto))).spec();
 
         let ruta = std::path::Path::new(OPENAPI_JSON);
         if std::env::var_os("UPDATE_OPENAPI").is_some() || !ruta.exists() {
@@ -2684,6 +3045,7 @@ pub mod producto {
     use std::sync::Arc;
 
     use aplicacion_producto::actualizar_producto::{ActualizarProducto, ActualizarProductoImpl};
+    use aplicacion_producto::archivar_producto::{ArchivarProducto, ArchivarProductoImpl};
     use aplicacion_producto::archive_producto::{ArchiveProducto, ArchiveProductoImpl};
     use aplicacion_producto::borrar_producto::{BorrarProducto, BorrarProductoImpl};
     use aplicacion_producto::crear_producto::{CrearProducto, CrearProductoImpl};
@@ -2700,6 +3062,7 @@ pub mod producto {
         pub actualizar_producto: Arc<dyn ActualizarProducto>,
         pub borrar_producto: Arc<dyn BorrarProducto>,
         pub archive_producto: Arc<dyn ArchiveProducto>,
+        pub archivar_producto: Arc<dyn ArchivarProducto>,
     }
 
     pub fn construir() -> CasosDeUso {
@@ -2722,6 +3085,9 @@ pub mod producto {
                 repositorio: Arc::clone(&repositorio),
             }),
             archive_producto: Arc::new(ArchiveProductoImpl {
+                repositorio: Arc::clone(&repositorio),
+            }),
+            archivar_producto: Arc::new(ArchivarProductoImpl {
                 repositorio: Arc::clone(&repositorio),
             }),
         }
@@ -2747,7 +3113,9 @@ casos_de_uso = [
     "actualizar_producto",
     "borrar_producto",
     "archive_producto",
+    "archivar_producto",
 ]
+transiciones = ["archivar"]
 
 [[entidad.campos]]
 nombre = "title"
@@ -2770,6 +3138,118 @@ export type Esquemas = components["schemas"];
 /** `/api` es el backend: en desarrollo, Vite lo pasa a `:8080`. */
 export function crearClienteApi(opciones: ClientOptions = {}): ClienteApi {
   return createClient<paths>({ baseUrl: "/api", ...opciones });
+}
+
+=== web/src/contextos/producto/contenedores/archivar-producto.test.tsx ===
+import { describe, expect, mock, test } from "bun:test";
+import { fireEvent, screen, waitFor } from "@testing-library/react";
+import { apiFalsa, coleccion } from "../../../pruebas/api-falsa";
+import { MadreProducto } from "../../../pruebas/producto";
+import { renderizarPantalla } from "../../../pruebas/renderizar";
+import { aProblema } from "../mensajes";
+import { BotonArchivarProducto } from "./archivar-producto";
+
+/** El botón que abre el diálogo, y el que confirma dentro de él. */
+const ABRIR = { selector: ".card-actions > button" };
+const CONFIRMAR = { selector: ".modal-action button" };
+
+describe("BotonArchivarProducto", () => {
+  test("debería archivar producto tras confirmarlo", async () => {
+    // Preparar
+    const sembrado = MadreProducto.aleatorio();
+    const api = apiFalsa([coleccion("/productos", "producto", [sembrado], { archivar: {} })]);
+    const alTerminar = mock(() => {});
+    const pantalla = (
+      <div className="card-actions">
+        <BotonArchivarProducto id={sembrado.id} alTerminar={alTerminar} />
+      </div>
+    );
+    renderizarPantalla(pantalla, { api });
+    fireEvent.click(await screen.findByText("Archivar producto", ABRIR));
+
+    // Actuar
+    fireEvent.click(screen.getByText("Archivar producto", CONFIRMAR));
+
+    // Comprobar
+    await waitFor(() => expect(alTerminar).toHaveBeenCalledTimes(1));
+  });
+
+  test("debería explicar el rechazo cuando no se puede archivar", async () => {
+    // Preparar
+    const sembrado = MadreProducto.aleatorio();
+    const codigo = "producto.validacion.no_se_puede_archivar";
+    const fallos = { "POST /productos/{id}/archivar": codigo };
+    const api = apiFalsa([coleccion("/productos", "producto", [sembrado])], fallos);
+    const alTerminar = mock(() => {});
+    const pantalla = (
+      <div className="card-actions">
+        <BotonArchivarProducto id={sembrado.id} alTerminar={alTerminar} />
+      </div>
+    );
+    renderizarPantalla(pantalla, { api });
+    fireEvent.click(await screen.findByText("Archivar producto", ABRIR));
+
+    // Actuar
+    fireEvent.click(screen.getByText("Archivar producto", CONFIRMAR));
+
+    // Comprobar
+    const alerta = await screen.findByRole("alert");
+    expect(alerta.textContent).toBe(aProblema(codigo).texto);
+    expect(alTerminar).not.toHaveBeenCalled();
+  });
+});
+
+=== web/src/contextos/producto/contenedores/archivar-producto.tsx ===
+import { useState } from "react";
+import { desenvolver } from "../../../api/http";
+import { AlertaError, codigoError } from "../../../compartido/ui/alerta-error";
+import { DialogoConfirmar } from "../../../compartido/ui/dialogo-confirmar";
+import { useDependencias } from "../../../dependencias";
+import { aProblema } from "../mensajes";
+
+/**
+ * «Archivar producto», tras confirmarlo; si la API lo rechaza, el diálogo se queda abierto y dice
+ * por qué. `alTerminar`, cuando se hizo.
+ */
+export function BotonArchivarProducto({ id, alTerminar }: { id: string; alTerminar: () => void }) {
+  const { api } = useDependencias();
+  const [confirmando, setConfirmando] = useState(false);
+  const [fallo, setFallo] = useState<unknown>(null);
+
+  const confirmar = async () => {
+    setFallo(null);
+    try {
+      await desenvolver(api.POST("/productos/{id}/archivar", { params: { path: { id } } }));
+      setConfirmando(false);
+      alTerminar();
+    } catch (error) {
+      setFallo(error);
+    }
+  };
+  const volver = () => {
+    setConfirmando(false);
+    setFallo(null);
+  };
+
+  return (
+    <>
+      <button type="button" className="btn btn-warning" onClick={() => setConfirmando(true)}>
+        Archivar producto
+      </button>
+      <DialogoConfirmar
+        abierto={confirmando}
+        mensaje="¿Archivar producto?"
+        textoConfirmar="Archivar producto"
+        textoCancelar="Volver"
+        alConfirmar={confirmar}
+        alCancelar={volver}
+      >
+        {fallo !== null && (
+          <AlertaError error={fallo} mensaje={aProblema(codigoError(fallo)).texto} />
+        )}
+      </DialogoConfirmar>
+    </>
+  );
 }
 
 === web/src/contextos/producto/contenedores/detalle-producto.test.tsx ===
@@ -2835,6 +3315,7 @@ import { DialogoConfirmar } from "../../../compartido/ui/dialogo-confirmar";
 import { useCarga } from "../../../compartido/use-carga";
 import { useDependencias } from "../../../dependencias";
 import { VistaDetalleProducto } from "../vistas/detalle-producto";
+import { BotonArchivarProducto } from "./archivar-producto";
 
 export function ContenedorDetalleProducto({ id }: { id: string }) {
   const { api } = useDependencias();
@@ -2867,6 +3348,7 @@ export function ContenedorDetalleProducto({ id }: { id: string }) {
           <div className="card-body">
             <VistaDetalleProducto producto={producto.datos} />
             <div className="card-actions justify-end">
+              <BotonArchivarProducto id={id} alTerminar={producto.recargar} />
               <Link href={`/productos/${id}/editar`} className="btn">
                 Editar
               </Link>
@@ -3222,6 +3704,7 @@ const TEXTOS: Record<string, string> = {
   "producto.no_encontrado": "Ya no existe",
   "producto.repositorio": "No se ha podido guardar; inténtalo más tarde",
   "producto.desconocido": "Algo ha ido mal",
+  "producto.validacion.no_se_puede_archivar": "No se puede archivar",
 };
 
 /** El input del que trata el código de cada campo. */

@@ -146,6 +146,23 @@ pub struct Entity {
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     #[serde(rename = "eventos")]
     pub events: Vec<String>,
+    /// State changes written by `generar transicion` (27.12), by verb: `cancelar` is the method
+    /// `dominio/src/cancelar.rs`, the use case `cancelar_<entity>` (also in `use_cases`) and the
+    /// route `rest/src/cancelar_<entity>.rs`, mounted on its own `Api<UseCase>`.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    #[serde(rename = "transiciones")]
+    pub transitions: Vec<String>,
+}
+
+impl Entity {
+    /// The use cases of its transitions: `cancelar_producto` for `cancelar`.
+    pub fn transition_use_cases(&self) -> Vec<String> {
+        let snake = crate::generators::naming::pascal_to_snake(&self.name);
+        self.transitions
+            .iter()
+            .map(|verb| crate::generators::naming::transition_use_case(verb, &snake))
+            .collect()
+    }
 }
 
 #[derive(Debug, Deserialize, Serialize, Clone, Default)]

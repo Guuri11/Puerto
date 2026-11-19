@@ -35,6 +35,11 @@ pub fn bootstrap_required_files(entity: &Entity) -> Vec<PathBuf> {
             .iter()
             .map(|uc| PathBuf::from(layout::use_case(&snake, uc))),
     );
+    // A transition's method, and the route `bootstrap.rs` mounts (27.12).
+    for (verb, uc) in entity.transitions.iter().zip(entity.transition_use_cases()) {
+        files.push(PathBuf::from(layout::domain_file(&snake, verb)));
+        files.push(PathBuf::from(layout::rest_file(&snake, &uc)));
+    }
     files
 }
 
@@ -277,12 +282,19 @@ pub fn auth_drift(base: &Path, config: &PuertoConfig) -> Vec<String> {
     }
     let mut lines = vec![];
     for entity in &config.entity {
-        let path = layout::rest_file(&pascal_to_snake(&entity.name), "rutas");
-        let Ok(routes) = std::fs::read_to_string(base.join(&path)) else {
-            continue;
-        };
-        let handlers = handlers(&routes);
+        let snake = pascal_to_snake(&entity.name);
+        let transitions = entity.transition_use_cases();
         for uc in &entity.use_cases {
+            // A transition's handler is in its own file (27.12).
+            let path = if transitions.contains(uc) {
+                layout::rest_file(&snake, uc)
+            } else {
+                layout::rest_file(&snake, "rutas")
+            };
+            let Ok(routes) = std::fs::read_to_string(base.join(&path)) else {
+                continue;
+            };
+            let handlers = handlers(&routes);
             let Some(handler) = handlers.iter().find(|h| h.calls(uc)) else {
                 continue;
             };

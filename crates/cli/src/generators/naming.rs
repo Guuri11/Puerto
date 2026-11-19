@@ -215,6 +215,11 @@ pub fn crud_use_case(action: &str, snake: &str) -> String {
     }
 }
 
+/// The use case of a transition (27.12): `cancelar` of `linea_pedido` is `cancelar_linea_pedido`.
+pub fn transition_use_case(verb: &str, snake: &str) -> String {
+    format!("{verb}_{snake}")
+}
+
 /// The five use cases `scaffold` and `generate domain` create for an entity.
 pub fn crud_use_cases(snake: &str) -> Vec<String> {
     ["create", "get", "list", "update", "delete"]

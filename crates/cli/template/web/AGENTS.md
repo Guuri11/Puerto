@@ -49,6 +49,7 @@ src/contextos/<entidad>/
   mensajes.ts                       código de la API → texto + campo del formulario
   contenedores/                     lista · detalle · formulario (crear + editar): estado y llamadas (+ tests)
     lista-<entidad>.tsx             ContenedorLista<Entidad>
+    <verbo>-<entidad>.tsx           Boton<Verbo><Entidad>: una transición (`puerto generar transicion`), en el detalle
   vistas/                           lista · detalle · formulario: solo props
     lista-<entidad>.tsx             VistaLista<Entidad>
 src/pruebas/<entidad>.ts            Madre<Entidad> (peticion / aleatorio) + coleccion<Entidad> para la API falsa

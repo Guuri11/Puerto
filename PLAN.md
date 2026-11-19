@@ -3838,7 +3838,7 @@ ya están en uso»), en la alerta. Sin ninguno, el de hoy. Tests: los tres casos
 
 ### Grupo B — Lo que Aforo escribió a mano
 
-### 27.12 — Una transición de estado, de punta a punta
+### 27.12 — Una transición de estado, de punta a punta ✅
 
 Aforo escribió a mano tres casos de uso casi iguales (`cancelar_concierto`, `agotar_concierto`,
 `anular_entrada`: buscar por id → método de la entidad → `uow_factory.guardar(&entidad, evento)`),
@@ -3863,6 +3863,53 @@ tests. El comando (nombre por decidir; p. ej. `puerto generar transicion Concier
 - `puerto.toml` lo guarda (forma por decidir) para que `bootstrap` y `validar` lo conozcan.
 - Tests: cada fichero; el compile matrix con una transición en un escenario con eventos y auth y en
   otro sin ninguno de los dos.
+
+**Decidido (2026-11-19, con Sergio).** `puerto generar transicion <Entidad> <verbo> [--evento
+<tipo>] [--rol <rol>[,…]]`, solo en una entidad CRUD. `--interno` pasa a 27.13, que lo da a la vez a
+`caso-de-uso` y a `transicion`. Ningún fichero del usuario se parchea por dentro: cada capa gana
+un fichero suyo, y el que ya existía solo gana una línea.
+
+- **`puerto.toml`:** `[[entidad]] transiciones = ["cancelar"]` (los verbos). El caso de uso
+  `cancelar_concierto` también entra en `casos_de_uso` (así lo construye `cableado`), el evento en
+  `eventos` (si no estaba) y los roles en `roles`. `--evento` necesita un proyecto con eventos
+  y `--rol` uno con auth.
+- **Dominio:** `dominio/src/<verbo>.rs` (`pub mod <verbo>;`), como arriba; el código es
+  `<entidad>.validacion.no_se_puede_<verbo>`. Con eventos devuelve el evento: el de `--evento` o
+  `Actualizado`.
+- **Aplicación:** `aplicacion/src/<verbo>_<entidad>.rs`. `Params<Caso> { actor (con auth), id }`:
+  busca la entidad, llama al método y guarda (`uow_factory.guardar(&entidad, evento)` con eventos,
+  `repositorio.guardar` sin ellos). Tests: lo hace (con el evento), no existe, y la regla lo rechaza
+  sin guardar nada (`#[ignore = "escribe la regla"]`).
+- **REST:** `rest/src/<caso>.rs` con su propio `Api<Caso>` (`ApiCancelarConcierto { pub
+  cancelar_concierto }`), su `Respuesta<Caso>` (las variantes de `RespuestaActualizar…`) y sus
+  tests (200, 404, 422 y, con auth, 401 y 403 por rol). Tiene su propio `ApiTags` con la etiqueta
+  de la entidad, que poem-openapi fusiona por nombre. `rutas.rs` y `respuestas.rs` no se tocan, y
+  `Api<Entidad>` no gana el campo. `bootstrap.rs` monta `(api_<c>, api_<caso>, …)` como un solo
+  elemento de la tupla de `servicio_openapi`, también en el test que exporta la spec. La deriva de
+  auth de `validar` mira el handler en este fichero.
+- **Web** (si la entidad tiene pantallas): `contenedores/<caso-kebab>.tsx` exporta
+  `Boton<Caso>({ id, alTerminar })`: el botón «Cancelar concierto» (oculto sin `puede(rol)`, o sin
+  sesión en una ruta protegida), un `DialogoConfirmar` («¿Cancelar concierto?», «Volver» /
+  «Cancelar concierto»). Si se rechaza, el diálogo se queda abierto y enseña el texto de
+  `aProblema(código)`; si sale bien, se cierra y llama a `alTerminar`. `DialogoConfirmar` gana
+  `textoCancelar` y `children`, que se pintan entre el mensaje y los botones. El detalle gana
+  `<Boton<Caso> id={id} alTerminar={<ident>.recargar} />` como primer hijo de
+  `card-actions` y su import: dos inserciones con ancla, y si no la encuentra se dice qué
+  línea añadir. `mensajes.ts` gana «No se puede cancelar». Los tests van en
+  `<caso-kebab>.test.tsx` y crean su colección con la acción (`coleccion(ruta, entidad, [sembrado],
+  { cancelar: {} })`): `pruebas/<e>.ts` no cambia. Son tres: lo hace, explica el rechazo y, con rol,
+  no lo ofrece sin él. La plantilla del detalle, `mensajes.ts` y el slice pintan las transiciones del
+  manifiesto, así que `generar web --forzar` y `scaffold --forzar` las conservan.
+- **`validar`:** cada verbo va en snake_case, una vez, no es un verbo CRUD, ni `validar`/`new`, ni
+  un módulo del dominio (`modelo`, `errores`, `repositorio`, `valores`, `eventos`, `unit_of_work`,
+  `pruebas`), ni una palabra clave. Su caso de uso está en `casos_de_uso`, y su fichero de dominio
+  y el de REST, en disco.
+- **Tests (`src/tests/transitions.rs`):** el fichero de cada capa con y sin eventos/auth; los
+  `lib.rs`; el manifiesto; `bootstrap.rs`; `rutas.rs` sin el campo; la web (el contenedor, su
+  test, la línea del detalle, `mensajes.ts`, el detalle de un `generar web --forzar`); cada
+  rechazo del comando; `validar`; la deriva de auth; `scaffold --forzar` conserva la transición. El
+  compile matrix: `cancelar` (`--evento producto_cancelado --rol admin`) en `auth_oidc_events`, y
+  `archivar` en `custom_use_case`.
 
 ### 27.13 — Casos de uso internos
 

@@ -111,6 +111,7 @@ comprueba que los dos siguen de acuerdo. `puerto listar` muestra lo que declara,
 | `puerto generar scaffold <Nombre> [-- campos…]` | todas las capas de una entidad CRUD (crear, obtener, listar, actualizar, borrar) + la migración de su tabla con `db` |
 | `puerto generar dominio <Nombre> [-- campos…]` | solo la capa de dominio, y la entidad en `puerto.toml`; después `puerto generar aplicacion <Nombre>`, `puerto generar repositorio <Nombre>`, `puerto generar presentacion <Nombre>`: una capa cada vez, y cada una comprueba la anterior |
 | `puerto generar caso-de-uso <Entidad> <accion>` | un caso de uso más: su fichero (trait + doble, la impl por rellenar; ver más abajo) y un campo en `Api<Entidad>` |
+| `puerto generar transicion <Entidad> <verbo> [--evento <tipo>] [--rol <rol>]` | un cambio de estado de punta a punta (`cancelar`): el método `<verbo>` de la entidad en `dominio/src/<verbo>.rs` (la regla, por escribir), el caso de uso `<verbo>_<entidad>` con sus tests, `POST /<plural>/{id}/<verbo>` en `rest/src/<verbo>_<entidad>.rs` y, con pantallas, su botón en el detalle |
 | `puerto generar objeto-valor <Nombre> <tipo>` | un objeto valor compartido (`[[objeto_valor]]`), reutilizable por todas las entidades |
 | `puerto generar migracion <nombre>` | una migración SQL vacía (proyectos `db`) |
 | `puerto generar bootstrap` | vuelve a cablear `presentacion/cableado` y `generado/bootstrap.rs` a partir de `puerto.toml` |
@@ -174,7 +175,7 @@ apuntándole. La lista filtra por cada referencia: `GET /pedidos?clienteId=…` 
 | **Se reescriben en cada ejecución**: no los edites a mano | `presentacion/cableado/` (también su `Cargo.toml`), `presentacion/api/src/generado/bootstrap.rs`, `contextos/<c>/dominio/src/eventos.rs`, `presentacion/worker/src/generado/registro.rs` | editando `puerto.toml` y ejecutando después el comando que los escribe (`generar bootstrap`, `generar evento`, `generar consumidor`) |
 | **Los ficheros de la entidad**: son tuyos, pero `scaffold --forzar` los reescribe | los cuatro crates de un contexto: los casos de uso CRUD, el modelo, los errores, el repositorio, las rutas, los DTO, los mapeos, la madre, y sus `Cargo.toml` y `lib.rs` | editándolos; `--forzar` solo mientras sigan siendo lo que escribió el generador |
 | **Parcheados**: se añade una línea y se conserva el resto | el `Cargo.toml` raíz (miembros, `[workspace.dependencies]`), `presentacion/api/Cargo.toml` y `presentacion/worker/Cargo.toml` (el crate de un contexto), el `lib.rs` del crate de aplicación, `rutas.rs` (los campos de `Api<Entidad>`), `presentacion/worker/src/consumidores.rs`, `puerto.toml` | editándolos libremente; conserva las líneas que añadió Puerto |
-| **Se escriben una vez**: tuyos desde el principio | `presentacion/api/src/app.rs` (tus middleware y rutas), la impl de un `generar caso-de-uso`, los consumidores, los correos y sus plantillas, las migraciones, los ficheros de auth | editándolos |
+| **Se escriben una vez**: tuyos desde el principio | `presentacion/api/src/app.rs` (tus middleware y rutas), la impl de un `generar caso-de-uso`, los ficheros de una transición (su método, su caso de uso, su ruta, su botón), los consumidores, los correos y sus plantillas, las migraciones, los ficheros de auth | editándolos |
 
 Con `web/`: `web/src/generado/*`, `web/src/api/esquema.d.ts` y `docs/api/openapi.json` también se
 reescriben (`generar bootstrap`, `make web/sync`); las pantallas de una entidad son ficheros suyos
@@ -202,8 +203,9 @@ cableado a mano: si el cableado, un `lib.rs` o `Api<Entidad>` necesitan una lín
 comando.
 
 1. **Modélalo en el generador.** Una entidad nueva: `puerto generar scaffold <Nombre> -- …` con sus
-   campos, objetos valor y enums. Una operación más sobre una entidad:
-   `puerto generar caso-de-uso <Entidad> <accion>`.
+   campos, objetos valor y enums. Un cambio de estado (cancelar, publicar, archivar):
+   `puerto generar transicion <Entidad> <verbo>`, que solo deja por escribir la regla. Cualquier
+   otra operación sobre una entidad: `puerto generar caso-de-uso <Entidad> <accion>`.
 2. **Enumera los escenarios** antes del código: el camino feliz, la entrada vacía o inválida, los
    límites, los cambios de estado y la regresión que pida un arreglo.
 3. **Rojo.** Una entidad generada con `scaffold` ya tiene tests de lo que generó; añade los tuyos al
@@ -1038,6 +1040,165 @@ mod tests {
     }
 }
 
+=== contextos/producto/aplicacion/src/cancelar_producto.rs ===
+use std::sync::Arc;
+
+use async_trait::async_trait;
+use puerto_nucleo::auth::Principal;
+
+use dominio_producto::{
+    errores::ErrorProducto,
+    modelo::{IdProducto, Producto},
+    repositorio::RepositorioProducto,
+    unit_of_work::UnitOfWorkFactoryProducto,
+};
+
+#[derive(Debug, Clone)]
+pub struct ParamsCancelarProducto {
+    /// Quien lo pide (ADR-0021). Una regla que depende de él ("solo lo cancela quien lo creó") se
+    /// decide aquí y responde `Prohibido`.
+    pub actor: Principal,
+    pub id: IdProducto,
+}
+
+/// La transición `cancelar` de Producto (`puerto generar transicion`): la regla está en
+/// `dominio_producto::cancelar`.
+#[async_trait]
+pub trait CancelarProducto: Send + Sync {
+    async fn ejecutar(&self, params: ParamsCancelarProducto) -> Result<Producto, ErrorProducto>;
+}
+
+#[cfg(any(test, feature = "pruebas"))]
+pub mod dobles {
+    use mockall::mock;
+
+    use super::*;
+
+    mock! {
+        pub CancelarProducto {}
+
+        #[async_trait]
+        impl CancelarProducto for CancelarProducto {
+            async fn ejecutar(&self, params: ParamsCancelarProducto) -> Result<Producto, ErrorProducto>;
+        }
+    }
+}
+
+pub struct CancelarProductoImpl {
+    pub repositorio: Arc<dyn RepositorioProducto>,
+    /// Las escrituras pasan por la unidad de trabajo: el método de la entidad emite el evento y
+    /// `uow_factory.guardar(&entidad, evento)` guarda los dos juntos. El repositorio solo lee.
+    pub uow_factory: Arc<dyn UnitOfWorkFactoryProducto>,
+}
+
+#[async_trait]
+impl CancelarProducto for CancelarProductoImpl {
+    #[tracing::instrument(name = "cancelar_producto", skip_all, fields(id = %params.id), err(level = "warn"))]
+    async fn ejecutar(&self, params: ParamsCancelarProducto) -> Result<Producto, ErrorProducto> {
+        let mut entidad = self
+            .repositorio
+            .buscar_por_id(params.id)
+            .await?
+            .ok_or(ErrorProducto::NoEncontrado)?;
+        let evento = entidad.cancelar()?;
+        self.uow_factory.guardar(&entidad, evento).await?;
+        Ok(entidad)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use dominio_producto::{
+        pruebas::madres::MadreProducto, repositorio::dobles::MockRepositorioProducto,
+        unit_of_work::dobles::UnitOfWorkFactoryGrabadora,
+    };
+    use puerto_nucleo::EventoDominio;
+    use puerto_nucleo::auth::dobles::MadrePrincipal;
+
+    /// El repositorio que encuentra `encontrado`.
+    fn repositorio(encontrado: Option<Producto>) -> MockRepositorioProducto {
+        let mut repositorio_doble = MockRepositorioProducto::new();
+        repositorio_doble
+            .expect_buscar_por_id()
+            .returning(move |_| Ok(encontrado.clone()));
+        repositorio_doble
+    }
+
+    fn params(id: IdProducto) -> ParamsCancelarProducto {
+        ParamsCancelarProducto {
+            actor: MadrePrincipal::aleatorio(),
+            id,
+        }
+    }
+
+    #[tokio::test]
+    async fn deberia_cancelar_producto_cuando_existe() {
+        // Preparar
+        let entidad = MadreProducto::aleatorio();
+        let id = entidad.id;
+        let uow_factory = UnitOfWorkFactoryGrabadora::new();
+        let caso_de_uso = CancelarProductoImpl {
+            repositorio: Arc::new(repositorio(Some(entidad))),
+            uow_factory: Arc::new(uow_factory.clone()),
+        };
+
+        // Actuar
+        let resultado = caso_de_uso.ejecutar(params(id)).await;
+
+        // Comprobar
+        assert_eq!(resultado.map(|e| e.id).ok(), Some(id));
+        let grabado = uow_factory.grabado();
+        assert!(grabado.confirmado);
+        assert_eq!(grabado.eventos.len(), 1);
+        assert_eq!(grabado.eventos[0].tipo_evento(), "producto_cancelado");
+        assert_eq!(grabado.eventos[0].id_agregado(), id.valor());
+    }
+
+    #[tokio::test]
+    async fn deberia_devolver_no_encontrado_cuando_producto_no_existe() {
+        // Preparar
+        let uow_factory = UnitOfWorkFactoryGrabadora::new();
+        let caso_de_uso = CancelarProductoImpl {
+            repositorio: Arc::new(repositorio(None)),
+            uow_factory: Arc::new(uow_factory.clone()),
+        };
+
+        // Actuar
+        let resultado = caso_de_uso.ejecutar(params(IdProducto::generar())).await;
+
+        // Comprobar
+        assert_eq!(
+            resultado.map(|_| ()).unwrap_err().to_string(),
+            "producto.no_encontrado"
+        );
+        assert!(uow_factory.grabado().eventos.is_empty());
+    }
+
+    #[tokio::test]
+    #[ignore = "escribe la regla"]
+    async fn deberia_rechazar_sin_guardar_nada_cuando_producto_no_se_puede_cancelar() {
+        // Preparar: producto que la regla rechaza (`MadreProducto::new().con_…(…).construir()`)
+        let entidad = MadreProducto::aleatorio();
+        let id = entidad.id;
+        let uow_factory = UnitOfWorkFactoryGrabadora::new();
+        let caso_de_uso = CancelarProductoImpl {
+            repositorio: Arc::new(repositorio(Some(entidad))),
+            uow_factory: Arc::new(uow_factory.clone()),
+        };
+
+        // Actuar
+        let resultado = caso_de_uso.ejecutar(params(id)).await;
+
+        // Comprobar
+        assert_eq!(
+            resultado.map(|_| ()).unwrap_err().to_string(),
+            "producto.validacion.no_se_puede_cancelar"
+        );
+        assert!(uow_factory.grabado().guardados.is_empty());
+    }
+}
+
 === contextos/producto/aplicacion/src/crear_producto.rs ===
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
@@ -1313,6 +1474,7 @@ mod tests {
 === contextos/producto/aplicacion/src/lib.rs ===
 pub mod actualizar_producto;
 pub mod borrar_producto;
+pub mod cancelar_producto;
 pub mod crear_producto;
 pub mod listar_productos;
 pub mod obtener_producto;
@@ -1676,6 +1838,67 @@ pruebas = ["dep:mockall"]
 mockall = { workspace = true }
 tokio = { workspace = true }
 
+=== contextos/producto/dominio/src/cancelar.rs ===
+use crate::errores::ErrorProducto;
+use crate::eventos::{EventoProducto, SnapshotProducto};
+use crate::modelo::Producto;
+
+/// La transición `cancelar` (`puerto generar transicion`): un `impl` aparte, así que `modelo.rs`
+/// no cambia. La regla y el cambio son tuyos.
+impl Producto {
+    pub fn cancelar(&mut self) -> Result<EventoProducto, ErrorProducto> {
+        // La regla: cuándo no se puede cancelar. La API responde 422 con este código:
+        // if <no se puede> {
+        //     return Err(ErrorProducto::Validacion("no_se_puede_cancelar".into()));
+        // }
+        // El cambio: los campos que pasan a otro valor (p. ej. un estado).
+        self.actualizado_en = chrono::Utc::now();
+        Ok(EventoProducto::Cancelado(SnapshotProducto::from_entidad(
+            self,
+        )))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::pruebas::madres::MadreProducto;
+    use puerto_nucleo::EventoDominio;
+
+    #[test]
+    fn deberia_cancelar_producto_cuando_se_puede() {
+        // Preparar
+        let mut entidad = MadreProducto::aleatorio();
+
+        // Actuar
+        let resultado = entidad.cancelar();
+
+        // Comprobar
+        match resultado {
+            Ok(evento) => {
+                assert_eq!(evento.tipo_evento(), "producto_cancelado");
+                assert_eq!(evento.id_agregado(), entidad.id.valor());
+            }
+            Err(e) => panic!("cancelar falló: {e}"),
+        }
+    }
+
+    #[test]
+    #[ignore = "escribe la regla"]
+    fn deberia_rechazar_cancelar_producto_cuando_no_se_puede() {
+        // Preparar: producto que la regla rechaza (`MadreProducto::new().con_…(…).construir()`)
+        let mut entidad = MadreProducto::aleatorio();
+
+        // Actuar
+        let resultado = entidad.cancelar();
+
+        // Comprobar
+        match resultado {
+            Err(e) => assert_eq!(e.to_string(), "producto.validacion.no_se_puede_cancelar"),
+            Ok(_) => panic!("cancelar debería rechazarlo"),
+        }
+    }
+}
+
 === contextos/producto/dominio/src/errores.rs ===
 use puerto_nucleo::ErrorRepositorio;
 use thiserror::Error;
@@ -1753,6 +1976,7 @@ use crate::modelo::Producto;
 pub const PRODUCTO_CREADO: &str = "producto_creado";
 pub const PRODUCTO_ACTUALIZADO: &str = "producto_actualizado";
 pub const PRODUCTO_BORRADO: &str = "producto_borrado";
+pub const PRODUCTO_CANCELADO: &str = "producto_cancelado";
 pub const PRODUCTO_PUBLISHED: &str = "producto_published";
 
 /// Lo que lleva cada evento de producto: sus datos tal como los muestra la API — primitivos, con
@@ -1794,6 +2018,7 @@ pub enum EventoProducto {
     Creado(SnapshotProducto),
     Actualizado(SnapshotProducto),
     Borrado(SnapshotProducto),
+    Cancelado(SnapshotProducto),
     Published(SnapshotProducto),
 }
 
@@ -1803,6 +2028,7 @@ impl EventoProducto {
             Self::Creado(snapshot)
             | Self::Actualizado(snapshot)
             | Self::Borrado(snapshot)
+            | Self::Cancelado(snapshot)
             | Self::Published(snapshot) => snapshot,
         }
     }
@@ -1814,6 +2040,7 @@ impl EventoDominio for EventoProducto {
             Self::Creado(_) => PRODUCTO_CREADO,
             Self::Actualizado(_) => PRODUCTO_ACTUALIZADO,
             Self::Borrado(_) => PRODUCTO_BORRADO,
+            Self::Cancelado(_) => PRODUCTO_CANCELADO,
             Self::Published(_) => PRODUCTO_PUBLISHED,
         }
     }
@@ -1855,6 +2082,10 @@ mod tests {
             (
                 EventoProducto::Borrado(snapshot.clone()),
                 "producto_borrado",
+            ),
+            (
+                EventoProducto::Cancelado(snapshot.clone()),
+                "producto_cancelado",
             ),
             (
                 EventoProducto::Published(snapshot.clone()),
@@ -1907,6 +2138,7 @@ mod tests {
 }
 
 === contextos/producto/dominio/src/lib.rs ===
+pub mod cancelar;
 pub mod errores;
 pub mod eventos;
 pub mod modelo;
@@ -3052,6 +3284,233 @@ dominio_producto = { workspace = true, features = ["pruebas"] }
 poem = { workspace = true, features = ["test"] }
 tokio = { workspace = true }
 
+=== contextos/producto/rest/src/cancelar_producto.rs ===
+// La variante de éxito lleva el DTO entero (ver `respuestas.rs`).
+#![allow(clippy::large_enum_variant)]
+
+use std::sync::Arc;
+
+use aplicacion_producto::cancelar_producto::{CancelarProducto, ParamsCancelarProducto};
+use dominio_producto::modelo::IdProducto;
+use poem::http::StatusCode;
+use poem_openapi::{ApiResponse, OpenApi, Tags, param::Path, payload::Json};
+use puerto_web::RespuestaError;
+use puerto_web::auth::BearerAuth;
+use puerto_web::requiere_rol;
+use uuid::Uuid;
+
+use crate::dto::DtoProducto;
+use crate::errores::a_respuesta_error;
+
+/// La misma etiqueta que `rutas.rs`: poem-openapi junta las dos por su nombre.
+#[derive(Tags)]
+enum ApiTags {
+    Producto,
+}
+
+/// La ruta de la transición `cancelar` (`puerto generar transicion`). Va en su propio `Api` para
+/// que `rutas.rs` no cambie; `generado/bootstrap.rs` la monta junto a `ApiProducto`.
+pub struct ApiCancelarProducto {
+    pub cancelar_producto: Arc<dyn CancelarProducto>,
+}
+
+#[OpenApi]
+impl ApiCancelarProducto {
+    /// Cancelar: Producto
+    #[oai(
+        path = "/productos/:id/cancelar",
+        method = "post",
+        tag = "ApiTags::Producto"
+    )]
+    #[requiere_rol("admin")]
+    async fn cancelar(&self, auth: BearerAuth, id: Path<Uuid>) -> RespuestaCancelarProducto {
+        match self
+            .cancelar_producto
+            .ejecutar(ParamsCancelarProducto {
+                actor: auth.0,
+                id: IdProducto::from_uuid(id.0),
+            })
+            .await
+        {
+            Ok(entidad) => RespuestaCancelarProducto::Ok(Json(DtoProducto::from_dominio(&entidad))),
+            Err(err) => {
+                let (status, error) = a_respuesta_error(err);
+                tracing::warn!(codigo = %error.0.codigo, "cancelar_producto falló");
+                RespuestaCancelarProducto::from_status(status, error)
+            }
+        }
+    }
+}
+
+#[derive(ApiResponse)]
+pub enum RespuestaCancelarProducto {
+    #[oai(status = 200)]
+    Ok(Json<DtoProducto>),
+    #[oai(status = 422)]
+    NoProcesable(Json<RespuestaError>),
+    #[oai(status = 401)]
+    NoAutorizado(Json<RespuestaError>),
+    #[oai(status = 403)]
+    Prohibido(Json<RespuestaError>),
+    #[oai(status = 404)]
+    NoEncontrado(Json<RespuestaError>),
+    #[oai(status = 409)]
+    Conflicto(Json<RespuestaError>),
+    /// No se pudo comprobar el token: el proveedor o la base de datos no responden (`BearerAuth`).
+    #[oai(status = 503)]
+    NoDisponible(Json<RespuestaError>),
+    #[oai(status = 500)]
+    ErrorInterno(Json<RespuestaError>),
+}
+
+impl RespuestaCancelarProducto {
+    pub fn from_status(status: StatusCode, error: Json<RespuestaError>) -> Self {
+        match status {
+            StatusCode::UNPROCESSABLE_ENTITY => Self::NoProcesable(error),
+            StatusCode::UNAUTHORIZED => Self::NoAutorizado(error),
+            StatusCode::FORBIDDEN => Self::Prohibido(error),
+            StatusCode::NOT_FOUND => Self::NoEncontrado(error),
+            StatusCode::CONFLICT => Self::Conflicto(error),
+            StatusCode::SERVICE_UNAVAILABLE => Self::NoDisponible(error),
+            _ => Self::ErrorInterno(error),
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use aplicacion_producto::cancelar_producto::dobles::MockCancelarProducto;
+    use dominio_producto::errores::ErrorProducto;
+    use dominio_producto::pruebas::madres::MadreProducto;
+    use poem::{EndpointExt, Route, test::TestClient};
+    use poem_openapi::OpenApiService;
+    use puerto_nucleo::auth::dobles::{MadrePrincipal, MockAutenticador};
+    use puerto_nucleo::auth::{Autenticador, ErrorAuth};
+
+    use super::*;
+
+    /// Acepta `llamante` (con los roles de la ruta) y `nadie` (sin roles).
+    fn autenticador() -> Arc<dyn Autenticador> {
+        let mut doble = MockAutenticador::new();
+        doble.expect_autenticar().returning(|token| match token {
+            "llamante" => Ok(MadrePrincipal::new().con_roles(["admin"]).construir()),
+            "nadie" => Ok(MadrePrincipal::aleatorio()),
+            _ => Err(ErrorAuth::Invalido),
+        });
+        Arc::new(doble)
+    }
+
+    /// La ruta sobre `caso_de_uso`; `autorizacion`, la cabecera de cada petición (`None`: ninguna).
+    fn cliente(
+        caso_de_uso: MockCancelarProducto,
+        autorizacion: Option<&str>,
+    ) -> TestClient<impl poem::Endpoint> {
+        let api = ApiCancelarProducto {
+            cancelar_producto: Arc::new(caso_de_uso),
+        };
+        let cliente = TestClient::new(
+            Route::new()
+                .nest("/", OpenApiService::new(api, "test", "1.0"))
+                .data(autenticador()),
+        );
+        match autorizacion {
+            Some(valor) => cliente.default_header("Authorization", valor),
+            None => cliente,
+        }
+    }
+
+    fn ruta() -> String {
+        format!("/productos/{}/cancelar", Uuid::new_v4())
+    }
+
+    /// El caso de uso, respondiendo `resultado`.
+    fn caso_de_uso(resultado: Result<(), ErrorProducto>) -> MockCancelarProducto {
+        let mut doble = MockCancelarProducto::new();
+        doble
+            .expect_ejecutar()
+            .return_once(move |_| resultado.map(|()| MadreProducto::aleatorio()));
+        doble
+    }
+
+    #[tokio::test]
+    async fn deberia_responder_200_cuando_se_puede_cancelar_producto() {
+        // Preparar
+        let cliente = cliente(caso_de_uso(Ok(())), Some("Bearer llamante"));
+
+        // Actuar
+        let respuesta = cliente.post(ruta()).send().await;
+
+        // Comprobar
+        respuesta.assert_status_is_ok();
+    }
+
+    #[tokio::test]
+    async fn deberia_responder_404_cuando_producto_no_existe() {
+        // Preparar
+        let cliente = cliente(
+            caso_de_uso(Err(ErrorProducto::NoEncontrado)),
+            Some("Bearer llamante"),
+        );
+
+        // Actuar
+        let respuesta = cliente.post(ruta()).send().await;
+
+        // Comprobar
+        respuesta.assert_status(StatusCode::NOT_FOUND);
+    }
+
+    #[tokio::test]
+    async fn deberia_responder_422_cuando_producto_no_se_puede_cancelar() {
+        // Preparar
+        let rechazo = ErrorProducto::Validacion("no_se_puede_cancelar".into());
+        let cliente = cliente(caso_de_uso(Err(rechazo)), Some("Bearer llamante"));
+
+        // Actuar
+        let respuesta = cliente.post(ruta()).send().await;
+
+        // Comprobar
+        respuesta.assert_status(StatusCode::UNPROCESSABLE_ENTITY);
+        respuesta
+            .json()
+            .await
+            .value()
+            .object()
+            .get("codigo")
+            .assert_string("producto.validacion.no_se_puede_cancelar");
+    }
+
+    #[tokio::test]
+    async fn deberia_responder_401_cuando_se_pide_cancelar_sin_token() {
+        // Preparar — sin expectativas: nunca se llega al caso de uso
+        let cliente = cliente(MockCancelarProducto::new(), None);
+
+        // Actuar
+        let respuesta = cliente.post(ruta()).send().await;
+
+        // Comprobar
+        respuesta.assert_status(StatusCode::UNAUTHORIZED);
+    }
+
+    #[tokio::test]
+    async fn deberia_responder_403_cuando_se_pide_cancelar_sin_el_rol() {
+        // Preparar — sin expectativas: nunca se llega al caso de uso
+        let cliente = cliente(MockCancelarProducto::new(), Some("Bearer nadie"));
+
+        // Actuar
+        let respuesta = cliente.post(ruta()).send().await;
+
+        // Comprobar
+        respuesta.assert_status(StatusCode::FORBIDDEN);
+        respuesta
+            .json()
+            .await
+            .value()
+            .object()
+            .get("codigo")
+            .assert_string("auth.prohibido");
+    }
+}
+
 === contextos/producto/rest/src/dto.rs ===
 use chrono::{DateTime, Utc};
 use dominio_producto::modelo::Producto;
@@ -3260,6 +3719,7 @@ mod tests {
 }
 
 === contextos/producto/rest/src/lib.rs ===
+pub mod cancelar_producto;
 pub mod dto;
 pub mod errores;
 pub mod respuestas;
@@ -5349,6 +5809,7 @@ use poem::Endpoint;
 use poem::EndpointExt;
 use poem_openapi::OpenApiService;
 use puerto_nucleo::auth::Autenticador;
+use rest_producto::cancelar_producto::ApiCancelarProducto;
 use rest_producto::rutas::ApiProducto;
 use rest_saludo::rutas::ApiSaludo;
 use rest_usuario::me::rutas::ApiMe;
@@ -5394,6 +5855,9 @@ pub async fn construir_app(config: puerto_web::Config) -> Result<impl Endpoint, 
         borrar_producto: casos_producto.borrar_producto,
         publish_producto: casos_producto.publish_producto,
     };
+    let api_cancelar_producto = ApiCancelarProducto {
+        cancelar_producto: casos_producto.cancelar_producto,
+    };
 
     let disponible = puerto_web::health::sondear(move || {
         let pool = pool.clone();
@@ -5402,7 +5866,7 @@ pub async fn construir_app(config: puerto_web::Config) -> Result<impl Endpoint, 
 
     // `app.rs` es del proyecto: el middleware y las rutas que se añadan allí envuelven todo esto.
     Ok(crate::app::configurar(puerto_web::rutas(
-        servicio_openapi((api_saludo, api_producto, api_me)),
+        servicio_openapi((api_saludo, (api_producto, api_cancelar_producto), api_me)),
         &config,
         disponible,
     ))
@@ -5423,6 +5887,7 @@ mod tests {
 
     use aplicacion_producto::actualizar_producto::dobles::MockActualizarProducto;
     use aplicacion_producto::borrar_producto::dobles::MockBorrarProducto;
+    use aplicacion_producto::cancelar_producto::dobles::MockCancelarProducto;
     use aplicacion_producto::crear_producto::dobles::MockCrearProducto;
     use aplicacion_producto::listar_productos::dobles::MockListarProductos;
     use aplicacion_producto::obtener_producto::dobles::MockObtenerProducto;
@@ -5448,8 +5913,12 @@ mod tests {
             borrar_producto: Arc::new(MockBorrarProducto::new()),
             publish_producto: Arc::new(MockPublishProducto::new()),
         };
+        let api_cancelar_producto = ApiCancelarProducto {
+            cancelar_producto: Arc::new(MockCancelarProducto::new()),
+        };
         let api_me = ApiMe;
-        let spec = servicio_openapi((api_saludo, api_producto, api_me)).spec();
+        let spec =
+            servicio_openapi((api_saludo, (api_producto, api_cancelar_producto), api_me)).spec();
 
         let ruta = std::path::Path::new(OPENAPI_JSON);
         if std::env::var_os("UPDATE_OPENAPI").is_some() || !ruta.exists() {
@@ -5518,6 +5987,7 @@ pub mod producto {
 
     use aplicacion_producto::actualizar_producto::{ActualizarProducto, ActualizarProductoImpl};
     use aplicacion_producto::borrar_producto::{BorrarProducto, BorrarProductoImpl};
+    use aplicacion_producto::cancelar_producto::{CancelarProducto, CancelarProductoImpl};
     use aplicacion_producto::crear_producto::{CrearProducto, CrearProductoImpl};
     use aplicacion_producto::listar_productos::{ListarProductos, ListarProductosImpl};
     use aplicacion_producto::obtener_producto::{ObtenerProducto, ObtenerProductoImpl};
@@ -5535,6 +6005,7 @@ pub mod producto {
         pub actualizar_producto: Arc<dyn ActualizarProducto>,
         pub borrar_producto: Arc<dyn BorrarProducto>,
         pub publish_producto: Arc<dyn PublishProducto>,
+        pub cancelar_producto: Arc<dyn CancelarProducto>,
     }
 
     pub fn construir(pool: &sqlx::PgPool) -> CasosDeUso {
@@ -5561,6 +6032,10 @@ pub mod producto {
                 uow_factory: Arc::clone(&uow_factory),
             }),
             publish_producto: Arc::new(PublishProductoImpl {
+                repositorio: Arc::clone(&repositorio),
+                uow_factory: Arc::clone(&uow_factory),
+            }),
+            cancelar_producto: Arc::new(CancelarProductoImpl {
                 repositorio: Arc::clone(&repositorio),
                 uow_factory: Arc::clone(&uow_factory),
             }),
@@ -5863,13 +6338,19 @@ casos_de_uso = [
     "actualizar_producto",
     "borrar_producto",
     "publish_producto",
+    "cancelar_producto",
 ]
 db = true
 publicos = ["listar_productos"]
-eventos = ["producto_published"]
+eventos = [
+    "producto_cancelado",
+    "producto_published",
+]
+transiciones = ["cancelar"]
 
 [entidad.roles]
 borrar_producto = ["admin"]
+cancelar_producto = ["admin"]
 
 [[entidad.campos]]
 nombre = "name"
@@ -6837,6 +7318,142 @@ export function MenuUsuario() {
   );
 }
 
+=== web/src/contextos/producto/contenedores/cancelar-producto.test.tsx ===
+import { describe, expect, mock, test } from "bun:test";
+import { fireEvent, screen, waitFor } from "@testing-library/react";
+import { apiFalsa, coleccion } from "../../../pruebas/api-falsa";
+import { MadreUsuarioActual } from "../../../pruebas/auth";
+import { MadreProducto } from "../../../pruebas/producto";
+import { renderizarPantalla } from "../../../pruebas/renderizar";
+import { aProblema } from "../mensajes";
+import { BotonCancelarProducto } from "./cancelar-producto";
+
+/** El botón que abre el diálogo, y el que confirma dentro de él. */
+const ABRIR = { selector: ".card-actions > button" };
+const CONFIRMAR = { selector: ".modal-action button" };
+
+describe("BotonCancelarProducto", () => {
+  test("debería cancelar producto tras confirmarlo", async () => {
+    // Preparar
+    const sembrado = MadreProducto.aleatorio();
+    const api = apiFalsa([coleccion("/productos", "producto", [sembrado], { cancelar: {} })]);
+    const alTerminar = mock(() => {});
+    const pantalla = (
+      <div className="card-actions">
+        <BotonCancelarProducto id={sembrado.id} alTerminar={alTerminar} />
+      </div>
+    );
+    renderizarPantalla(pantalla, { api });
+    fireEvent.click(await screen.findByText("Cancelar producto", ABRIR));
+
+    // Actuar
+    fireEvent.click(screen.getByText("Cancelar producto", CONFIRMAR));
+
+    // Comprobar
+    await waitFor(() => expect(alTerminar).toHaveBeenCalledTimes(1));
+  });
+
+  test("debería explicar el rechazo cuando no se puede cancelar", async () => {
+    // Preparar
+    const sembrado = MadreProducto.aleatorio();
+    const codigo = "producto.validacion.no_se_puede_cancelar";
+    const fallos = { "POST /productos/{id}/cancelar": codigo };
+    const api = apiFalsa([coleccion("/productos", "producto", [sembrado])], fallos);
+    const alTerminar = mock(() => {});
+    const pantalla = (
+      <div className="card-actions">
+        <BotonCancelarProducto id={sembrado.id} alTerminar={alTerminar} />
+      </div>
+    );
+    renderizarPantalla(pantalla, { api });
+    fireEvent.click(await screen.findByText("Cancelar producto", ABRIR));
+
+    // Actuar
+    fireEvent.click(screen.getByText("Cancelar producto", CONFIRMAR));
+
+    // Comprobar
+    const alerta = await screen.findByRole("alert");
+    expect(alerta.textContent).toBe(aProblema(codigo).texto);
+    expect(alTerminar).not.toHaveBeenCalled();
+  });
+
+  test("no debería ofrecer cancelar producto a quien no tiene su rol", async () => {
+    // Preparar
+    const sembrado = MadreProducto.aleatorio();
+    const api = apiFalsa([coleccion("/productos", "producto", [sembrado])]);
+    const usuario = MadreUsuarioActual.aleatorio();
+    const pantalla = (
+      <div className="card-actions">
+        <p>Al lado</p>
+        <BotonCancelarProducto id={sembrado.id} alTerminar={() => {}} />
+      </div>
+    );
+
+    // Actuar
+    renderizarPantalla(pantalla, { api }, "/", { usuario });
+
+    // Comprobar: con la sesión ya cargada, cuando se ve lo de al lado
+    expect(await screen.findByText("Al lado")).toBeTruthy();
+    expect(screen.queryByText("Cancelar producto")).toBeNull();
+  });
+});
+
+=== web/src/contextos/producto/contenedores/cancelar-producto.tsx ===
+import { useState } from "react";
+import { desenvolver } from "../../../api/http";
+import { useAuth } from "../../../auth/auth";
+import { AlertaError, codigoError } from "../../../compartido/ui/alerta-error";
+import { DialogoConfirmar } from "../../../compartido/ui/dialogo-confirmar";
+import { useDependencias } from "../../../dependencias";
+import { aProblema } from "../mensajes";
+
+/**
+ * «Cancelar producto», tras confirmarlo; si la API lo rechaza, el diálogo se queda abierto y dice
+ * por qué. `alTerminar`, cuando se hizo.
+ */
+export function BotonCancelarProducto({ id, alTerminar }: { id: string; alTerminar: () => void }) {
+  const { api } = useDependencias();
+  const { puede } = useAuth();
+  const [confirmando, setConfirmando] = useState(false);
+  const [fallo, setFallo] = useState<unknown>(null);
+
+  const confirmar = async () => {
+    setFallo(null);
+    try {
+      await desenvolver(api.POST("/productos/{id}/cancelar", { params: { path: { id } } }));
+      setConfirmando(false);
+      alTerminar();
+    } catch (error) {
+      setFallo(error);
+    }
+  };
+  const volver = () => {
+    setConfirmando(false);
+    setFallo(null);
+  };
+  if (!puede("admin")) return null;
+
+  return (
+    <>
+      <button type="button" className="btn btn-warning" onClick={() => setConfirmando(true)}>
+        Cancelar producto
+      </button>
+      <DialogoConfirmar
+        abierto={confirmando}
+        mensaje="¿Cancelar producto?"
+        textoConfirmar="Cancelar producto"
+        textoCancelar="Volver"
+        alConfirmar={confirmar}
+        alCancelar={volver}
+      >
+        {fallo !== null && (
+          <AlertaError error={fallo} mensaje={aProblema(codigoError(fallo)).texto} />
+        )}
+      </DialogoConfirmar>
+    </>
+  );
+}
+
 === web/src/contextos/producto/contenedores/detalle-producto.test.tsx ===
 import { describe, expect, test } from "bun:test";
 import { fireEvent, screen, waitFor } from "@testing-library/react";
@@ -6933,6 +7550,7 @@ import { DialogoConfirmar } from "../../../compartido/ui/dialogo-confirmar";
 import { useCarga } from "../../../compartido/use-carga";
 import { useDependencias } from "../../../dependencias";
 import { VistaDetalleProducto } from "../vistas/detalle-producto";
+import { BotonCancelarProducto } from "./cancelar-producto";
 
 export function ContenedorDetalleProducto({ id }: { id: string }) {
   const { api } = useDependencias();
@@ -6966,6 +7584,7 @@ export function ContenedorDetalleProducto({ id }: { id: string }) {
           <div className="card-body">
             <VistaDetalleProducto producto={producto.datos} />
             <div className="card-actions justify-end">
+              <BotonCancelarProducto id={id} alTerminar={producto.recargar} />
               <Link href={`/productos/${id}/editar`} className="btn">
                 Editar
               </Link>
@@ -7351,6 +7970,7 @@ const TEXTOS: Record<string, string> = {
   "producto.no_encontrado": "Ya no existe",
   "producto.repositorio": "No se ha podido guardar; inténtalo más tarde",
   "producto.desconocido": "Algo ha ido mal",
+  "producto.validacion.no_se_puede_cancelar": "No se puede cancelar",
 };
 
 /** El input del que trata el código de cada campo. */

@@ -1,18 +1,25 @@
-import { useEffect, useRef } from "react";
+import { type ReactNode, useEffect, useRef } from "react";
 
-/** Un `<dialog>` modal nativo: Escape y «Cancelar» llaman a `alCancelar`; `abierto` es del padre. */
+/**
+ * Un `<dialog>` modal nativo: Escape y «Cancelar» (`textoCancelar`) llaman a `alCancelar`;
+ * `abierto` es del padre. `children` va entre el mensaje y los botones (por qué falló, p. ej.).
+ */
 export function DialogoConfirmar({
   abierto,
   mensaje,
   textoConfirmar = "Borrar",
+  textoCancelar = "Cancelar",
   alConfirmar,
   alCancelar,
+  children,
 }: {
   abierto: boolean;
   mensaje: string;
   textoConfirmar?: string;
+  textoCancelar?: string;
   alConfirmar: () => void;
   alCancelar: () => void;
+  children?: ReactNode;
 }) {
   const dialogo = useRef<HTMLDialogElement>(null);
 
@@ -34,9 +41,10 @@ export function DialogoConfirmar({
     >
       <div className="modal-box">
         <p>{mensaje}</p>
+        {children}
         <div className="modal-action">
           <button type="button" className="btn" onClick={alCancelar}>
-            Cancelar
+            {textoCancelar}
           </button>
           <button type="button" className="btn btn-error" onClick={alConfirmar}>
             {textoConfirmar}

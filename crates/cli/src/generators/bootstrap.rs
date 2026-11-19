@@ -8,7 +8,7 @@ use crate::generators::naming::{
 };
 use crate::generators::render::render;
 
-#[derive(Serialize)]
+#[derive(Serialize, Clone)]
 struct BootstrapUseCase {
     action: String,
     uc_pascal: String,
@@ -28,6 +28,10 @@ struct BootstrapEntity {
     needs_repository: bool,
     needs_uow: bool,
     use_cases: Vec<BootstrapUseCase>,
+    /// The fields of `Api{Entity}`: every use case but its transitions'.
+    api_use_cases: Vec<BootstrapUseCase>,
+    /// Its transitions' use cases (27.12), each on its own `Api{UseCase}`.
+    transitions: Vec<BootstrapUseCase>,
 }
 
 /// Whether an entity's writes go through a unit of work: a CRUD entity of an `events` project.
@@ -60,8 +64,16 @@ fn build_context(
                     uow: uow && !reads.contains(uc),
                 })
                 .collect();
+            let of_transitions = entity.transition_use_cases();
+            let (transitions, api_use_cases): (Vec<BootstrapUseCase>, Vec<BootstrapUseCase>) =
+                use_cases
+                    .iter()
+                    .cloned()
+                    .partition(|uc| of_transitions.contains(&uc.action));
             BootstrapEntity {
                 pascal: entity.name.clone(),
+                api_use_cases,
+                transitions,
                 db: entity.db,
                 uow,
                 needs_repository: use_cases.iter().any(|uc| uc.repository),
@@ -96,9 +108,19 @@ fn build_context(
 /// What `OpenApiService` serves: `()` with no API, the one `api_{snake}`, or a tuple of them —
 /// `api_me` last in an auth project, then `api_auth` in a local one.
 fn api_expression(entities: &[crate::puerto_toml::Entity], auth: bool, local: bool) -> String {
+    // An entity and its transitions' APIs are one element: a tuple holds at most 16.
     let mut apis: Vec<String> = entities
         .iter()
-        .map(|e| format!("api_{}", pascal_to_snake(&e.name)))
+        .map(|e| {
+            let own = format!("api_{}", pascal_to_snake(&e.name));
+            let transitions = e.transition_use_cases();
+            if transitions.is_empty() {
+                own
+            } else {
+                let rest: Vec<String> = transitions.iter().map(|uc| format!("api_{uc}")).collect();
+                format!("({own}, {})", rest.join(", "))
+            }
+        })
         .collect();
     if auth {
         apis.push("api_me".into());

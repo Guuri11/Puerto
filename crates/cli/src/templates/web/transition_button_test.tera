@@ -1,0 +1,90 @@
+import { describe, expect, mock, test } from "bun:test";
+import { fireEvent, screen, waitFor } from "@testing-library/react";
+import { apiFalsa, coleccion } from "../../../pruebas/api-falsa";
+{% if roles -%}
+import { MadreUsuarioActual } from "../../../pruebas/auth";
+{% endif -%}
+import { Madre{{ pascal }} } from "../../../pruebas/{{ kebab }}";
+import { renderizarPantalla } from "../../../pruebas/renderizar";
+import { aProblema } from "../mensajes";
+import { Boton{{ uc_pascal }} } from "./{{ uc_kebab }}";
+
+/** El botón que abre el diálogo, y el que confirma dentro de él. */
+const ABRIR = { selector: ".card-actions > button" };
+const CONFIRMAR = { selector: ".modal-action button" };
+
+describe("Boton{{ uc_pascal }}", () => {
+  test("debería {{ verb_words }} {{ words }} tras confirmarlo", async () => {
+    // Preparar
+    const sembrado = Madre{{ pascal }}.aleatorio();
+{%- if api_inline %}
+    const api = apiFalsa([coleccion("/{{ plural }}", "{{ snake }}", [sembrado], { {{ verb }}: {} })]);
+{%- else %}
+    const api = apiFalsa([
+      coleccion("/{{ plural }}", "{{ snake }}", [sembrado], { {{ verb }}: {} }),
+    ]);
+{%- endif %}
+    const alTerminar = mock(() => {});
+    const pantalla = (
+      <div className="card-actions">
+        <Boton{{ uc_pascal }} id={sembrado.id} alTerminar={alTerminar} />
+      </div>
+    );
+    renderizarPantalla(pantalla, { api });
+    fireEvent.click(await screen.findByText("{{ label }}", ABRIR));
+
+    // Actuar
+    fireEvent.click(screen.getByText("{{ label }}", CONFIRMAR));
+
+    // Comprobar
+    await waitFor(() => expect(alTerminar).toHaveBeenCalledTimes(1));
+  });
+
+  test("debería explicar el rechazo cuando no se puede {{ verb_words }}", async () => {
+    // Preparar
+    const sembrado = Madre{{ pascal }}.aleatorio();
+    const codigo = "{{ code }}";
+    const fallos = { "POST /{{ plural }}/{id}/{{ verb }}": codigo };
+    const api = apiFalsa([coleccion("/{{ plural }}", "{{ snake }}", [sembrado])], fallos);
+    const alTerminar = mock(() => {});
+    const pantalla = (
+      <div className="card-actions">
+        <Boton{{ uc_pascal }} id={sembrado.id} alTerminar={alTerminar} />
+      </div>
+    );
+    renderizarPantalla(pantalla, { api });
+    fireEvent.click(await screen.findByText("{{ label }}", ABRIR));
+
+    // Actuar
+    fireEvent.click(screen.getByText("{{ label }}", CONFIRMAR));
+
+    // Comprobar
+    const alerta = await screen.findByRole("alert");
+    expect(alerta.textContent).toBe(aProblema(codigo).texto);
+    expect(alTerminar).not.toHaveBeenCalled();
+  });
+{%- if protected %}
+
+  test("no debería ofrecer {{ label_lower }} {% if roles %}a quien no tiene su rol{% else %}sin sesión{% endif %}", async () => {
+    // Preparar
+    const sembrado = Madre{{ pascal }}.aleatorio();
+    const api = apiFalsa([coleccion("/{{ plural }}", "{{ snake }}", [sembrado])]);
+{%- if roles %}
+    const usuario = MadreUsuarioActual.aleatorio();
+{%- endif %}
+    const pantalla = (
+      <div className="card-actions">
+        <p>Al lado</p>
+        <Boton{{ uc_pascal }} id={sembrado.id} alTerminar={() => {}} />
+      </div>
+    );
+
+    // Actuar
+    renderizarPantalla(pantalla, { api }, "/", { usuario{% if not roles %}: null{% endif %} });
+
+    // Comprobar: con la sesión ya cargada, cuando se ve lo de al lado
+    expect(await screen.findByText("Al lado")).toBeTruthy();
+    expect(screen.queryByText("{{ label }}")).toBeNull();
+  });
+{%- endif %}
+});

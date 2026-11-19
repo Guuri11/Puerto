@@ -152,6 +152,30 @@ pub fn run_validate(cwd: &Path) -> Result<(), Box<dyn std::error::Error>> {
                 errors.push(format!("entidad '{}': {e}", entity.name));
             }
         }
+        // Transitions (27.12): a verb each, whose use case `bootstrap.rs` mounts on its own API.
+        for (i, (verb, uc)) in entity
+            .transitions
+            .iter()
+            .zip(entity.transition_use_cases())
+            .enumerate()
+        {
+            if let Err(e) = crate::validation::validate_transition_verb(verb) {
+                errors.push(format!("entidad '{}': transiciones: {e}", entity.name));
+            }
+            if entity.transitions[..i].contains(verb) {
+                errors.push(format!(
+                    "entidad '{}': transiciones: '{verb}' está dos veces",
+                    entity.name
+                ));
+            }
+            if !entity.use_cases.contains(&uc) {
+                errors.push(format!(
+                    "entidad '{}': transiciones: '{verb}' necesita su caso de uso '{uc}' en \
+                     casos_de_uso",
+                    entity.name
+                ));
+            }
+        }
 
         let mut seen_fields: Vec<String> = vec![];
         for field in &entity.fields {

@@ -276,6 +276,7 @@ puerto generar scaffold <Nombre> -- segundo_nombre:SegundoNombre:opt:String   # 
 puerto generar scaffold <Nombre> -- etiquetas:Etiqueta:vec:String          # Objeto valor Vec
 puerto generar scaffold Pedido -- cliente_id:ref:Cliente revisor_id:ref:opt:Cliente   # Referencias (ADR-0022): el id del objetivo, una clave foránea
 puerto generar objeto-valor <Nombre> <tipo>         # Declara un objeto valor compartido en puerto.toml (p. ej. Email String; vale DateTime)
+puerto generar transicion Concierto cancelar [--evento concierto_cancelado] [--rol admin]   # Un cambio de estado de punta a punta (27.12)
 puerto generar evento <Entidad> <nombre>            # Proyectos con eventos: un evento propio (producto_publicado) + regenera eventos.rs
 puerto generar consumidor <nombre> --tras producto_creado,producto_publicado   # Proyectos con eventos: un consumidor del worker + regenera registro.rs
 puerto generar correo <nombre> [-- nombre:String plazas:i64 plan:opt:String]  # Un correo: puerto, enviador con plantillas, plantillas; el primero añade Mailpit
@@ -471,6 +472,13 @@ make format/fix    # cargo fmt --all
   roles. Las pantallas del scaffold ocultan Crear/Editar/Borrar tras `puede(rol)` cuando el caso de
   uso tiene rol, con un test cada uno, y un test de 403 en un borrado
   protegido
+- `puerto generar transicion <Entidad> <verbo>` (27.12, entidades CRUD): `[[entidad]] transiciones`;
+  `dominio/src/<verbo>.rs` (`impl <Entidad> { fn <verbo> }`, la regla por escribir, el código
+  `<entidad>.validacion.no_se_puede_<verbo>`), el caso de uso `<verbo>_<entidad>` entero,
+  `rest/src/<verbo>_<entidad>.rs` con su propio `Api<Caso>` + `Respuesta<Caso>` (`bootstrap.rs` lo
+  monta como `(api_<c>, api_<caso>)`; `rutas.rs` no cambia) y, con pantallas,
+  `contenedores/<verbo>-<entidad>.tsx` (`Boton<Caso>`, `DialogoConfirmar` con `textoCancelar` y el
+  rechazo dentro), una línea en el `card-actions` del detalle y otra en `mensajes.ts`
 - Referencias (ADR-0022): `cliente_id:ref:Cliente` (`[[entidad.campos]] referencia`) — el dominio,
   los Params y la madre guardan `IdCliente` (`IdCliente::generar()` en los tests), las filas y los
   DTO un `Uuid`; `dominio_pedido` depende de `dominio_cliente`. `--db`:

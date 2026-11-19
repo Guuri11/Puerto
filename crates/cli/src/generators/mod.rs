@@ -19,6 +19,7 @@ pub mod presentation;
 pub mod project;
 pub mod render;
 pub mod scaffold;
+pub mod transition;
 pub mod types;
 pub mod use_case;
 pub mod web;

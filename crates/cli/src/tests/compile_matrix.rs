@@ -33,6 +33,9 @@ pub(super) struct Scenario<'a> {
     pub(super) shapes: &'a [Shape<'a>],
     /// Custom use cases added after scaffolding: `(PascalEntity, snake_action)`.
     pub(super) use_cases: &'a [(&'a str, &'a str)],
+    /// Transitions added after the custom use cases (`puerto generar transicion`): `(PascalEntity,
+    /// verb, --evento, --rol)`.
+    pub(super) transitions: &'a [Transition<'a>],
     /// Custom events declared after scaffolding (`puerto generar evento`): `(PascalEntity, name)`.
     pub(super) entity_events: &'a [(&'a str, &'a str)],
     /// Worker consumers added last (`puerto generar consumidor`): `(name, event types)`.
@@ -50,6 +53,8 @@ pub(super) type Access<'a> = (&'a str, &'a [&'a str], &'a [&'a str]);
 
 pub(super) type Shape<'a> = (&'a str, &'a [&'a str], &'a [&'a str], &'a [&'a str]);
 
+pub(super) type Transition<'a> = (&'a str, &'a str, Option<&'a str>, &'a [&'a str]);
+
 pub(super) type Mail<'a> = (&'a str, &'a [&'a str], &'a [&'a str], Option<&'a str>);
 
 // The scenarios, shared with the snapshot tests (`generated_output.rs`): one proves the output
@@ -66,6 +71,7 @@ pub(super) const NO_DEMO: Scenario = Scenario {
     shared_vos: &[],
     mails: &[],
     use_cases: &[],
+    transitions: &[],
     entity_events: &[],
     consumers: &[],
     entities: &[("Persona", &["name:String"])],
@@ -85,6 +91,7 @@ pub(super) const NO_WEB: Scenario = Scenario {
     shared_vos: &[],
     mails: &[],
     use_cases: &[],
+    transitions: &[],
     entity_events: &[],
     consumers: &[],
     entities: &[],
@@ -104,6 +111,7 @@ pub(super) const PRIMITIVES: Scenario = Scenario {
     shared_vos: &[],
     mails: &[],
     use_cases: &[],
+    transitions: &[],
     entity_events: &[],
     consumers: &[],
     entities: &[(
@@ -136,6 +144,7 @@ pub(super) const UUID_VO: Scenario = Scenario {
     shared_vos: &[],
     mails: &[],
     use_cases: &[],
+    transitions: &[],
     entity_events: &[],
     consumers: &[],
     entities: &[("Reserva", &["reference:String", "tenant_id:TenantId:Uuid"])],
@@ -155,6 +164,7 @@ pub(super) const OPT_VEC_PRIM: Scenario = Scenario {
     shared_vos: &[],
     mails: &[],
     use_cases: &[],
+    transitions: &[],
     entity_events: &[],
     consumers: &[],
     entities: &[(
@@ -183,6 +193,7 @@ pub(super) const PLAIN_VO: Scenario = Scenario {
     shared_vos: &[],
     mails: &[],
     use_cases: &[],
+    transitions: &[],
     entity_events: &[],
     consumers: &[],
     entities: &[(
@@ -205,6 +216,7 @@ pub(super) const OPT_VEC_VO: Scenario = Scenario {
     shared_vos: &[],
     mails: &[],
     use_cases: &[],
+    transitions: &[],
     entity_events: &[],
     consumers: &[],
     entities: &[(
@@ -231,6 +243,7 @@ pub(super) const ENUM_VO: Scenario = Scenario {
     shared_vos: &[],
     mails: &[],
     use_cases: &[],
+    transitions: &[],
     entity_events: &[],
     consumers: &[],
     entities: &[(
@@ -256,6 +269,7 @@ pub(super) const SHARED_VO: Scenario = Scenario {
     shared_vos: &[("Email", "String"), ("Money", "i64")],
     mails: &[],
     use_cases: &[],
+    transitions: &[],
     entity_events: &[],
     consumers: &[],
     entities: &[("Cliente", &["name:String", "email:Email", "credit:Money"])],
@@ -275,6 +289,7 @@ pub(super) const MULTI_ENTITY: Scenario = Scenario {
     shared_vos: &[],
     mails: &[],
     use_cases: &[],
+    transitions: &[],
     entity_events: &[],
     consumers: &[],
     entities: &[
@@ -297,6 +312,7 @@ pub(super) const VO_KITCHEN_SINK: Scenario = Scenario {
     shared_vos: &[("Email", "String")],
     mails: &[],
     use_cases: &[],
+    transitions: &[],
     entity_events: &[],
     consumers: &[],
     entities: &[(
@@ -329,6 +345,7 @@ pub(super) const ENUM_ONLY: Scenario = Scenario {
     shared_vos: &[],
     mails: &[],
     use_cases: &[],
+    transitions: &[],
     entity_events: &[],
     consumers: &[],
     entities: &[("Billete", &["state:State:enum:Open/Closed"])],
@@ -337,6 +354,7 @@ pub(super) const ENUM_ONLY: Scenario = Scenario {
     blocks: &[],
 };
 
+/// A custom use case, and a transition with neither events nor auth (27.12).
 pub(super) const CUSTOM_USE_CASE: Scenario = Scenario {
     name: "custom_use_case",
     db: false,
@@ -348,6 +366,7 @@ pub(super) const CUSTOM_USE_CASE: Scenario = Scenario {
     shared_vos: &[],
     mails: &[],
     use_cases: &[("Producto", "archive_producto")],
+    transitions: &[("Producto", "archivar", None, &[])],
     entity_events: &[],
     consumers: &[],
     entities: &[("Producto", &["title:String", "price:i64"])],
@@ -369,6 +388,7 @@ pub(super) const WEB_CRUD: Scenario = Scenario {
     shared_vos: &[],
     mails: &[],
     use_cases: &[],
+    transitions: &[],
     entity_events: &[],
     consumers: &[],
     entities: &[(
@@ -401,6 +421,7 @@ pub(super) const WEB_EVERY_TYPE: Scenario = Scenario {
     shared_vos: &[],
     mails: &[],
     use_cases: &[],
+    transitions: &[],
     entity_events: &[],
     consumers: &[],
     entities: &[(
@@ -460,6 +481,7 @@ pub(super) const REFERENCES: Scenario = Scenario {
     shared_vos: &[],
     mails: &[],
     use_cases: &[],
+    transitions: &[],
     entity_events: &[],
     consumers: &[],
     entities: REFERENCE_ENTITIES,
@@ -513,6 +535,7 @@ pub(super) const POSTGRES_EVERY_TYPE: Scenario = Scenario {
     shared_vos: &[("Email", "String")],
     mails: &[],
     use_cases: &[("Producto", "archive_producto")],
+    transitions: &[],
     entity_events: &[],
     consumers: &[],
     entities: &[
@@ -565,6 +588,7 @@ pub(super) const EVENTS_DB: Scenario = Scenario {
     shared_vos: &[],
     mails: &[],
     use_cases: &[("Producto", "publish_producto")],
+    transitions: &[],
     entity_events: &[("Producto", "producto_published")],
     consumers: &[(
         "notify_new_producto",
@@ -588,10 +612,17 @@ pub(super) const EVENTS_DB: Scenario = Scenario {
 };
 
 /// [`EVENTS_DB`] in an auth project (Phase 16.4): the unit-of-work writes take the caller too,
-/// and the worker builds without one.
+/// and the worker builds without one. With a transition that emits its own event and needs a role
+/// (27.12).
 pub(super) const AUTH_OIDC_EVENTS: Scenario = Scenario {
     name: "auth_oidc_events",
     auth: Some("oidc"),
+    transitions: &[(
+        "Producto",
+        "cancelar",
+        Some("producto_cancelado"),
+        &["admin"],
+    )],
     access: &[(
         "Producto",
         &["listar_productos"],
@@ -644,6 +675,7 @@ pub(super) const EVENTS_MAIL_KAFKA: Scenario = Scenario {
 pub(super) const EVENTS_FRESH: Scenario = Scenario {
     name: "events_fresh",
     use_cases: &[],
+    transitions: &[],
     entity_events: &[],
     consumers: &[],
     entities: &[],
@@ -687,6 +719,7 @@ pub(super) const MAIL: Scenario = Scenario {
         ),
     ],
     use_cases: &[],
+    transitions: &[],
     entity_events: &[],
     consumers: &[],
     entities: &[],
@@ -710,6 +743,11 @@ pub(super) const AUTH_OIDC: Scenario = Scenario {
     mails: &[],
     // Protected by default: its params carry the caller.
     use_cases: &[("Producto", "publish_producto")],
+    // 27.12: a transition that needs two roles, and one any caller with a session can make.
+    transitions: &[
+        ("Producto", "retirar", None, &["admin", "owner"]),
+        ("Pedido", "pagar", None, &[]),
+    ],
     entity_events: &[],
     consumers: &[],
     entities: &[
@@ -761,6 +799,7 @@ pub(super) const REFERENCES_AUTH: Scenario = Scenario {
     shared_vos: &[],
     mails: &[],
     use_cases: &[],
+    transitions: &[],
     entity_events: &[],
     consumers: &[],
     entities: &[
@@ -950,6 +989,12 @@ pub(super) fn apply_scenario(scenario: &Scenario, output: &Path) {
 
     for (entity, action) in scenario.use_cases {
         scaffold::run_use_case(entity, action, output).unwrap();
+        format();
+    }
+
+    for (entity, verb, event, roles) in scenario.transitions {
+        let roles: Vec<String> = roles.iter().map(|r| r.to_string()).collect();
+        scaffold::run_generate_transition(entity, verb, *event, &roles, output).unwrap();
         format();
     }
 

@@ -18,6 +18,10 @@ casos_de_uso = ["crear_producto", "listar_productos"]   # acciones en snake_case
 db = true                # opcional — omitido: en memoria; true: SQLx/Postgres
 eventos = ["producto_publicado"]   # opcional, proyectos con eventos: eventos propios además de los
                                    # CRUD creado/actualizado/borrado — snake_case, únicos, no CRUD
+transiciones = ["cancelar"]      # opcional (27.12, `generar transicion`): verbos; cada uno es el método
+                                 # dominio/src/<verbo>.rs, el caso de uso <verbo>_<entidad> (también en
+                                 # casos_de_uso) y la ruta rest/src/<verbo>_<entidad>.rs con su Api<Caso>,
+                                 # que bootstrap.rs monta junto a Api<Entidad> (sin campo en ella)
 unicos = [["jugador_id", "partido_id"]]   # opcional: un único sobre varios campos (`--unico a,b`) →
                                  # CREATE UNIQUE INDEX <tabla>_<a>_<b>_key … WHERE borrado = false; el
                                  # repositorio en memoria también lo comprueba. Dos o más campos propios,
@@ -282,6 +286,7 @@ entera de entidades:
 | `puerto generar bootstrap [--permitir-faltantes]` | Regenera `cableado`, `bootstrap.rs` (y `web/…/core/generated/*`); se niega si una entidad declarada no tiene código en disco |
 | `puerto generar caso-de-uso <Entidad> <accion>` | Añade la acción a `casos_de_uso`, escribe su fichero en `aplicacion_<c>` con su `pub mod`, añade el campo a `Api<Entidad>`, regenera el cableado. Rechaza una acción que ya existe |
 | `puerto generar objeto-valor <Nombre> <tipo>`   | Añade un bloque `[[objeto_valor]]`. Rechaza nombres o tipos inválidos y duplicados |
+| `puerto generar transicion <Entidad> <verbo> [--evento <tipo>] [--rol <rol>[,…]]` | Entidades CRUD con presentación (27.12): añade el verbo a `transiciones`, su caso de uso a `casos_de_uso`, el evento a `eventos` (proyectos con eventos) y los roles a `roles` (proyectos con auth); escribe `dominio/src/<verbo>.rs`, `aplicacion/src/<verbo>_<entidad>.rs`, `rest/src/<verbo>_<entidad>.rs` (sus `pub mod`) y, con pantallas, `contenedores/<verbo>-<entidad>.tsx` + su test, una línea en el detalle y otra en `mensajes.ts`; regenera el cableado. Rechaza un verbo CRUD, `validar`, `new`, un módulo del dominio, una palabra clave, uno que ya existe y una entidad que no es CRUD |
 | `puerto generar evento <Entidad> <nombre>`      | Proyectos con eventos, entidades CRUD: añade a `[[entidad]] eventos`, regenera `eventos.rs`. Rechaza un nombre CRUD, un duplicado (también por variante: `publicado` = `producto_publicado`) o un nombre que no es snake_case. No toca ningún caso de uso |
 | `puerto generar web-bloque [<hueco>/<variante>] [--forzar]` | Proyectos con web: sin argumento, el catálogo; con uno, escribe el fichero de su hueco (ADR-0028). No toca puerto.toml. Rechaza un bloque desconocido, uno de auth sin `auth` y uno de la portada sin `portada` (las secciones, sin `portada/producto`) |
 | `puerto generar web <Nombre> [--forzar]`        | Proyectos con web: el slice del frontend de la entidad + `core/generated/*`. No toca puerto.toml; rechaza una entidad no declarada o no CRUD |

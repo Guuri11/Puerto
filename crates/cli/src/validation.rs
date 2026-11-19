@@ -242,6 +242,48 @@ pub fn validate_use_case_name(action: &str) -> Result<(), String> {
     Ok(())
 }
 
+/// The modules of a domain crate and the methods of a CRUD entity: a transition's verb is both a
+/// module (`dominio/src/<verb>.rs`) and a method (`impl <Entity> { fn <verb> }`).
+const TRANSITION_TAKEN: &[&str] = &[
+    "crear",
+    "obtener",
+    "listar",
+    "actualizar",
+    "borrar",
+    "validar",
+    "new",
+    "from_repositorio",
+    "modelo",
+    "errores",
+    "repositorio",
+    "valores",
+    "eventos",
+    "unit_of_work",
+    "pruebas",
+];
+
+/// A transition's verb (27.12): snake_case, and none of the names its entity already uses.
+pub fn validate_transition_verb(verb: &str) -> Result<(), String> {
+    if !is_valid_field_name(verb) {
+        return Err(format!(
+            "verbo inválido '{verb}'. Va en snake_case e infinitivo, p. ej. 'cancelar' o \
+             'poner_a_la_venta'"
+        ));
+    }
+    if RUST_KEYWORDS.contains(&verb) {
+        return Err(format!(
+            "el verbo '{verb}' es una palabra clave de Rust. Elige otro"
+        ));
+    }
+    if TRANSITION_TAKEN.contains(&verb) {
+        return Err(format!(
+            "el verbo '{verb}' ya es un caso de uso CRUD, un método o un módulo del dominio de \
+             la entidad. Elige otro"
+        ));
+    }
+    Ok(())
+}
+
 /// A `[[consumidor]]` name becomes a module (`presentacion/worker/src/consumidores/<name>.rs`), a type
 /// (`NotifyNewProduct`) and the `db` transport's consumer column.
 pub fn validate_consumer_name(name: &str) -> Result<(), String> {

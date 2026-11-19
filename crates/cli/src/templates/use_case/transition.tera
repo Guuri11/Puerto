@@ -1,0 +1,164 @@
+use std::sync::Arc;
+
+use async_trait::async_trait;
+{% if actor %}use puerto_nucleo::auth::Principal;
+{% endif %}
+use dominio_{{ snake }}::{
+    errores::Error{{ pascal }},
+    modelo::{{ "{" }}{{ pascal }}, Id{{ pascal }}},
+    repositorio::Repositorio{{ pascal }},
+{% if uow %}    unit_of_work::UnitOfWorkFactory{{ pascal }},
+{% endif %}};
+
+#[derive(Debug, Clone)]
+pub struct Params{{ uc_pascal }} {
+{% if actor %}    /// Quien lo pide (ADR-0021). Una regla que depende de él ("solo lo cancela quien lo creó") se
+    /// decide aquí y responde `Prohibido`.
+    pub actor: Principal,
+{% endif %}    pub id: Id{{ pascal }},
+}
+
+/// La transición `{{ verb }}` de {{ pascal }} (`puerto generar transicion`): la regla está en
+/// `dominio_{{ snake }}::{{ verb }}`.
+#[async_trait]
+pub trait {{ uc_pascal }}: Send + Sync {
+    async fn ejecutar(&self, params: Params{{ uc_pascal }}) -> Result<{{ pascal }}, Error{{ pascal }}>;
+}
+
+#[cfg(any(test, feature = "pruebas"))]
+pub mod dobles {
+    use mockall::mock;
+
+    use super::*;
+
+    mock! {
+        pub {{ uc_pascal }} {}
+
+        #[async_trait]
+        impl {{ uc_pascal }} for {{ uc_pascal }} {
+            async fn ejecutar(&self, params: Params{{ uc_pascal }}) -> Result<{{ pascal }}, Error{{ pascal }}>;
+        }
+    }
+}
+
+pub struct {{ uc_pascal }}Impl {
+    pub repositorio: Arc<dyn Repositorio{{ pascal }}>,
+{% if uow %}    /// Las escrituras pasan por la unidad de trabajo: el método de la entidad emite el evento y
+    /// `uow_factory.guardar(&entidad, evento)` guarda los dos juntos. El repositorio solo lee.
+    pub uow_factory: Arc<dyn UnitOfWorkFactory{{ pascal }}>,
+{% endif %}}
+
+#[async_trait]
+impl {{ uc_pascal }} for {{ uc_pascal }}Impl {
+    #[tracing::instrument(name = "{{ uc }}", skip_all, fields(id = %params.id), err(level = "warn"))]
+    async fn ejecutar(&self, params: Params{{ uc_pascal }}) -> Result<{{ pascal }}, Error{{ pascal }}> {
+        let mut entidad = self
+            .repositorio
+            .buscar_por_id(params.id)
+            .await?
+            .ok_or(Error{{ pascal }}::NoEncontrado)?;
+{% if uow %}        let evento = entidad.{{ verb }}()?;
+        self.uow_factory.guardar(&entidad, evento).await?;
+{% else %}        entidad.{{ verb }}()?;
+        self.repositorio.guardar(&entidad).await?;
+{% endif %}        Ok(entidad)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+{% if actor %}    use puerto_nucleo::auth::dobles::MadrePrincipal;
+{% endif %}    use dominio_{{ snake }}::{
+        pruebas::madres::Madre{{ pascal }},
+        repositorio::dobles::MockRepositorio{{ pascal }},
+{% if uow %}        unit_of_work::dobles::UnitOfWorkFactoryGrabadora,
+{% endif %}    };
+{% if uow %}    use puerto_nucleo::EventoDominio;
+{% endif %}
+    /// El repositorio que encuentra `encontrado`{% if not uow %} y guarda `guardados` veces{% endif %}.
+    fn repositorio(encontrado: Option<{{ pascal }}>{% if not uow %}, guardados: usize{% endif %}) -> MockRepositorio{{ pascal }} {
+        let mut repositorio_doble = MockRepositorio{{ pascal }}::new();
+        repositorio_doble
+            .expect_buscar_por_id()
+            .returning(move |_| Ok(encontrado.clone()));
+{% if not uow %}        repositorio_doble
+            .expect_guardar()
+            .times(guardados)
+            .returning(|_| Ok(()));
+{% endif %}        repositorio_doble
+    }
+
+    fn params(id: Id{{ pascal }}) -> Params{{ uc_pascal }} {
+        Params{{ uc_pascal }} {
+{% if actor %}            actor: MadrePrincipal::aleatorio(),
+{% endif %}            id,
+        }
+    }
+
+    #[tokio::test]
+    async fn deberia_{{ verb }}_{{ snake }}_cuando_existe() {
+        // Preparar
+        let entidad = Madre{{ pascal }}::aleatorio();
+        let id = entidad.id;
+{% if uow %}        let uow_factory = UnitOfWorkFactoryGrabadora::new();
+{% endif %}        let caso_de_uso = {{ uc_pascal }}Impl {
+            repositorio: Arc::new(repositorio(Some(entidad){% if not uow %}, 1{% endif %})),
+{% if uow %}            uow_factory: Arc::new(uow_factory.clone()),
+{% endif %}        };
+
+        // Actuar
+        let resultado = caso_de_uso.ejecutar(params(id)).await;
+
+        // Comprobar
+        assert_eq!(resultado.map(|e| e.id).ok(), Some(id));
+{% if uow %}        let grabado = uow_factory.grabado();
+        assert!(grabado.confirmado);
+        assert_eq!(grabado.eventos.len(), 1);
+        assert_eq!(grabado.eventos[0].tipo_evento(), "{{ event_type }}");
+        assert_eq!(grabado.eventos[0].id_agregado(), id.valor());
+{% endif %}    }
+
+    #[tokio::test]
+    async fn deberia_devolver_no_encontrado_cuando_{{ snake }}_no_existe() {
+        // Preparar
+{% if uow %}        let uow_factory = UnitOfWorkFactoryGrabadora::new();
+{% endif %}        let caso_de_uso = {{ uc_pascal }}Impl {
+            repositorio: Arc::new(repositorio(None{% if not uow %}, 0{% endif %})),
+{% if uow %}            uow_factory: Arc::new(uow_factory.clone()),
+{% endif %}        };
+
+        // Actuar
+        let resultado = caso_de_uso.ejecutar(params(Id{{ pascal }}::generar())).await;
+
+        // Comprobar
+        assert_eq!(
+            resultado.map(|_| ()).unwrap_err().to_string(),
+            "{{ snake }}.no_encontrado"
+        );
+{% if uow %}        assert!(uow_factory.grabado().eventos.is_empty());
+{% endif %}    }
+
+    #[tokio::test]
+    #[ignore = "escribe la regla"]
+    async fn deberia_rechazar_sin_guardar_nada_cuando_{{ snake }}_no_se_puede_{{ verb }}() {
+        // Preparar: {{ words }} que la regla rechaza (`Madre{{ pascal }}::new().con_…(…).construir()`)
+        let entidad = Madre{{ pascal }}::aleatorio();
+        let id = entidad.id;
+{% if uow %}        let uow_factory = UnitOfWorkFactoryGrabadora::new();
+{% endif %}        let caso_de_uso = {{ uc_pascal }}Impl {
+            repositorio: Arc::new(repositorio(Some(entidad){% if not uow %}, 0{% endif %})),
+{% if uow %}            uow_factory: Arc::new(uow_factory.clone()),
+{% endif %}        };
+
+        // Actuar
+        let resultado = caso_de_uso.ejecutar(params(id)).await;
+
+        // Comprobar
+        assert_eq!(
+            resultado.map(|_| ()).unwrap_err().to_string(),
+            "{{ snake }}.validacion.no_se_puede_{{ verb }}"
+        );
+{% if uow %}        assert!(uow_factory.grabado().guardados.is_empty());
+{% endif %}    }
+}

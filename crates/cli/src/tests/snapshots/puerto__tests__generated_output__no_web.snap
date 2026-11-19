@@ -73,6 +73,7 @@ comprueba que los dos siguen de acuerdo. `puerto listar` muestra lo que declara,
 | `puerto generar scaffold <Nombre> [-- campos…]` | todas las capas de una entidad CRUD (crear, obtener, listar, actualizar, borrar) + la migración de su tabla con `db` |
 | `puerto generar dominio <Nombre> [-- campos…]` | solo la capa de dominio, y la entidad en `puerto.toml`; después `puerto generar aplicacion <Nombre>`, `puerto generar repositorio <Nombre>`, `puerto generar presentacion <Nombre>`: una capa cada vez, y cada una comprueba la anterior |
 | `puerto generar caso-de-uso <Entidad> <accion>` | un caso de uso más: su fichero (trait + doble, la impl por rellenar; ver más abajo) y un campo en `Api<Entidad>` |
+| `puerto generar transicion <Entidad> <verbo> [--evento <tipo>] [--rol <rol>]` | un cambio de estado de punta a punta (`cancelar`): el método `<verbo>` de la entidad en `dominio/src/<verbo>.rs` (la regla, por escribir), el caso de uso `<verbo>_<entidad>` con sus tests, `POST /<plural>/{id}/<verbo>` en `rest/src/<verbo>_<entidad>.rs` y, con pantallas, su botón en el detalle |
 | `puerto generar objeto-valor <Nombre> <tipo>` | un objeto valor compartido (`[[objeto_valor]]`), reutilizable por todas las entidades |
 | `puerto generar migracion <nombre>` | una migración SQL vacía (proyectos `db`) |
 | `puerto generar bootstrap` | vuelve a cablear `presentacion/cableado` y `generado/bootstrap.rs` a partir de `puerto.toml` |
@@ -133,7 +134,7 @@ apuntándole. La lista filtra por cada referencia: `GET /pedidos?clienteId=…` 
 | **Se reescriben en cada ejecución**: no los edites a mano | `presentacion/cableado/` (también su `Cargo.toml`), `presentacion/api/src/generado/bootstrap.rs`, `contextos/<c>/dominio/src/eventos.rs`, `presentacion/worker/src/generado/registro.rs` | editando `puerto.toml` y ejecutando después el comando que los escribe (`generar bootstrap`, `generar evento`, `generar consumidor`) |
 | **Los ficheros de la entidad**: son tuyos, pero `scaffold --forzar` los reescribe | los cuatro crates de un contexto: los casos de uso CRUD, el modelo, los errores, el repositorio, las rutas, los DTO, los mapeos, la madre, y sus `Cargo.toml` y `lib.rs` | editándolos; `--forzar` solo mientras sigan siendo lo que escribió el generador |
 | **Parcheados**: se añade una línea y se conserva el resto | el `Cargo.toml` raíz (miembros, `[workspace.dependencies]`), `presentacion/api/Cargo.toml` y `presentacion/worker/Cargo.toml` (el crate de un contexto), el `lib.rs` del crate de aplicación, `rutas.rs` (los campos de `Api<Entidad>`), `presentacion/worker/src/consumidores.rs`, `puerto.toml` | editándolos libremente; conserva las líneas que añadió Puerto |
-| **Se escriben una vez**: tuyos desde el principio | `presentacion/api/src/app.rs` (tus middleware y rutas), la impl de un `generar caso-de-uso`, los consumidores, los correos y sus plantillas, las migraciones, los ficheros de auth | editándolos |
+| **Se escriben una vez**: tuyos desde el principio | `presentacion/api/src/app.rs` (tus middleware y rutas), la impl de un `generar caso-de-uso`, los ficheros de una transición (su método, su caso de uso, su ruta, su botón), los consumidores, los correos y sus plantillas, las migraciones, los ficheros de auth | editándolos |
 
 
 ### Cambiar los campos de una entidad
@@ -157,8 +158,9 @@ cableado a mano: si el cableado, un `lib.rs` o `Api<Entidad>` necesitan una lín
 comando.
 
 1. **Modélalo en el generador.** Una entidad nueva: `puerto generar scaffold <Nombre> -- …` con sus
-   campos, objetos valor y enums. Una operación más sobre una entidad:
-   `puerto generar caso-de-uso <Entidad> <accion>`.
+   campos, objetos valor y enums. Un cambio de estado (cancelar, publicar, archivar):
+   `puerto generar transicion <Entidad> <verbo>`, que solo deja por escribir la regla. Cualquier
+   otra operación sobre una entidad: `puerto generar caso-de-uso <Entidad> <accion>`.
 2. **Enumera los escenarios** antes del código: el camino feliz, la entrada vacía o inválida, los
    límites, los cambios de estado y la regresión que pida un arreglo.
 3. **Rojo.** Una entidad generada con `scaffold` ya tiene tests de lo que generó; añade los tuyos al

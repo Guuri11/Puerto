@@ -118,7 +118,8 @@ fn add_mocks_field(src: &mut String, uc: &str, mock: &str) {
     src.insert_str(close, &format!("        {uc}: {mock},\n"));
 }
 
-/// [`patch_routes_use_cases`] with the entity's use cases read from puerto.toml.
+/// [`patch_routes_use_cases`] with the entity's use cases read from puerto.toml — but its
+/// transitions', each on an `Api{UseCase}` of its own (27.12).
 pub fn patch_routes_from_manifest(
     base: &Path,
     pascal: &str,
@@ -126,7 +127,14 @@ pub fn patch_routes_from_manifest(
 ) -> Result<(), Box<dyn std::error::Error>> {
     let config = crate::puerto_toml::read(base)?;
     if let Some(entity) = config.entity.iter().find(|e| e.name == pascal) {
-        patch_routes_use_cases(base, pascal, snake, &entity.use_cases)?;
+        let transitions = entity.transition_use_cases();
+        let own: Vec<String> = entity
+            .use_cases
+            .iter()
+            .filter(|uc| !transitions.contains(uc))
+            .cloned()
+            .collect();
+        patch_routes_use_cases(base, pascal, snake, &own)?;
     }
     Ok(())
 }

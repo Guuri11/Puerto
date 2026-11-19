@@ -153,6 +153,25 @@ enum GenerateAction {
         #[arg(value_name = "NOMBRE")]
         name: String,
     },
+    /// Añade una transición de estado a una entidad CRUD: su método en el dominio, su caso de uso,
+    /// su ruta POST /<plural>/{id}/<verbo> y, con pantallas, su botón en el detalle
+    #[command(name = "transicion")]
+    Transition {
+        /// Nombre de la entidad en PascalCase (p. ej. Concierto)
+        #[arg(value_name = "ENTIDAD")]
+        entity: String,
+        /// El verbo en snake_case e infinitivo (p. ej. cancelar): el método, y el caso de uso
+        /// <verbo>_<entidad>
+        #[arg(value_name = "VERBO")]
+        verb: String,
+        /// Proyectos creados con --eventos: el evento propio que emite (p. ej. concierto_cancelado);
+        /// sin él, <entidad>_actualizado
+        #[arg(value_name = "EVENTO", long = "evento")]
+        event: Option<String>,
+        /// Proyectos con auth: los roles que exige su ruta, separados por comas (p. ej. admin)
+        #[arg(value_name = "ROLES", long = "rol", value_delimiter = ',')]
+        roles: Vec<String>,
+    },
     /// Añade un consumidor al worker: un manejador de eventos, sus tests y su entrada en el
     /// registro (proyectos creados con --eventos)
     #[command(name = "consumidor")]
@@ -552,6 +571,28 @@ fn run(command: Commands) -> Result<(), Box<dyn std::error::Error>> {
             let cwd = std::env::current_dir()?;
             commands::list::require_puerto_project(&cwd)
                 .and_then(|_| scaffold::run_generate_event(&entity, &name, &cwd))
+                .map(|()| format_after_generation(&cwd))
+        }
+        Commands::Generate {
+            action:
+                GenerateAction::Transition {
+                    entity,
+                    verb,
+                    event,
+                    roles,
+                },
+        } => {
+            let cwd = std::env::current_dir()?;
+            commands::list::require_puerto_project(&cwd)
+                .and_then(|_| {
+                    scaffold::run_generate_transition(
+                        &entity,
+                        &verb,
+                        event.as_deref(),
+                        &roles,
+                        &cwd,
+                    )
+                })
                 .map(|()| format_after_generation(&cwd))
         }
         Commands::Generate {

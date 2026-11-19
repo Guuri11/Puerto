@@ -442,11 +442,17 @@ fn entity_template_ctx(
     ctx.insert("form_helpers_type_only", &form_helpers_type_only);
     ctx.insert("fill_helpers", &helpers(|f| &f.to_form_helpers));
     ctx.insert("display_helpers", &helpers(|f| &f.display_helpers));
-    let groups = config
-        .and_then(|c| c.entity.iter().find(|e| e.name == pascal))
-        .map(|e| e.uniques.clone())
-        .unwrap_or_default();
-    let problems = web_problems(&entity, &eff, &web_fields, &groups);
+    let declared = config.and_then(|c| c.entity.iter().find(|e| e.name == pascal));
+    let groups = declared.map(|e| e.uniques.clone()).unwrap_or_default();
+    let verbs = declared.map(|e| e.transitions.clone()).unwrap_or_default();
+    let problems = web_problems(&entity, &eff, &web_fields, &groups, &verbs);
+    ctx.insert(
+        "transitions",
+        &verbs
+            .iter()
+            .map(|verb| web_transition_ctx(&entity, verb, access))
+            .collect::<Vec<_>>(),
+    );
     ctx.insert(
         "field_problem",
         &problems.iter().find(|p| p.field.is_some()),
@@ -561,6 +567,7 @@ fn web_problems(
     eff: &[Field],
     web_fields: &[WebFieldCtx],
     groups: &[Vec<String>],
+    transitions: &[String],
 ) -> Vec<WebProblemCtx> {
     let snake = &entity.snake;
     let mut problems: Vec<WebProblemCtx> = vec![];
@@ -612,7 +619,23 @@ fn web_problems(
             text: text.to_string(),
         });
     }
+    // Last: `generar transicion` appends its own to a `mensajes.ts` already written.
+    problems.extend(
+        transitions
+            .iter()
+            .map(|verb| transition_problem(snake, verb)),
+    );
     problems
+}
+
+/// The rejection of a transition (27.12), in the alert of its dialog.
+fn transition_problem(snake: &str, verb: &str) -> WebProblemCtx {
+    WebProblemCtx {
+        code: format!("{snake}.validacion.no_se_puede_{verb}"),
+        field: None,
+        label: String::new(),
+        text: format!("No se puede {}", snake_to_words(verb)),
+    }
 }
 
 /// What a duplicate says (27.11): the API answers one `<entidad>.duplicado` whatever clashed, so it
@@ -678,6 +701,235 @@ fn duplicate_problem(
     }
 }
 
+/// A transition (27.12) as the web shows it: its button (`contenedores/<uc>.tsx`), in the detail.
+#[derive(Serialize)]
+struct WebTransitionCtx {
+    verb: String,
+    verb_words: String,
+    uc: String,
+    uc_pascal: String,
+    uc_kebab: String,
+    /// What the button, the dialog and its confirmation say: `Cancelar concierto`.
+    label: String,
+    label_lower: String,
+    code: String,
+    /// Hidden from who has no session (protected) or lacks one of `roles`.
+    protected: bool,
+    roles: Vec<String>,
+    /// Its line(s) in the detail's `card-actions`, indented.
+    element: String,
+    signature_inline: bool,
+    post_inline: bool,
+    api_inline: bool,
+}
+
+fn web_transition_ctx(entity: &WebEntityCtx, verb: &str, access: &Access) -> WebTransitionCtx {
+    let uc = crate::generators::naming::transition_use_case(verb, &entity.snake);
+    let uc_pascal = to_pascal_case(&uc);
+    let label = format!("{} {}", capitalize(&snake_to_words(verb)), entity.words);
+    let inline = format!(
+        "              <Boton{uc_pascal} id={{id}} alTerminar={{{}.recargar}} />",
+        entity.ident
+    );
+    let element = if fits(&inline) {
+        inline
+    } else {
+        format!(
+            "              <Boton{uc_pascal}\n                id={{id}}\n                alTerminar={{{}.recargar}}\n              />",
+            entity.ident
+        )
+    };
+    WebTransitionCtx {
+        verb: verb.to_string(),
+        verb_words: snake_to_words(verb),
+        uc_kebab: snake_to_kebab(&uc),
+        label_lower: crate::generators::naming::uncapitalize(&label),
+        code: transition_problem(&entity.snake, verb).code,
+        protected: access.is_protected(&uc),
+        roles: access.roles(&uc),
+        element,
+        signature_inline: fits(&format!(
+            "export function Boton{uc_pascal}({{ id, alTerminar }}: {{ id: string; alTerminar: () => void }}) {{"
+        )),
+        post_inline: fits(&format!(
+            "      await desenvolver(api.POST(\"/{}/{{id}}/{verb}\", {{ params: {{ path: {{ id }} }} }}));",
+            entity.plural
+        )),
+        api_inline: fits(&format!(
+            "    const api = apiFalsa([coleccion(\"/{}\", \"{}\", [sembrado], {{ {verb}: {{}} }})]);",
+            entity.plural, entity.snake
+        )),
+        label,
+        uc_pascal,
+        uc,
+    }
+}
+
+/// The button of transition `verb` and its test, relative to the project root.
+pub fn transition_files(snake: &str, verb: &str) -> [PathBuf; 2] {
+    let k = snake_to_kebab(snake);
+    let uc = snake_to_kebab(&crate::generators::naming::transition_use_case(verb, snake));
+    [
+        PathBuf::from(format!("web/src/contextos/{k}/contenedores/{uc}.tsx")),
+        PathBuf::from(format!("web/src/contextos/{k}/contenedores/{uc}.test.tsx")),
+    ]
+}
+
+/// Writes the button of each transition of the entity, and its test.
+fn write_transition_files(
+    base: &Path,
+    ctx: &tera::Context,
+    snake: &str,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let transitions: Vec<serde_json::Value> = ctx
+        .get("transitions")
+        .and_then(|t| t.as_array().cloned())
+        .unwrap_or_default();
+    for t in transitions {
+        let mut ctx = ctx.clone();
+        for (key, value) in t.as_object().into_iter().flatten() {
+            ctx.insert(key, value);
+        }
+        let verb = t["verb"].as_str().unwrap_or_default();
+        let [button, test] = transition_files(snake, verb);
+        write_file(
+            &base.join(button),
+            &render_ts("web/transition_button.tera", &ctx)?,
+        )?;
+        write_file(
+            &base.join(test),
+            &render_ts("web/transition_button_test.tera", &ctx)?,
+        )?;
+    }
+    Ok(())
+}
+
+/// `generar transicion` in a project whose entity has screens: writes the button of `verb`, and
+/// adds it to the files of the slice already written — its line and import in the detail, its
+/// rejection in `mensajes.ts` — where the templates put them, so a later `generar web --forzar`
+/// writes the same. Returns what it could not place: the user's file no longer has the anchor.
+pub fn add_transition_to_web(
+    base: &Path,
+    config: &PuertoConfig,
+    pascal: &str,
+    verb: &str,
+) -> Result<Vec<String>, Box<dyn std::error::Error>> {
+    let Some(entity) = config.entity.iter().find(|e| e.name == pascal) else {
+        return Ok(vec![]);
+    };
+    let ctx = entity_template_ctx(
+        pascal,
+        &entity.fields,
+        &Access::in_config(config, pascal),
+        Some(config),
+    );
+    let web = web_entity_ctx(pascal);
+    let only: Vec<serde_json::Value> = ctx
+        .get("transitions")
+        .and_then(|t| t.as_array())
+        .into_iter()
+        .flatten()
+        .filter(|t| t["verb"] == verb)
+        .cloned()
+        .collect();
+    let mut one = ctx.clone();
+    one.insert("transitions", &only);
+    write_transition_files(base, &one, &web.snake)?;
+
+    let mut missing = vec![];
+    let t = web_transition_ctx(&web, verb, &Access::in_config(config, pascal));
+    let k = &web.kebab;
+    let detail = base.join(format!(
+        "web/src/contextos/{k}/contenedores/detalle-{k}.tsx"
+    ));
+    let import = format!(
+        "import {{ Boton{} }} from \"./{}\";",
+        t.uc_pascal, t.uc_kebab
+    );
+    if let Ok(src) = std::fs::read_to_string(&detail) {
+        match insert_transition_element(&src, &t.element) {
+            Some(patched) => {
+                let patched = insert_import(&patched, &import);
+                write_file(&detail, &organize_imports(&patched))?;
+            }
+            None => missing.push(format!(
+                "{}: no encuentro su `<div className=\"card-actions justify-end\">`; añade \
+                 `{import}` y `{}` donde quieras el botón",
+                detail.strip_prefix(base).unwrap_or(&detail).display(),
+                t.element.trim()
+            )),
+        }
+    }
+    let messages = base.join(format!("web/src/contextos/{k}/mensajes.ts"));
+    let problem = transition_problem(&web.snake, verb);
+    let line = format!("  \"{}\": \"{}\",\n", problem.code, problem.text);
+    if let Ok(src) = std::fs::read_to_string(&messages) {
+        let close = src
+            .find("const TEXTOS")
+            .and_then(|start| src[start..].find("\n};").map(|i| start + i + 1));
+        match close {
+            Some(_) if src.contains(&format!("\"{}\":", problem.code)) => {}
+            Some(at) => {
+                let mut patched = src.clone();
+                patched.insert_str(at, &line);
+                write_file(&messages, &patched)?;
+            }
+            None => missing.push(format!(
+                "{}: no encuentro `const TEXTOS`; añade `{}`",
+                messages.strip_prefix(base).unwrap_or(&messages).display(),
+                line.trim()
+            )),
+        }
+    }
+    Ok(missing)
+}
+
+/// The detail with `element` in its `card-actions`, after the buttons of the transitions already
+/// there (the template's order); `None` without that `<div>`. Unchanged when it is there.
+fn insert_transition_element(src: &str, element: &str) -> Option<String> {
+    if src.contains(element) {
+        return Some(src.to_string());
+    }
+    let anchor = "<div className=\"card-actions justify-end\">\n";
+    let mut at = src.find(anchor)? + anchor.len();
+    // Past each `<Boton… />`, on one line or on several.
+    loop {
+        let rest = &src[at..];
+        let line = rest.lines().next().unwrap_or_default().trim();
+        if !line.starts_with("<Boton") {
+            break;
+        }
+        let end = if line.ends_with("/>") {
+            rest.find('\n')
+        } else {
+            rest.find("/>\n").map(|i| i + 2)
+        };
+        let Some(end) = end else { break };
+        at += end + 1;
+    }
+    let mut out = src.to_string();
+    out.insert_str(at, &format!("{element}\n"));
+    Some(out)
+}
+
+/// `src` with `import` after its last import line, unless it is there.
+fn insert_import(src: &str, import: &str) -> String {
+    if src.contains(import) {
+        return src.to_string();
+    }
+    let mut lines: Vec<&str> = src.lines().collect();
+    let last = lines
+        .iter()
+        .rposition(|l| l.starts_with("import ") || l.starts_with("} from "))
+        .map_or(0, |i| i + 1);
+    lines.insert(last, import);
+    let mut out = lines.join("\n");
+    if src.ends_with('\n') {
+        out.push('\n');
+    }
+    out
+}
+
 /// Renders a TypeScript template and orders its imports the way Biome's `organizeImports` does,
 /// so `bun run lint` passes on generated code.
 fn render_ts(template: &str, ctx: &tera::Context) -> Result<String, RenderError> {
@@ -711,6 +963,7 @@ pub fn write_web_files(
     for (path, template) in web_entity_files(&snake).iter().zip(ENTITY_TEMPLATES) {
         write_file(&base.join(path), &render_ts(template, &ctx)?)?;
     }
+    write_transition_files(base, &ctx, &snake)?;
     for (path, template) in ONCE_FILES {
         let path = base.join(path);
         if !path.exists() {

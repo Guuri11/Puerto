@@ -9,7 +9,8 @@ import { DialogoConfirmar } from "../../../compartido/ui/dialogo-confirmar";
 import { useCarga } from "../../../compartido/use-carga";
 import { useDependencias } from "../../../dependencias";
 import { VistaDetalle{{ pascal }} } from "../vistas/detalle-{{ kebab }}";
-
+{% for t in transitions %}import { Boton{{ t.uc_pascal }} } from "./{{ t.uc_kebab }}";
+{% endfor %}
 export function ContenedorDetalle{{ pascal }}({ id }: { id: string }) {
   const { api } = useDependencias();
 {%- if access.update_roles or access.delete_roles %}
@@ -64,6 +65,9 @@ export function ContenedorDetalle{{ pascal }}({ id }: { id: string }) {
             />
 {%- endif %}
             <div className="card-actions justify-end">
+{%- for t in transitions %}
+{{ t.element }}
+{%- endfor %}
 {%- if access.update_roles %}
               {{ "{" }}{% for r in access.update_roles %}puede("{{ r }}") && {% endfor %}(
                 <Link href={`/{{ plural }}/${id}/editar`} className="btn">

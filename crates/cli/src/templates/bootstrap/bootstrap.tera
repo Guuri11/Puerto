@@ -26,6 +26,9 @@ use poem_openapi::OpenApiService;
 {% if auth %}use rest_usuario::me::rutas::ApiMe;
 {% endif -%}
 {% for entity in entities -%}
+{% for t in entity.transitions -%}
+use rest_{{ entity.snake }}::{{ t.action }}::Api{{ t.uc_pascal }};
+{% endfor -%}
 use rest_{{ entity.snake }}::rutas::Api{{ entity.pascal }};
 {% endfor %}
 /// Las rutas, cableadas. Un error es lo que paró el arranque: `main` lo muestra y sale con 1.
@@ -84,7 +87,10 @@ pub async fn construir_app(config: puerto_web::Config) -> Result<impl Endpoint, 
 {%- if entity.use_cases %}
     let casos_{{ entity.snake }} = cableado::{{ entity.snake }}::construir({% if entity.db %}&pool{% endif %});
 {%- endif %}
-    let api_{{ entity.snake }} = Api{{ entity.pascal }} {% if entity.use_cases %}{ {% for uc in entity.use_cases %}{{ uc.action }}: casos_{{ entity.snake }}.{{ uc.action }}{% if not loop.last %}, {% endif %}{% endfor %} }{% else %}{}{% endif %};
+    let api_{{ entity.snake }} = Api{{ entity.pascal }} {% if entity.api_use_cases %}{ {% for uc in entity.api_use_cases %}{{ uc.action }}: casos_{{ entity.snake }}.{{ uc.action }}{% if not loop.last %}, {% endif %}{% endfor %} }{% else %}{}{% endif %};
+{%- for t in entity.transitions %}
+    let api_{{ t.action }} = Api{{ t.uc_pascal }} { {{ t.action }}: casos_{{ entity.snake }}.{{ t.action }} };
+{%- endfor %}
 {% endfor %}{%- if has_db %}
     let disponible = puerto_web::health::sondear(move || {
         let pool = pool.clone();
@@ -137,7 +143,10 @@ mod tests {
     #[test]
     fn la_spec_openapi_coincide_con_docs_api_openapi_json() {
 {%- for entity in entities %}
-        let api_{{ entity.snake }} = Api{{ entity.pascal }} {% if entity.use_cases %}{ {% for uc in entity.use_cases %}{{ uc.action }}: Arc::new(Mock{{ uc.uc_pascal }}::new()){% if not loop.last %}, {% endif %}{% endfor %} }{% else %}{}{% endif %};
+        let api_{{ entity.snake }} = Api{{ entity.pascal }} {% if entity.api_use_cases %}{ {% for uc in entity.api_use_cases %}{{ uc.action }}: Arc::new(Mock{{ uc.uc_pascal }}::new()){% if not loop.last %}, {% endif %}{% endfor %} }{% else %}{}{% endif %};
+{%- for t in entity.transitions %}
+        let api_{{ t.action }} = Api{{ t.uc_pascal }} { {{ t.action }}: Arc::new(Mock{{ t.uc_pascal }}::new()) };
+{%- endfor %}
 {%- endfor %}
 {%- if auth %}
         let api_me = ApiMe;
