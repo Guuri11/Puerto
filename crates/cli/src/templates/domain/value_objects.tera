@@ -23,4 +23,4 @@ impl {{ v.vo }} {
 {% for variant in v.variants %}            Self::{{ variant }} => "{{ variant }}",
 {% endfor %}        }
     }
-}{% else %}{{ macros::value_object(vo=v.vo, inner=v.inner, error="Error" ~ pascal, invalid="Error" ~ pascal ~ "::" ~ v.vo ~ "Invalido") }}{% endif %}{% endfor %}
+}{% else %}{{ macros::value_object(vo=v.vo, inner=v.inner, error="Error" ~ pascal, invalid="Error" ~ pascal ~ "::" ~ v.vo ~ "Invalido", class=v.class) }}{% endif %}{% endfor %}{{ macros::rule_tests(vos=vos) }}

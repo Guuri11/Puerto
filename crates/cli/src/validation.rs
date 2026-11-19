@@ -330,6 +330,30 @@ pub fn validate_shared_vo_inner_type(inner_type: &str) -> Result<(), String> {
     Ok(())
 }
 
+/// A value object's class (27.16): `enum`, or one with a rule, on the primitive that rule reads.
+pub fn validate_vo_class(class: &str, inner_type: &str) -> Result<(), String> {
+    if class == "enum" {
+        return Ok(());
+    }
+    match crate::puerto_toml::VO_CLASSES
+        .iter()
+        .find(|(c, _)| *c == class)
+    {
+        None => Err(format!(
+            "la clase '{class}' no existe (valen: enum, {})",
+            crate::puerto_toml::VO_CLASSES
+                .iter()
+                .map(|(c, _)| *c)
+                .collect::<Vec<_>>()
+                .join(", ")
+        )),
+        Some((_, ty)) if *ty != inner_type => Err(format!(
+            "la clase '{class}' va sobre un {ty}, no sobre '{inner_type}'"
+        )),
+        Some(_) => Ok(()),
+    }
+}
+
 /// A shared value object's `ejemplo` (27.15): only for `String` (not blank), `i64`, `f64`
 /// (finite) and `bool`, and read as that type — it becomes a literal in the generated tests.
 pub fn validate_vo_example(inner_type: &str, example: &str) -> Result<(), String> {

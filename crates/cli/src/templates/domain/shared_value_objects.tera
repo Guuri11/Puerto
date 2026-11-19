@@ -4,4 +4,4 @@
 {% if v.inner == "Uuid" %}use uuid::Uuid;
 {% elif v.inner == "DateTime<Utc>" %}use chrono::{DateTime, Utc};
 {% endif %}
-{{ macros::value_object(vo=v.vo, inner=v.inner, error="Error" ~ v.vo, invalid="Error" ~ v.vo ~ "::Invalido") }}{% endfor %}
+{{ macros::value_object(vo=v.vo, inner=v.inner, error="Error" ~ v.vo, invalid="Error" ~ v.vo ~ "::Invalido", class=v.class) }}{% endfor %}{{ macros::rule_tests(vos=vos) }}

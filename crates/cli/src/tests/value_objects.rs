@@ -701,3 +701,152 @@ fn a_field_of_a_shared_value_object_takes_its_example_everywhere_a_test_needs_a_
     assert!(!mother.contains("\"example\""), "{mother}");
     cleanup(&dir);
 }
+
+// ── 27.16: value objects with a rule — email and dinero ────────────────────
+
+#[test]
+fn email_and_dinero_are_value_object_classes_with_their_own_type() {
+    let email = puerto_toml::parse_field_arg("contacto:Email:email").unwrap();
+    assert_eq!(
+        (
+            email.field_type.as_str(),
+            email.value_object_kind.as_deref()
+        ),
+        ("String", Some("email"))
+    );
+    assert!(
+        puerto_toml::parse_field_arg("contacto:Email:email!")
+            .unwrap()
+            .unique
+    );
+    let precio = puerto_toml::parse_field_arg("precio:Precio:dinero").unwrap();
+    assert_eq!(
+        (
+            precio.field_type.as_str(),
+            precio.value_object_kind.as_deref()
+        ),
+        ("i64", Some("dinero"))
+    );
+}
+
+#[test]
+fn a_shared_value_object_can_be_of_a_class_and_its_fields_take_it() {
+    let dir = manifest_dir("vo_class_shared", "[proyecto]\nnombre = \"my-app\"\n");
+
+    scaffold::run_value_object("Email", "email", None, &dir).unwrap();
+    scaffold::run_value_object("Importe", "dinero", None, &dir).unwrap();
+
+    let shared = puerto_toml::read(&dir).unwrap().value_object;
+    let classes: Vec<(&str, &str, Option<&str>)> = shared
+        .iter()
+        .map(|v| (v.name.as_str(), v.inner_type.as_str(), v.class.as_deref()))
+        .collect();
+    assert_eq!(
+        classes,
+        [
+            ("Email", "String", Some("email")),
+            ("Importe", "i64", Some("dinero"))
+        ]
+    );
+    let fields = puerto_toml::apply_shared_vo_inference(
+        vec![puerto_toml::parse_field_arg("total:Importe").unwrap()],
+        &shared,
+    );
+    assert_eq!(fields[0].value_object_kind.as_deref(), Some("dinero"));
+    cleanup(&dir);
+}
+
+#[test]
+fn validate_rejects_an_unknown_class_and_a_class_with_the_wrong_type() {
+    let dir = manifest_dir(
+        "vo_class_validate",
+        r#"[proyecto]
+nombre = "my-app"
+
+[[objeto_valor]]
+nombre = "Correo"
+tipo = "i64"
+clase = "email"
+
+[[entidad]]
+nombre = "Sala"
+casos_de_uso = []
+
+[[entidad.campos]]
+nombre = "telefono"
+tipo = "String"
+objeto_valor = "Telefono"
+clase_objeto_valor = "telefono"
+
+[[entidad.campos]]
+nombre = "precio"
+tipo = "String"
+objeto_valor = "Precio"
+clase_objeto_valor = "dinero"
+"#,
+    );
+
+    let err = validate::run_validate(&dir).unwrap_err().to_string();
+
+    assert!(err.contains("Correo"), "{err}");
+    assert!(err.contains("telefono"), "{err}");
+    assert!(err.contains("precio"), "{err}");
+    cleanup(&dir);
+}
+
+#[test]
+fn an_email_and_a_dinero_value_object_check_their_rule_and_test_it() {
+    let fields = [
+        puerto_toml::parse_field_arg("contacto:Email:email").unwrap(),
+        puerto_toml::parse_field_arg("precio:Precio:dinero").unwrap(),
+    ];
+
+    let local =
+        crate::generators::domain::generate_value_objects("Sala", "sala", &fields, &[]).unwrap();
+    let shared =
+        crate::generators::domain::generate_shared_value_objects(&[ValueObjectDefinition {
+            name: "Email".into(),
+            inner_type: "String".into(),
+            class: Some("email".into()),
+            ..Default::default()
+        }])
+        .unwrap();
+
+    for src in [&local, &shared] {
+        assert!(src.contains("split_once('@')"), "{src}");
+        assert!(src.contains("#[cfg(test)]"), "{src}");
+    }
+    assert!(local.contains("if valor < 0 {"), "{local}");
+    assert!(local.contains("Err(ErrorSala::PrecioInvalido)"), "{local}");
+    assert!(shared.contains("Err(ErrorEmail::Invalido)"), "{shared}");
+}
+
+#[test]
+fn an_email_value_object_without_an_example_gets_a_valid_one() {
+    let email = puerto_toml::parse_field_arg("contacto:Email:email").unwrap();
+    let unico = puerto_toml::parse_field_arg("aviso:Aviso:email!").unwrap();
+
+    assert!(
+        crate::generators::types::props_literal(&email).contains("\"ana@ejemplo.es\""),
+        "{}",
+        crate::generators::types::props_literal(&email)
+    );
+    let (_, fresh) = crate::generators::types::unique_value(&unico).unwrap();
+    assert!(fresh.contains("@ejemplo.es"), "{fresh}");
+}
+
+#[test]
+fn email_and_dinero_reach_the_web_with_their_input_and_their_euros() {
+    let email = puerto_toml::parse_field_arg("contacto:Email:email").unwrap();
+    let precio = puerto_toml::parse_field_arg("precio:Precio:dinero").unwrap();
+
+    let email = crate::generators::types::web_field_ctx(&email, "sala");
+    let precio = crate::generators::types::web_field_ctx(&precio, "sala");
+
+    assert_eq!(email.input, "email");
+    assert_eq!(precio.input, "text");
+    assert_eq!(precio.to_form, "aImporte(sala.precio)");
+    assert_eq!(precio.from_form, "deImporte(valores.precio)");
+    assert_eq!(precio.display, "euros(sala.precio)");
+    assert_eq!(precio.mother, "1250");
+}

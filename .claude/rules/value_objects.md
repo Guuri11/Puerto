@@ -44,6 +44,8 @@ puerto generar scaffold Persona -- nombre:Nombre:String edad:Edad:i64 activo:boo
 | `campo:NombreVo:opt:Tipo` | Objeto valor nullable (`Option<NombreVo>`) |
 | `campo:NombreVo:vec:Tipo` | Objeto valor array (`Vec<NombreVo>`) |
 | `campo:NombreVo:enum:V1/V2/...` | Objeto valor enum (sobre un String) |
+| `campo:NombreVo:email` | Objeto valor `email` (27.16): un `String` con la forma `usuario@dominio.tld` |
+| `campo:NombreVo:dinero` | Objeto valor `dinero` (27.16): un `i64` de céntimos, nunca negativo |
 | `campo:NombreVo` | Objeto valor compartido ya declarado: el tipo se deduce de `[[objeto_valor]]` |
 | `!` al final del argumento | `unico = true` (no vale en objetos valor Option/Vec) |
 
@@ -58,6 +60,14 @@ puerto generar objeto-valor Dinero i64
 
 Esto añade bloques `[[objeto_valor]]` a `puerto.toml`. Cuando el objeto valor de un campo coincide
 con uno compartido declarado, el import pasa de local (`crate::valores`) a `nucleo::valores`.
+
+`puerto generar objeto-valor Email email` / `Precio dinero` (27.16) declara un compartido de esa
+clase (`[[objeto_valor]] clase`, con su `tipo`); sus campos la reciben al leerse, como el `ejemplo`.
+Las reglas: `email` recorta y exige una `@`, un usuario y un dominio con punto, sin espacios ni
+partes vacías; `dinero`, `>= 0`. `valores.rs` lleva sus tests. Sin `ejemplo`, un `email` usa
+`ana@ejemplo.es`, y su `<campo>_unico()`, `<12 hex>@ejemplo.es`. En la web, `email` es un
+`<input type="email">` y `dinero` se escribe en euros con coma (`aImporte` / `deImporte`) y se
+muestra con `euros()`.
 
 `--ejemplo <valor>` (27.15, `[[objeto_valor]] ejemplo`; solo `String` no vacío, `i64`, `f64` y
 `bool`, leído como su tipo) es el valor válido que usan los tests de sus campos en vez de

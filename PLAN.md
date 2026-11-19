@@ -3978,13 +3978,34 @@ siembra de un campo no único (uno único sigue en `<campo>_unico()` de la madre
 la web. Un `f64` sin punto se escribe con `.0`. Tests: el manifiesto, cada rechazo, `validar`, y la
 madre, una ruta, la siembra y la web de una entidad con el ejemplo.
 
-### 27.16 — Clases de objeto valor con regla: email y dinero
+### 27.16 — Clases de objeto valor con regla: email y dinero ✅
 
 - `email`: la forma `usuario@dominio.tld` sin espacios (la regla de Aforo) y un ejemplo por defecto.
 - `dinero`: un `i64` en céntimos, `>= 0`. La web lo enseña con `euros()` (`compartido/formato.ts`,
   que Aforo escribió a mano). Por decidir cómo se escribe en el formulario (euros con coma o céntimos).
 - Sintaxis por decidir (`clase_objeto_valor = "email"`; en la CLI, `email:Email:email`).
 - Tests: cada regla, la madre, la web y `validar`.
+
+**Decidido (2026-11-19, con Sergio).** La clase va donde va `enum`, y el tipo es implícito.
+
+- **CLI y manifiesto:** `contacto:Email:email` (`String`, `clase_objeto_valor = "email"`, admite
+  `!`) y `precio:Precio:dinero` (`i64`, `"dinero"`). Compartidos: `puerto generar objeto-valor Email
+  email` → `[[objeto_valor]] tipo = "String"`, `clase = "email"`; `Precio dinero` → `tipo = "i64"`.
+  Un campo de un compartido con clase la recibe al leerse, como el `ejemplo` (27.15).
+- **Dominio:** `Email::new` recorta y exige `usuario@dominio.tld` sin espacios (una `@`, usuario
+  no vacío, un dominio con punto y sin partes vacías); `Precio::new` exige `>= 0` (céntimos de
+  euro). El error es el `<Vo>Invalido` de siempre (422), o `Error<Vo>::Invalido` en un compartido.
+  `valores.rs` (y `nucleo/src/valores.rs`) gana un `mod tests` con las reglas de cada uno.
+- **Ejemplo:** sin `ejemplo`, un `email` usa `ana@ejemplo.es`; el `<campo>_unico()` de uno único
+  da `<12 hexadecimales>@ejemplo.es`. El `42` de `dinero` ya es válido.
+- **Web:** `email` es un `<input type="email">`; `dinero`, un texto en euros con coma: `aImporte` /
+  `deImporte` en el formulario, `euros()` en las vistas y la madre en `1250`. Los tres en
+  `compartido/formularios.ts`, con sus tests.
+- **`validar`:** `clase_objeto_valor` es `enum`, `email` o `dinero`; `email` va con `tipo =
+  "String"` y `dinero` con `"i64"`, también en `[[objeto_valor]] clase`.
+- **Tests:** el parser, `validar`, el objeto valor de cada clase (local y compartido), la madre,
+  `_unico()` y la web. Compile matrix: los dos en `vo_kitchen_sink`, un compartido `dinero` en
+  `shared_vo` y un `email` único en `postgres_every_type`.
 
 ### 27.17 — Campos que pone el servidor
 

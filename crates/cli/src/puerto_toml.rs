@@ -60,7 +60,13 @@ pub struct ValueObjectDefinition {
     /// The valid value its fields' tests use instead of the registry's (27.15): `ana@ejemplo.es`.
     #[serde(default, skip_serializing_if = "Option::is_none", rename = "ejemplo")]
     pub example: Option<String>,
+    /// A class with a rule (27.16): `email` (a `String`) or `dinero` (an `i64` of cents).
+    #[serde(default, skip_serializing_if = "Option::is_none", rename = "clase")]
+    pub class: Option<String>,
 }
+
+/// The value object classes with a rule (27.16), and the primitive each wraps.
+pub const VO_CLASSES: &[(&str, &str)] = &[("email", "String"), ("dinero", "i64")];
 
 /// Where the app goes under a portada unless `puerto nuevo --ruta-app` says otherwise.
 pub const DEFAULT_APP_PATH: &str = "/panel";
@@ -318,13 +324,19 @@ fn parse_field_shape(s: &str, name: String, parts: &[&str], unique: bool) -> Res
                     unique,
                     ..Default::default()
                 }),
-                vo_name if is_pascal_case(vo_name) => Ok(Field {
-                    name,
-                    field_type: expand_type(third),
-                    unique,
-                    value_object: Some(vo_name.to_string()),
-                    ..Default::default()
-                }),
+                vo_name if is_pascal_case(vo_name) => {
+                    // A class with a rule (27.16) says its primitive: `email:Email:email`.
+                    let class = VO_CLASSES.iter().find(|(class, _)| *class == third);
+                    Ok(Field {
+                        name,
+                        field_type: class
+                            .map_or_else(|| expand_type(third), |(_, ty)| ty.to_string()),
+                        unique,
+                        value_object: Some(vo_name.to_string()),
+                        value_object_kind: class.map(|(class, _)| class.to_string()),
+                        ..Default::default()
+                    })
+                }
                 _ => Err(format!(
                     "argumento de campo inválido '{}'. '{}' no es una palabra conocida (opt, vec) ni el nombre de un objeto valor en PascalCase",
                     s, second
@@ -430,14 +442,18 @@ pub fn read(base: &Path) -> Result<PuertoConfig, Box<dyn std::error::Error>> {
     Ok(config)
 }
 
-/// Each field of a shared value object with an `ejemplo` carries it (27.15).
+/// Each field of a shared value object takes its `ejemplo` (27.15) and, when the field names
+/// none, its `clase` (27.16).
 fn give_examples(fields: &mut [Field], shared_vos: &[ValueObjectDefinition]) {
     for field in fields {
-        field.example = field
+        let shared = field
             .value_object
             .as_ref()
-            .and_then(|vo| shared_vos.iter().find(|s| &s.name == vo))
-            .and_then(|s| s.example.clone());
+            .and_then(|vo| shared_vos.iter().find(|s| &s.name == vo));
+        field.example = shared.and_then(|s| s.example.clone());
+        if field.value_object_kind.is_none() {
+            field.value_object_kind = shared.and_then(|s| s.class.clone());
+        }
     }
 }
 

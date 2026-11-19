@@ -190,6 +190,15 @@ pub fn is_enum_vo(field: &Field) -> bool {
     field.value_object_kind.as_deref() == Some("enum")
 }
 
+/// A value object's class with a rule (27.16): `email` or `dinero`; `None` for any other.
+pub fn vo_class(field: &Field) -> Option<&'static str> {
+    let kind = field.value_object_kind.as_deref()?;
+    crate::puerto_toml::VO_CLASSES
+        .iter()
+        .find(|(class, _)| *class == kind)
+        .map(|(class, _)| *class)
+}
+
 pub fn is_shared_vo(field: &Field, shared_vos: &[ValueObjectDefinition]) -> bool {
     field
         .value_object
@@ -518,7 +527,7 @@ pub fn props_literal(field: &Field) -> String {
 /// The `ejemplo` of the field's shared value object (27.15) as a Rust literal of `ty`, its
 /// primitive; `None` without one. An `f64` gets its decimal point (`12` → `12.0`).
 fn example_literal(field: &Field, ty: &str) -> Option<String> {
-    let example = field.example.as_deref()?;
+    let example = example_of(field)?;
     match ty {
         "String" => Some(format!("{example:?}.to_string()")),
         "i64" | "bool" => Some(example.to_string()),
@@ -530,9 +539,20 @@ fn example_literal(field: &Field, ty: &str) -> Option<String> {
     }
 }
 
+/// The example an `email` value object uses without one of its own (27.16).
+const EMAIL_EXAMPLE: &str = "ana@ejemplo.es";
+
+/// The field's example: its shared value object's (27.15), or its class's.
+fn example_of(field: &Field) -> Option<&str> {
+    field
+        .example
+        .as_deref()
+        .or_else(|| (vo_class(field) == Some("email")).then_some(EMAIL_EXAMPLE))
+}
+
 /// [`example_literal`] in TypeScript, for the web's mothers.
 fn example_ts(field: &Field) -> Option<String> {
-    let example = field.example.as_deref()?;
+    let example = example_of(field)?;
     match vo_inner_type(field).as_str() {
         "String" => Some(ts_string(example)),
         "i64" | "f64" | "bool" => Some(example.to_string()),
@@ -575,6 +595,11 @@ pub fn unique_value(field: &Field) -> Option<(&'static str, &'static str)> {
         return None;
     }
     match field.field_type.as_str() {
+        // An email's (27.16) still has the form its rule asks for.
+        "String" if vo_class(field) == Some("email") => Some((
+            "String",
+            "format!(\"{}@ejemplo.es\", &uuid::Uuid::new_v4().simple().to_string()[..12])",
+        )),
         // 12 hex characters: short enough for a length rule, enough to never repeat in a test.
         "String" => Some((
             "String",
@@ -770,9 +795,13 @@ const MOTHER_DATE_TIME: &str = "\"2026-01-01T10:00:00.000Z\"";
 enum WebShape {
     Text,
     Number,
+    /// A `dinero` value object (27.16): cents, typed in euros with a comma.
+    Dinero,
     Checkbox,
     DateTime,
-    List { numbers: bool },
+    List {
+        numbers: bool,
+    },
     Map,
     Enum,
 }
@@ -787,6 +816,8 @@ fn web_shape(field: &Field) -> WebShape {
         }
     } else if ty == "HashMap<String, String>" {
         WebShape::Map
+    } else if vo_class(field) == Some("dinero") {
+        WebShape::Dinero
     } else {
         match vo_inner_type(field).as_str() {
             "i64" | "f64" => WebShape::Number,
@@ -815,6 +846,7 @@ fn web_to_form(
             format!("formatearEntradas({access})"),
             vec!["formatearEntradas"],
         ),
+        WebShape::Dinero => (format!("aImporte({access})"), vec!["aImporte"]),
         _ if optional => (format!("textoDe({access})"), vec!["textoDe"]),
         WebShape::Number => (format!("String({access})"), vec![]),
         _ if private => (format!("{access} ?? \"\""), vec![]),
@@ -835,6 +867,7 @@ fn web_display(shape: WebShape, optional: bool, access: &str) -> (String, Vec<&'
             format!("formatearEntradas({access}, \", \")"),
             vec!["formatearEntradas"],
         ),
+        WebShape::Dinero => (format!("euros({access})"), vec!["euros"]),
         _ => (access.to_string(), vec![]),
     };
     match (optional, shape) {
@@ -872,6 +905,7 @@ pub fn web_field_ctx(field: &Field, entity_ident: &str) -> WebFieldCtx {
         WebShape::List { numbers: true } => ("text", "[42]".into()),
         WebShape::List { numbers: false } => ("text", "[\"example\"]".into()),
         WebShape::Map => ("textarea", "{ key: \"value\" }".into()),
+        WebShape::Dinero => ("text", "1250".into()),
         WebShape::Number => (
             "number",
             if vo_inner_type(field) == "f64" {
@@ -885,11 +919,12 @@ pub fn web_field_ctx(field: &Field, entity_ident: &str) -> WebFieldCtx {
         WebShape::DateTime => ("datetime-local", MOTHER_DATE_TIME.into()),
         WebShape::Text if target.is_some() => ("reference", "crypto.randomUUID()".into()),
         WebShape::Text if vo_inner_type(field) == "Uuid" => ("text", "crypto.randomUUID()".into()),
+        WebShape::Text if vo_class(field) == Some("email") => ("email", "\"example\"".into()),
         WebShape::Text => ("text", "\"example\"".into()),
     };
     // A shared value object's example (27.15) is the valid value its rule accepts.
     let mother = match shape {
-        WebShape::Text | WebShape::Number | WebShape::Checkbox => {
+        WebShape::Text | WebShape::Number | WebShape::Checkbox | WebShape::Dinero => {
             example_ts(field).unwrap_or(mother)
         }
         _ => mother,
@@ -904,6 +939,7 @@ pub fn web_field_ctx(field: &Field, entity_ident: &str) -> WebFieldCtx {
             "separarLista"
         }),
         WebShape::Map => Some("leerEntradas"),
+        WebShape::Dinero => Some("deImporte"),
         WebShape::DateTime if optional => Some("fechaHoraOpcional"),
         WebShape::DateTime => Some("deFechaHoraLocal"),
         WebShape::Number if optional => Some("numeroOpcional"),

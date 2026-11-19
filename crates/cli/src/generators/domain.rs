@@ -155,10 +155,14 @@ pub fn generate_value_objects(
     let vos: Vec<serde_json::Value> = vo_fields
         .iter()
         .map(|f| {
+            let class = crate::generators::types::vo_class(f).unwrap_or_default();
             json!({
                 "vo": f.value_object,
+                "vo_snake": pascal_to_snake(f.value_object.as_deref().unwrap_or_default()),
                 "inner": vo_inner_type(f),
                 "variants": if is_enum_vo(f) { f.enum_variants.clone() } else { None },
+                "class": class,
+                "ruled": !class.is_empty(),
             })
         })
         .collect();
@@ -257,7 +261,16 @@ fn render_shared(template: &str, vos: &[ValueObjectDefinition]) -> Result<String
     }
     let vos: Vec<serde_json::Value> = vos
         .iter()
-        .map(|v| json!({ "vo": v.name, "vo_snake": pascal_to_snake(&v.name), "inner": v.inner_type }))
+        .map(|v| {
+            let class = v.class.as_deref().unwrap_or_default();
+            json!({
+                "vo": v.name,
+                "vo_snake": pascal_to_snake(&v.name),
+                "inner": v.inner_type,
+                "class": class,
+                "ruled": !class.is_empty(),
+            })
+        })
         .collect();
     let mut ctx = tera::Context::new();
     ctx.insert("vos", &vos);

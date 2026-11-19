@@ -396,7 +396,14 @@ pub fn run_value_object(
     example: Option<&str>,
     base: &Path,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    let inner_type = &crate::puerto_toml::expand_type(inner_type);
+    // A class with a rule (27.16) stands for its primitive: `Email email`.
+    let class = crate::puerto_toml::VO_CLASSES
+        .iter()
+        .find(|(class, _)| *class == inner_type);
+    let inner_type = &class.map_or_else(
+        || crate::puerto_toml::expand_type(inner_type),
+        |(_, ty)| ty.to_string(),
+    );
     crate::validation::validate_vo_name(name)?;
     crate::validation::validate_shared_vo_inner_type(inner_type)?;
     if let Some(example) = example {
@@ -411,10 +418,11 @@ pub fn run_value_object(
         .into());
     }
     crate::puerto_toml::add_value_object(base, name, inner_type)?;
-    if let Some(example) = example {
+    if example.is_some() || class.is_some() {
         let mut config = crate::puerto_toml::read(base)?;
         if let Some(vo) = config.value_object.iter_mut().find(|vo| vo.name == name) {
-            vo.example = Some(example.to_string());
+            vo.example = example.map(str::to_string);
+            vo.class = class.map(|(class, _)| class.to_string());
         }
         crate::puerto_toml::write(base, &config)?;
     }

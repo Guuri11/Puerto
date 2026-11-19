@@ -1,11 +1,30 @@
 {# Un objeto valor que envuelve un primitivo. `error` es su tipo de error; `invalid`, el valor de
    error completo (`ErrorProducto::NombreInvalido`, `ErrorEmail::Invalido`). #}
-{% macro value_object(vo, inner, error, invalid) %}{% if inner == "String" %}#[derive(Debug, Clone, PartialEq)]
+{% macro value_object(vo, inner, error, invalid, class="") %}{% if inner == "String" %}#[derive(Debug, Clone, PartialEq)]
 pub struct {{ vo }} {
     valor: String,
 }
 
 impl {{ vo }} {
+{%- if class == "email" %}
+    /// Un email con la forma `usuario@dominio.tld`, sin espacios: la forma, no que el buzón exista.
+    pub fn new(valor: String) -> Result<Self, {{ error }}> {
+        let recortado = valor.trim().to_string();
+        let valido = !recortado.contains(char::is_whitespace)
+            && recortado
+                .split_once('@')
+                .is_some_and(|(usuario, dominio)| {
+                    !usuario.is_empty()
+                        && !dominio.contains('@')
+                        && dominio.contains('.')
+                        && dominio.split('.').all(|parte| !parte.is_empty())
+                });
+        if !valido {
+            return Err({{ invalid }});
+        }
+        Ok(Self { valor: recortado })
+    }
+{%- else %}
     pub fn new(valor: String) -> Result<Self, {{ error }}> {
         let recortado = valor.trim().to_string();
         if recortado.is_empty() {
@@ -13,15 +32,22 @@ impl {{ vo }} {
         }
         Ok(Self { valor: recortado })
     }
+{%- endif %}
 
     pub fn valor(&self) -> &str {
         &self.valor
     }
-}{% else %}#[derive(Debug, Clone{% if inner != "DateTime<Utc>" %}, Copy{% endif %}, PartialEq)]
+}{% else %}{% if class == "dinero" %}/// Céntimos de euro, nunca negativos: 1250 son 12,50 €.
+{% endif %}#[derive(Debug, Clone{% if inner != "DateTime<Utc>" %}, Copy{% endif %}, PartialEq)]
 pub struct {{ vo }}({{ inner }});
 
 impl {{ vo }} {
     pub fn new(valor: {{ inner }}) -> Result<Self, {{ error }}> {
+{%- if class == "dinero" %}
+        if valor < 0 {
+            return Err({{ invalid }});
+        }
+{%- endif %}
         Ok(Self(valor))
     }
 
@@ -29,3 +55,42 @@ impl {{ vo }} {
         self.0
     }
 }{% endif %}{% endmacro value_object %}
+
+{# The tests of the value objects with a rule (27.16): what each accepts and what it rejects. #}
+{% macro rule_tests(vos) %}{% set ruled = vos | filter(attribute="ruled", value=true) %}{% if ruled %}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+{%- for v in ruled %}
+{%- if v.class == "email" %}
+
+    #[test]
+    fn deberia_aceptar_{{ v.vo_snake }}_recortado_cuando_tiene_la_forma_de_un_email() {
+        let resultado = {{ v.vo }}::new(" ana@ejemplo.es ".to_string());
+
+        assert_eq!(resultado.map(|v| v.valor().to_string()).ok().as_deref(), Some("ana@ejemplo.es"));
+    }
+
+    #[test]
+    fn deberia_rechazar_{{ v.vo_snake }}_cuando_no_tiene_la_forma_de_un_email() {
+        for valor in ["", "ana", "ana@", "@ejemplo.es", "ana@ejemplo", "ana@ejemplo.", "ana @ejemplo.es", "ana@@ejemplo.es"] {
+            assert!({{ v.vo }}::new(valor.to_string()).is_err(), "{valor}");
+        }
+    }
+{%- elif v.class == "dinero" %}
+
+    #[test]
+    fn deberia_aceptar_{{ v.vo_snake }}_cuando_es_cero_o_positivo() {
+        assert_eq!({{ v.vo }}::new(0).map(|v| v.valor()).ok(), Some(0));
+        assert_eq!({{ v.vo }}::new(1250).map(|v| v.valor()).ok(), Some(1250));
+    }
+
+    #[test]
+    fn deberia_rechazar_{{ v.vo_snake }}_cuando_es_negativo() {
+        assert!({{ v.vo }}::new(-1).is_err());
+    }
+{%- endif %}
+{%- endfor %}
+}
+{%- endif %}{% endmacro rule_tests %}

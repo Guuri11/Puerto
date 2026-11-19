@@ -1,9 +1,12 @@
 import { describe, expect, test } from "bun:test";
 import {
   aFechaHoraLocal,
+  aImporte,
   booleanoOpcional,
   deFechaHoraLocal,
+  deImporte,
   etiquetasReferencia,
+  euros,
   fechaHoraOpcional,
   formatearEntradas,
   formatearFechaHora,
@@ -85,5 +88,25 @@ describe("formularios", () => {
     expect(etiquetasReferencia({ estado: "listo", datos }, "nombre").get("c1")).toBe("Ana");
     expect(etiquetasReferencia({ estado: "cargando" }, "id").size).toBe(0);
     expect(etiquetasReferencia({ estado: "error" }, "id").size).toBe(0);
+  });
+
+  test("debería escribir unos céntimos en euros con coma y leerlos de vuelta", () => {
+    expect(aImporte(1250)).toBe("12,50");
+    expect(aImporte(5)).toBe("0,05");
+    expect(deImporte(aImporte(1250))).toBe(1250);
+    expect(deImporte("12,5")).toBe(1250);
+    expect(deImporte("12.50")).toBe(1250);
+    expect(deImporte(" 12 € ")).toBe(1200);
+    expect(deImporte("0,07")).toBe(7);
+  });
+
+  test("no debería leer como importe lo que no lo es", () => {
+    for (const texto of ["", "doce", "12,505", "1.250,00", "12,"]) {
+      expect(deImporte(texto)).toBeNaN();
+    }
+  });
+
+  test("debería mostrar unos céntimos en euros, en castellano", () => {
+    expect(euros(1250).replace(/\s/g, " ")).toBe("12,50 €");
   });
 });

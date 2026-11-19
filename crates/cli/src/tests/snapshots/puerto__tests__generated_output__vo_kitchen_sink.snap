@@ -114,6 +114,8 @@ Los campos van después de `--`, un argumento cada uno, sin comillas:
 | `segundo_nombre:SegundoNombre:opt:String` | un objeto valor opcional |
 | `etiqueta:Etiqueta:vec:String` | una lista de objetos valor |
 | `estado:Estado:enum:Borrador/Publicado` | un objeto valor enum (`"Borrador".parse::<Estado>()`) |
+| `contacto:Email:email` | un objeto valor `email`: un texto con la forma `usuario@dominio.tld` (la regla y sus tests vienen hechos) |
+| `precio:Precio:dinero` | un objeto valor `dinero`: céntimos, nunca negativos; la web los escribe y los muestra en euros |
 | `email:Email` | un objeto valor compartido declarado con `generar objeto-valor` (el tipo se infiere) |
 | `cliente_id:ref:Cliente` | una referencia: el `IdCliente` de un `Cliente` generado antes (`!`: uno a uno) |
 | `revisor_id:ref:opt:Cliente` | una referencia opcional |
@@ -328,7 +330,7 @@ use async_trait::async_trait;
 use dominio_cuenta::errores::ErrorCuenta;
 use dominio_cuenta::modelo::{Cuenta, IdCuenta, PropsCuenta};
 use dominio_cuenta::repositorio::RepositorioCuenta;
-use dominio_cuenta::valores::{MiddleName, Name, Sku, Status, Tag};
+use dominio_cuenta::valores::{Contact, Fee, MiddleName, Name, Sku, Status, Tag};
 use nucleo::valores::Email;
 use std::sync::Arc;
 
@@ -344,6 +346,8 @@ pub struct ParamsActualizarCuenta {
     pub tags: Vec<String>,
     pub status: String,
     pub email: String,
+    pub contact: String,
+    pub fee: i64,
 }
 
 #[async_trait]
@@ -390,6 +394,8 @@ impl ActualizarCuenta for ActualizarCuentaImpl {
             .collect::<Result<Vec<_>, _>>()?;
         let status = params.status.parse::<Status>()?;
         let email = Email::new(params.email).map_err(|_| ErrorCuenta::EmailInvalido)?;
+        let contact = Contact::new(params.contact)?;
+        let fee = Fee::new(params.fee)?;
         entidad.actualizar(PropsCuenta {
             title: params.title,
             price: params.price,
@@ -400,6 +406,8 @@ impl ActualizarCuenta for ActualizarCuentaImpl {
             tags,
             status,
             email,
+            contact,
+            fee,
         })?;
         self.repositorio.guardar(&entidad).await?;
         Ok(entidad)
@@ -447,6 +455,8 @@ mod tests {
                     .collect::<Vec<_>>(),
                 status: props.status.as_str().to_string(),
                 email: props.email.valor().to_string(),
+                contact: props.contact.valor().to_string(),
+                fee: props.fee.valor(),
             })
             .await;
 
@@ -486,6 +496,8 @@ mod tests {
                     .collect::<Vec<_>>(),
                 status: props.status.as_str().to_string(),
                 email: props.email.valor().to_string(),
+                contact: props.contact.valor().to_string(),
+                fee: props.fee.valor(),
             })
             .await;
 
@@ -525,6 +537,8 @@ mod tests {
                     .collect::<Vec<_>>(),
                 status: props.status.as_str().to_string(),
                 email: props.email.valor().to_string(),
+                contact: props.contact.valor().to_string(),
+                fee: props.fee.valor(),
             })
             .await;
 
@@ -567,6 +581,8 @@ mod tests {
                     .collect::<Vec<_>>(),
                 status: props.status.as_str().to_string(),
                 email: props.email.valor().to_string(),
+                contact: props.contact.valor().to_string(),
+                fee: props.fee.valor(),
             })
             .await;
 
@@ -606,6 +622,8 @@ mod tests {
                     .collect::<Vec<_>>(),
                 status: props.status.as_str().to_string(),
                 email: props.email.valor().to_string(),
+                contact: props.contact.valor().to_string(),
+                fee: props.fee.valor(),
             })
             .await;
 
@@ -645,12 +663,58 @@ mod tests {
                     .collect::<Vec<_>>(),
                 status: props.status.as_str().to_string(),
                 email: "".to_string(),
+                contact: props.contact.valor().to_string(),
+                fee: props.fee.valor(),
             })
             .await;
 
         // Comprobar
         assert!(resultado.is_err());
         assert_eq!(resultado.unwrap_err().to_string(), "cuenta.email_invalido");
+    }
+
+    #[tokio::test]
+    async fn deberia_devolver_error_cuando_contact_es_una_cadena_vacia() {
+        // Preparar
+        let props = MadreCuenta::new().construir_props();
+        let entidad = MadreCuenta::aleatorio();
+        let id_entidad = entidad.id;
+        let mut repositorio_doble = MockRepositorioCuenta::new();
+        repositorio_doble
+            .expect_buscar_por_id()
+            .returning(move |_| Ok(Some(entidad.clone())));
+        let caso_de_uso = ActualizarCuentaImpl {
+            repositorio: Arc::new(repositorio_doble),
+        };
+
+        // Actuar
+        let resultado = caso_de_uso
+            .ejecutar(ParamsActualizarCuenta {
+                id: id_entidad,
+                title: props.title,
+                price: props.price,
+                name: props.name.valor().to_string(),
+                sku: props.sku.valor().to_string(),
+                note: props.note,
+                middle_name: props.middle_name.as_ref().map(|v| v.valor().to_string()),
+                tags: props
+                    .tags
+                    .iter()
+                    .map(|v| v.valor().to_string())
+                    .collect::<Vec<_>>(),
+                status: props.status.as_str().to_string(),
+                email: props.email.valor().to_string(),
+                contact: "".to_string(),
+                fee: props.fee.valor(),
+            })
+            .await;
+
+        // Comprobar
+        assert!(resultado.is_err());
+        assert_eq!(
+            resultado.unwrap_err().to_string(),
+            "cuenta.contact_invalido"
+        );
     }
 }
 
@@ -759,7 +823,7 @@ use async_trait::async_trait;
 use dominio_cuenta::errores::ErrorCuenta;
 use dominio_cuenta::modelo::{Cuenta, PropsCuenta};
 use dominio_cuenta::repositorio::RepositorioCuenta;
-use dominio_cuenta::valores::{MiddleName, Name, Sku, Status, Tag};
+use dominio_cuenta::valores::{Contact, Fee, MiddleName, Name, Sku, Status, Tag};
 use nucleo::valores::Email;
 use std::sync::Arc;
 
@@ -774,6 +838,8 @@ pub struct ParamsCrearCuenta {
     pub tags: Vec<String>,
     pub status: String,
     pub email: String,
+    pub contact: String,
+    pub fee: i64,
 }
 
 #[async_trait]
@@ -815,6 +881,8 @@ impl CrearCuenta for CrearCuentaImpl {
             .collect::<Result<Vec<_>, _>>()?;
         let status = params.status.parse::<Status>()?;
         let email = Email::new(params.email).map_err(|_| ErrorCuenta::EmailInvalido)?;
+        let contact = Contact::new(params.contact)?;
+        let fee = Fee::new(params.fee)?;
         let entidad = Cuenta::new(PropsCuenta {
             title: params.title,
             price: params.price,
@@ -825,6 +893,8 @@ impl CrearCuenta for CrearCuentaImpl {
             tags,
             status,
             email,
+            contact,
+            fee,
         })?;
         self.repositorio.guardar(&entidad).await?;
         Ok(entidad)
@@ -864,6 +934,8 @@ mod tests {
                     .collect::<Vec<_>>(),
                 status: props.status.as_str().to_string(),
                 email: props.email.valor().to_string(),
+                contact: props.contact.valor().to_string(),
+                fee: props.fee.valor(),
             })
             .await;
 
@@ -903,6 +975,8 @@ mod tests {
                     .collect::<Vec<_>>(),
                 status: props.status.as_str().to_string(),
                 email: props.email.valor().to_string(),
+                contact: props.contact.valor().to_string(),
+                fee: props.fee.valor(),
             })
             .await;
 
@@ -936,6 +1010,8 @@ mod tests {
                     .collect::<Vec<_>>(),
                 status: props.status.as_str().to_string(),
                 email: props.email.valor().to_string(),
+                contact: props.contact.valor().to_string(),
+                fee: props.fee.valor(),
             })
             .await;
 
@@ -972,6 +1048,8 @@ mod tests {
                     .collect::<Vec<_>>(),
                 status: props.status.as_str().to_string(),
                 email: props.email.valor().to_string(),
+                contact: props.contact.valor().to_string(),
+                fee: props.fee.valor(),
             })
             .await;
 
@@ -1005,6 +1083,8 @@ mod tests {
                     .collect::<Vec<_>>(),
                 status: props.status.as_str().to_string(),
                 email: props.email.valor().to_string(),
+                contact: props.contact.valor().to_string(),
+                fee: props.fee.valor(),
             })
             .await;
 
@@ -1038,6 +1118,8 @@ mod tests {
                     .collect::<Vec<_>>(),
                 status: "".to_string(),
                 email: props.email.valor().to_string(),
+                contact: props.contact.valor().to_string(),
+                fee: props.fee.valor(),
             })
             .await;
 
@@ -1071,12 +1153,52 @@ mod tests {
                     .collect::<Vec<_>>(),
                 status: props.status.as_str().to_string(),
                 email: "".to_string(),
+                contact: props.contact.valor().to_string(),
+                fee: props.fee.valor(),
             })
             .await;
 
         // Comprobar
         assert!(resultado.is_err());
         assert_eq!(resultado.unwrap_err().to_string(), "cuenta.email_invalido");
+    }
+
+    #[tokio::test]
+    async fn deberia_devolver_error_cuando_contact_es_una_cadena_vacia() {
+        // Preparar
+        let props = MadreCuenta::new().construir_props();
+        let repositorio_doble = MockRepositorioCuenta::new();
+        let caso_de_uso = CrearCuentaImpl {
+            repositorio: Arc::new(repositorio_doble),
+        };
+
+        // Actuar
+        let resultado = caso_de_uso
+            .ejecutar(ParamsCrearCuenta {
+                title: props.title,
+                price: props.price,
+                name: props.name.valor().to_string(),
+                sku: props.sku.valor().to_string(),
+                note: props.note,
+                middle_name: props.middle_name.as_ref().map(|v| v.valor().to_string()),
+                tags: props
+                    .tags
+                    .iter()
+                    .map(|v| v.valor().to_string())
+                    .collect::<Vec<_>>(),
+                status: props.status.as_str().to_string(),
+                email: props.email.valor().to_string(),
+                contact: "".to_string(),
+                fee: props.fee.valor(),
+            })
+            .await;
+
+        // Comprobar
+        assert!(resultado.is_err());
+        assert_eq!(
+            resultado.unwrap_err().to_string(),
+            "cuenta.contact_invalido"
+        );
     }
 }
 
@@ -1376,6 +1498,10 @@ pub enum ErrorCuenta {
     StatusInvalido,
     #[error("cuenta.email_invalido")]
     EmailInvalido,
+    #[error("cuenta.contact_invalido")]
+    ContactInvalido,
+    #[error("cuenta.fee_invalido")]
+    FeeInvalido,
 }
 
 impl From<ErrorRepositorio> for ErrorCuenta {
@@ -1426,6 +1552,8 @@ pub mod pruebas {
 }
 
 === contextos/cuenta/dominio/src/modelo.rs ===
+use crate::valores::Contact;
+use crate::valores::Fee;
 use crate::valores::MiddleName;
 use crate::valores::Name;
 use crate::valores::Sku;
@@ -1476,6 +1604,8 @@ pub struct PropsCuenta {
     pub tags: Vec<Tag>,
     pub status: Status,
     pub email: Email,
+    pub contact: Contact,
+    pub fee: Fee,
 }
 
 #[derive(Debug, Clone)]
@@ -1494,6 +1624,8 @@ pub struct Cuenta {
     pub tags: Vec<Tag>,
     pub status: Status,
     pub email: Email,
+    pub contact: Contact,
+    pub fee: Fee,
 }
 
 impl Cuenta {
@@ -1515,6 +1647,8 @@ impl Cuenta {
             tags: props.tags,
             status: props.status,
             email: props.email,
+            contact: props.contact,
+            fee: props.fee,
         })
     }
 
@@ -1530,6 +1664,8 @@ impl Cuenta {
         self.tags = props.tags;
         self.status = props.status;
         self.email = props.email;
+        self.contact = props.contact;
+        self.fee = props.fee;
         self.actualizado_en = chrono::Utc::now();
         Ok(())
     }
@@ -1618,6 +1754,16 @@ mod tests {
     }
 
     #[test]
+    fn deberia_rechazar_cuenta_cuando_contact_es_una_cadena_vacia() {
+        let resultado = Contact::new("".to_string());
+        assert!(resultado.is_err());
+        assert_eq!(
+            resultado.unwrap_err().to_string(),
+            "cuenta.contact_invalido"
+        );
+    }
+
+    #[test]
     fn deberia_rechazar_cuenta_cuando_status_no_es_una_variante_conocida() {
         let resultado = "VarianteInvalida".parse::<Status>();
         assert!(resultado.is_err());
@@ -1641,6 +1787,8 @@ mod tests {
 === contextos/cuenta/dominio/src/pruebas/madres.rs ===
 use crate::modelo::Cuenta;
 use crate::modelo::PropsCuenta;
+use crate::valores::Contact;
+use crate::valores::Fee;
 use crate::valores::MiddleName;
 use crate::valores::Name;
 use crate::valores::Sku;
@@ -1658,6 +1806,8 @@ pub struct MadreCuenta {
     tags: Option<Vec<Tag>>,
     status: Option<Status>,
     email: Option<Email>,
+    contact: Option<Contact>,
+    fee: Option<Fee>,
 }
 
 impl MadreCuenta {
@@ -1672,6 +1822,8 @@ impl MadreCuenta {
             tags: None,
             status: None,
             email: None,
+            contact: None,
+            fee: None,
         }
     }
 
@@ -1720,6 +1872,16 @@ impl MadreCuenta {
         self
     }
 
+    pub fn con_contact(mut self, contact: Contact) -> Self {
+        self.contact = Some(contact);
+        self
+    }
+
+    pub fn con_fee(mut self, fee: Fee) -> Self {
+        self.fee = Some(fee);
+        self
+    }
+
     pub fn con_title_vacio(mut self) -> Self {
         self.title = Some(String::new());
         self
@@ -1742,6 +1904,13 @@ impl MadreCuenta {
             email: self.email.unwrap_or_else(|| {
                 Email::new("example".to_string()).expect("Email::new rechazó el valor de ejemplo")
             }),
+            contact: self.contact.unwrap_or_else(|| {
+                Contact::new("ana@ejemplo.es".to_string())
+                    .expect("Contact::new rechazó el valor de ejemplo")
+            }),
+            fee: self
+                .fee
+                .unwrap_or_else(|| Fee::new(42).expect("Fee::new rechazó el valor de ejemplo")),
         })
         .expect("MadreCuenta: Cuenta::new rechazó los props")
     }
@@ -1763,6 +1932,13 @@ impl MadreCuenta {
             email: self.email.unwrap_or_else(|| {
                 Email::new("example".to_string()).expect("Email::new rechazó el valor de ejemplo")
             }),
+            contact: self.contact.unwrap_or_else(|| {
+                Contact::new("ana@ejemplo.es".to_string())
+                    .expect("Contact::new rechazó el valor de ejemplo")
+            }),
+            fee: self
+                .fee
+                .unwrap_or_else(|| Fee::new(42).expect("Fee::new rechazó el valor de ejemplo")),
         }
     }
 
@@ -1924,6 +2100,92 @@ impl Status {
             Self::Active => "Active",
             Self::Archived => "Archived",
         }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct Contact {
+    valor: String,
+}
+
+impl Contact {
+    /// Un email con la forma `usuario@dominio.tld`, sin espacios: la forma, no que el buzón exista.
+    pub fn new(valor: String) -> Result<Self, ErrorCuenta> {
+        let recortado = valor.trim().to_string();
+        let valido = !recortado.contains(char::is_whitespace)
+            && recortado.split_once('@').is_some_and(|(usuario, dominio)| {
+                !usuario.is_empty()
+                    && !dominio.contains('@')
+                    && dominio.contains('.')
+                    && dominio.split('.').all(|parte| !parte.is_empty())
+            });
+        if !valido {
+            return Err(ErrorCuenta::ContactInvalido);
+        }
+        Ok(Self { valor: recortado })
+    }
+
+    pub fn valor(&self) -> &str {
+        &self.valor
+    }
+}
+
+/// Céntimos de euro, nunca negativos: 1250 son 12,50 €.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct Fee(i64);
+
+impl Fee {
+    pub fn new(valor: i64) -> Result<Self, ErrorCuenta> {
+        if valor < 0 {
+            return Err(ErrorCuenta::FeeInvalido);
+        }
+        Ok(Self(valor))
+    }
+
+    pub fn valor(&self) -> i64 {
+        self.0
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn deberia_aceptar_contact_recortado_cuando_tiene_la_forma_de_un_email() {
+        let resultado = Contact::new(" ana@ejemplo.es ".to_string());
+
+        assert_eq!(
+            resultado.map(|v| v.valor().to_string()).ok().as_deref(),
+            Some("ana@ejemplo.es")
+        );
+    }
+
+    #[test]
+    fn deberia_rechazar_contact_cuando_no_tiene_la_forma_de_un_email() {
+        for valor in [
+            "",
+            "ana",
+            "ana@",
+            "@ejemplo.es",
+            "ana@ejemplo",
+            "ana@ejemplo.",
+            "ana @ejemplo.es",
+            "ana@@ejemplo.es",
+        ] {
+            assert!(Contact::new(valor.to_string()).is_err(), "{valor}");
+        }
+    }
+
+    #[test]
+    fn deberia_aceptar_fee_cuando_es_cero_o_positivo() {
+        assert_eq!(Fee::new(0).map(|v| v.valor()).ok(), Some(0));
+        assert_eq!(Fee::new(1250).map(|v| v.valor()).ok(), Some(1250));
+    }
+
+    #[test]
+    fn deberia_rechazar_fee_cuando_es_negativo() {
+        assert!(Fee::new(-1).is_err());
     }
 }
 
@@ -2189,6 +2451,8 @@ pub struct DtoCuenta {
     pub tags: Vec<String>,
     pub status: String,
     pub email: String,
+    pub contact: String,
+    pub fee: i64,
 }
 
 impl DtoCuenta {
@@ -2208,6 +2472,8 @@ impl DtoCuenta {
                 .collect::<Vec<_>>(),
             status: entidad.status.as_str().to_string(),
             email: entidad.email.valor().to_string(),
+            contact: entidad.contact.valor().to_string(),
+            fee: entidad.fee.valor(),
         }
     }
 }
@@ -2224,6 +2490,8 @@ pub struct PeticionCrearCuenta {
     pub tags: Vec<String>,
     pub status: String,
     pub email: String,
+    pub contact: String,
+    pub fee: i64,
 }
 
 /// Una página de Cuentas: `total` es el recuento completo y `limite`, el que aplicó
@@ -2264,6 +2532,8 @@ pub struct PeticionActualizarCuenta {
     pub tags: Vec<String>,
     pub status: String,
     pub email: String,
+    pub contact: String,
+    pub fee: i64,
 }
 
 === contextos/cuenta/rest/src/errores.rs ===
@@ -2289,6 +2559,8 @@ pub fn a_respuesta_error(err: ErrorCuenta) -> (StatusCode, Json<RespuestaError>)
         ErrorCuenta::TagInvalido => StatusCode::UNPROCESSABLE_ENTITY,
         ErrorCuenta::StatusInvalido => StatusCode::UNPROCESSABLE_ENTITY,
         ErrorCuenta::EmailInvalido => StatusCode::UNPROCESSABLE_ENTITY,
+        ErrorCuenta::ContactInvalido => StatusCode::UNPROCESSABLE_ENTITY,
+        ErrorCuenta::FeeInvalido => StatusCode::UNPROCESSABLE_ENTITY,
     };
     (status, Json(RespuestaError::from_codigo(err.to_string())))
 }
@@ -2406,6 +2678,26 @@ mod tests {
         // Comprobar
         assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY);
         assert_eq!(cuerpo.codigo, "cuenta.email_invalido");
+    }
+
+    #[test]
+    fn deberia_mapear_contact_invalido_a_422_con_su_codigo() {
+        // Actuar
+        let (status, Json(cuerpo)) = a_respuesta_error(ErrorCuenta::ContactInvalido);
+
+        // Comprobar
+        assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY);
+        assert_eq!(cuerpo.codigo, "cuenta.contact_invalido");
+    }
+
+    #[test]
+    fn deberia_mapear_fee_invalido_a_422_con_su_codigo() {
+        // Actuar
+        let (status, Json(cuerpo)) = a_respuesta_error(ErrorCuenta::FeeInvalido);
+
+        // Comprobar
+        assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY);
+        assert_eq!(cuerpo.codigo, "cuenta.fee_invalido");
     }
 }
 
@@ -2615,6 +2907,8 @@ impl ApiCuenta {
                 tags: cuerpo.tags.clone(),
                 status: cuerpo.status.clone(),
                 email: cuerpo.email.clone(),
+                contact: cuerpo.contact.clone(),
+                fee: cuerpo.fee,
             })
             .await
         {
@@ -2689,6 +2983,8 @@ impl ApiCuenta {
                 tags: cuerpo.tags.clone(),
                 status: cuerpo.status.clone(),
                 email: cuerpo.email.clone(),
+                contact: cuerpo.contact.clone(),
+                fee: cuerpo.fee,
             })
             .await
         {
@@ -2771,6 +3067,8 @@ mod tests {
             tags: vec![],
             status: "example".to_string(),
             email: "example".to_string(),
+            contact: "ana@ejemplo.es".to_string(),
+            fee: 42,
         }
     }
 
@@ -2785,6 +3083,8 @@ mod tests {
             tags: vec![],
             status: "example".to_string(),
             email: "example".to_string(),
+            contact: "ana@ejemplo.es".to_string(),
+            fee: 42,
         }
     }
 
@@ -3530,6 +3830,18 @@ nombre = "email"
 tipo = "String"
 objeto_valor = "Email"
 
+[[entidad.campos]]
+nombre = "contact"
+tipo = "String"
+objeto_valor = "Contact"
+clase_objeto_valor = "email"
+
+[[entidad.campos]]
+nombre = "fee"
+tipo = "i64"
+objeto_valor = "Fee"
+clase_objeto_valor = "dinero"
+
 [[objeto_valor]]
 nombre = "Email"
 tipo = "String"
@@ -3671,7 +3983,7 @@ export function ContenedorDetalleCuenta({ id }: { id: string }) {
 import { describe, expect, test } from "bun:test";
 import { fireEvent, screen, waitFor } from "@testing-library/react";
 import type { Esquemas } from "../../../api/cliente";
-import { textoDe } from "../../../compartido/formularios";
+import { aImporte, textoDe } from "../../../compartido/formularios";
 import { apiFalsa } from "../../../pruebas/api-falsa";
 import { coleccionCuenta, MadreCuenta } from "../../../pruebas/cuenta";
 import { renderizarPantalla } from "../../../pruebas/renderizar";
@@ -3694,6 +4006,8 @@ async function rellenar(peticion: Esquemas["PeticionCrearCuenta"]) {
   escribir("Tags", peticion.tags.join(", "));
   escribir("Status", peticion.status);
   escribir("Email", peticion.email);
+  escribir("Contact", peticion.contact);
+  escribir("Fee", aImporte(peticion.fee));
 }
 
 describe("ContenedorFormularioCuenta", () => {
@@ -4025,6 +4339,8 @@ const TEXTOS: Record<string, string> = {
   "cuenta.tag_invalido": "Tags: no válido",
   "cuenta.status_invalido": "Status: no válido",
   "cuenta.email_invalido": "Email: no válido",
+  "cuenta.contact_invalido": "Contact: no válido",
+  "cuenta.fee_invalido": "Fee: no válido",
   "cuenta.duplicado": "Sku: ya está en uso",
   "cuenta.no_encontrado": "Ya no existe",
   "cuenta.repositorio": "No se ha podido guardar; inténtalo más tarde",
@@ -4040,6 +4356,8 @@ const CAMPOS: Record<string, string> = {
   "cuenta.tag_invalido": "tags",
   "cuenta.status_invalido": "status",
   "cuenta.email_invalido": "email",
+  "cuenta.contact_invalido": "contact",
+  "cuenta.fee_invalido": "fee",
   "cuenta.duplicado": "sku",
 };
 
@@ -4049,6 +4367,7 @@ export function aProblema(codigo: string): ProblemaCuenta {
 
 === web/src/contextos/cuenta/vistas/detalle-cuenta.tsx ===
 import type { Esquemas } from "../../../api/cliente";
+import { euros } from "../../../compartido/formularios";
 
 type Cuenta = Esquemas["DtoCuenta"];
 
@@ -4079,13 +4398,23 @@ export function VistaDetalleCuenta({ cuenta }: { cuenta: Cuenta }) {
       <dd>{TEXTOS_STATUS[cuenta.status] ?? cuenta.status}</dd>
       <dt className="font-semibold">Email</dt>
       <dd>{cuenta.email}</dd>
+      <dt className="font-semibold">Contact</dt>
+      <dd>{cuenta.contact}</dd>
+      <dt className="font-semibold">Fee</dt>
+      <dd>{euros(cuenta.fee)}</dd>
     </dl>
   );
 }
 
 === web/src/contextos/cuenta/vistas/formulario-cuenta.tsx ===
 import type { Esquemas } from "../../../api/cliente";
-import { separarLista, textoDe, textoOpcional } from "../../../compartido/formularios";
+import {
+  aImporte,
+  deImporte,
+  separarLista,
+  textoDe,
+  textoOpcional,
+} from "../../../compartido/formularios";
 import { ErrorCampo } from "../../../compartido/ui/error-campo";
 import type { ProblemaCuenta } from "../mensajes";
 
@@ -4103,6 +4432,8 @@ export interface ValoresFormularioCuenta {
   tags: string;
   status: string;
   email: string;
+  contact: string;
+  fee: string;
 }
 
 /** Los inputs de `cuenta`, vacíos cuando todavía no hay ninguno. */
@@ -4118,6 +4449,8 @@ export function aFormularioCuenta(cuenta: Cuenta | null): ValoresFormularioCuent
       tags: "",
       status: "Active",
       email: "",
+      contact: "",
+      fee: "",
     };
   }
   return {
@@ -4130,6 +4463,8 @@ export function aFormularioCuenta(cuenta: Cuenta | null): ValoresFormularioCuent
     tags: cuenta.tags.join(", "),
     status: cuenta.status,
     email: cuenta.email,
+    contact: cuenta.contact,
+    fee: aImporte(cuenta.fee),
   };
 }
 
@@ -4145,6 +4480,8 @@ export function aPeticionCuenta(valores: ValoresFormularioCuenta): PeticionCuent
     tags: separarLista(valores.tags),
     status: valores.status,
     email: valores.email,
+    contact: valores.contact,
+    fee: deImporte(valores.fee),
   };
 }
 
@@ -4277,6 +4614,30 @@ export function VistaFormularioCuenta({
         />
       </label>
       <ErrorCampo problema={problema} campo="email" />
+      <label className="fieldset">
+        <span className="fieldset-legend">Contact</span>
+        <input
+          className="input w-full"
+          type="email"
+          aria-invalid={problema?.campo === "contact"}
+          required
+          value={valores.contact}
+          onChange={(event) => alCambiar({ ...valores, contact: event.target.value })}
+        />
+      </label>
+      <ErrorCampo problema={problema} campo="contact" />
+      <label className="fieldset">
+        <span className="fieldset-legend">Fee</span>
+        <input
+          className="input w-full"
+          type="text"
+          aria-invalid={problema?.campo === "fee"}
+          required
+          value={valores.fee}
+          onChange={(event) => alCambiar({ ...valores, fee: event.target.value })}
+        />
+      </label>
+      <ErrorCampo problema={problema} campo="fee" />
       <button type="submit" className="btn btn-primary" disabled={guardando}>
         Guardar
       </button>
@@ -4287,6 +4648,7 @@ export function VistaFormularioCuenta({
 === web/src/contextos/cuenta/vistas/lista-cuenta.tsx ===
 import { Link } from "wouter";
 import type { Esquemas } from "../../../api/cliente";
+import { euros } from "../../../compartido/formularios";
 
 type Cuenta = Esquemas["DtoCuenta"];
 
@@ -4311,6 +4673,8 @@ export function VistaListaCuenta({ cuentas }: { cuentas: Cuenta[] }) {
             <th>Tags</th>
             <th>Status</th>
             <th>Email</th>
+            <th>Contact</th>
+            <th>Fee</th>
             <th />
           </tr>
         </thead>
@@ -4326,6 +4690,8 @@ export function VistaListaCuenta({ cuentas }: { cuentas: Cuenta[] }) {
               <td>{cuenta.tags.join(", ")}</td>
               <td>{TEXTOS_STATUS[cuenta.status] ?? cuenta.status}</td>
               <td>{cuenta.email}</td>
+              <td>{cuenta.contact}</td>
+              <td>{euros(cuenta.fee)}</td>
               <td className="text-right">
                 <Link href={`/cuentas/${cuenta.id}`} className="link">
                   Ver
@@ -4593,6 +4959,8 @@ export const MadreCuenta = {
       tags: ["example"],
       status: "Active",
       email: "example",
+      contact: "ana@ejemplo.es",
+      fee: 1250,
       ...cambios,
     };
   },

@@ -75,6 +75,26 @@ export function formatearFechaHora(iso: string): string {
   return new Date(iso).toLocaleString("es-ES", { dateStyle: "medium", timeStyle: "short" });
 }
 
+/** Céntimos (un objeto valor `dinero`) como los escribe quien usa el formulario: 1250 → «12,50». */
+export function aImporte(centimos: number): string {
+  return (centimos / 100).toFixed(2).replace(".", ",");
+}
+
+/**
+ * Un importe escrito en euros, en céntimos: «12,50», «12.5» y «12 €» son 1250. Lo que no es un
+ * importe da `NaN`, que la API rechaza.
+ */
+export function deImporte(texto: string): number {
+  const importe = texto.replace(/[\s€]/g, "").replace(",", ".");
+  if (!/^-?\d+(\.\d{1,2})?$/.test(importe)) return Number.NaN;
+  return Math.round(Number(importe) * 100);
+}
+
+/** Céntimos en euros, en castellano: 1250 → «12,50 €». */
+export function euros(centimos: number): string {
+  return (centimos / 100).toLocaleString("es-ES", { style: "currency", currency: "EUR" });
+}
+
 /** Una opción del `<select>` de una referencia: el id que manda y lo que muestra. */
 export interface OpcionReferencia {
   id: string;

@@ -130,6 +130,8 @@ Los campos van después de `--`, un argumento cada uno, sin comillas:
 | `segundo_nombre:SegundoNombre:opt:String` | un objeto valor opcional |
 | `etiqueta:Etiqueta:vec:String` | una lista de objetos valor |
 | `estado:Estado:enum:Borrador/Publicado` | un objeto valor enum (`"Borrador".parse::<Estado>()`) |
+| `contacto:Email:email` | un objeto valor `email`: un texto con la forma `usuario@dominio.tld` (la regla y sus tests vienen hechos) |
+| `precio:Precio:dinero` | un objeto valor `dinero`: céntimos, nunca negativos; la web los escribe y los muestra en euros |
 | `email:Email` | un objeto valor compartido declarado con `generar objeto-valor` (el tipo se infiere) |
 | `cliente_id:ref:Cliente` | una referencia: el `IdCliente` de un `Cliente` generado antes (`!`: uno a uno) |
 | `revisor_id:ref:opt:Cliente` | una referencia opcional |
@@ -2568,7 +2570,7 @@ use chrono::{DateTime, Utc};
 use dominio_cliente::errores::ErrorCliente;
 use dominio_cliente::modelo::{Cliente, IdCliente, PropsCliente};
 use dominio_cliente::repositorio::RepositorioCliente;
-use dominio_cliente::valores::{Age, Code, Joined, Label, MiddleName, Name, Status};
+use dominio_cliente::valores::{Age, Alert, Code, Joined, Label, MiddleName, Name, Status};
 use nucleo::valores::Email;
 use std::sync::Arc;
 
@@ -2578,6 +2580,7 @@ pub struct ParamsActualizarCliente {
     pub email: String,
     pub name: String,
     pub code: String,
+    pub alert: String,
     pub age: i64,
     pub joined: DateTime<Utc>,
     pub middle: Option<String>,
@@ -2622,6 +2625,7 @@ impl ActualizarCliente for ActualizarClienteImpl {
         let email = Email::new(params.email).map_err(|_| ErrorCliente::EmailInvalido)?;
         let name = Name::new(params.name)?;
         let code = Code::new(params.code)?;
+        let alert = Alert::new(params.alert)?;
         let age = Age::new(params.age)?;
         let joined = Joined::new(params.joined)?;
         let middle = params.middle.map(MiddleName::new).transpose()?;
@@ -2635,6 +2639,7 @@ impl ActualizarCliente for ActualizarClienteImpl {
             email,
             name,
             code,
+            alert,
             age,
             joined,
             middle,
@@ -2676,6 +2681,7 @@ mod tests {
                 email: props.email.valor().to_string(),
                 name: props.name.valor().to_string(),
                 code: props.code.valor().to_string(),
+                alert: props.alert.valor().to_string(),
                 age: props.age.valor(),
                 joined: props.joined.valor(),
                 middle: props.middle.as_ref().map(|v| v.valor().to_string()),
@@ -2711,6 +2717,7 @@ mod tests {
                 email: props.email.valor().to_string(),
                 name: props.name.valor().to_string(),
                 code: props.code.valor().to_string(),
+                alert: props.alert.valor().to_string(),
                 age: props.age.valor(),
                 joined: props.joined.valor(),
                 middle: props.middle.as_ref().map(|v| v.valor().to_string()),
@@ -2749,6 +2756,7 @@ mod tests {
                 email: "".to_string(),
                 name: props.name.valor().to_string(),
                 code: props.code.valor().to_string(),
+                alert: props.alert.valor().to_string(),
                 age: props.age.valor(),
                 joined: props.joined.valor(),
                 middle: props.middle.as_ref().map(|v| v.valor().to_string()),
@@ -2787,6 +2795,7 @@ mod tests {
                 email: props.email.valor().to_string(),
                 name: "".to_string(),
                 code: props.code.valor().to_string(),
+                alert: props.alert.valor().to_string(),
                 age: props.age.valor(),
                 joined: props.joined.valor(),
                 middle: props.middle.as_ref().map(|v| v.valor().to_string()),
@@ -2825,6 +2834,7 @@ mod tests {
                 email: props.email.valor().to_string(),
                 name: props.name.valor().to_string(),
                 code: "".to_string(),
+                alert: props.alert.valor().to_string(),
                 age: props.age.valor(),
                 joined: props.joined.valor(),
                 middle: props.middle.as_ref().map(|v| v.valor().to_string()),
@@ -2840,6 +2850,45 @@ mod tests {
         // Comprobar
         assert!(resultado.is_err());
         assert_eq!(resultado.unwrap_err().to_string(), "cliente.code_invalido");
+    }
+
+    #[tokio::test]
+    async fn deberia_devolver_error_cuando_alert_es_una_cadena_vacia() {
+        // Preparar
+        let props = MadreCliente::new().construir_props();
+        let entidad = MadreCliente::aleatorio();
+        let id_entidad = entidad.id;
+        let mut repositorio_doble = MockRepositorioCliente::new();
+        repositorio_doble
+            .expect_buscar_por_id()
+            .returning(move |_| Ok(Some(entidad.clone())));
+        let caso_de_uso = ActualizarClienteImpl {
+            repositorio: Arc::new(repositorio_doble),
+        };
+
+        // Actuar
+        let resultado = caso_de_uso
+            .ejecutar(ParamsActualizarCliente {
+                id: id_entidad,
+                email: props.email.valor().to_string(),
+                name: props.name.valor().to_string(),
+                code: props.code.valor().to_string(),
+                alert: "".to_string(),
+                age: props.age.valor(),
+                joined: props.joined.valor(),
+                middle: props.middle.as_ref().map(|v| v.valor().to_string()),
+                labels: props
+                    .labels
+                    .iter()
+                    .map(|v| v.valor().to_string())
+                    .collect::<Vec<_>>(),
+                status: props.status.as_str().to_string(),
+            })
+            .await;
+
+        // Comprobar
+        assert!(resultado.is_err());
+        assert_eq!(resultado.unwrap_err().to_string(), "cliente.alert_invalido");
     }
 }
 
@@ -2950,7 +2999,7 @@ use chrono::{DateTime, Utc};
 use dominio_cliente::errores::ErrorCliente;
 use dominio_cliente::modelo::{Cliente, PropsCliente};
 use dominio_cliente::repositorio::RepositorioCliente;
-use dominio_cliente::valores::{Age, Code, Joined, Label, MiddleName, Name, Status};
+use dominio_cliente::valores::{Age, Alert, Code, Joined, Label, MiddleName, Name, Status};
 use nucleo::valores::Email;
 use std::sync::Arc;
 
@@ -2959,6 +3008,7 @@ pub struct ParamsCrearCliente {
     pub email: String,
     pub name: String,
     pub code: String,
+    pub alert: String,
     pub age: i64,
     pub joined: DateTime<Utc>,
     pub middle: Option<String>,
@@ -2998,6 +3048,7 @@ impl CrearCliente for CrearClienteImpl {
         let email = Email::new(params.email).map_err(|_| ErrorCliente::EmailInvalido)?;
         let name = Name::new(params.name)?;
         let code = Code::new(params.code)?;
+        let alert = Alert::new(params.alert)?;
         let age = Age::new(params.age)?;
         let joined = Joined::new(params.joined)?;
         let middle = params.middle.map(MiddleName::new).transpose()?;
@@ -3011,6 +3062,7 @@ impl CrearCliente for CrearClienteImpl {
             email,
             name,
             code,
+            alert,
             age,
             joined,
             middle,
@@ -3045,6 +3097,7 @@ mod tests {
                 email: props.email.valor().to_string(),
                 name: props.name.valor().to_string(),
                 code: props.code.valor().to_string(),
+                alert: props.alert.valor().to_string(),
                 age: props.age.valor(),
                 joined: props.joined.valor(),
                 middle: props.middle.as_ref().map(|v| v.valor().to_string()),
@@ -3083,6 +3136,7 @@ mod tests {
                 email: props.email.valor().to_string(),
                 name: props.name.valor().to_string(),
                 code: props.code.valor().to_string(),
+                alert: props.alert.valor().to_string(),
                 age: props.age.valor(),
                 joined: props.joined.valor(),
                 middle: props.middle.as_ref().map(|v| v.valor().to_string()),
@@ -3115,6 +3169,7 @@ mod tests {
                 email: "".to_string(),
                 name: props.name.valor().to_string(),
                 code: props.code.valor().to_string(),
+                alert: props.alert.valor().to_string(),
                 age: props.age.valor(),
                 joined: props.joined.valor(),
                 middle: props.middle.as_ref().map(|v| v.valor().to_string()),
@@ -3147,6 +3202,7 @@ mod tests {
                 email: props.email.valor().to_string(),
                 name: "".to_string(),
                 code: props.code.valor().to_string(),
+                alert: props.alert.valor().to_string(),
                 age: props.age.valor(),
                 joined: props.joined.valor(),
                 middle: props.middle.as_ref().map(|v| v.valor().to_string()),
@@ -3179,6 +3235,7 @@ mod tests {
                 email: props.email.valor().to_string(),
                 name: props.name.valor().to_string(),
                 code: "".to_string(),
+                alert: props.alert.valor().to_string(),
                 age: props.age.valor(),
                 joined: props.joined.valor(),
                 middle: props.middle.as_ref().map(|v| v.valor().to_string()),
@@ -3197,6 +3254,39 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn deberia_devolver_error_cuando_alert_es_una_cadena_vacia() {
+        // Preparar
+        let props = MadreCliente::new().construir_props();
+        let repositorio_doble = MockRepositorioCliente::new();
+        let caso_de_uso = CrearClienteImpl {
+            repositorio: Arc::new(repositorio_doble),
+        };
+
+        // Actuar
+        let resultado = caso_de_uso
+            .ejecutar(ParamsCrearCliente {
+                email: props.email.valor().to_string(),
+                name: props.name.valor().to_string(),
+                code: props.code.valor().to_string(),
+                alert: "".to_string(),
+                age: props.age.valor(),
+                joined: props.joined.valor(),
+                middle: props.middle.as_ref().map(|v| v.valor().to_string()),
+                labels: props
+                    .labels
+                    .iter()
+                    .map(|v| v.valor().to_string())
+                    .collect::<Vec<_>>(),
+                status: props.status.as_str().to_string(),
+            })
+            .await;
+
+        // Comprobar
+        assert!(resultado.is_err());
+        assert_eq!(resultado.unwrap_err().to_string(), "cliente.alert_invalido");
+    }
+
+    #[tokio::test]
     async fn deberia_devolver_error_cuando_status_es_una_cadena_vacia() {
         // Preparar
         let props = MadreCliente::new().construir_props();
@@ -3211,6 +3301,7 @@ mod tests {
                 email: props.email.valor().to_string(),
                 name: props.name.valor().to_string(),
                 code: props.code.valor().to_string(),
+                alert: props.alert.valor().to_string(),
                 age: props.age.valor(),
                 joined: props.joined.valor(),
                 middle: props.middle.as_ref().map(|v| v.valor().to_string()),
@@ -3527,6 +3618,8 @@ pub enum ErrorCliente {
     NameInvalido,
     #[error("cliente.code_invalido")]
     CodeInvalido,
+    #[error("cliente.alert_invalido")]
+    AlertInvalido,
     #[error("cliente.age_invalido")]
     AgeInvalido,
     #[error("cliente.joined_invalido")]
@@ -3588,6 +3681,7 @@ pub mod pruebas {
 
 === contextos/cliente/dominio/src/modelo.rs ===
 use crate::valores::Age;
+use crate::valores::Alert;
 use crate::valores::Code;
 use crate::valores::Joined;
 use crate::valores::Label;
@@ -3633,6 +3727,7 @@ pub struct PropsCliente {
     pub email: Email,
     pub name: Name,
     pub code: Code,
+    pub alert: Alert,
     pub age: Age,
     pub joined: Joined,
     pub middle: Option<MiddleName>,
@@ -3650,6 +3745,7 @@ pub struct Cliente {
     pub email: Email,
     pub name: Name,
     pub code: Code,
+    pub alert: Alert,
     pub age: Age,
     pub joined: Joined,
     pub middle: Option<MiddleName>,
@@ -3670,6 +3766,7 @@ impl Cliente {
             email: props.email,
             name: props.name,
             code: props.code,
+            alert: props.alert,
             age: props.age,
             joined: props.joined,
             middle: props.middle,
@@ -3684,6 +3781,7 @@ impl Cliente {
         self.email = props.email;
         self.name = props.name;
         self.code = props.code;
+        self.alert = props.alert;
         self.age = props.age;
         self.joined = props.joined;
         self.middle = props.middle;
@@ -3745,6 +3843,13 @@ mod tests {
     }
 
     #[test]
+    fn deberia_rechazar_cliente_cuando_alert_es_una_cadena_vacia() {
+        let resultado = Alert::new("".to_string());
+        assert!(resultado.is_err());
+        assert_eq!(resultado.unwrap_err().to_string(), "cliente.alert_invalido");
+    }
+
+    #[test]
     fn deberia_rechazar_cliente_cuando_status_no_es_una_variante_conocida() {
         let resultado = "VarianteInvalida".parse::<Status>();
         assert!(resultado.is_err());
@@ -3772,6 +3877,7 @@ mod tests {
 use crate::modelo::Cliente;
 use crate::modelo::PropsCliente;
 use crate::valores::Age;
+use crate::valores::Alert;
 use crate::valores::Code;
 use crate::valores::Joined;
 use crate::valores::Label;
@@ -3785,6 +3891,7 @@ pub struct MadreCliente {
     email: Option<Email>,
     name: Option<Name>,
     code: Option<Code>,
+    alert: Option<Alert>,
     age: Option<Age>,
     joined: Option<Joined>,
     middle: Option<MiddleName>,
@@ -3798,6 +3905,7 @@ impl MadreCliente {
             email: None,
             name: None,
             code: None,
+            alert: None,
             age: None,
             joined: None,
             middle: None,
@@ -3818,6 +3926,11 @@ impl MadreCliente {
 
     pub fn con_code(mut self, code: Code) -> Self {
         self.code = Some(code);
+        self
+    }
+
+    pub fn con_alert(mut self, alert: Alert) -> Self {
+        self.alert = Some(alert);
         self
     }
 
@@ -3858,6 +3971,10 @@ impl MadreCliente {
             code: self.code.unwrap_or_else(|| {
                 Code::new("example".to_string()).expect("Code::new rechazó el valor de ejemplo")
             }),
+            alert: self.alert.unwrap_or_else(|| {
+                Alert::new("ana@ejemplo.es".to_string())
+                    .expect("Alert::new rechazó el valor de ejemplo")
+            }),
             age: self
                 .age
                 .unwrap_or_else(|| Age::new(42).expect("Age::new rechazó el valor de ejemplo")),
@@ -3883,6 +4000,10 @@ impl MadreCliente {
             code: self.code.unwrap_or_else(|| {
                 Code::new("example".to_string()).expect("Code::new rechazó el valor de ejemplo")
             }),
+            alert: self.alert.unwrap_or_else(|| {
+                Alert::new("ana@ejemplo.es".to_string())
+                    .expect("Alert::new rechazó el valor de ejemplo")
+            }),
             age: self
                 .age
                 .unwrap_or_else(|| Age::new(42).expect("Age::new rechazó el valor de ejemplo")),
@@ -3907,6 +4028,15 @@ impl MadreCliente {
     /// repositorios (es único). Si una regla del dominio lo rechaza, cámbialo aquí.
     pub fn code_unico() -> String {
         uuid::Uuid::new_v4().simple().to_string()[..12].to_string()
+    }
+
+    /// Un `alert` distinto en cada llamada, para las filas que guardan los tests de los
+    /// repositorios (es único). Si una regla del dominio lo rechaza, cámbialo aquí.
+    pub fn alert_unico() -> String {
+        format!(
+            "{}@ejemplo.es",
+            &uuid::Uuid::new_v4().simple().to_string()[..12]
+        )
     }
 }
 
@@ -3983,6 +4113,33 @@ impl Code {
         let recortado = valor.trim().to_string();
         if recortado.is_empty() {
             return Err(ErrorCliente::CodeInvalido);
+        }
+        Ok(Self { valor: recortado })
+    }
+
+    pub fn valor(&self) -> &str {
+        &self.valor
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct Alert {
+    valor: String,
+}
+
+impl Alert {
+    /// Un email con la forma `usuario@dominio.tld`, sin espacios: la forma, no que el buzón exista.
+    pub fn new(valor: String) -> Result<Self, ErrorCliente> {
+        let recortado = valor.trim().to_string();
+        let valido = !recortado.contains(char::is_whitespace)
+            && recortado.split_once('@').is_some_and(|(usuario, dominio)| {
+                !usuario.is_empty()
+                    && !dominio.contains('@')
+                    && dominio.contains('.')
+                    && dominio.split('.').all(|parte| !parte.is_empty())
+            });
+        if !valido {
+            return Err(ErrorCliente::AlertInvalido);
         }
         Ok(Self { valor: recortado })
     }
@@ -4083,6 +4240,37 @@ impl Status {
     }
 }
 
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn deberia_aceptar_alert_recortado_cuando_tiene_la_forma_de_un_email() {
+        let resultado = Alert::new(" ana@ejemplo.es ".to_string());
+
+        assert_eq!(
+            resultado.map(|v| v.valor().to_string()).ok().as_deref(),
+            Some("ana@ejemplo.es")
+        );
+    }
+
+    #[test]
+    fn deberia_rechazar_alert_cuando_no_tiene_la_forma_de_un_email() {
+        for valor in [
+            "",
+            "ana",
+            "ana@",
+            "@ejemplo.es",
+            "ana@ejemplo",
+            "ana@ejemplo.",
+            "ana @ejemplo.es",
+            "ana@@ejemplo.es",
+        ] {
+            assert!(Alert::new(valor.to_string()).is_err(), "{valor}");
+        }
+    }
+}
+
 === contextos/cliente/infraestructura/Cargo.toml ===
 [package]
 name = "infra_cliente"
@@ -4114,6 +4302,7 @@ tokio = { workspace = true }
 === contextos/cliente/infraestructura/src/fila.rs ===
 use chrono::{DateTime, Utc};
 use dominio_cliente::valores::Age;
+use dominio_cliente::valores::Alert;
 use dominio_cliente::valores::Code;
 use dominio_cliente::valores::Joined;
 use dominio_cliente::valores::Label;
@@ -4140,6 +4329,7 @@ pub struct FilaCliente {
     pub email: String,
     pub name: String,
     pub code: String,
+    pub alert: String,
     pub age: i64,
     pub joined: DateTime<Utc>,
     pub middle: Option<String>,
@@ -4160,6 +4350,7 @@ impl TryFrom<FilaCliente> for Cliente {
             email: Email::new(fila.email).map_err(|_| ErrorCliente::EmailInvalido)?,
             name: Name::new(fila.name)?,
             code: Code::new(fila.code)?,
+            alert: Alert::new(fila.alert)?,
             age: Age::new(fila.age)?,
             joined: Joined::new(fila.joined)?,
             middle: fila.middle.map(MiddleName::new).transpose()?,
@@ -4184,6 +4375,7 @@ impl From<&Cliente> for FilaCliente {
             email: entidad.email.valor().to_string(),
             name: entidad.name.valor().to_string(),
             code: entidad.code.valor().to_string(),
+            alert: entidad.alert.valor().to_string(),
             age: entidad.age.valor(),
             joined: entidad.joined.valor(),
             middle: entidad.middle.as_ref().map(|v| v.valor().to_string()),
@@ -4214,6 +4406,7 @@ use dominio_cliente::modelo::Cliente;
 use dominio_cliente::modelo::PropsCliente;
 use dominio_cliente::pruebas::madres::MadreCliente;
 use dominio_cliente::repositorio::RepositorioCliente;
+use dominio_cliente::valores::Alert;
 use dominio_cliente::valores::Code;
 use dominio_cliente::valores::Joined;
 use sqlx::PgPool;
@@ -4226,6 +4419,8 @@ use crate::repositorio::RepositorioClientePostgres;
 pub fn construir() -> Cliente {
     Cliente::new(PropsCliente {
         code: Code::new(MadreCliente::code_unico()).expect("Code::new rechazó el valor de ejemplo"),
+        alert: Alert::new(MadreCliente::alert_unico())
+            .expect("Alert::new rechazó el valor de ejemplo"),
         joined: Joined::new(chrono::DateTime::from_timestamp(1_700_000_000, 0).unwrap())
             .expect("Joined::new rechazó el valor de ejemplo"),
         ..MadreCliente::new().construir_props()
@@ -4289,7 +4484,7 @@ impl RepositorioCliente for RepositorioClientePostgres {
         );
         let filas = sqlx::query_as!(
             FilaCliente,
-            "SELECT id, creado_en, actualizado_en, borrado, borrado_en, email, name, code, age, joined, middle, labels, status
+            "SELECT id, creado_en, actualizado_en, borrado, borrado_en, email, name, code, alert, age, joined, middle, labels, status
              FROM clientes WHERE borrado = false
              ORDER BY creado_en DESC, id LIMIT $1 OFFSET $2",
             i64::from(pagina.limite()),
@@ -4324,7 +4519,7 @@ impl RepositorioCliente for RepositorioClientePostgres {
         tracing::debug!(%id, "buscar_por_id");
         let fila = sqlx::query_as!(
             FilaCliente,
-            "SELECT id, creado_en, actualizado_en, borrado, borrado_en, email, name, code, age, joined, middle, labels, status
+            "SELECT id, creado_en, actualizado_en, borrado, borrado_en, email, name, code, alert, age, joined, middle, labels, status
              FROM clientes WHERE id = $1 AND borrado = false",
             id.valor()
         )
@@ -4342,10 +4537,10 @@ impl RepositorioCliente for RepositorioClientePostgres {
         tracing::debug!(id = %entidad.id, "guardar");
         let db = FilaCliente::from(entidad);
         sqlx::query!(
-            "INSERT INTO clientes (id, creado_en, actualizado_en, borrado, borrado_en, email, name, code, age, joined, middle, labels, status)
-             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
+            "INSERT INTO clientes (id, creado_en, actualizado_en, borrado, borrado_en, email, name, code, alert, age, joined, middle, labels, status)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
              ON CONFLICT (id) DO UPDATE
-             SET actualizado_en = $3, borrado = $4, borrado_en = $5, email = $6, name = $7, code = $8, age = $9, joined = $10, middle = $11, labels = $12, status = $13",
+             SET actualizado_en = $3, borrado = $4, borrado_en = $5, email = $6, name = $7, code = $8, alert = $9, age = $10, joined = $11, middle = $12, labels = $13, status = $14",
             db.id,
             db.creado_en,
             db.actualizado_en,
@@ -4354,6 +4549,7 @@ impl RepositorioCliente for RepositorioClientePostgres {
             db.email,
             db.name,
             db.code,
+            db.alert,
             db.age,
             db.joined,
             db.middle,
@@ -4404,6 +4600,7 @@ mod pruebas_integracion {
         assert_eq!(encontrado.email, entidad.email);
         assert_eq!(encontrado.name, entidad.name);
         assert_eq!(encontrado.code, entidad.code);
+        assert_eq!(encontrado.alert, entidad.alert);
         assert_eq!(encontrado.age, entidad.age);
         assert_eq!(encontrado.joined, entidad.joined);
         assert_eq!(encontrado.middle, entidad.middle);
@@ -4540,6 +4737,7 @@ pub struct DtoCliente {
     pub email: String,
     pub name: String,
     pub code: String,
+    pub alert: String,
     pub age: i64,
     pub joined: DateTime<Utc>,
     pub middle: Option<String>,
@@ -4554,6 +4752,7 @@ impl DtoCliente {
             email: entidad.email.valor().to_string(),
             name: entidad.name.valor().to_string(),
             code: entidad.code.valor().to_string(),
+            alert: entidad.alert.valor().to_string(),
             age: entidad.age.valor(),
             joined: entidad.joined.valor(),
             middle: entidad.middle.as_ref().map(|v| v.valor().to_string()),
@@ -4573,6 +4772,7 @@ pub struct PeticionCrearCliente {
     pub email: String,
     pub name: String,
     pub code: String,
+    pub alert: String,
     pub age: i64,
     pub joined: DateTime<Utc>,
     pub middle: Option<String>,
@@ -4612,6 +4812,7 @@ pub struct PeticionActualizarCliente {
     pub email: String,
     pub name: String,
     pub code: String,
+    pub alert: String,
     pub age: i64,
     pub joined: DateTime<Utc>,
     pub middle: Option<String>,
@@ -4639,6 +4840,7 @@ pub fn a_respuesta_error(err: ErrorCliente) -> (StatusCode, Json<RespuestaError>
         ErrorCliente::EmailInvalido => StatusCode::UNPROCESSABLE_ENTITY,
         ErrorCliente::NameInvalido => StatusCode::UNPROCESSABLE_ENTITY,
         ErrorCliente::CodeInvalido => StatusCode::UNPROCESSABLE_ENTITY,
+        ErrorCliente::AlertInvalido => StatusCode::UNPROCESSABLE_ENTITY,
         ErrorCliente::AgeInvalido => StatusCode::UNPROCESSABLE_ENTITY,
         ErrorCliente::JoinedInvalido => StatusCode::UNPROCESSABLE_ENTITY,
         ErrorCliente::MiddleNameInvalido => StatusCode::UNPROCESSABLE_ENTITY,
@@ -4731,6 +4933,16 @@ mod tests {
         // Comprobar
         assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY);
         assert_eq!(cuerpo.codigo, "cliente.code_invalido");
+    }
+
+    #[test]
+    fn deberia_mapear_alert_invalido_a_422_con_su_codigo() {
+        // Actuar
+        let (status, Json(cuerpo)) = a_respuesta_error(ErrorCliente::AlertInvalido);
+
+        // Comprobar
+        assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY);
+        assert_eq!(cuerpo.codigo, "cliente.alert_invalido");
     }
 
     #[test]
@@ -4984,6 +5196,7 @@ impl ApiCliente {
                 email: cuerpo.email.clone(),
                 name: cuerpo.name.clone(),
                 code: cuerpo.code.clone(),
+                alert: cuerpo.alert.clone(),
                 age: cuerpo.age,
                 joined: cuerpo.joined,
                 middle: cuerpo.middle.clone(),
@@ -5059,6 +5272,7 @@ impl ApiCliente {
                 email: cuerpo.email.clone(),
                 name: cuerpo.name.clone(),
                 code: cuerpo.code.clone(),
+                alert: cuerpo.alert.clone(),
                 age: cuerpo.age,
                 joined: cuerpo.joined,
                 middle: cuerpo.middle.clone(),
@@ -5141,6 +5355,7 @@ mod tests {
             email: "ana@ejemplo.es".to_string(),
             name: "example".to_string(),
             code: "example".to_string(),
+            alert: "ana@ejemplo.es".to_string(),
             age: 42,
             joined: Utc::now(),
             middle: None,
@@ -5154,6 +5369,7 @@ mod tests {
             email: "ana@ejemplo.es".to_string(),
             name: "example".to_string(),
             code: "example".to_string(),
+            alert: "ana@ejemplo.es".to_string(),
             age: 42,
             joined: Utc::now(),
             middle: None,
@@ -8350,6 +8566,7 @@ CREATE TABLE clientes (
     email TEXT NOT NULL,
     name TEXT NOT NULL,
     code TEXT NOT NULL,
+    alert TEXT NOT NULL,
     age BIGINT NOT NULL,
     joined TIMESTAMPTZ NOT NULL,
     middle TEXT,
@@ -8362,6 +8579,8 @@ CREATE TABLE clientes (
 );
 
 CREATE UNIQUE INDEX clientes_code_key ON clientes (code) WHERE borrado = false;
+
+CREATE UNIQUE INDEX clientes_alert_key ON clientes (alert) WHERE borrado = false;
 
 === migraciones/<version>_crear_tabla_producto.sql ===
 -- Migración de Puerto: crear_tabla_producto
@@ -8920,6 +9139,13 @@ nombre = "code"
 tipo = "String"
 unico = true
 objeto_valor = "Code"
+
+[[entidad.campos]]
+nombre = "alert"
+tipo = "String"
+unico = true
+objeto_valor = "Alert"
+clase_objeto_valor = "email"
 
 [[entidad.campos]]
 nombre = "age"
@@ -9738,6 +9964,7 @@ async function rellenar(peticion: Esquemas["PeticionCrearCliente"]) {
   escribir("Email", peticion.email);
   escribir("Name", peticion.name);
   escribir("Code", peticion.code);
+  escribir("Alert", peticion.alert);
   escribir("Age", String(peticion.age));
   escribir("Joined", aFechaHoraLocal(peticion.joined));
   escribir("Middle", textoDe(peticion.middle));
@@ -9810,7 +10037,7 @@ describe("ContenedorFormularioCliente", () => {
     expect((await screen.findByRole("alert")).textContent).toBe(codigo);
   });
 
-  test("debería decir bajo su input que Code ya está en uso cuando la API responde un duplicado", async () => {
+  test("debería decir que los valores ya están en uso cuando la API responde un duplicado", async () => {
     // Preparar
     const peticion = MadreCliente.peticion();
     const codigo = "cliente.duplicado";
@@ -9823,10 +10050,7 @@ describe("ContenedorFormularioCliente", () => {
     fireEvent.click(screen.getByText("Guardar"));
 
     // Comprobar
-    expect(await screen.findByText(aProblema(codigo).texto)).toBeTruthy();
-    const campo = screen.getByLabelText("Code");
-    expect(campo.getAttribute("aria-invalid")).toBe("true");
-    expect(screen.queryByRole("alert")).toBeNull();
+    expect((await screen.findByRole("alert")).textContent).toBe(aProblema(codigo).texto);
   });
 
   test("debería mostrar el mensaje bajo su input cuando la API rechaza un campo", async () => {
@@ -10070,12 +10294,13 @@ const TEXTOS: Record<string, string> = {
   "cliente.email_invalido": "Email: no válido",
   "cliente.name_invalido": "Name: no válido",
   "cliente.code_invalido": "Code: no válido",
+  "cliente.alert_invalido": "Alert: no válido",
   "cliente.age_invalido": "Age: no válido",
   "cliente.joined_invalido": "Joined: no válido",
   "cliente.middle_name_invalido": "Middle: no válido",
   "cliente.label_invalido": "Labels: no válido",
   "cliente.status_invalido": "Status: no válido",
-  "cliente.duplicado": "Code: ya está en uso",
+  "cliente.duplicado": "Estos valores ya están en uso",
   "cliente.no_encontrado": "Ya no existe",
   "cliente.repositorio": "No se ha podido guardar; inténtalo más tarde",
   "cliente.desconocido": "Algo ha ido mal",
@@ -10086,12 +10311,12 @@ const CAMPOS: Record<string, string> = {
   "cliente.email_invalido": "email",
   "cliente.name_invalido": "name",
   "cliente.code_invalido": "code",
+  "cliente.alert_invalido": "alert",
   "cliente.age_invalido": "age",
   "cliente.joined_invalido": "joined",
   "cliente.middle_name_invalido": "middle",
   "cliente.label_invalido": "labels",
   "cliente.status_invalido": "status",
-  "cliente.duplicado": "code",
 };
 
 export function aProblema(codigo: string): ProblemaCliente {
@@ -10119,6 +10344,8 @@ export function VistaDetalleCliente({ cliente }: { cliente: Cliente }) {
       <dd>{cliente.name}</dd>
       <dt className="font-semibold">Code</dt>
       <dd>{cliente.code}</dd>
+      <dt className="font-semibold">Alert</dt>
+      <dd>{cliente.alert}</dd>
       <dt className="font-semibold">Age</dt>
       <dd>{cliente.age}</dd>
       <dt className="font-semibold">Joined</dt>
@@ -10153,6 +10380,7 @@ export interface ValoresFormularioCliente {
   email: string;
   name: string;
   code: string;
+  alert: string;
   age: string;
   joined: string;
   middle: string;
@@ -10167,6 +10395,7 @@ export function aFormularioCliente(cliente: Cliente | null): ValoresFormularioCl
       email: "",
       name: "",
       code: "",
+      alert: "",
       age: "",
       joined: "",
       middle: "",
@@ -10178,6 +10407,7 @@ export function aFormularioCliente(cliente: Cliente | null): ValoresFormularioCl
     email: cliente.email,
     name: cliente.name,
     code: cliente.code,
+    alert: cliente.alert,
     age: String(cliente.age),
     joined: aFechaHoraLocal(cliente.joined),
     middle: textoDe(cliente.middle),
@@ -10192,6 +10422,7 @@ export function aPeticionCliente(valores: ValoresFormularioCliente): PeticionCli
     email: valores.email,
     name: valores.name,
     code: valores.code,
+    alert: valores.alert,
     age: Number(valores.age),
     joined: deFechaHoraLocal(valores.joined),
     middle: textoOpcional(valores.middle),
@@ -10258,6 +10489,18 @@ export function VistaFormularioCliente({
         />
       </label>
       <ErrorCampo problema={problema} campo="code" />
+      <label className="fieldset">
+        <span className="fieldset-legend">Alert</span>
+        <input
+          className="input w-full"
+          type="email"
+          aria-invalid={problema?.campo === "alert"}
+          required
+          value={valores.alert}
+          onChange={(event) => alCambiar({ ...valores, alert: event.target.value })}
+        />
+      </label>
+      <ErrorCampo problema={problema} campo="alert" />
       <label className="fieldset">
         <span className="fieldset-legend">Age</span>
         <input
@@ -10347,6 +10590,7 @@ export function VistaListaCliente({ clientes }: { clientes: Cliente[] }) {
             <th>Email</th>
             <th>Name</th>
             <th>Code</th>
+            <th>Alert</th>
             <th>Age</th>
             <th>Joined</th>
             <th>Middle</th>
@@ -10361,6 +10605,7 @@ export function VistaListaCliente({ clientes }: { clientes: Cliente[] }) {
               <td>{cliente.email}</td>
               <td>{cliente.name}</td>
               <td>{cliente.code}</td>
+              <td>{cliente.alert}</td>
               <td>{cliente.age}</td>
               <td>{formatearFechaHora(cliente.joined)}</td>
               <td>{cliente.middle ?? "—"}</td>
@@ -11532,6 +11777,7 @@ export const MadreCliente = {
       email: "ana@ejemplo.es",
       name: "example",
       code: "example",
+      alert: "ana@ejemplo.es",
       age: 42,
       joined: "2026-01-01T10:00:00.000Z",
       middle: "example",

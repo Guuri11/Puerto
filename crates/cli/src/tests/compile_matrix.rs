@@ -280,6 +280,8 @@ pub(super) const SHARED_VO: Scenario = Scenario {
     shared_vos: &[
         ("Email", "String", Some("ana@ejemplo.es")),
         ("Money", "i64", Some("1250")),
+        // 27.16: a shared class with a rule; its field takes it from here.
+        ("Amount", "dinero", None),
     ],
     mails: &[],
     use_cases: &[],
@@ -287,7 +289,10 @@ pub(super) const SHARED_VO: Scenario = Scenario {
     entity_events: &[],
     internal_use_cases: &[],
     consumers: &[],
-    entities: &[("Cliente", &["name:String", "email:Email", "credit:Money"])],
+    entities: &[(
+        "Cliente",
+        &["name:String", "email:Email", "credit:Money", "total:Amount"],
+    )],
     shapes: &[],
     portada: None,
     blocks: &[],
@@ -344,6 +349,9 @@ pub(super) const VO_KITCHEN_SINK: Scenario = Scenario {
             "tags:Tag:vec:String",
             "status:Status:enum:Active/Archived",
             "email:Email",
+            // 27.16: the value objects with a rule, and their tests.
+            "contact:Contact:email",
+            "fee:Fee:dinero",
         ],
     )],
     shapes: &[],
@@ -586,6 +594,8 @@ pub(super) const POSTGRES_EVERY_TYPE: Scenario = Scenario {
                 "email:Email",
                 "name:Name:String",
                 "code:Code:String!",
+                // 27.16: a unique email, seeded fresh in the form its rule asks for.
+                "alert:Alert:email!",
                 "age:Age:i64",
                 "joined:Joined:DateTime",
                 "middle:MiddleName:opt:String",

@@ -227,6 +227,14 @@ pub fn run_validate(cwd: &Path) -> Result<(), Box<dyn std::error::Error>> {
                         entity.name, field.name, e
                     ));
                 }
+                if let Some(class) = field.value_object_kind.as_deref().filter(|c| *c != "enum") {
+                    if let Err(e) = crate::validation::validate_vo_class(class, &field.field_type) {
+                        errors.push(format!(
+                            "entidad '{}': campo '{}': {e}",
+                            entity.name, field.name
+                        ));
+                    }
+                }
                 if is_enum_vo(field) {
                     if field.field_type != "String" {
                         errors.push(format!(
@@ -297,6 +305,11 @@ pub fn run_validate(cwd: &Path) -> Result<(), Box<dyn std::error::Error>> {
     for vo_def in &config.value_object {
         if let Err(e) = crate::validation::validate_vo_name(&vo_def.name) {
             errors.push(format!("objeto_valor compartido '{}': {}", vo_def.name, e));
+        }
+        if let Some(class) = &vo_def.class {
+            if let Err(e) = crate::validation::validate_vo_class(class, &vo_def.inner_type) {
+                errors.push(format!("objeto_valor compartido '{}': {e}", vo_def.name));
+            }
         }
         if let Some(example) = &vo_def.example {
             if let Err(e) = crate::validation::validate_vo_example(&vo_def.inner_type, example) {

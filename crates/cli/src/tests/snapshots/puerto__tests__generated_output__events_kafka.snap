@@ -142,6 +142,8 @@ Los campos van después de `--`, un argumento cada uno, sin comillas:
 | `segundo_nombre:SegundoNombre:opt:String` | un objeto valor opcional |
 | `etiqueta:Etiqueta:vec:String` | una lista de objetos valor |
 | `estado:Estado:enum:Borrador/Publicado` | un objeto valor enum (`"Borrador".parse::<Estado>()`) |
+| `contacto:Email:email` | un objeto valor `email`: un texto con la forma `usuario@dominio.tld` (la regla y sus tests vienen hechos) |
+| `precio:Precio:dinero` | un objeto valor `dinero`: céntimos, nunca negativos; la web los escribe y los muestra en euros |
 | `email:Email` | un objeto valor compartido declarado con `generar objeto-valor` (el tipo se infiere) |
 | `cliente_id:ref:Cliente` | una referencia: el `IdCliente` de un `Cliente` generado antes (`!`: uno a uno) |
 | `revisor_id:ref:opt:Cliente` | una referencia opcional |

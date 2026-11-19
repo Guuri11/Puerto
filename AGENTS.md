@@ -277,6 +277,7 @@ puerto generar scaffold <Nombre> -- etiquetas:Etiqueta:vec:String          # Obj
 puerto generar scaffold Pedido -- cliente_id:ref:Cliente revisor_id:ref:opt:Cliente   # Referencias (ADR-0022): el id del objetivo, una clave foránea
 puerto generar objeto-valor <Nombre> <tipo>         # Declara un objeto valor compartido en puerto.toml (p. ej. Email String; vale DateTime)
 puerto generar objeto-valor Email String --ejemplo ana@ejemplo.es   # + el valor válido que usan los tests de sus campos (27.15)
+puerto generar objeto-valor Precio dinero           # Una clase con regla (27.16): email | dinero; en un campo, contacto:Email:email, precio:Precio:dinero
 puerto generar transicion Concierto cancelar [--evento concierto_cancelado] [--rol admin]   # Un cambio de estado de punta a punta (27.12)
 puerto generar transicion Concierto agotar --interno   # Sin ruta ni botón: la llama el worker (27.13; también `caso-de-uso … --interno`)
 puerto generar evento <Entidad> <nombre>            # Proyectos con eventos: un evento propio (producto_publicado) + regenera eventos.rs
