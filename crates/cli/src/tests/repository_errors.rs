@@ -184,3 +184,36 @@ fn shared_value_objects_are_declared_in_shared_rs_without_mod_rs() {
 
     cleanup(&dir);
 }
+
+#[test]
+fn postgres_writes_log_a_callers_conflict_as_a_warning_and_the_rest_as_an_error() {
+    // 27.10: a duplicate or a missing reference ends as a 409 / 422 — the caller's doing, not the
+    // server's — and logged as ERROR it would page someone in production.
+    for (name, template) in [
+        (
+            "repository",
+            include_str!("../templates/infrastructure/repository_pg_crud.tera"),
+        ),
+        (
+            "unit of work",
+            include_str!("../templates/infrastructure/unit_of_work_pg.tera"),
+        ),
+        (
+            "user repository",
+            include_str!("../templates/auth/user_repository_pg.tera"),
+        ),
+    ] {
+        let save = &template[template.find("async fn guardar").unwrap()..];
+        let save = &save[..save.find("Ok(())").unwrap()];
+        assert!(
+            save.contains(
+                "ErrorRepositorio::Duplicado | ErrorRepositorio::ReferenciaInexistente(_) => {\n                    tracing::warn!(error = %e, \"guardar rechazado\")"
+            ),
+            "{name}:\n{save}"
+        );
+        assert!(
+            save.contains("_ => tracing::error!(error = %e, \"guardar falló\"),"),
+            "{name}:\n{save}"
+        );
+    }
+}

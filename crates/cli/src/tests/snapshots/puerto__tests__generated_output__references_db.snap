@@ -1857,8 +1857,15 @@ impl RepositorioCliente for RepositorioClientePostgres {
         .execute(&self.pool)
         .await
         .map_err(|e| {
-            tracing::error!(error = %e, "guardar falló");
-            mapear_error_sqlx(&e)
+            let error = mapear_error_sqlx(&e);
+            match error {
+                // Lo rechaza quien llama (409 / 422): no es un fallo del servidor.
+                ErrorRepositorio::Duplicado | ErrorRepositorio::ReferenciaInexistente(_) => {
+                    tracing::warn!(error = %e, "guardar rechazado")
+                }
+                _ => tracing::error!(error = %e, "guardar falló"),
+            }
+            error
         })?;
         Ok(())
     }
@@ -4138,8 +4145,15 @@ impl RepositorioEnvio for RepositorioEnvioPostgres {
         .execute(&self.pool)
         .await
         .map_err(|e| {
-            tracing::error!(error = %e, "guardar falló");
-            mapear_error_sqlx_con(&e, REFERENCES)
+            let error = mapear_error_sqlx_con(&e, REFERENCES);
+            match error {
+                // Lo rechaza quien llama (409 / 422): no es un fallo del servidor.
+                ErrorRepositorio::Duplicado | ErrorRepositorio::ReferenciaInexistente(_) => {
+                    tracing::warn!(error = %e, "guardar rechazado")
+                }
+                _ => tracing::error!(error = %e, "guardar falló"),
+            }
+            error
         })?;
         Ok(())
     }
@@ -6526,8 +6540,15 @@ impl RepositorioPedido for RepositorioPedidoPostgres {
         .execute(&self.pool)
         .await
         .map_err(|e| {
-            tracing::error!(error = %e, "guardar falló");
-            mapear_error_sqlx_con(&e, REFERENCES)
+            let error = mapear_error_sqlx_con(&e, REFERENCES);
+            match error {
+                // Lo rechaza quien llama (409 / 422): no es un fallo del servidor.
+                ErrorRepositorio::Duplicado | ErrorRepositorio::ReferenciaInexistente(_) => {
+                    tracing::warn!(error = %e, "guardar rechazado")
+                }
+                _ => tracing::error!(error = %e, "guardar falló"),
+            }
+            error
         })?;
         Ok(())
     }

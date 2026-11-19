@@ -57,8 +57,15 @@ impl UnitOfWork{{ pascal }} for UnitOfWork{{ pascal }}Postgres {
         .execute(self.tx.tx())
         .await
         .map_err(|e| {
-            tracing::error!(error = %e, "guardar falló");
-            {% if references %}mapear_error_sqlx_con(&e, REFERENCES){% else %}mapear_error_sqlx(&e){% endif %}
+            let error = {% if references %}mapear_error_sqlx_con(&e, REFERENCES){% else %}mapear_error_sqlx(&e){% endif %};
+            match error {
+                // Lo rechaza quien llama (409 / 422): no es un fallo del servidor.
+                ErrorRepositorio::Duplicado | ErrorRepositorio::ReferenciaInexistente(_) => {
+                    tracing::warn!(error = %e, "guardar rechazado")
+                }
+                _ => tracing::error!(error = %e, "guardar falló"),
+            }
+            error
         })?;
         Ok(())
     }

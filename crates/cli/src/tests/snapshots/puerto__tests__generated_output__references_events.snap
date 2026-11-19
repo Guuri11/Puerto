@@ -2471,8 +2471,15 @@ impl UnitOfWorkCompra for UnitOfWorkCompraPostgres {
         .execute(self.tx.tx())
         .await
         .map_err(|e| {
-            tracing::error!(error = %e, "guardar falló");
-            mapear_error_sqlx_con(&e, REFERENCES)
+            let error = mapear_error_sqlx_con(&e, REFERENCES);
+            match error {
+                // Lo rechaza quien llama (409 / 422): no es un fallo del servidor.
+                ErrorRepositorio::Duplicado | ErrorRepositorio::ReferenciaInexistente(_) => {
+                    tracing::warn!(error = %e, "guardar rechazado")
+                }
+                _ => tracing::error!(error = %e, "guardar falló"),
+            }
+            error
         })?;
         Ok(())
     }
@@ -5478,8 +5485,15 @@ impl UnitOfWorkEntrega for UnitOfWorkEntregaPostgres {
         .execute(self.tx.tx())
         .await
         .map_err(|e| {
-            tracing::error!(error = %e, "guardar falló");
-            mapear_error_sqlx_con(&e, REFERENCES)
+            let error = mapear_error_sqlx_con(&e, REFERENCES);
+            match error {
+                // Lo rechaza quien llama (409 / 422): no es un fallo del servidor.
+                ErrorRepositorio::Duplicado | ErrorRepositorio::ReferenciaInexistente(_) => {
+                    tracing::warn!(error = %e, "guardar rechazado")
+                }
+                _ => tracing::error!(error = %e, "guardar falló"),
+            }
+            error
         })?;
         Ok(())
     }
@@ -8377,8 +8391,15 @@ impl UnitOfWorkProveedor for UnitOfWorkProveedorPostgres {
         .execute(self.tx.tx())
         .await
         .map_err(|e| {
-            tracing::error!(error = %e, "guardar falló");
-            mapear_error_sqlx(&e)
+            let error = mapear_error_sqlx(&e);
+            match error {
+                // Lo rechaza quien llama (409 / 422): no es un fallo del servidor.
+                ErrorRepositorio::Duplicado | ErrorRepositorio::ReferenciaInexistente(_) => {
+                    tracing::warn!(error = %e, "guardar rechazado")
+                }
+                _ => tracing::error!(error = %e, "guardar falló"),
+            }
+            error
         })?;
         Ok(())
     }

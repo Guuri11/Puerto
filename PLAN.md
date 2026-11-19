@@ -3822,7 +3822,7 @@ lista muestra la etiqueta, y el id cuando falla.
 - Tests: el texto partido y el de `puerto.toml`; la lista, el detalle y el select; el valor por
   defecto.
 
-### 27.10 — Un conflicto de quien llama no es un error del servidor
+### 27.10 — Un conflicto de quien llama no es un error del servidor ✅
 
 `unit_of_work_pg.tera`, `repository_pg_crud.tera` y `user_repository_pg.tera` registran como
 `ERROR` («guardar falló») un `Duplicado` o una `ReferenciaInexistente`, que acaban en 409 o 422:
