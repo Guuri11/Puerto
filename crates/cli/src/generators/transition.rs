@@ -13,11 +13,13 @@ use crate::generators::naming::{
 };
 use crate::generators::render::render;
 
+/// `internal` (27.13, `--interno`): no route, no button, no caller — the worker calls it.
 pub fn run_generate_transition(
     entity: &str,
     verb: &str,
     event: Option<&str>,
     roles: &[String],
+    internal: bool,
     base: &Path,
 ) -> Result<(), Box<dyn std::error::Error>> {
     let mut config = crate::puerto_toml::read(base)?;
@@ -68,6 +70,9 @@ pub fn run_generate_transition(
             crate::validation::validate_event_name(&snake, event, &declared.events)?;
         }
     }
+    if !roles.is_empty() && internal {
+        return Err("--rol no va con --interno: una transición interna no tiene ruta".into());
+    }
     if !roles.is_empty() && !config.project.has_auth() {
         return Err("--rol necesita un proyecto con auth (`puerto nuevo --auth`)".into());
     }
@@ -89,6 +94,9 @@ pub fn run_generate_transition(
     if !roles.is_empty() {
         entry.roles.insert(uc.clone(), roles.to_vec());
     }
+    if internal {
+        entry.internal.push(uc.clone());
+    }
     crate::puerto_toml::write(base, &config)?;
 
     let event_type = event.map_or_else(|| format!("{snake}_actualizado"), str::to_string);
@@ -106,12 +114,13 @@ pub fn run_generate_transition(
         &event.map_or_else(|| "Actualizado".to_string(), |e| event_variant(&snake, e)),
     );
     ctx.insert("event_type", &event_type);
-    let auth = config.project.has_auth();
+    let auth = config.project.has_auth() && !internal;
     ctx.insert("actor", &auth);
     ctx.insert("protected", &auth);
     ctx.insert("roles", roles);
+    ctx.insert("internal", &internal);
 
-    let files = [
+    let mut files = vec![
         (
             Layer::Domain,
             verb,
@@ -124,13 +133,15 @@ pub fn run_generate_transition(
             layout::use_case(&snake, &uc),
             "use_case/transition.tera",
         ),
-        (
+    ];
+    if !internal {
+        files.push((
             Layer::Rest,
             &uc,
             layout::rest_file(&snake, &uc),
             "presentation/transition.tera",
-        ),
-    ];
+        ));
+    }
     for (layer, module, path, template) in &files {
         write_file(&base.join(path), &render(template, &ctx)?)?;
         add_lib_module(base, &layout::crate_lib(&snake, *layer), module)?;
@@ -138,9 +149,10 @@ pub fn run_generate_transition(
     regenerate_bootstrap(base)?;
 
     let mut missing = vec![];
-    let has_screens = base
-        .join(crate::generators::web::web_required_files(&snake)[1].clone())
-        .exists();
+    let has_screens = !internal
+        && base
+            .join(crate::generators::web::web_required_files(&snake)[1].clone())
+            .exists();
     if config.project.web && has_screens {
         let config = crate::puerto_toml::read(base)?;
         missing = crate::generators::web::add_transition_to_web(base, &config, &pascal, verb)?;

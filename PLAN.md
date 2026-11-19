@@ -3911,12 +3911,23 @@ un fichero suyo, y el que ya existía solo gana una línea.
   compile matrix: `cancelar` (`--evento producto_cancelado --rol admin`) en `auth_oidc_events`, y
   `archivar` en `custom_use_case`.
 
-### 27.13 — Casos de uso internos
+### 27.13 — Casos de uso internos ✅
 
 `generar caso-de-uso … --interno`: sin `actor`, sin campo en `Api<Entidad>` y sin ruta (hoy lleva
 `actor` y un campo con `#[allow(dead_code)]`, aunque solo lo llame el worker). `cableado` lo
 construye igual. Queda en `[[entidad]]` (clave por decidir). Tests: los params, `rutas.rs` sin el
 campo, `cableado`, `validar`.
+
+**Decidido (2026-11-19):** `[[entidad]] internos = ["agotar_concierto"]`, los casos de uso que no
+tienen ruta. `generar caso-de-uso <Entidad> <accion> --interno` y `generar transicion <Entidad>
+<verbo> --interno` (de 27.12): los `Params` sin `actor` (también en un proyecto con auth); ningún
+campo en `Api<Entidad>` (ni con `patch_routes`, ni con `scaffold --forzar`), y ni `Api<Caso>` ni
+botón para una transición. `cableado` los construye igual. `--interno` no se combina con
+`--rol`. `validar`: cada interno es un caso de uso de la entidad que no es CRUD, ni `publicos`
+ni `roles`, y la deriva de auth no busca su handler. Tests: los params, `rutas.rs` sin el campo,
+`bootstrap.rs` sin él, `cableado` con él, `validar`, `scaffold --forzar`, y la transición sin ruta
+ni botón. Compile matrix: un caso de uso interno en `auth_oidc` y una transición interna
+(`agotar`) en `auth_oidc_events`.
 
 ### 27.14 — Lo que necesita un consumidor
 

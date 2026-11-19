@@ -152,9 +152,32 @@ pub struct Entity {
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     #[serde(rename = "transiciones")]
     pub transitions: Vec<String>,
+    /// Use cases with no route (27.13, `--interno`): their params take no caller, `Api{Entity}`
+    /// has no field for them and a transition among them no `Api{UseCase}`. `cableado` builds them.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    #[serde(rename = "internos")]
+    pub internal: Vec<String>,
 }
 
 impl Entity {
+    /// The use cases `Api{Entity}` holds: every one but its transitions' and its internal ones.
+    pub fn api_use_cases(&self) -> Vec<String> {
+        let transitions = self.transition_use_cases();
+        self.use_cases
+            .iter()
+            .filter(|uc| !transitions.contains(uc) && !self.internal.contains(uc))
+            .cloned()
+            .collect()
+    }
+
+    /// The use cases of its transitions with a route, each on its own `Api{UseCase}`.
+    pub fn routed_transition_use_cases(&self) -> Vec<String> {
+        self.transition_use_cases()
+            .into_iter()
+            .filter(|uc| !self.internal.contains(uc))
+            .collect()
+    }
+
     /// The use cases of its transitions: `cancelar_producto` for `cancelar`.
     pub fn transition_use_cases(&self) -> Vec<String> {
         let snake = crate::generators::naming::pascal_to_snake(&self.name);
@@ -525,6 +548,25 @@ pub fn add_mail(base: &Path, mail: Mail) -> Result<(), Box<dyn std::error::Error
     }
     config.mail.push(mail);
     write(base, &config)
+}
+
+/// Marks a use case of an existing entity as internal (27.13). No-op if it already is.
+pub fn add_internal(
+    base: &Path,
+    entity_name: &str,
+    use_case: &str,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let mut config = read(base)?;
+    let entity = config
+        .entity
+        .iter_mut()
+        .find(|e| e.name == entity_name)
+        .ok_or_else(|| format!("la entidad '{entity_name}' no está en puerto.toml"))?;
+    if !entity.internal.iter().any(|uc| uc == use_case) {
+        entity.internal.push(use_case.to_string());
+        write(base, &config)?;
+    }
+    Ok(())
 }
 
 /// Append a use case action to an existing entity. Errors if entity not found. No-op if action already present.

@@ -15,7 +15,9 @@ pub use crate::generators::scaffold::{
     EntityShape, ScaffoldAccess, run_scaffold_with_options, run_value_object,
 };
 pub use crate::generators::transition::run_generate_transition;
+#[cfg(test)]
 pub use crate::generators::use_case::run_use_case;
+pub use crate::generators::use_case::run_use_case_with;
 pub use crate::generators::web::run_generate_web;
 pub use crate::generators::worker::run_generate_consumer;
 

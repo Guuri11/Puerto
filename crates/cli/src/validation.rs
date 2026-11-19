@@ -904,6 +904,26 @@ pub fn validate_entity_access(entity: &crate::puerto_toml::Entity) -> Vec<String
             }
         }
     }
+    // 27.13: an internal use case has no route — nothing to open, nothing to guard.
+    let crud = crate::generators::naming::crud_use_cases(
+        &crate::generators::naming::pascal_to_snake(&entity.name),
+    );
+    for uc in &entity.internal {
+        if !names_use_case(uc) {
+            errors.push(format!(
+                "internos: '{uc}' no es uno de los casos de uso de la entidad"
+            ));
+        } else if crud.contains(uc) {
+            errors.push(format!(
+                "internos: '{uc}' es un caso de uso CRUD: su ruta está en rutas.rs"
+            ));
+        }
+        if entity.public.contains(uc) || entity.roles.contains_key(uc) {
+            errors.push(format!(
+                "'{uc}' es interno: no tiene ruta, así que no va en publicos ni en roles"
+            ));
+        }
+    }
     errors
 }
 

@@ -141,6 +141,10 @@ enum GenerateAction {
         /// La acción del caso de uso en snake_case (p. ej. publicar_producto)
         #[arg(value_name = "ACCION")]
         action: String,
+        /// Sin ruta: lo llama el worker u otro caso de uso. Sus params no llevan actor y
+        /// Api<Entidad> no gana su campo
+        #[arg(long = "interno")]
+        internal: bool,
     },
     /// Declara un evento de dominio propio de una entidad CRUD y regenera su eventos.rs
     /// (proyectos creados con --eventos)
@@ -171,6 +175,9 @@ enum GenerateAction {
         /// Proyectos con auth: los roles que exige su ruta, separados por comas (p. ej. admin)
         #[arg(value_name = "ROLES", long = "rol", value_delimiter = ',')]
         roles: Vec<String>,
+        /// Sin ruta ni botón: la llama el worker. Su caso de uso no lleva actor
+        #[arg(long = "interno")]
+        internal: bool,
     },
     /// Añade un consumidor al worker: un manejador de eventos, sus tests y su entrada en el
     /// registro (proyectos creados con --eventos)
@@ -558,11 +565,16 @@ fn run(command: Commands) -> Result<(), Box<dyn std::error::Error>> {
                 .map(|()| format_after_generation(&cwd))
         }
         Commands::Generate {
-            action: GenerateAction::UseCase { entity, action },
+            action:
+                GenerateAction::UseCase {
+                    entity,
+                    action,
+                    internal,
+                },
         } => {
             let cwd = std::env::current_dir()?;
             commands::list::require_puerto_project(&cwd)
-                .and_then(|_| scaffold::run_use_case(&entity, &action, &cwd))
+                .and_then(|_| scaffold::run_use_case_with(&entity, &action, internal, &cwd))
                 .map(|()| format_after_generation(&cwd))
         }
         Commands::Generate {
@@ -580,6 +592,7 @@ fn run(command: Commands) -> Result<(), Box<dyn std::error::Error>> {
                     verb,
                     event,
                     roles,
+                    internal,
                 },
         } => {
             let cwd = std::env::current_dir()?;
@@ -590,6 +603,7 @@ fn run(command: Commands) -> Result<(), Box<dyn std::error::Error>> {
                         &verb,
                         event.as_deref(),
                         &roles,
+                        internal,
                         &cwd,
                     )
                 })

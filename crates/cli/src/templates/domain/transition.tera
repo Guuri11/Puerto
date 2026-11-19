@@ -6,7 +6,7 @@ use crate::errores::Error{{ pascal }};
 /// no cambia. La regla y el cambio son tuyos.
 impl {{ pascal }} {
     pub fn {{ verb }}(&mut self) -> Result<{% if events %}Evento{{ pascal }}{% else %}(){% endif %}, Error{{ pascal }}> {
-        // La regla: cuándo no se puede {{ verb_words }}. La API responde 422 con este código:
+        // La regla: cuándo no se puede {{ verb_words }}. {% if internal %}Quien la llama recibe{% else %}La API responde 422 con{% endif %} este código:
         // if <no se puede> {
         //     return Err(Error{{ pascal }}::Validacion("no_se_puede_{{ verb }}".into()));
         // }

@@ -444,7 +444,17 @@ fn entity_template_ctx(
     ctx.insert("display_helpers", &helpers(|f| &f.display_helpers));
     let declared = config.and_then(|c| c.entity.iter().find(|e| e.name == pascal));
     let groups = declared.map(|e| e.uniques.clone()).unwrap_or_default();
-    let verbs = declared.map(|e| e.transitions.clone()).unwrap_or_default();
+    // The transitions with a route: an internal one (27.13) has no button.
+    let verbs: Vec<String> = declared
+        .map(|e| {
+            e.transitions
+                .iter()
+                .zip(e.transition_use_cases())
+                .filter(|(_, uc)| !e.internal.contains(uc))
+                .map(|(verb, _)| verb.clone())
+                .collect()
+        })
+        .unwrap_or_default();
     let problems = web_problems(&entity, &eff, &web_fields, &groups, &verbs);
     ctx.insert(
         "transitions",

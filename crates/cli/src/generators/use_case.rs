@@ -6,9 +6,21 @@ use crate::generators::naming::{entity_ctx, pascal_to_snake, to_pascal_case, wri
 use crate::generators::render::render;
 use crate::patchers::routes_rs::patch_routes_use_cases;
 
+#[cfg(test)]
 pub fn run_use_case(
     entity: &str,
     action: &str,
+    base: &Path,
+) -> Result<(), Box<dyn std::error::Error>> {
+    run_use_case_with(entity, action, false, base)
+}
+
+/// `internal` (27.13, `--interno`): no route calls it — no caller in its params, no field in
+/// `Api{Entity}`; `[[entidad]] internos` records it.
+pub fn run_use_case_with(
+    entity: &str,
+    action: &str,
+    internal: bool,
     base: &Path,
 ) -> Result<(), Box<dyn std::error::Error>> {
     let pascal = to_pascal_case(entity);
@@ -37,6 +49,9 @@ pub fn run_use_case(
     }
 
     crate::puerto_toml::add_use_case(base, &pascal, &uc)?;
+    if internal {
+        crate::puerto_toml::add_internal(base, &pascal, &uc)?;
+    }
 
     let uow =
         crate::generators::bootstrap::uses_unit_of_work(declared, config.project.has_events());
@@ -44,8 +59,8 @@ pub fn run_use_case(
     ctx.insert("uc", &uc);
     ctx.insert("uc_pascal", &uc_pascal);
     ctx.insert("uow", &uow);
-    // Protected by default, as the routes: its params carry the caller.
-    ctx.insert("actor", &config.project.has_auth());
+    // Protected by default, as the routes: its params carry the caller. An internal one has none.
+    ctx.insert("actor", &(config.project.has_auth() && !internal));
 
     write_file(
         &path,
@@ -60,7 +75,9 @@ pub fn run_use_case(
         &layout::crate_lib(&snake, layout::Layer::Application),
         &uc,
     )?;
-    patch_routes_use_cases(base, &pascal, &snake, std::slice::from_ref(&uc))?;
+    if !internal {
+        patch_routes_use_cases(base, &pascal, &snake, std::slice::from_ref(&uc))?;
+    }
     regenerate_bootstrap(base)?;
 
     println!(
@@ -68,10 +85,14 @@ pub fn run_use_case(
         layout::use_case(&snake, &uc)
     );
     println!("  puerto.toml actualizado y bootstrap.rs regenerado.");
-    println!(
-        "  Api{pascal} ya tiene `{uc}`: llámalo desde un endpoint en {}.",
-        layout::rest_file(&snake, "rutas")
-    );
+    if internal {
+        println!("  Interno: sin ruta. Lo construye cableado::{snake}::construir.");
+    } else {
+        println!(
+            "  Api{pascal} ya tiene `{uc}`: llámalo desde un endpoint en {}.",
+            layout::rest_file(&snake, "rutas")
+        );
+    }
 
     Ok(())
 }

@@ -110,8 +110,8 @@ comprueba que los dos siguen de acuerdo. `puerto listar` muestra lo que declara,
 |---|---|
 | `puerto generar scaffold <Nombre> [-- campos…]` | todas las capas de una entidad CRUD (crear, obtener, listar, actualizar, borrar) + la migración de su tabla con `db` |
 | `puerto generar dominio <Nombre> [-- campos…]` | solo la capa de dominio, y la entidad en `puerto.toml`; después `puerto generar aplicacion <Nombre>`, `puerto generar repositorio <Nombre>`, `puerto generar presentacion <Nombre>`: una capa cada vez, y cada una comprueba la anterior |
-| `puerto generar caso-de-uso <Entidad> <accion>` | un caso de uso más: su fichero (trait + doble, la impl por rellenar; ver más abajo) y un campo en `Api<Entidad>` |
-| `puerto generar transicion <Entidad> <verbo> [--evento <tipo>] [--rol <rol>]` | un cambio de estado de punta a punta (`cancelar`): el método `<verbo>` de la entidad en `dominio/src/<verbo>.rs` (la regla, por escribir), el caso de uso `<verbo>_<entidad>` con sus tests, `POST /<plural>/{id}/<verbo>` en `rest/src/<verbo>_<entidad>.rs` y, con pantallas, su botón en el detalle |
+| `puerto generar caso-de-uso <Entidad> <accion> [--interno]` | un caso de uso más: su fichero (trait + doble, la impl por rellenar; ver más abajo) y un campo en `Api<Entidad>`; con `--interno`, sin campo ni `actor`: lo llama el worker u otro caso de uso (`[[entidad]] internos`) |
+| `puerto generar transicion <Entidad> <verbo> [--evento <tipo>] [--rol <rol>] [--interno]` | un cambio de estado de punta a punta (`cancelar`): el método `<verbo>` de la entidad en `dominio/src/<verbo>.rs` (la regla, por escribir), el caso de uso `<verbo>_<entidad>` con sus tests, `POST /<plural>/{id}/<verbo>` en `rest/src/<verbo>_<entidad>.rs` y, con pantallas, su botón en el detalle; con `--interno`, sin ruta ni botón |
 | `puerto generar objeto-valor <Nombre> <tipo>` | un objeto valor compartido (`[[objeto_valor]]`), reutilizable por todas las entidades |
 | `puerto generar migracion <nombre>` | una migración SQL vacía (proyectos `db`) |
 | `puerto generar bootstrap` | vuelve a cablear `presentacion/cableado` y `generado/bootstrap.rs` a partir de `puerto.toml` |
@@ -910,6 +910,157 @@ mod tests {
     }
 }
 
+=== contextos/producto/aplicacion/src/agotar_producto.rs ===
+use std::sync::Arc;
+
+use async_trait::async_trait;
+
+use dominio_producto::{
+    errores::ErrorProducto,
+    modelo::{IdProducto, Producto},
+    repositorio::RepositorioProducto,
+    unit_of_work::UnitOfWorkFactoryProducto,
+};
+
+#[derive(Debug, Clone)]
+pub struct ParamsAgotarProducto {
+    pub id: IdProducto,
+}
+
+/// La transición `agotar` de Producto (`puerto generar transicion`): la regla está en
+/// `dominio_producto::agotar`.
+#[async_trait]
+pub trait AgotarProducto: Send + Sync {
+    async fn ejecutar(&self, params: ParamsAgotarProducto) -> Result<Producto, ErrorProducto>;
+}
+
+#[cfg(any(test, feature = "pruebas"))]
+pub mod dobles {
+    use mockall::mock;
+
+    use super::*;
+
+    mock! {
+        pub AgotarProducto {}
+
+        #[async_trait]
+        impl AgotarProducto for AgotarProducto {
+            async fn ejecutar(&self, params: ParamsAgotarProducto) -> Result<Producto, ErrorProducto>;
+        }
+    }
+}
+
+pub struct AgotarProductoImpl {
+    pub repositorio: Arc<dyn RepositorioProducto>,
+    /// Las escrituras pasan por la unidad de trabajo: el método de la entidad emite el evento y
+    /// `uow_factory.guardar(&entidad, evento)` guarda los dos juntos. El repositorio solo lee.
+    pub uow_factory: Arc<dyn UnitOfWorkFactoryProducto>,
+}
+
+#[async_trait]
+impl AgotarProducto for AgotarProductoImpl {
+    #[tracing::instrument(name = "agotar_producto", skip_all, fields(id = %params.id), err(level = "warn"))]
+    async fn ejecutar(&self, params: ParamsAgotarProducto) -> Result<Producto, ErrorProducto> {
+        let mut entidad = self
+            .repositorio
+            .buscar_por_id(params.id)
+            .await?
+            .ok_or(ErrorProducto::NoEncontrado)?;
+        let evento = entidad.agotar()?;
+        self.uow_factory.guardar(&entidad, evento).await?;
+        Ok(entidad)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use dominio_producto::{
+        pruebas::madres::MadreProducto, repositorio::dobles::MockRepositorioProducto,
+        unit_of_work::dobles::UnitOfWorkFactoryGrabadora,
+    };
+    use puerto_nucleo::EventoDominio;
+
+    /// El repositorio que encuentra `encontrado`.
+    fn repositorio(encontrado: Option<Producto>) -> MockRepositorioProducto {
+        let mut repositorio_doble = MockRepositorioProducto::new();
+        repositorio_doble
+            .expect_buscar_por_id()
+            .returning(move |_| Ok(encontrado.clone()));
+        repositorio_doble
+    }
+
+    fn params(id: IdProducto) -> ParamsAgotarProducto {
+        ParamsAgotarProducto { id }
+    }
+
+    #[tokio::test]
+    async fn deberia_agotar_producto_cuando_existe() {
+        // Preparar
+        let entidad = MadreProducto::aleatorio();
+        let id = entidad.id;
+        let uow_factory = UnitOfWorkFactoryGrabadora::new();
+        let caso_de_uso = AgotarProductoImpl {
+            repositorio: Arc::new(repositorio(Some(entidad))),
+            uow_factory: Arc::new(uow_factory.clone()),
+        };
+
+        // Actuar
+        let resultado = caso_de_uso.ejecutar(params(id)).await;
+
+        // Comprobar
+        assert_eq!(resultado.map(|e| e.id).ok(), Some(id));
+        let grabado = uow_factory.grabado();
+        assert!(grabado.confirmado);
+        assert_eq!(grabado.eventos.len(), 1);
+        assert_eq!(grabado.eventos[0].tipo_evento(), "producto_actualizado");
+        assert_eq!(grabado.eventos[0].id_agregado(), id.valor());
+    }
+
+    #[tokio::test]
+    async fn deberia_devolver_no_encontrado_cuando_producto_no_existe() {
+        // Preparar
+        let uow_factory = UnitOfWorkFactoryGrabadora::new();
+        let caso_de_uso = AgotarProductoImpl {
+            repositorio: Arc::new(repositorio(None)),
+            uow_factory: Arc::new(uow_factory.clone()),
+        };
+
+        // Actuar
+        let resultado = caso_de_uso.ejecutar(params(IdProducto::generar())).await;
+
+        // Comprobar
+        assert_eq!(
+            resultado.map(|_| ()).unwrap_err().to_string(),
+            "producto.no_encontrado"
+        );
+        assert!(uow_factory.grabado().eventos.is_empty());
+    }
+
+    #[tokio::test]
+    #[ignore = "escribe la regla"]
+    async fn deberia_rechazar_sin_guardar_nada_cuando_producto_no_se_puede_agotar() {
+        // Preparar: producto que la regla rechaza (`MadreProducto::new().con_…(…).construir()`)
+        let entidad = MadreProducto::aleatorio();
+        let id = entidad.id;
+        let uow_factory = UnitOfWorkFactoryGrabadora::new();
+        let caso_de_uso = AgotarProductoImpl {
+            repositorio: Arc::new(repositorio(Some(entidad))),
+            uow_factory: Arc::new(uow_factory.clone()),
+        };
+
+        // Actuar
+        let resultado = caso_de_uso.ejecutar(params(id)).await;
+
+        // Comprobar
+        assert_eq!(
+            resultado.map(|_| ()).unwrap_err().to_string(),
+            "producto.validacion.no_se_puede_agotar"
+        );
+        assert!(uow_factory.grabado().guardados.is_empty());
+    }
+}
+
 === contextos/producto/aplicacion/src/borrar_producto.rs ===
 use async_trait::async_trait;
 use dominio_producto::errores::ErrorProducto;
@@ -1473,6 +1624,7 @@ mod tests {
 
 === contextos/producto/aplicacion/src/lib.rs ===
 pub mod actualizar_producto;
+pub mod agotar_producto;
 pub mod borrar_producto;
 pub mod cancelar_producto;
 pub mod crear_producto;
@@ -1838,6 +1990,67 @@ pruebas = ["dep:mockall"]
 mockall = { workspace = true }
 tokio = { workspace = true }
 
+=== contextos/producto/dominio/src/agotar.rs ===
+use crate::errores::ErrorProducto;
+use crate::eventos::{EventoProducto, SnapshotProducto};
+use crate::modelo::Producto;
+
+/// La transición `agotar` (`puerto generar transicion`): un `impl` aparte, así que `modelo.rs`
+/// no cambia. La regla y el cambio son tuyos.
+impl Producto {
+    pub fn agotar(&mut self) -> Result<EventoProducto, ErrorProducto> {
+        // La regla: cuándo no se puede agotar. Quien la llama recibe este código:
+        // if <no se puede> {
+        //     return Err(ErrorProducto::Validacion("no_se_puede_agotar".into()));
+        // }
+        // El cambio: los campos que pasan a otro valor (p. ej. un estado).
+        self.actualizado_en = chrono::Utc::now();
+        Ok(EventoProducto::Actualizado(SnapshotProducto::from_entidad(
+            self,
+        )))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::pruebas::madres::MadreProducto;
+    use puerto_nucleo::EventoDominio;
+
+    #[test]
+    fn deberia_agotar_producto_cuando_se_puede() {
+        // Preparar
+        let mut entidad = MadreProducto::aleatorio();
+
+        // Actuar
+        let resultado = entidad.agotar();
+
+        // Comprobar
+        match resultado {
+            Ok(evento) => {
+                assert_eq!(evento.tipo_evento(), "producto_actualizado");
+                assert_eq!(evento.id_agregado(), entidad.id.valor());
+            }
+            Err(e) => panic!("agotar falló: {e}"),
+        }
+    }
+
+    #[test]
+    #[ignore = "escribe la regla"]
+    fn deberia_rechazar_agotar_producto_cuando_no_se_puede() {
+        // Preparar: producto que la regla rechaza (`MadreProducto::new().con_…(…).construir()`)
+        let mut entidad = MadreProducto::aleatorio();
+
+        // Actuar
+        let resultado = entidad.agotar();
+
+        // Comprobar
+        match resultado {
+            Err(e) => assert_eq!(e.to_string(), "producto.validacion.no_se_puede_agotar"),
+            Ok(_) => panic!("agotar debería rechazarlo"),
+        }
+    }
+}
+
 === contextos/producto/dominio/src/cancelar.rs ===
 use crate::errores::ErrorProducto;
 use crate::eventos::{EventoProducto, SnapshotProducto};
@@ -2138,6 +2351,7 @@ mod tests {
 }
 
 === contextos/producto/dominio/src/lib.rs ===
+pub mod agotar;
 pub mod cancelar;
 pub mod errores;
 pub mod eventos;
@@ -5986,6 +6200,7 @@ pub mod producto {
     use std::sync::Arc;
 
     use aplicacion_producto::actualizar_producto::{ActualizarProducto, ActualizarProductoImpl};
+    use aplicacion_producto::agotar_producto::{AgotarProducto, AgotarProductoImpl};
     use aplicacion_producto::borrar_producto::{BorrarProducto, BorrarProductoImpl};
     use aplicacion_producto::cancelar_producto::{CancelarProducto, CancelarProductoImpl};
     use aplicacion_producto::crear_producto::{CrearProducto, CrearProductoImpl};
@@ -6006,6 +6221,7 @@ pub mod producto {
         pub borrar_producto: Arc<dyn BorrarProducto>,
         pub publish_producto: Arc<dyn PublishProducto>,
         pub cancelar_producto: Arc<dyn CancelarProducto>,
+        pub agotar_producto: Arc<dyn AgotarProducto>,
     }
 
     pub fn construir(pool: &sqlx::PgPool) -> CasosDeUso {
@@ -6036,6 +6252,10 @@ pub mod producto {
                 uow_factory: Arc::clone(&uow_factory),
             }),
             cancelar_producto: Arc::new(CancelarProductoImpl {
+                repositorio: Arc::clone(&repositorio),
+                uow_factory: Arc::clone(&uow_factory),
+            }),
+            agotar_producto: Arc::new(AgotarProductoImpl {
                 repositorio: Arc::clone(&repositorio),
                 uow_factory: Arc::clone(&uow_factory),
             }),
@@ -6339,6 +6559,7 @@ casos_de_uso = [
     "borrar_producto",
     "publish_producto",
     "cancelar_producto",
+    "agotar_producto",
 ]
 db = true
 publicos = ["listar_productos"]
@@ -6346,7 +6567,11 @@ eventos = [
     "producto_cancelado",
     "producto_published",
 ]
-transiciones = ["cancelar"]
+transiciones = [
+    "cancelar",
+    "agotar",
+]
+internos = ["agotar_producto"]
 
 [entidad.roles]
 borrar_producto = ["admin"]

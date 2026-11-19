@@ -34,8 +34,10 @@ pub(super) struct Scenario<'a> {
     /// Custom use cases added after scaffolding: `(PascalEntity, snake_action)`.
     pub(super) use_cases: &'a [(&'a str, &'a str)],
     /// Transitions added after the custom use cases (`puerto generar transicion`): `(PascalEntity,
-    /// verb, --evento, --rol)`.
+    /// verb, --evento, --rol, --interno)`.
     pub(super) transitions: &'a [Transition<'a>],
+    /// Internal use cases (`puerto generar caso-de-uso --interno`, 27.13): `(PascalEntity, action)`.
+    pub(super) internal_use_cases: &'a [(&'a str, &'a str)],
     /// Custom events declared after scaffolding (`puerto generar evento`): `(PascalEntity, name)`.
     pub(super) entity_events: &'a [(&'a str, &'a str)],
     /// Worker consumers added last (`puerto generar consumidor`): `(name, event types)`.
@@ -53,7 +55,7 @@ pub(super) type Access<'a> = (&'a str, &'a [&'a str], &'a [&'a str]);
 
 pub(super) type Shape<'a> = (&'a str, &'a [&'a str], &'a [&'a str], &'a [&'a str]);
 
-pub(super) type Transition<'a> = (&'a str, &'a str, Option<&'a str>, &'a [&'a str]);
+pub(super) type Transition<'a> = (&'a str, &'a str, Option<&'a str>, &'a [&'a str], bool);
 
 pub(super) type Mail<'a> = (&'a str, &'a [&'a str], &'a [&'a str], Option<&'a str>);
 
@@ -73,6 +75,7 @@ pub(super) const NO_DEMO: Scenario = Scenario {
     use_cases: &[],
     transitions: &[],
     entity_events: &[],
+    internal_use_cases: &[],
     consumers: &[],
     entities: &[("Persona", &["name:String"])],
     shapes: &[],
@@ -93,6 +96,7 @@ pub(super) const NO_WEB: Scenario = Scenario {
     use_cases: &[],
     transitions: &[],
     entity_events: &[],
+    internal_use_cases: &[],
     consumers: &[],
     entities: &[],
     shapes: &[],
@@ -113,6 +117,7 @@ pub(super) const PRIMITIVES: Scenario = Scenario {
     use_cases: &[],
     transitions: &[],
     entity_events: &[],
+    internal_use_cases: &[],
     consumers: &[],
     entities: &[(
         "Producto",
@@ -146,6 +151,7 @@ pub(super) const UUID_VO: Scenario = Scenario {
     use_cases: &[],
     transitions: &[],
     entity_events: &[],
+    internal_use_cases: &[],
     consumers: &[],
     entities: &[("Reserva", &["reference:String", "tenant_id:TenantId:Uuid"])],
     shapes: &[],
@@ -166,6 +172,7 @@ pub(super) const OPT_VEC_PRIM: Scenario = Scenario {
     use_cases: &[],
     transitions: &[],
     entity_events: &[],
+    internal_use_cases: &[],
     consumers: &[],
     entities: &[(
         "Article",
@@ -195,6 +202,7 @@ pub(super) const PLAIN_VO: Scenario = Scenario {
     use_cases: &[],
     transitions: &[],
     entity_events: &[],
+    internal_use_cases: &[],
     consumers: &[],
     entities: &[(
         "Articulo",
@@ -218,6 +226,7 @@ pub(super) const OPT_VEC_VO: Scenario = Scenario {
     use_cases: &[],
     transitions: &[],
     entity_events: &[],
+    internal_use_cases: &[],
     consumers: &[],
     entities: &[(
         "Persona",
@@ -245,6 +254,7 @@ pub(super) const ENUM_VO: Scenario = Scenario {
     use_cases: &[],
     transitions: &[],
     entity_events: &[],
+    internal_use_cases: &[],
     consumers: &[],
     entities: &[(
         "Pedido",
@@ -271,6 +281,7 @@ pub(super) const SHARED_VO: Scenario = Scenario {
     use_cases: &[],
     transitions: &[],
     entity_events: &[],
+    internal_use_cases: &[],
     consumers: &[],
     entities: &[("Cliente", &["name:String", "email:Email", "credit:Money"])],
     shapes: &[],
@@ -291,6 +302,7 @@ pub(super) const MULTI_ENTITY: Scenario = Scenario {
     use_cases: &[],
     transitions: &[],
     entity_events: &[],
+    internal_use_cases: &[],
     consumers: &[],
     entities: &[
         ("Producto", &["title:String", "price:i64"]),
@@ -314,6 +326,7 @@ pub(super) const VO_KITCHEN_SINK: Scenario = Scenario {
     use_cases: &[],
     transitions: &[],
     entity_events: &[],
+    internal_use_cases: &[],
     consumers: &[],
     entities: &[(
         "Cuenta",
@@ -347,6 +360,7 @@ pub(super) const ENUM_ONLY: Scenario = Scenario {
     use_cases: &[],
     transitions: &[],
     entity_events: &[],
+    internal_use_cases: &[],
     consumers: &[],
     entities: &[("Billete", &["state:State:enum:Open/Closed"])],
     shapes: &[],
@@ -366,8 +380,9 @@ pub(super) const CUSTOM_USE_CASE: Scenario = Scenario {
     shared_vos: &[],
     mails: &[],
     use_cases: &[("Producto", "archive_producto")],
-    transitions: &[("Producto", "archivar", None, &[])],
+    transitions: &[("Producto", "archivar", None, &[], false)],
     entity_events: &[],
+    internal_use_cases: &[],
     consumers: &[],
     entities: &[("Producto", &["title:String", "price:i64"])],
     shapes: &[],
@@ -390,6 +405,7 @@ pub(super) const WEB_CRUD: Scenario = Scenario {
     use_cases: &[],
     transitions: &[],
     entity_events: &[],
+    internal_use_cases: &[],
     consumers: &[],
     entities: &[(
         "LineaPedido",
@@ -423,6 +439,7 @@ pub(super) const WEB_EVERY_TYPE: Scenario = Scenario {
     use_cases: &[],
     transitions: &[],
     entity_events: &[],
+    internal_use_cases: &[],
     consumers: &[],
     entities: &[(
         "Case",
@@ -483,6 +500,7 @@ pub(super) const REFERENCES: Scenario = Scenario {
     use_cases: &[],
     transitions: &[],
     entity_events: &[],
+    internal_use_cases: &[],
     consumers: &[],
     entities: REFERENCE_ENTITIES,
     shapes: &[],
@@ -537,6 +555,7 @@ pub(super) const POSTGRES_EVERY_TYPE: Scenario = Scenario {
     use_cases: &[("Producto", "archive_producto")],
     transitions: &[],
     entity_events: &[],
+    internal_use_cases: &[],
     consumers: &[],
     entities: &[
         (
@@ -590,6 +609,7 @@ pub(super) const EVENTS_DB: Scenario = Scenario {
     use_cases: &[("Producto", "publish_producto")],
     transitions: &[],
     entity_events: &[("Producto", "producto_published")],
+    internal_use_cases: &[],
     consumers: &[(
         "notify_new_producto",
         &["producto_creado", "producto_published"],
@@ -613,16 +633,21 @@ pub(super) const EVENTS_DB: Scenario = Scenario {
 
 /// [`EVENTS_DB`] in an auth project (Phase 16.4): the unit-of-work writes take the caller too,
 /// and the worker builds without one. With a transition that emits its own event and needs a role
-/// (27.12).
+/// (27.12), and an internal one (27.13).
 pub(super) const AUTH_OIDC_EVENTS: Scenario = Scenario {
     name: "auth_oidc_events",
     auth: Some("oidc"),
-    transitions: &[(
-        "Producto",
-        "cancelar",
-        Some("producto_cancelado"),
-        &["admin"],
-    )],
+    // 27.13: `agotar`, internal — the worker's.
+    transitions: &[
+        (
+            "Producto",
+            "cancelar",
+            Some("producto_cancelado"),
+            &["admin"],
+            false,
+        ),
+        ("Producto", "agotar", None, &[], true),
+    ],
     access: &[(
         "Producto",
         &["listar_productos"],
@@ -677,6 +702,7 @@ pub(super) const EVENTS_FRESH: Scenario = Scenario {
     use_cases: &[],
     transitions: &[],
     entity_events: &[],
+    internal_use_cases: &[],
     consumers: &[],
     entities: &[],
     ..EVENTS_DB
@@ -721,6 +747,7 @@ pub(super) const MAIL: Scenario = Scenario {
     use_cases: &[],
     transitions: &[],
     entity_events: &[],
+    internal_use_cases: &[],
     consumers: &[],
     entities: &[],
     shapes: &[],
@@ -745,10 +772,12 @@ pub(super) const AUTH_OIDC: Scenario = Scenario {
     use_cases: &[("Producto", "publish_producto")],
     // 27.12: a transition that needs two roles, and one any caller with a session can make.
     transitions: &[
-        ("Producto", "retirar", None, &["admin", "owner"]),
-        ("Pedido", "pagar", None, &[]),
+        ("Producto", "retirar", None, &["admin", "owner"], false),
+        ("Pedido", "pagar", None, &[], false),
     ],
     entity_events: &[],
+    // 27.13: a use case only the backend calls — no caller, no field in ApiPedido.
+    internal_use_cases: &[("Pedido", "close_pedido")],
     consumers: &[],
     entities: &[
         (
@@ -801,6 +830,7 @@ pub(super) const REFERENCES_AUTH: Scenario = Scenario {
     use_cases: &[],
     transitions: &[],
     entity_events: &[],
+    internal_use_cases: &[],
     consumers: &[],
     entities: &[
         ("Equipo", &["nombre:String"]),
@@ -992,9 +1022,14 @@ pub(super) fn apply_scenario(scenario: &Scenario, output: &Path) {
         format();
     }
 
-    for (entity, verb, event, roles) in scenario.transitions {
+    for (entity, action) in scenario.internal_use_cases {
+        scaffold::run_use_case_with(entity, action, true, output).unwrap();
+        format();
+    }
+
+    for (entity, verb, event, roles, internal) in scenario.transitions {
         let roles: Vec<String> = roles.iter().map(|r| r.to_string()).collect();
-        scaffold::run_generate_transition(entity, verb, *event, &roles, output).unwrap();
+        scaffold::run_generate_transition(entity, verb, *event, &roles, *internal, output).unwrap();
         format();
     }
 

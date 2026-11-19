@@ -92,8 +92,8 @@ comprueba que los dos siguen de acuerdo. `puerto listar` muestra lo que declara,
 |---|---|
 | `puerto generar scaffold <Nombre> [-- campos…]` | todas las capas de una entidad CRUD (crear, obtener, listar, actualizar, borrar) + la migración de su tabla con `db` |
 | `puerto generar dominio <Nombre> [-- campos…]` | solo la capa de dominio, y la entidad en `puerto.toml`; después `puerto generar aplicacion <Nombre>`, `puerto generar repositorio <Nombre>`, `puerto generar presentacion <Nombre>`: una capa cada vez, y cada una comprueba la anterior |
-| `puerto generar caso-de-uso <Entidad> <accion>` | un caso de uso más: su fichero (trait + doble, la impl por rellenar; ver más abajo) y un campo en `Api<Entidad>` |
-| `puerto generar transicion <Entidad> <verbo> [--evento <tipo>] [--rol <rol>]` | un cambio de estado de punta a punta (`cancelar`): el método `<verbo>` de la entidad en `dominio/src/<verbo>.rs` (la regla, por escribir), el caso de uso `<verbo>_<entidad>` con sus tests, `POST /<plural>/{id}/<verbo>` en `rest/src/<verbo>_<entidad>.rs` y, con pantallas, su botón en el detalle |
+| `puerto generar caso-de-uso <Entidad> <accion> [--interno]` | un caso de uso más: su fichero (trait + doble, la impl por rellenar; ver más abajo) y un campo en `Api<Entidad>`; con `--interno`, sin campo ni `actor`: lo llama el worker u otro caso de uso (`[[entidad]] internos`) |
+| `puerto generar transicion <Entidad> <verbo> [--evento <tipo>] [--rol <rol>] [--interno]` | un cambio de estado de punta a punta (`cancelar`): el método `<verbo>` de la entidad en `dominio/src/<verbo>.rs` (la regla, por escribir), el caso de uso `<verbo>_<entidad>` con sus tests, `POST /<plural>/{id}/<verbo>` en `rest/src/<verbo>_<entidad>.rs` y, con pantallas, su botón en el detalle; con `--interno`, sin ruta ni botón |
 | `puerto generar objeto-valor <Nombre> <tipo>` | un objeto valor compartido (`[[objeto_valor]]`), reutilizable por todas las entidades |
 | `puerto generar migracion <nombre>` | una migración SQL vacía (proyectos `db`) |
 | `puerto generar bootstrap` | vuelve a cablear `presentacion/cableado` y `generado/bootstrap.rs` a partir de `puerto.toml` |
@@ -796,6 +796,75 @@ mod tests {
     }
 }
 
+=== contextos/pedido/aplicacion/src/close_pedido.rs ===
+use async_trait::async_trait;
+use dominio_pedido::errores::ErrorPedido;
+use dominio_pedido::modelo::Pedido;
+use dominio_pedido::repositorio::RepositorioPedido;
+use std::sync::Arc;
+
+#[derive(Debug, Clone)]
+pub struct ParamsClosePedido {
+    pub nombre: String,
+}
+
+#[async_trait]
+pub trait ClosePedido: Send + Sync {
+    async fn ejecutar(&self, params: ParamsClosePedido) -> Result<Pedido, ErrorPedido>;
+}
+
+#[cfg(any(test, feature = "pruebas"))]
+pub mod dobles {
+    use mockall::mock;
+
+    use super::*;
+
+    mock! {
+        pub ClosePedido {}
+
+        #[async_trait]
+        impl ClosePedido for ClosePedido {
+            async fn ejecutar(&self, params: ParamsClosePedido) -> Result<Pedido, ErrorPedido>;
+        }
+    }
+}
+
+pub struct ClosePedidoImpl {
+    pub repositorio: Arc<dyn RepositorioPedido>,
+}
+
+#[async_trait]
+impl ClosePedido for ClosePedidoImpl {
+    // El span da nombre a los logs de lo que llama y registra el error que devuelve; `skip_all`:
+    // los parámetros son datos del usuario y no van al log.
+    #[tracing::instrument(name = "close_pedido", skip_all, err(level = "warn"))]
+    async fn ejecutar(&self, _params: ParamsClosePedido) -> Result<Pedido, ErrorPedido> {
+        todo!()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use dominio_pedido::repositorio::dobles::MockRepositorioPedido;
+
+    #[tokio::test]
+    #[ignore = "escribe este test"]
+    async fn deberia_close_pedido_cuando_los_parametros_son_validos() {
+        // Preparar
+        let repositorio_doble = MockRepositorioPedido::new();
+        let caso_de_uso = ClosePedidoImpl {
+            repositorio: Arc::new(repositorio_doble),
+        };
+
+        // Actuar
+        let _ = &caso_de_uso;
+
+        // Comprobar
+        todo!("llama a caso_de_uso.ejecutar(…) y comprueba el resultado")
+    }
+}
+
 === contextos/pedido/aplicacion/src/crear_pedido.rs ===
 use async_trait::async_trait;
 use dominio_pedido::errores::ErrorPedido;
@@ -908,6 +977,7 @@ mod tests {
 === contextos/pedido/aplicacion/src/lib.rs ===
 pub mod actualizar_pedido;
 pub mod borrar_pedido;
+pub mod close_pedido;
 pub mod crear_pedido;
 pub mod listar_pedidos;
 pub mod obtener_pedido;
@@ -7288,6 +7358,7 @@ pub mod pedido {
 
     use aplicacion_pedido::actualizar_pedido::{ActualizarPedido, ActualizarPedidoImpl};
     use aplicacion_pedido::borrar_pedido::{BorrarPedido, BorrarPedidoImpl};
+    use aplicacion_pedido::close_pedido::{ClosePedido, ClosePedidoImpl};
     use aplicacion_pedido::crear_pedido::{CrearPedido, CrearPedidoImpl};
     use aplicacion_pedido::listar_pedidos::{ListarPedidos, ListarPedidosImpl};
     use aplicacion_pedido::obtener_pedido::{ObtenerPedido, ObtenerPedidoImpl};
@@ -7302,6 +7373,7 @@ pub mod pedido {
         pub listar_pedidos: Arc<dyn ListarPedidos>,
         pub actualizar_pedido: Arc<dyn ActualizarPedido>,
         pub borrar_pedido: Arc<dyn BorrarPedido>,
+        pub close_pedido: Arc<dyn ClosePedido>,
         pub pagar_pedido: Arc<dyn PagarPedido>,
     }
 
@@ -7321,6 +7393,9 @@ pub mod pedido {
                 repositorio: Arc::clone(&repositorio),
             }),
             borrar_pedido: Arc::new(BorrarPedidoImpl {
+                repositorio: Arc::clone(&repositorio),
+            }),
+            close_pedido: Arc::new(ClosePedidoImpl {
                 repositorio: Arc::clone(&repositorio),
             }),
             pagar_pedido: Arc::new(PagarPedidoImpl {
@@ -7402,9 +7477,11 @@ casos_de_uso = [
     "listar_pedidos",
     "actualizar_pedido",
     "borrar_pedido",
+    "close_pedido",
     "pagar_pedido",
 ]
 transiciones = ["pagar"]
+internos = ["close_pedido"]
 
 [entidad.roles]
 listar_pedidos = ["admin"]

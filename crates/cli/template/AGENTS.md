@@ -67,8 +67,8 @@ comprueba que los dos siguen de acuerdo. `puerto listar` muestra lo que declara,
 |---|---|
 | `puerto generar scaffold <Nombre> [-- campos…]` | todas las capas de una entidad CRUD (crear, obtener, listar, actualizar, borrar) + la migración de su tabla con `db` |
 | `puerto generar dominio <Nombre> [-- campos…]` | solo la capa de dominio, y la entidad en `puerto.toml`; después `puerto generar aplicacion <Nombre>`, `puerto generar repositorio <Nombre>`, `puerto generar presentacion <Nombre>`: una capa cada vez, y cada una comprueba la anterior |
-| `puerto generar caso-de-uso <Entidad> <accion>` | un caso de uso más: su fichero (trait + doble, la impl por rellenar; ver más abajo) y un campo en `Api<Entidad>` |
-| `puerto generar transicion <Entidad> <verbo> [--evento <tipo>] [--rol <rol>]` | un cambio de estado de punta a punta (`cancelar`): el método `<verbo>` de la entidad en `dominio/src/<verbo>.rs` (la regla, por escribir), el caso de uso `<verbo>_<entidad>` con sus tests, `POST /<plural>/{id}/<verbo>` en `rest/src/<verbo>_<entidad>.rs` y, con pantallas, su botón en el detalle |
+| `puerto generar caso-de-uso <Entidad> <accion> [--interno]` | un caso de uso más: su fichero (trait + doble, la impl por rellenar; ver más abajo) y un campo en `Api<Entidad>`; con `--interno`, sin campo ni `actor`: lo llama el worker u otro caso de uso (`[[entidad]] internos`) |
+| `puerto generar transicion <Entidad> <verbo> [--evento <tipo>] [--rol <rol>] [--interno]` | un cambio de estado de punta a punta (`cancelar`): el método `<verbo>` de la entidad en `dominio/src/<verbo>.rs` (la regla, por escribir), el caso de uso `<verbo>_<entidad>` con sus tests, `POST /<plural>/{id}/<verbo>` en `rest/src/<verbo>_<entidad>.rs` y, con pantallas, su botón en el detalle; con `--interno`, sin ruta ni botón |
 | `puerto generar objeto-valor <Nombre> <tipo>` | un objeto valor compartido (`[[objeto_valor]]`), reutilizable por todas las entidades |
 | `puerto generar migracion <nombre>` | una migración SQL vacía (proyectos `db`) |
 | `puerto generar bootstrap` | vuelve a cablear `presentacion/cableado` y `generado/bootstrap.rs` a partir de `puerto.toml` |

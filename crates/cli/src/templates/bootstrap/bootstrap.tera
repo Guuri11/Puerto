@@ -124,7 +124,7 @@ mod tests {
     use std::sync::Arc;
 {%- endif %}
 {% for entity in entities -%}
-{% for uc in entity.use_cases %}
+{% for uc in entity.api_use_cases | concat(with=entity.transitions) %}
     use aplicacion_{{ entity.snake }}::{{ uc.action }}::dobles::Mock{{ uc.uc_pascal }};
 {%- endfor %}
 {%- endfor %}

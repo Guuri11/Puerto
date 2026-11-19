@@ -64,12 +64,16 @@ fn build_context(
                     uow: uow && !reads.contains(uc),
                 })
                 .collect();
-            let of_transitions = entity.transition_use_cases();
-            let (transitions, api_use_cases): (Vec<BootstrapUseCase>, Vec<BootstrapUseCase>) =
+            let routed = entity.routed_transition_use_cases();
+            let own = entity.api_use_cases();
+            let pick = |names: &[String]| -> Vec<BootstrapUseCase> {
                 use_cases
                     .iter()
+                    .filter(|uc| names.contains(&uc.action))
                     .cloned()
-                    .partition(|uc| of_transitions.contains(&uc.action));
+                    .collect()
+            };
+            let (transitions, api_use_cases) = (pick(&routed), pick(&own));
             BootstrapEntity {
                 pascal: entity.name.clone(),
                 api_use_cases,
@@ -113,7 +117,7 @@ fn api_expression(entities: &[crate::puerto_toml::Entity], auth: bool, local: bo
         .iter()
         .map(|e| {
             let own = format!("api_{}", pascal_to_snake(&e.name));
-            let transitions = e.transition_use_cases();
+            let transitions = e.routed_transition_use_cases();
             if transitions.is_empty() {
                 own
             } else {

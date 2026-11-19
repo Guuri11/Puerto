@@ -50,7 +50,7 @@ fn transicion(
     roles: &[&str],
 ) -> Result<(), String> {
     let roles: Vec<String> = roles.iter().map(|r| r.to_string()).collect();
-    scaffold::run_generate_transition("Producto", verb, event, &roles, output)
+    scaffold::run_generate_transition("Producto", verb, event, &roles, false, output)
         .map_err(|e| e.to_string())
 }
 
@@ -290,9 +290,10 @@ fn transition_refuses_what_it_cannot_write_before_writing_anything() {
             "{verb}: puerto.toml untouched"
         );
     }
-    let saludo = scaffold::run_generate_transition("Saludo", "archivar", None, &[], &output);
+    let saludo = scaffold::run_generate_transition("Saludo", "archivar", None, &[], false, &output);
     assert!(saludo.unwrap_err().to_string().contains("CRUD"));
-    let undeclared = scaffold::run_generate_transition("Nada", "archivar", None, &[], &output);
+    let undeclared =
+        scaffold::run_generate_transition("Nada", "archivar", None, &[], false, &output);
     assert!(undeclared.unwrap_err().to_string().contains("puerto.toml"));
     assert!(
         !output
@@ -470,7 +471,7 @@ fn transition_button_of_an_auth_project_hides_from_who_cannot_use_it() {
     scaffold_producto(&output);
 
     transicion(&output, "archivar", None, &["admin"]).unwrap();
-    scaffold::run_generate_transition("Producto", "destacar", None, &[], &output).unwrap();
+    scaffold::run_generate_transition("Producto", "destacar", None, &[], false, &output).unwrap();
 
     let with_role = read(&output, BUTTON);
     assert!(
@@ -500,4 +501,123 @@ fn transition_on_an_entity_without_screens_writes_no_web() {
 
     assert!(!output.join(BUTTON).exists());
     cleanup(&dir);
+}
+
+// ── 27.13: internal use cases ──────────────────────────────────────────────
+
+#[test]
+fn internal_use_case_takes_no_caller_and_gets_no_field_in_the_api() {
+    let (dir, output) = project(
+        "internal_use_case",
+        NewOptions {
+            auth: Some("oidc".into()),
+            ..plain()
+        },
+    );
+    scaffold_producto(&output);
+
+    scaffold::run_use_case_with("Producto", "agotar_producto", true, &output).unwrap();
+
+    let use_case = read(
+        &output,
+        "contextos/producto/aplicacion/src/agotar_producto.rs",
+    );
+    assert!(!use_case.contains("actor:"), "{use_case}");
+    assert!(!read(&output, "contextos/producto/rest/src/rutas.rs").contains("agotar_producto"));
+    let wiring = wiring(&output);
+    assert!(wiring.contains("AgotarProductoImpl"), "cableado builds it");
+    let api_literals: Vec<&str> = wiring
+        .lines()
+        .filter(|l| l.contains("let api_producto = ApiProducto"))
+        .collect();
+    assert!(!api_literals.is_empty(), "{wiring}");
+    assert!(
+        api_literals.iter().all(|l| !l.contains("agotar_producto")),
+        "{api_literals:?}"
+    );
+    assert_eq!(producto(&output).internal, ["agotar_producto"]);
+    assert!(validate::run_validate(&output).is_ok());
+
+    // A forced rescaffold patches rutas.rs from the manifest: still no field.
+    scaffold_producto(&output);
+    assert!(!read(&output, "contextos/producto/rest/src/rutas.rs").contains("agotar_producto"));
+    assert!(validate::run_validate(&output).is_ok());
+    cleanup(&dir);
+}
+
+#[test]
+fn internal_transition_has_no_route_no_button_and_no_caller() {
+    let (dir, output) = project(
+        "internal_transition",
+        NewOptions {
+            no_db: true,
+            auth: Some("oidc".into()),
+            ..Default::default()
+        },
+    );
+    scaffold_producto(&output);
+
+    scaffold::run_generate_transition("Producto", "agotar", None, &[], true, &output).unwrap();
+
+    assert!(
+        output
+            .join("contextos/producto/dominio/src/agotar.rs")
+            .exists()
+    );
+    let use_case = read(
+        &output,
+        "contextos/producto/aplicacion/src/agotar_producto.rs",
+    );
+    assert!(!use_case.contains("actor:"), "{use_case}");
+    assert!(
+        !output
+            .join("contextos/producto/rest/src/agotar_producto.rs")
+            .exists()
+    );
+    assert!(!read(&output, "contextos/producto/rest/src/lib.rs").contains("agotar_producto"));
+    let button = "web/src/contextos/producto/contenedores/agotar-producto.tsx";
+    assert!(!output.join(button).exists());
+    assert!(!read(&output, DETAIL).contains("BotonAgotarProducto"));
+    assert!(!read(&output, MESSAGES).contains("no_se_puede_agotar"));
+    let wiring = wiring(&output);
+    assert!(!wiring.contains("ApiAgotarProducto"), "{wiring}");
+    assert!(wiring.contains("AgotarProductoImpl"));
+    let entity = producto(&output);
+    assert_eq!(entity.transitions, ["agotar"]);
+    assert_eq!(entity.internal, ["agotar_producto"]);
+    assert!(validate::run_validate(&output).is_ok());
+
+    crate::generators::web::run_generate_web("Producto", &output, OverwritePolicy::Force).unwrap();
+    assert!(!output.join(button).exists());
+    assert!(!read(&output, DETAIL).contains("BotonAgotarProducto"));
+
+    let roles = ["admin".to_string()];
+    let err = scaffold::run_generate_transition("Producto", "cerrar", None, &roles, true, &output)
+        .unwrap_err()
+        .to_string();
+    assert!(err.contains("--interno"), "{err}");
+    cleanup(&dir);
+}
+
+#[test]
+fn an_internal_use_case_is_one_of_the_entity_not_crud_and_has_no_route_to_open_or_guard() {
+    let mut use_cases = crate::generators::naming::crud_use_cases("producto");
+    use_cases.push("agotar_producto".into());
+    let entity = puerto_toml::Entity {
+        name: "Producto".into(),
+        use_cases,
+        internal: vec![
+            "agotar_producto".into(),
+            "crear_producto".into(),
+            "nada".into(),
+        ],
+        public: vec!["agotar_producto".into()],
+        ..Default::default()
+    };
+
+    let errors = crate::validation::validate_entity_access(&entity).join("\n");
+
+    assert!(errors.contains("internos: 'nada'"), "{errors}");
+    assert!(errors.contains("internos: 'crear_producto'"), "{errors}");
+    assert!(errors.contains("'agotar_producto' es interno"), "{errors}");
 }

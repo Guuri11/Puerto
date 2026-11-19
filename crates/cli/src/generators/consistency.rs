@@ -38,7 +38,9 @@ pub fn bootstrap_required_files(entity: &Entity) -> Vec<PathBuf> {
     // A transition's method, and the route `bootstrap.rs` mounts (27.12).
     for (verb, uc) in entity.transitions.iter().zip(entity.transition_use_cases()) {
         files.push(PathBuf::from(layout::domain_file(&snake, verb)));
-        files.push(PathBuf::from(layout::rest_file(&snake, &uc)));
+        if !entity.internal.contains(&uc) {
+            files.push(PathBuf::from(layout::rest_file(&snake, &uc)));
+        }
     }
     files
 }
@@ -284,7 +286,12 @@ pub fn auth_drift(base: &Path, config: &PuertoConfig) -> Vec<String> {
     for entity in &config.entity {
         let snake = pascal_to_snake(&entity.name);
         let transitions = entity.transition_use_cases();
-        for uc in &entity.use_cases {
+        // An internal use case has no handler (27.13).
+        for uc in entity
+            .use_cases
+            .iter()
+            .filter(|uc| !entity.internal.contains(uc))
+        {
             // A transition's handler is in its own file (27.12).
             let path = if transitions.contains(uc) {
                 layout::rest_file(&snake, uc)
