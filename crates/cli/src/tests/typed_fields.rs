@@ -1622,5 +1622,56 @@ fn pg_repository_seed_varies_unique_fields() {
     )
     .unwrap();
 
-    assert!(repo.contains("sku: Uuid::new_v4().to_string(),"), "{repo}");
+    // From the mother (27.2), where a rule of the field can be met: a 36-char uuid broke any
+    // length rule of its value object.
+    assert!(repo.contains("sku: MadreProducto::sku_unico(),"), "{repo}");
+    assert!(
+        repo.contains("use dominio_producto::pruebas::madres::MadreProducto;"),
+        "{repo}"
+    );
+    assert!(!repo.contains("use uuid::Uuid;"), "{repo}");
+}
+
+#[test]
+fn pg_repository_seed_wraps_the_mothers_unique_value_in_its_value_object() {
+    let sku = crate::puerto_toml::parse_field_arg("sku:Sku:String!").unwrap();
+
+    let repo = crate::generators::infrastructure::generate_pg_seed(
+        "Producto",
+        "producto",
+        &[sku],
+        &[],
+        false,
+    )
+    .unwrap();
+
+    assert!(
+        repo.contains("sku: Sku::new(MadreProducto::sku_unico())"),
+        "{repo}"
+    );
+}
+
+#[test]
+fn mother_gives_a_fresh_value_per_call_for_each_unique_field() {
+    let fields = [
+        crate::puerto_toml::parse_field_arg("sku:Sku:String!").unwrap(),
+        crate::puerto_toml::parse_field_arg("codigo:i64!").unwrap(),
+        crate::puerto_toml::parse_field_arg("nombre:String").unwrap(),
+    ];
+
+    let mother =
+        crate::generators::domain::generate_mother("Producto", "producto", &fields, &[]).unwrap();
+
+    // The primitive the seed wraps: 12 hex characters by default, short enough for most rules.
+    assert!(
+        mother.contains(
+            "pub fn sku_unico() -> String {\n        uuid::Uuid::new_v4().simple().to_string()[..12].to_string()\n    }"
+        ),
+        "{mother}"
+    );
+    assert!(
+        mother.contains("pub fn codigo_unico() -> i64 {"),
+        "{mother}"
+    );
+    assert!(!mother.contains("nombre_unico"), "{mother}");
 }

@@ -568,6 +568,14 @@ fn context_agent_rules_describe_what_a_use_case_file_holds() {
 }
 
 #[test]
+fn context_agent_rules_say_where_a_unique_seed_comes_from() {
+    // 27.2: the seed of a unique field comes from the mother, where a rule of its value object
+    // is met; an agent that saw the Postgres tests fail had nowhere to look.
+    let agents = include_str!("../../template/contextos/AGENTS.md");
+    assert!(agents.contains("<campo>_unico()"), "{agents}");
+}
+
+#[test]
 fn root_agent_rules_say_how_to_work_with_puerto() {
     // 17.3: the rules said what the project is, not how to work with the generator — an agent did
     // not know what `generate use-case` leaves to fill in, which files a generator rewrites, or how

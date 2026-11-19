@@ -3,7 +3,7 @@
 //! Puerto).
 use dominio_{{ snake }}::modelo::{{ pascal }};
 {% if seeded %}use dominio_{{ snake }}::modelo::Props{{ pascal }};
-{% endif %}{% if seeded | length < fields | length %}use dominio_{{ snake }}::pruebas::madres::Madre{{ pascal }};
+{% endif %}{% if seeded | length < fields | length or seeds_from_mother %}use dominio_{{ snake }}::pruebas::madres::Madre{{ pascal }};
 {% endif %}{% if events %}use dominio_{{ snake }}::unit_of_work::UnitOfWorkFactory{{ pascal }};
 {% else %}use dominio_{{ snake }}::repositorio::Repositorio{{ pascal }};
 {% endif %}use sqlx::PgPool;

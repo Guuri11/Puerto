@@ -85,7 +85,7 @@ impl Repositorio{{ pascal }} for Repositorio{{ pascal }}EnMemoria {
 mod tests {
     use super::*;
 {% if seeded %}    use dominio_{{ snake }}::modelo::Props{{ pascal }};
-{% endif %}{% if seeded | length < fields | length %}    use dominio_{{ snake }}::pruebas::madres::Madre{{ pascal }};
+{% endif %}{% if seeded | length < fields | length or seeds_from_mother %}    use dominio_{{ snake }}::pruebas::madres::Madre{{ pascal }};
 {% endif %}{% for import in test_imports %}    use {{ import }};
 {% endfor %}
     /// Una entidad válida, con los valores de la madre{% if seeded %} salvo en los campos únicos (uno

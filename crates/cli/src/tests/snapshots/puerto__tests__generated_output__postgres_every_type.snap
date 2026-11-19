@@ -3889,6 +3889,12 @@ impl MadreCliente {
     pub fn aleatorios(n: usize) -> Vec<Cliente> {
         (0..n).map(|_| Self::aleatorio()).collect()
     }
+
+    /// Un `code` distinto en cada llamada, para las filas que guardan los tests de los
+    /// repositorios (es único). Si una regla del dominio lo rechaza, cámbialo aquí.
+    pub fn code_unico() -> String {
+        uuid::Uuid::new_v4().simple().to_string()[..12].to_string()
+    }
 }
 
 impl Default for MadreCliente {
@@ -4198,7 +4204,6 @@ use dominio_cliente::repositorio::RepositorioCliente;
 use dominio_cliente::valores::Code;
 use dominio_cliente::valores::Joined;
 use sqlx::PgPool;
-use uuid::Uuid;
 
 use crate::repositorio::RepositorioClientePostgres;
 
@@ -4207,7 +4212,7 @@ use crate::repositorio::RepositorioClientePostgres;
 /// referencias (una fila sembrada).
 pub fn construir() -> Cliente {
     Cliente::new(PropsCliente {
-        code: Code::new(Uuid::new_v4().to_string()).expect("Code::new rechazó el valor de ejemplo"),
+        code: Code::new(MadreCliente::code_unico()).expect("Code::new rechazó el valor de ejemplo"),
         joined: Joined::new(chrono::DateTime::from_timestamp(1_700_000_000, 0).unwrap())
             .expect("Joined::new rechazó el valor de ejemplo"),
         ..MadreCliente::new().construir_props()
@@ -6740,6 +6745,18 @@ impl MadreProducto {
     pub fn aleatorios(n: usize) -> Vec<Producto> {
         (0..n).map(|_| Self::aleatorio()).collect()
     }
+
+    /// Un `sku` distinto en cada llamada, para las filas que guardan los tests de los
+    /// repositorios (es único). Si una regla del dominio lo rechaza, cámbialo aquí.
+    pub fn sku_unico() -> String {
+        uuid::Uuid::new_v4().simple().to_string()[..12].to_string()
+    }
+
+    /// Un `price` distinto en cada llamada, para las filas que guardan los tests de los
+    /// repositorios (es único). Si una regla del dominio lo rechaza, cámbialo aquí.
+    pub fn price_unico() -> i64 {
+        (uuid::Uuid::new_v4().as_u128() >> 65) as i64
+    }
 }
 
 impl Default for MadreProducto {
@@ -6914,7 +6931,6 @@ use dominio_producto::modelo::PropsProducto;
 use dominio_producto::pruebas::madres::MadreProducto;
 use dominio_producto::repositorio::RepositorioProducto;
 use sqlx::PgPool;
-use uuid::Uuid;
 
 use crate::repositorio::RepositorioProductoPostgres;
 
@@ -6923,8 +6939,8 @@ use crate::repositorio::RepositorioProductoPostgres;
 /// referencias (una fila sembrada).
 pub fn construir() -> Producto {
     Producto::new(PropsProducto {
-        sku: Uuid::new_v4().to_string(),
-        price: (Uuid::new_v4().as_u128() >> 65) as i64,
+        sku: MadreProducto::sku_unico(),
+        price: MadreProducto::price_unico(),
         published_at: chrono::DateTime::from_timestamp(1_700_000_000, 0).unwrap(),
         ..MadreProducto::new().construir_props()
     })

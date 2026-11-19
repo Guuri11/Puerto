@@ -3753,7 +3753,7 @@ Lo que Aforo arregló a mano sirve de referencia: los commits de `~/dev/aforo` y
   `src/tests/mail.rs`); `vite.config.ts` lee `SERVICE_PORT`; el aviso, con un `TcpListener` ocupando
   un puerto y otro libre.
 
-### 27.2 — La siembra respeta las reglas de los objetos valor
+### 27.2 — La siembra respeta las reglas de los objetos valor ✅
 
 `siembra.tera` da a cada campo único `Uuid::new_v4().to_string()`: 36 caracteres. En cuanto el objeto
 valor tiene una regla de longitud o de formato, fallan todos los tests de Postgres de la entidad (en

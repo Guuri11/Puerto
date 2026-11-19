@@ -133,6 +133,7 @@ impl MadreProducto {
 | `.con_<campo>_vacio()` | `Self` | Constructor: campo vacío (escenarios de error) |
 | `.construir()` | `Entidad` | Crea la entidad (hace panic si es inválida — a propósito en tests) |
 | `.construir_props()` | `PropsEntidad` | Crea los props sin construir la entidad |
+| `<campo>_unico()` | el primitivo | Campos `unico`: un valor nuevo por llamada (12 hexadecimales en un `String`), el que usan las siembras de los tests de los repositorios |
 
 ---
 

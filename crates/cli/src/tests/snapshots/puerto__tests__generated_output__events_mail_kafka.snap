@@ -2747,6 +2747,12 @@ impl MadreProducto {
     pub fn aleatorios(n: usize) -> Vec<Producto> {
         (0..n).map(|_| Self::aleatorio()).collect()
     }
+
+    /// Un `sku` distinto en cada llamada, para las filas que guardan los tests de los
+    /// repositorios (es único). Si una regla del dominio lo rechaza, cámbialo aquí.
+    pub fn sku_unico() -> String {
+        uuid::Uuid::new_v4().simple().to_string()[..12].to_string()
+    }
 }
 
 impl Default for MadreProducto {
@@ -3109,7 +3115,6 @@ use dominio_producto::pruebas::madres::MadreProducto;
 use dominio_producto::unit_of_work::UnitOfWorkFactoryProducto;
 use dominio_producto::valores::Sku;
 use sqlx::PgPool;
-use uuid::Uuid;
 
 use crate::unit_of_work::UnitOfWorkFactoryProductoPostgres;
 
@@ -3118,7 +3123,7 @@ use crate::unit_of_work::UnitOfWorkFactoryProductoPostgres;
 /// referencias (una fila sembrada).
 pub fn construir() -> Producto {
     Producto::new(PropsProducto {
-        sku: Sku::new(Uuid::new_v4().to_string()).expect("Sku::new rechazó el valor de ejemplo"),
+        sku: Sku::new(MadreProducto::sku_unico()).expect("Sku::new rechazó el valor de ejemplo"),
         ..MadreProducto::new().construir_props()
     })
     .unwrap()

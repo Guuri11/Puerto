@@ -1551,6 +1551,12 @@ impl MadreCliente {
     pub fn aleatorios(n: usize) -> Vec<Cliente> {
         (0..n).map(|_| Self::aleatorio()).collect()
     }
+
+    /// Un `email` distinto en cada llamada, para las filas que guardan los tests de los
+    /// repositorios (es único). Si una regla del dominio lo rechaza, cámbialo aquí.
+    pub fn email_unico() -> String {
+        uuid::Uuid::new_v4().simple().to_string()[..12].to_string()
+    }
 }
 
 impl Default for MadreCliente {
@@ -1713,7 +1719,6 @@ use dominio_cliente::modelo::PropsCliente;
 use dominio_cliente::pruebas::madres::MadreCliente;
 use dominio_cliente::repositorio::RepositorioCliente;
 use sqlx::PgPool;
-use uuid::Uuid;
 
 use crate::repositorio::RepositorioClientePostgres;
 
@@ -1722,7 +1727,7 @@ use crate::repositorio::RepositorioClientePostgres;
 /// referencias (una fila sembrada).
 pub fn construir() -> Cliente {
     Cliente::new(PropsCliente {
-        email: Uuid::new_v4().to_string(),
+        email: MadreCliente::email_unico(),
         ..MadreCliente::new().construir_props()
     })
     .unwrap()

@@ -58,7 +58,8 @@ fn generated_tests_take_their_valid_values_from_the_mother() {
         modelo.contains("Linea::new(MadreLinea::new().con_codigo_vacio().construir_props())"),
         "{modelo}"
     );
-    // A unique field still gets a fresh value per row: two saved rows must not collide.
+    // A unique field still gets a fresh value per row, from the mother (27.2): two saved rows
+    // must not collide.
     let repositorio = read(
         &output,
         "contextos/linea/infraestructura/src/repositorio.rs",
@@ -68,7 +69,7 @@ fn generated_tests_take_their_valid_values_from_the_mother() {
         "{repositorio}"
     );
     assert!(
-        repositorio.contains("codigo: Uuid::new_v4().to_string(),"),
+        repositorio.contains("codigo: MadreLinea::codigo_unico(),"),
         "{repositorio}"
     );
     cleanup(&dir);

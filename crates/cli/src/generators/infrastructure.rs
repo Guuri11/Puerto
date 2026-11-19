@@ -12,7 +12,7 @@ use crate::generators::render::{RenderError, render};
 use crate::generators::scaffold::EntityShape;
 use crate::generators::types::{
     FieldCtx, field_ctx, is_enum_vo, is_reference, is_value_object, literal_names_vo, reference_id,
-    resolve_type, seed_literal, vo_import_path,
+    resolve_type, seed_literal, unique_seed, vo_import_path,
 };
 use crate::puerto_toml::{Field, ValueObjectDefinition};
 
@@ -265,11 +265,11 @@ fn seed_ctx_with(
             test_imports.push(import);
         }
     }
-    // A `Uuid` field and every `unique` seed draw on `Uuid::new_v4()`; the file itself names no
-    // `Uuid` since ids are `{Entity}Id`.
+    // A `Uuid` field and every seed of a unique group draw on `Uuid::new_v4()`; the file itself
+    // names no `Uuid` since ids are `{Entity}Id`.
     if seeded
         .iter()
-        .any(|f| seed_literal(&as_seeded(f, groups)).contains("Uuid::"))
+        .any(|f| seed_of(f, pascal, groups).contains("Uuid::"))
     {
         test_imports.push("uuid::Uuid".to_string());
     }
@@ -281,6 +281,11 @@ fn seed_ctx_with(
 
     let mut ctx = entity_ctx(pascal, snake);
     ctx.insert("test_imports", &test_imports);
+    // A unique field's seed calls the mother even when every field is seeded.
+    ctx.insert(
+        "seeds_from_mother",
+        &eff.iter().any(|f| unique_seed(f, pascal).is_some()),
+    );
     ctx.insert(
         "seeded",
         &seeded.iter().map(|f| f.name.as_str()).collect::<Vec<_>>(),
@@ -428,10 +433,16 @@ fn seeded_field_ctxs(
 ) -> Vec<FieldCtx> {
     eff.iter()
         .map(|f| FieldCtx {
-            seed_literal: seed_literal(&as_seeded(f, groups)),
+            seed_literal: seed_of(f, pascal, groups),
             ..field_ctx(f, pascal, shared_vos)
         })
         .collect()
+}
+
+/// What a seed gives `field`: a unique field asks the mother for a fresh value (Fase 27.2), the
+/// rest take [`seed_literal`] (a field of a unique group, a fresh uuid-based one).
+fn seed_of(field: &Field, pascal: &str, groups: &[Vec<String>]) -> String {
+    unique_seed(field, pascal).unwrap_or_else(|| seed_literal(&as_seeded(field, groups)))
 }
 
 /// A seeded entity takes the mother's values (Phase 20.5) but where one would not do for a stored

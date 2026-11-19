@@ -1320,6 +1320,12 @@ impl MadreArticulo {
     pub fn aleatorios(n: usize) -> Vec<Articulo> {
         (0..n).map(|_| Self::aleatorio()).collect()
     }
+
+    /// Un `sku` distinto en cada llamada, para las filas que guardan los tests de los
+    /// repositorios (es único). Si una regla del dominio lo rechaza, cámbialo aquí.
+    pub fn sku_unico() -> String {
+        uuid::Uuid::new_v4().simple().to_string()[..12].to_string()
+    }
 }
 
 impl Default for MadreArticulo {
@@ -1532,13 +1538,12 @@ mod tests {
     use dominio_articulo::modelo::PropsArticulo;
     use dominio_articulo::pruebas::madres::MadreArticulo;
     use dominio_articulo::valores::Sku;
-    use uuid::Uuid;
 
     /// Una entidad válida, con los valores de la madre salvo en los campos únicos (uno
     /// nuevo cada vez) y las fechas (un segundo exacto).
     fn nuevo_articulo() -> Articulo {
         Articulo::new(PropsArticulo {
-            sku: Sku::new(Uuid::new_v4().to_string())
+            sku: Sku::new(MadreArticulo::sku_unico())
                 .expect("Sku::new rechazó el valor de ejemplo"),
             ..MadreArticulo::new().construir_props()
         })

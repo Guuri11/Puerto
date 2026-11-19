@@ -1771,6 +1771,12 @@ impl MadreCuenta {
     pub fn aleatorios(n: usize) -> Vec<Cuenta> {
         (0..n).map(|_| Self::aleatorio()).collect()
     }
+
+    /// Un `sku` distinto en cada llamada, para las filas que guardan los tests de los
+    /// repositorios (es único). Si una regla del dominio lo rechaza, cámbialo aquí.
+    pub fn sku_unico() -> String {
+        uuid::Uuid::new_v4().simple().to_string()[..12].to_string()
+    }
 }
 
 impl Default for MadreCuenta {
@@ -2036,14 +2042,12 @@ mod tests {
     use dominio_cuenta::modelo::PropsCuenta;
     use dominio_cuenta::pruebas::madres::MadreCuenta;
     use dominio_cuenta::valores::Sku;
-    use uuid::Uuid;
 
     /// Una entidad válida, con los valores de la madre salvo en los campos únicos (uno
     /// nuevo cada vez) y las fechas (un segundo exacto).
     fn nuevo_cuenta() -> Cuenta {
         Cuenta::new(PropsCuenta {
-            sku: Sku::new(Uuid::new_v4().to_string())
-                .expect("Sku::new rechazó el valor de ejemplo"),
+            sku: Sku::new(MadreCuenta::sku_unico()).expect("Sku::new rechazó el valor de ejemplo"),
             ..MadreCuenta::new().construir_props()
         })
         .unwrap()

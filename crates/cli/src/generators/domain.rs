@@ -109,9 +109,17 @@ pub fn generate_mother(
         .iter()
         .map(|f| field_ctx(f, pascal, shared_vos))
         .collect();
+    let unique_values: Vec<serde_json::Value> = eff
+        .iter()
+        .filter_map(|f| {
+            let (ty, value) = crate::generators::types::unique_value(f)?;
+            Some(json!({ "name": f.name, "ty": ty, "value": value }))
+        })
+        .collect();
     let mut ctx = entity_ctx(pascal, snake);
     ctx.insert("imports", &imports);
     ctx.insert("fields", &field_ctxs);
+    ctx.insert("unique_values", &unique_values);
     render("domain/mother.tera", &ctx)
 }
 

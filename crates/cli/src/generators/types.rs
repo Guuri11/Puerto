@@ -535,6 +535,38 @@ pub fn seed_literal(field: &Field) -> String {
     })
 }
 
+/// What the mother's `<campo>_unico()` returns for a `unico` field (Fase 27.2): the primitive
+/// type and a fresh value per call. `None` where a field has no such function: not unique, a
+/// reference or an enum (their seeds come from elsewhere), or a type whose default is fresh.
+pub fn unique_value(field: &Field) -> Option<(&'static str, &'static str)> {
+    if !field.unique || is_reference(field) || is_enum_vo(field) {
+        return None;
+    }
+    match field.field_type.as_str() {
+        // 12 hex characters: short enough for a length rule, enough to never repeat in a test.
+        "String" => Some((
+            "String",
+            "uuid::Uuid::new_v4().simple().to_string()[..12].to_string()",
+        )),
+        "i64" => Some(("i64", "(uuid::Uuid::new_v4().as_u128() >> 65) as i64")),
+        "f64" => Some(("f64", "(uuid::Uuid::new_v4().as_u128() >> 76) as f64")),
+        "DateTime<Utc>" => Some((
+            "chrono::DateTime<chrono::Utc>",
+            "chrono::DateTime::from_timestamp(1_700_000_000 + (uuid::Uuid::new_v4().as_u128() >> 100) as i64, 0)\n            .expect(\"una fecha dentro del rango de chrono\")",
+        )),
+        _ => None,
+    }
+}
+
+/// The seed of a field with a [`unique_value`]: the mother's, in the field's value-object shape,
+/// so a rule of the value object is met in one place the user owns.
+pub fn unique_seed(field: &Field, pascal: &str) -> Option<String> {
+    unique_value(field)?;
+    Some(literal_with(field, |_| {
+        format!("Madre{pascal}::{}_unico()", field.name)
+    }))
+}
+
 /// The value-object shape of a literal around `value(primitive type)`.
 fn literal_with(field: &Field, value: impl Fn(&str) -> String) -> String {
     let vo = field.value_object.as_deref().unwrap_or_default();

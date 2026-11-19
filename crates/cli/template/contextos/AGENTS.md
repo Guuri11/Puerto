@@ -124,7 +124,9 @@ Cada campo tiene `.con_<campo>(valor)`; los campos `String`, también `.con_<cam
 
 Los tests generados sacan sus valores válidos de la madre (`construir_props()`, `aleatorio()`),
 también la siembra de los repositorios. **Si una regla nueva rechaza un valor por defecto de la
-madre, cámbialo en la madre**, no en cada test.
+madre, cámbialo en la madre**, no en cada test. Un campo único guarda en cada fila un valor nuevo,
+que da `Madre<Entidad>::<campo>_unico()` (12 hexadecimales por defecto): si una regla de su objeto
+valor (una longitud, un formato) lo rechaza, fallan los tests del repositorio; cámbialo ahí.
 
 ## Añadir una entidad
 

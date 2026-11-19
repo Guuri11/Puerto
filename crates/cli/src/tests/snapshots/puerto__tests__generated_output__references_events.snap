@@ -7808,6 +7808,12 @@ impl MadreProveedor {
     pub fn aleatorios(n: usize) -> Vec<Proveedor> {
         (0..n).map(|_| Self::aleatorio()).collect()
     }
+
+    /// Un `email` distinto en cada llamada, para las filas que guardan los tests de los
+    /// repositorios (es único). Si una regla del dominio lo rechaza, cámbialo aquí.
+    pub fn email_unico() -> String {
+        uuid::Uuid::new_v4().simple().to_string()[..12].to_string()
+    }
 }
 
 impl Default for MadreProveedor {
@@ -8104,7 +8110,6 @@ use dominio_proveedor::modelo::Proveedor;
 use dominio_proveedor::pruebas::madres::MadreProveedor;
 use dominio_proveedor::unit_of_work::UnitOfWorkFactoryProveedor;
 use sqlx::PgPool;
-use uuid::Uuid;
 
 use crate::unit_of_work::UnitOfWorkFactoryProveedorPostgres;
 
@@ -8113,7 +8118,7 @@ use crate::unit_of_work::UnitOfWorkFactoryProveedorPostgres;
 /// referencias (una fila sembrada).
 pub fn construir() -> Proveedor {
     Proveedor::new(PropsProveedor {
-        email: Uuid::new_v4().to_string(),
+        email: MadreProveedor::email_unico(),
         ..MadreProveedor::new().construir_props()
     })
     .unwrap()

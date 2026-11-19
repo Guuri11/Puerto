@@ -41,7 +41,13 @@ impl Madre{{ pascal }} {
     pub fn aleatorios(n: usize) -> Vec<{{ pascal }}> {
         (0..n).map(|_| Self::aleatorio()).collect()
     }
-}
+{% for u in unique_values %}
+    /// Un `{{ u.name }}` distinto en cada llamada, para las filas que guardan los tests de los
+    /// repositorios (es único). Si una regla del dominio lo rechaza, cámbialo aquí.
+    pub fn {{ u.name }}_unico() -> {{ u.ty }} {
+        {{ u.value }}
+    }
+{% endfor %}}
 
 impl Default for Madre{{ pascal }} {
     fn default() -> Self {
