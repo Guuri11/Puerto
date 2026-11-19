@@ -3801,7 +3801,7 @@ objetivo una vez (`LIMITE_PAGINA_MAXIMO`, como `opcionesReferencia` del formular
 pinta `<EnlaceReferencia>` con la etiqueta, o el id si no la encuentra o la carga falla. Tests: la
 lista muestra la etiqueta, y el id cuando falla.
 
-### 27.8 — La web respeta los roles de las rutas
+### 27.8 — La web respeta los roles de las rutas ✅
 
 - El menú (`entradasMenu`) y el panel solo enseñan una entidad cuyo `listar` tiene rol a quien
   `puede(rol)`. En Aforo, alguien sin el rol veía «Entradas», una lista que le daba 403, y la

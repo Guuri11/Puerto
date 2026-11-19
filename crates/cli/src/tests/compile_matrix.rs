@@ -725,16 +725,24 @@ pub(super) const AUTH_OIDC: Scenario = Scenario {
         ("Pedido", &["total:i64"]),
     ],
     // Producto: public reads, two roles on one route, a protected route with no role. Pedido: every
-    // route protected, no role.
-    access: &[(
-        "Producto",
-        &["listar_productos", "obtener_producto"],
-        &[
-            "crear_producto=admin",
-            "borrar_producto=admin",
-            "borrar_producto=owner",
-        ],
-    )],
+    // route protected, its list and its detail for `admin` only (27.8: the menu hides it, creating
+    // goes to the panel).
+    access: &[
+        (
+            "Producto",
+            &["listar_productos", "obtener_producto"],
+            &[
+                "crear_producto=admin",
+                "borrar_producto=admin",
+                "borrar_producto=owner",
+            ],
+        ),
+        (
+            "Pedido",
+            &[],
+            &["listar_pedidos=admin", "obtener_pedido=admin"],
+        ),
+    ],
     shapes: &[],
     portada: None,
     blocks: &[],
@@ -762,11 +770,15 @@ pub(super) const REFERENCES_AUTH: Scenario = Scenario {
             &["equipo_id:ref:Equipo", "dorsal:i64", "email:String"],
         ),
     ],
-    access: &[(
-        "Jugador",
-        &["listar_jugadores", "obtener_jugador"],
-        &["actualizar_jugador=admin", "borrar_jugador=admin"],
-    )],
+    // Equipo's detail for `admin` only (27.8): creating one goes to its list.
+    access: &[
+        (
+            "Jugador",
+            &["listar_jugadores", "obtener_jugador"],
+            &["actualizar_jugador=admin", "borrar_jugador=admin"],
+        ),
+        ("Equipo", &[], &["obtener_equipo=admin"]),
+    ],
     // canasta: one shirt number per team, listed by number; a player's email for signed-in callers.
     shapes: &[("Jugador", &["equipo_id,dorsal"], &["-dorsal"], &["email"])],
     portada: None,

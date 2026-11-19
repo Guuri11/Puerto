@@ -2199,6 +2199,7 @@ use poem_openapi::{
 };
 use puerto_nucleo::PeticionPagina;
 use puerto_web::auth::BearerAuth;
+use puerto_web::requiere_rol;
 use uuid::Uuid;
 
 use crate::dto::{DtoPaginaPedido, DtoPedido, PeticionActualizarPedido, PeticionCrearPedido};
@@ -2250,6 +2251,7 @@ impl ApiPedido {
 
     /// Obtiene: Pedido por id
     #[oai(path = "/pedidos/:id", method = "get", tag = "ApiTags::Pedido")]
+    #[requiere_rol("admin")]
     async fn obtener(&self, auth: BearerAuth, id: Path<Uuid>) -> RespuestaObtenerPedido {
         match self
             .obtener_pedido
@@ -2270,6 +2272,7 @@ impl ApiPedido {
 
     /// Lista Pedidos, página a página (el dominio acota `limite`)
     #[oai(path = "/pedidos", method = "get", tag = "ApiTags::Pedido")]
+    #[requiere_rol("admin")]
     async fn listar(
         &self,
         auth: BearerAuth,
@@ -2374,7 +2377,7 @@ mod tests {
     fn autenticador() -> Arc<dyn Autenticador> {
         let mut doble = MockAutenticador::new();
         doble.expect_autenticar().returning(|token| match token {
-            "llamante" => Ok(MadrePrincipal::aleatorio()),
+            "llamante" => Ok(MadrePrincipal::new().con_roles(["admin"]).construir()),
             "nadie" => Ok(MadrePrincipal::aleatorio()),
             _ => Err(ErrorAuth::Invalido),
         });
@@ -2652,6 +2655,29 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn deberia_responder_403_cuando_se_obtiene_sin_el_rol() {
+        // Preparar — sin expectativas: nunca se llega al caso de uso
+        let dobles = Dobles::default();
+
+        // Actuar
+        let respuesta = dobles
+            .cliente_con(Some("Bearer nadie"))
+            .get(ruta_elemento())
+            .send()
+            .await;
+
+        // Comprobar
+        respuesta.assert_status(StatusCode::FORBIDDEN);
+        respuesta
+            .json()
+            .await
+            .value()
+            .object()
+            .get("codigo")
+            .assert_string("auth.prohibido");
+    }
+
+    #[tokio::test]
     async fn deberia_responder_401_cuando_se_lista_sin_token() {
         // Preparar — sin expectativas: nunca se llega al caso de uso
         let dobles = Dobles::default();
@@ -2661,6 +2687,29 @@ mod tests {
 
         // Comprobar
         respuesta.assert_status(StatusCode::UNAUTHORIZED);
+    }
+
+    #[tokio::test]
+    async fn deberia_responder_403_cuando_se_lista_sin_el_rol() {
+        // Preparar — sin expectativas: nunca se llega al caso de uso
+        let dobles = Dobles::default();
+
+        // Actuar
+        let respuesta = dobles
+            .cliente_con(Some("Bearer nadie"))
+            .get("/pedidos")
+            .send()
+            .await;
+
+        // Comprobar
+        respuesta.assert_status(StatusCode::FORBIDDEN);
+        respuesta
+            .json()
+            .await
+            .value()
+            .object()
+            .get("codigo")
+            .assert_string("auth.prohibido");
     }
 
     #[tokio::test]
@@ -7733,6 +7782,10 @@ casos_de_uso = [
 ]
 db = true
 
+[entidad.roles]
+listar_pedidos = ["admin"]
+obtener_pedido = ["admin"]
+
 [[entidad.campos]]
 nombre = "total"
 tipo = "i64"
@@ -8787,6 +8840,7 @@ import { describe, expect, test } from "bun:test";
 import { fireEvent, screen, waitFor } from "@testing-library/react";
 import type { Esquemas } from "../../../api/cliente";
 import { apiFalsa } from "../../../pruebas/api-falsa";
+import { MadreUsuarioActual } from "../../../pruebas/auth";
 import { coleccionPedido, MadrePedido } from "../../../pruebas/pedido";
 import { renderizarPantalla } from "../../../pruebas/renderizar";
 import { aProblema } from "../mensajes";
@@ -8820,6 +8874,22 @@ describe("ContenedorFormularioPedido", () => {
     const [creado] = guardados.elementos.values();
     expect(creado).toMatchObject(peticion);
     expect(historial.at(-1)).toBe(`/pedidos/${creado?.id}`);
+  });
+
+  test("debería ir al panel tras crear cuando no puede ver lo creado", async () => {
+    // Preparar
+    const peticion = MadrePedido.peticion();
+    const api = apiFalsa([coleccionPedido()]);
+    const pantalla = <ContenedorFormularioPedido />;
+    const usuario = MadreUsuarioActual.aleatorio();
+    const { historial } = renderizarPantalla(pantalla, { api }, "/", { usuario });
+    await rellenar(peticion);
+
+    // Actuar
+    fireEvent.click(screen.getByText("Guardar"));
+
+    // Comprobar
+    await waitFor(() => expect(historial.at(-1)).toBe("/?guardado"));
   });
 
   test("debería guardar la edición cuando se envía el formulario", async () => {
@@ -8876,6 +8946,7 @@ import { useState } from "react";
 import { Link, useLocation } from "wouter";
 import type { Esquemas } from "../../../api/cliente";
 import { desenvolver } from "../../../api/http";
+import { useAuth } from "../../../auth/auth";
 import { AlertaError, codigoError } from "../../../compartido/ui/alerta-error";
 import { useCarga } from "../../../compartido/use-carga";
 import { useDependencias } from "../../../dependencias";
@@ -8915,6 +8986,7 @@ export function ContenedorFormularioPedido({ id }: { id?: string }) {
 
 function FormularioPedido({ existente }: { existente: Pedido | null }) {
   const { api } = useDependencias();
+  const { puede } = useAuth();
   const [, navegar] = useLocation();
   const [valores, setValores] = useState(aFormularioPedido(existente));
   const [guardando, setGuardando] = useState(false);
@@ -8931,7 +9003,12 @@ function FormularioPedido({ existente }: { existente: Pedido | null }) {
           ? api.POST("/pedidos", { body: cuerpo })
           : api.PUT("/pedidos/{id}", { params: { path: { id: existente.id } }, body: cuerpo }),
       );
-      navegar(`/pedidos/${guardado.id}`);
+      // Lo creado se ve con `admin`: sin ese rol, su detalle daría un 403.
+      if (existente !== null || puede("admin")) {
+        navegar(`/pedidos/${guardado.id}`);
+      } else {
+        navegar("/?guardado");
+      }
     } catch (error) {
       setFallo(error);
       setGuardando(false);
@@ -9964,13 +10041,53 @@ export function crearDependencias(): Dependencias {
  */
 export const ROLES: string[] = ["admin", "owner"];
 
+=== web/src/generado/rutas.test.tsx ===
+// GENERADO por puerto. Edita puerto.toml y después ejecuta `puerto generar bootstrap`.
+
+import { describe, expect, test } from "bun:test";
+import { screen } from "@testing-library/react";
+import { apiFalsa } from "../pruebas/api-falsa";
+import { MadreUsuarioActual } from "../pruebas/auth";
+import { renderizarPantalla } from "../pruebas/renderizar";
+import { MarcoApp, RutasApp } from "./rutas";
+
+/** El menú y el panel, como los ve `usuario`. */
+async function abrirPanel(usuario = MadreUsuarioActual.llamante()) {
+  const app = (
+    <MarcoApp>
+      <RutasApp />
+    </MarcoApp>
+  );
+  renderizarPantalla(app, { api: apiFalsa([]) }, "/", { usuario });
+  await screen.findByText("Panel", { selector: "h1" });
+}
+
+describe("useEntradasMenu", () => {
+  test("debería ofrecer Pedidos en el menú y el panel a quien tiene su rol", async () => {
+    // Actuar
+    await abrirPanel();
+
+    // Comprobar
+    expect(screen.getAllByText("Pedidos").length).toBeGreaterThan(0);
+  });
+
+  test("no debería ofrecer Pedidos en el menú ni en el panel a quien no tiene su rol", async () => {
+    // Actuar
+    await abrirPanel(MadreUsuarioActual.aleatorio());
+
+    // Comprobar
+    expect(screen.queryAllByText("Pedidos")).toHaveLength(0);
+  });
+});
+
 === web/src/generado/rutas.tsx ===
 // GENERADO por puerto. Edita puerto.toml y después ejecuta `puerto generar bootstrap`.
 
-import { Route, Switch } from "wouter";
+import type { ReactNode } from "react";
+import { Route, Switch, useSearch } from "wouter";
 import { contarTotal, PAGINA_DE_UNO } from "../api/http";
-import { RequiereAuth } from "../auth/auth";
-import type { EntradaMenu } from "../compartido/ui/marco";
+import { RequiereAuth, useAuth } from "../auth/auth";
+import { type EntradaMenu, Marco } from "../compartido/ui/marco";
 import { ContenedorDetallePedido } from "../contextos/pedido/contenedores/detalle-pedido";
 import { ContenedorFormularioPedido } from "../contextos/pedido/contenedores/formulario-pedido";
 import { ContenedorListaPedido } from "../contextos/pedido/contenedores/lista-pedido";
@@ -9998,12 +10115,37 @@ export const entradasMenu: EntradaMenu[] = [
   },
 ];
 
+/** Los roles que pide la lista de cada sección (`[[entidad]] roles`): sin ellos, daría un 403. */
+const ROLES_LISTA: Record<string, string[]> = {
+  "/pedidos": ["admin"],
+};
+
+/** Las secciones que puede abrir quien usa la app: el menú y el panel no le ofrecen un 403. */
+export function useEntradasMenu(): EntradaMenu[] {
+  const { puede } = useAuth();
+  return entradasMenu.filter((entrada) => (ROLES_LISTA[entrada.href] ?? []).every(puede));
+}
+
+/** El marco de la app, con las secciones de {@link useEntradasMenu}. */
+export function MarcoApp({ children }: { children: ReactNode }) {
+  const entradas = useEntradasMenu();
+  return <Marco menu={entradas}>{children}</Marco>;
+}
+
 export function RutasApp() {
+  const entradas = useEntradasMenu();
+  // Lo que se crea sin poder verlo después vuelve aquí con `?guardado` (27.8 de Puerto).
+  const guardado = new URLSearchParams(useSearch()).has("guardado");
   return (
     <Switch>
       <Route path="/">
+        {guardado && (
+          <div role="status" className="alert alert-success mb-6">
+            Guardado
+          </div>
+        )}
         <RequiereAuth>
-          <PaginaPanel entradas={entradasMenu} />
+          <PaginaPanel entradas={entradas} />
         </RequiereAuth>
       </Route>
       <Route path="/perfil">
@@ -10068,11 +10210,10 @@ import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import { Route, Switch } from "wouter";
 import { ProveedorAuth } from "./auth/auth";
-import { Marco } from "./compartido/ui/marco";
 import { MarcoAcceso } from "./compartido/ui/marco-acceso";
 import { ProveedorDependencias } from "./dependencias";
 import { crearDependencias } from "./generado/dependencias";
-import { entradasMenu, RutasApp } from "./generado/rutas";
+import { MarcoApp, RutasApp } from "./generado/rutas";
 import { marca } from "./marca/marca";
 import { PaginaLogin } from "./paginas/login";
 import { PaginaRegistro } from "./paginas/registro";
@@ -10099,9 +10240,9 @@ createRoot(raiz).render(
             </MarcoAcceso>
           </Route>
           <Route>
-            <Marco menu={entradasMenu}>
+            <MarcoApp>
               <RutasApp />
-            </Marco>
+            </MarcoApp>
           </Route>
         </Switch>
       </ProveedorAuth>

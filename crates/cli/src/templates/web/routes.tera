@@ -1,13 +1,20 @@
 // GENERADO por puerto. Edita puerto.toml y después ejecuta `puerto generar bootstrap`.
 
-import { Route, Switch } from "wouter";
+{% if auth -%}
+import type { ReactNode } from "react";
+{% endif -%}
+import { Route, Switch{% if saved_notice %}, useSearch{% endif %} } from "wouter";
 {% if entities -%}
 import { contarTotal, PAGINA_DE_UNO } from "../api/http";
 {% endif -%}
 {% if guarded or auth -%}
-import { RequiereAuth } from "../auth/auth";
+import { RequiereAuth{% if auth %}, useAuth{% endif %} } from "../auth/auth";
 {% endif -%}
+{% if auth -%}
+import { type EntradaMenu, Marco } from "../compartido/ui/marco";
+{% else -%}
 import type { EntradaMenu } from "../compartido/ui/marco";
+{% endif -%}
 {% for e in entities -%}
 import { ContenedorDetalle{{ e.pascal }} } from "../contextos/{{ e.kebab }}/contenedores/detalle-{{ e.kebab }}";
 import { ContenedorFormulario{{ e.pascal }} } from "../contextos/{{ e.kebab }}/contenedores/formulario-{{ e.kebab }}";
@@ -38,17 +45,53 @@ export const entradasMenu: EntradaMenu[] = [
 {%- endfor %}
 {%- if entities %}
 {% endif %}];
+{%- if auth %}
+
+/** Los roles que pide la lista de cada sección (`[[entidad]] roles`): sin ellos, daría un 403. */
+const ROLES_LISTA: Record<string, string[]> = {
+{%- for e in menu_roles %}
+  "/{{ e.plural }}": [{% for r in e.list_roles %}"{{ r }}"{% if not loop.last %}, {% endif %}{% endfor %}],
+{%- endfor %}
+{%- if menu_roles %}
+{% endif %}};
+
+/** Las secciones que puede abrir quien usa la app: el menú y el panel no le ofrecen un 403. */
+export function useEntradasMenu(): EntradaMenu[] {
+  const { puede } = useAuth();
+  return entradasMenu.filter((entrada) => (ROLES_LISTA[entrada.href] ?? []).every(puede));
+}
+
+/** El marco de la app, con las secciones de {@link useEntradasMenu}. */
+export function MarcoApp({ children }: { children: ReactNode }) {
+  const entradas = useEntradasMenu();
+  return <Marco menu={entradas}>{children}</Marco>;
+}
+{%- endif %}
 
 export function RutasApp() {
+{%- if auth %}
+  const entradas = useEntradasMenu();
+{%- endif %}
+{%- if saved_notice %}
+  // Lo que se crea sin poder verlo después vuelve aquí con `?guardado` (27.8 de Puerto).
+  const guardado = new URLSearchParams(useSearch()).has("guardado");
+{%- endif %}
   return (
     <Switch>
       <Route path="/">
+{%- if saved_notice %}
+        {guardado && (
+          <div role="status" className="alert alert-success mb-6">
+            Guardado
+          </div>
+        )}
+{%- endif %}
 {%- if panel_guarded %}
         <RequiereAuth>
-          <PaginaPanel entradas={entradasMenu} />
+          <PaginaPanel entradas={{ "{" }}{% if auth %}entradas{% else %}entradasMenu{% endif %}} />
         </RequiereAuth>
 {%- else %}
-        <PaginaPanel entradas={entradasMenu} />
+        <PaginaPanel entradas={{ "{" }}{% if auth %}entradas{% else %}entradasMenu{% endif %}} />
 {%- endif %}
       </Route>
 {%- if auth %}

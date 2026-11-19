@@ -2092,6 +2092,7 @@ use poem_openapi::{
 };
 use puerto_nucleo::PeticionPagina;
 use puerto_web::auth::BearerAuth;
+use puerto_web::requiere_rol;
 use uuid::Uuid;
 
 use crate::dto::{DtoEquipo, DtoPaginaEquipo, PeticionActualizarEquipo, PeticionCrearEquipo};
@@ -2143,6 +2144,7 @@ impl ApiEquipo {
 
     /// Obtiene: Equipo por id
     #[oai(path = "/equipos/:id", method = "get", tag = "ApiTags::Equipo")]
+    #[requiere_rol("admin")]
     async fn obtener(&self, auth: BearerAuth, id: Path<Uuid>) -> RespuestaObtenerEquipo {
         match self
             .obtener_equipo
@@ -2267,7 +2269,7 @@ mod tests {
     fn autenticador() -> Arc<dyn Autenticador> {
         let mut doble = MockAutenticador::new();
         doble.expect_autenticar().returning(|token| match token {
-            "llamante" => Ok(MadrePrincipal::aleatorio()),
+            "llamante" => Ok(MadrePrincipal::new().con_roles(["admin"]).construir()),
             "nadie" => Ok(MadrePrincipal::aleatorio()),
             _ => Err(ErrorAuth::Invalido),
         });
@@ -2546,6 +2548,29 @@ mod tests {
 
         // Comprobar
         respuesta.assert_status(StatusCode::UNAUTHORIZED);
+    }
+
+    #[tokio::test]
+    async fn deberia_responder_403_cuando_se_obtiene_sin_el_rol() {
+        // Preparar — sin expectativas: nunca se llega al caso de uso
+        let dobles = Dobles::default();
+
+        // Actuar
+        let respuesta = dobles
+            .cliente_con(Some("Bearer nadie"))
+            .get(ruta_elemento())
+            .send()
+            .await;
+
+        // Comprobar
+        respuesta.assert_status(StatusCode::FORBIDDEN);
+        respuesta
+            .json()
+            .await
+            .value()
+            .object()
+            .get("codigo")
+            .assert_string("auth.prohibido");
     }
 
     #[tokio::test]
@@ -6275,6 +6300,9 @@ casos_de_uso = [
     "borrar_equipo",
 ]
 
+[entidad.roles]
+obtener_equipo = ["admin"]
+
 [[entidad.campos]]
 nombre = "nombre"
 tipo = "String"
@@ -7377,6 +7405,7 @@ import { describe, expect, test } from "bun:test";
 import { fireEvent, screen, waitFor } from "@testing-library/react";
 import type { Esquemas } from "../../../api/cliente";
 import { apiFalsa } from "../../../pruebas/api-falsa";
+import { MadreUsuarioActual } from "../../../pruebas/auth";
 import { coleccionEquipo, MadreEquipo } from "../../../pruebas/equipo";
 import { renderizarPantalla } from "../../../pruebas/renderizar";
 import { aProblema } from "../mensajes";
@@ -7410,6 +7439,22 @@ describe("ContenedorFormularioEquipo", () => {
     const [creado] = guardados.elementos.values();
     expect(creado).toMatchObject(peticion);
     expect(historial.at(-1)).toBe(`/equipos/${creado?.id}`);
+  });
+
+  test("debería ir a la lista tras crear cuando no puede ver lo creado", async () => {
+    // Preparar
+    const peticion = MadreEquipo.peticion();
+    const api = apiFalsa([coleccionEquipo()]);
+    const pantalla = <ContenedorFormularioEquipo />;
+    const usuario = MadreUsuarioActual.aleatorio();
+    const { historial } = renderizarPantalla(pantalla, { api }, "/", { usuario });
+    await rellenar(peticion);
+
+    // Actuar
+    fireEvent.click(screen.getByText("Guardar"));
+
+    // Comprobar
+    await waitFor(() => expect(historial.at(-1)).toBe("/equipos"));
   });
 
   test("debería guardar la edición cuando se envía el formulario", async () => {
@@ -7485,6 +7530,7 @@ import { useState } from "react";
 import { Link, useLocation } from "wouter";
 import type { Esquemas } from "../../../api/cliente";
 import { desenvolver } from "../../../api/http";
+import { useAuth } from "../../../auth/auth";
 import { AlertaError, codigoError } from "../../../compartido/ui/alerta-error";
 import { useCarga } from "../../../compartido/use-carga";
 import { useDependencias } from "../../../dependencias";
@@ -7524,6 +7570,7 @@ export function ContenedorFormularioEquipo({ id }: { id?: string }) {
 
 function FormularioEquipo({ existente }: { existente: Equipo | null }) {
   const { api } = useDependencias();
+  const { puede } = useAuth();
   const [, navegar] = useLocation();
   const [valores, setValores] = useState(aFormularioEquipo(existente));
   const [guardando, setGuardando] = useState(false);
@@ -7540,7 +7587,12 @@ function FormularioEquipo({ existente }: { existente: Equipo | null }) {
           ? api.POST("/equipos", { body: cuerpo })
           : api.PUT("/equipos/{id}", { params: { path: { id: existente.id } }, body: cuerpo }),
       );
-      navegar(`/equipos/${guardado.id}`);
+      // Lo creado se ve con `admin`: sin ese rol, su detalle daría un 403.
+      if (existente !== null || puede("admin")) {
+        navegar(`/equipos/${guardado.id}`);
+      } else {
+        navegar("/equipos");
+      }
     } catch (error) {
       setFallo(error);
       setGuardando(false);
@@ -8681,10 +8733,11 @@ export const ROLES: string[] = ["admin"];
 === web/src/generado/rutas.tsx ===
 // GENERADO por puerto. Edita puerto.toml y después ejecuta `puerto generar bootstrap`.
 
+import type { ReactNode } from "react";
 import { Route, Switch } from "wouter";
 import { contarTotal, PAGINA_DE_UNO } from "../api/http";
-import { RequiereAuth } from "../auth/auth";
-import type { EntradaMenu } from "../compartido/ui/marco";
+import { RequiereAuth, useAuth } from "../auth/auth";
+import { type EntradaMenu, Marco } from "../compartido/ui/marco";
 import { ContenedorDetalleEquipo } from "../contextos/equipo/contenedores/detalle-equipo";
 import { ContenedorFormularioEquipo } from "../contextos/equipo/contenedores/formulario-equipo";
 import { ContenedorListaEquipo } from "../contextos/equipo/contenedores/lista-equipo";
@@ -8712,12 +8765,28 @@ export const entradasMenu: EntradaMenu[] = [
   },
 ];
 
+/** Los roles que pide la lista de cada sección (`[[entidad]] roles`): sin ellos, daría un 403. */
+const ROLES_LISTA: Record<string, string[]> = {};
+
+/** Las secciones que puede abrir quien usa la app: el menú y el panel no le ofrecen un 403. */
+export function useEntradasMenu(): EntradaMenu[] {
+  const { puede } = useAuth();
+  return entradasMenu.filter((entrada) => (ROLES_LISTA[entrada.href] ?? []).every(puede));
+}
+
+/** El marco de la app, con las secciones de {@link useEntradasMenu}. */
+export function MarcoApp({ children }: { children: ReactNode }) {
+  const entradas = useEntradasMenu();
+  return <Marco menu={entradas}>{children}</Marco>;
+}
+
 export function RutasApp() {
+  const entradas = useEntradasMenu();
   return (
     <Switch>
       <Route path="/">
         <RequiereAuth>
-          <PaginaPanel entradas={entradasMenu} />
+          <PaginaPanel entradas={entradas} />
         </RequiereAuth>
       </Route>
       <Route path="/perfil">
@@ -8780,11 +8849,10 @@ import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import { Route, Switch } from "wouter";
 import { ProveedorAuth } from "./auth/auth";
-import { Marco } from "./compartido/ui/marco";
 import { MarcoAcceso } from "./compartido/ui/marco-acceso";
 import { ProveedorDependencias } from "./dependencias";
 import { crearDependencias } from "./generado/dependencias";
-import { entradasMenu, RutasApp } from "./generado/rutas";
+import { MarcoApp, RutasApp } from "./generado/rutas";
 import { marca } from "./marca/marca";
 import { PaginaAuthCallback } from "./paginas/auth-callback";
 
@@ -8805,9 +8873,9 @@ createRoot(raiz).render(
             </MarcoAcceso>
           </Route>
           <Route>
-            <Marco menu={entradasMenu}>
+            <MarcoApp>
               <RutasApp />
-            </Marco>
+            </MarcoApp>
           </Route>
         </Switch>
       </ProveedorAuth>

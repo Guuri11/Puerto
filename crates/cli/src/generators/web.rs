@@ -225,6 +225,12 @@ fn web_entity_ctx(pascal: &str) -> WebEntityCtx {
 #[derive(Serialize)]
 struct WebAccessCtx {
     auth: bool,
+    /// What the creator needs to see what they created, and its list (27.8).
+    get_roles: Vec<String>,
+    list_roles: Vec<String>,
+    /// Who cannot see what they created may still see its list: its roles do not hold all of
+    /// `get_roles` (with them, seeing the list means seeing the detail).
+    list_reachable: bool,
     create_roles: Vec<String>,
     update_roles: Vec<String>,
     delete_roles: Vec<String>,
@@ -235,6 +241,12 @@ fn web_access_ctx(access: &Access, snake: &str) -> WebAccessCtx {
     let uc = |action: &str| crud_use_case(action, snake);
     WebAccessCtx {
         auth: access.is_auth(),
+        get_roles: access.roles(&uc("get")),
+        list_roles: access.roles(&uc("list")),
+        list_reachable: !access
+            .roles(&uc("get"))
+            .iter()
+            .all(|role| access.roles(&uc("list")).contains(role)),
         create_roles: access.roles(&uc("create")),
         update_roles: access.roles(&uc("update")),
         delete_roles: access.roles(&uc("delete")),
@@ -651,6 +663,11 @@ struct RoutedEntityCtx {
     new_guarded: bool,
     edit_guarded: bool,
     detail_guarded: bool,
+    /// The roles its list asks for: the menu and the panel offer it only with them (27.8).
+    list_roles: Vec<String>,
+    /// Creating goes to the panel's `?guardado`: neither its detail nor its list is the creator's
+    /// to see without their roles.
+    saved_notice: bool,
 }
 
 /// Indentation of a `<Route>` inside `RutasApp`.
@@ -687,6 +704,9 @@ fn generated_ctx(config: &PuertoConfig) -> tera::Context {
                 // The form loads the entity, then saves it.
                 edit_guarded: guarded("get") || guarded("update"),
                 detail_guarded: guarded("get"),
+                list_roles: access.roles(&crud_use_case("list", &entity.snake)),
+                saved_notice: !access.roles(&crud_use_case("get", &entity.snake)).is_empty()
+                    && !access.roles(&crud_use_case("list", &entity.snake)).is_empty(),
                 entity,
             }
         })
@@ -713,6 +733,14 @@ fn generated_ctx(config: &PuertoConfig) -> tera::Context {
     );
     // The panel counts every list: one that asks for a session would send there anyway (its 401).
     ctx.insert("panel_guarded", &sliced.iter().any(|e| e.list_guarded));
+    ctx.insert(
+        "menu_roles",
+        &sliced
+            .iter()
+            .filter(|e| !e.list_roles.is_empty())
+            .collect::<Vec<_>>(),
+    );
+    ctx.insert("saved_notice", &sliced.iter().any(|e| e.saved_notice));
     ctx.insert("entities", &sliced);
     ctx.insert("roles", &roles);
     ctx.insert("ruta_app", config.project.app_path());
@@ -750,6 +778,18 @@ pub fn regenerate_web(
     write_file(&generated.join("rutas.tsx"), &generate_web_routes(config)?)?;
     if config.project.has_auth() {
         write_file(&generated.join("roles.ts"), &generate_web_roles(config)?)?;
+    }
+    // The menu's tests, while a list asks for a role (27.8): without one there is nothing to hide.
+    let routes_test = generated.join("rutas.test.tsx");
+    let ctx = generated_ctx(config);
+    if ctx
+        .get("menu_roles")
+        .and_then(|v| v.as_array())
+        .is_some_and(|roles| !roles.is_empty())
+    {
+        write_file(&routes_test, &render_ts("web/routes_test.tera", &ctx)?)?;
+    } else if routes_test.exists() {
+        std::fs::remove_file(routes_test)?;
     }
     Ok(())
 }

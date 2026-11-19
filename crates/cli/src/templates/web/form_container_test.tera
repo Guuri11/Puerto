@@ -5,6 +5,9 @@ import type { Esquemas } from "../../../api/cliente";
 import { {{ fill_helpers | join(sep=", ") }} } from "../../../compartido/formularios";
 {%- endif %}
 import { apiFalsa } from "../../../pruebas/api-falsa";
+{%- if access.get_roles %}
+import { MadreUsuarioActual } from "../../../pruebas/auth";
+{%- endif %}
 {%- for t in targets %}
 import { coleccion{{ t.pascal }}, Madre{{ t.pascal }} } from "../../../pruebas/{{ t.kebab }}";
 {%- endfor %}
@@ -80,6 +83,24 @@ describe("ContenedorFormulario{{ pascal }}", () => {
     expect(creado).toMatchObject(peticion);
     expect(historial.at(-1)).toBe(`/{{ plural }}/${creado?.id}`);
   });
+{%- if access.get_roles %}
+
+  test("debería ir {% if access.list_roles %}al panel{% else %}a la lista{% endif %} tras crear cuando no puede ver lo creado", async () => {
+    // Preparar
+    const peticion = Madre{{ pascal }}.peticion();
+    const api = apiFalsa([coleccion{{ pascal }}(){% if targets %}, ...referenciadosPor(peticion){% endif %}]);
+    const pantalla = <ContenedorFormulario{{ pascal }} />;
+    const usuario = MadreUsuarioActual.aleatorio();
+    const { historial } = renderizarPantalla(pantalla, { api }, "/", { usuario });
+    await rellenar(peticion);
+
+    // Actuar
+    fireEvent.click(screen.getByText("Guardar"));
+
+    // Comprobar
+    await waitFor(() => expect(historial.at(-1)).toBe("{% if access.list_roles %}/?guardado{% else %}/{{ plural }}{% endif %}"));
+  });
+{%- endif %}
 
   test("debería guardar la edición cuando se envía el formulario", async () => {
     // Preparar

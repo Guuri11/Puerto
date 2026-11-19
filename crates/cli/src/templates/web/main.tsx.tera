@@ -6,13 +6,19 @@ import { Route, Switch } from "wouter";
 {% if auth -%}
 import { ProveedorAuth } from "./auth/auth";
 {% endif -%}
+{% if not auth -%}
 import { Marco } from "./compartido/ui/marco";
+{% endif -%}
 {% if auth -%}
 import { MarcoAcceso } from "./compartido/ui/marco-acceso";
 {% endif -%}
 import { ProveedorDependencias } from "./dependencias";
 import { crearDependencias } from "./generado/dependencias";
+{% if auth -%}
+import { MarcoApp, RutasApp{% if portada %}, rutaApp{% endif %} } from "./generado/rutas";
+{% else -%}
 import { entradasMenu, RutasApp{% if portada %}, rutaApp{% endif %} } from "./generado/rutas";
+{% endif -%}
 import { marca } from "./marca/marca";
 {% if auth and not local -%}
 import { PaginaAuthCallback } from "./paginas/auth-callback";
@@ -64,9 +70,9 @@ createRoot(raiz).render(
 {%- endif %}
 {%- if portada %}
           <Route path={rutaApp} nest>
-            <Marco menu={entradasMenu}>
+            <MarcoApp>
               <RutasApp />
-            </Marco>
+            </MarcoApp>
           </Route>
           <Route>
             <main className="mx-auto max-w-6xl p-4 lg:p-8">
@@ -75,9 +81,9 @@ createRoot(raiz).render(
           </Route>
 {%- else %}
           <Route>
-            <Marco menu={entradasMenu}>
+            <MarcoApp>
               <RutasApp />
-            </Marco>
+            </MarcoApp>
           </Route>
 {%- endif %}
         </Switch>

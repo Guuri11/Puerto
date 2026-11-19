@@ -2,6 +2,9 @@ import { useState } from "react";
 import { Link, useLocation } from "wouter";
 import type { Esquemas } from "../../../api/cliente";
 import { desenvolver{% if targets %}, LIMITE_PAGINA_MAXIMO{% endif %} } from "../../../api/http";
+{%- if access.get_roles %}
+import { useAuth } from "../../../auth/auth";
+{%- endif %}
 {%- if targets %}
 import { opcionesReferencia } from "../../../compartido/formularios";
 {%- endif %}
@@ -45,6 +48,9 @@ export function ContenedorFormulario{{ pascal }}({ id }: { id?: string }) {
 
 function Formulario{{ pascal }}({ existente }: { existente: {{ pascal }} | null }) {
   const { api } = useDependencias();
+{%- if access.get_roles %}
+  const { puede } = useAuth();
+{%- endif %}
 {%- for t in targets %}
 {%- if t.load_inline %}
   const {{ t.plural_ident }} = useCarga(() => desenvolver(api.GET("/{{ t.plural }}", PRIMERA_PAGINA)), [api]);
@@ -78,7 +84,28 @@ function Formulario{{ pascal }}({ existente }: { existente: {{ pascal }} | null 
             }),
 {%- endif %}
       );
+{%- if access.get_roles %}
+      // Lo creado se ve con {% for r in access.get_roles %}`{{ r }}`{% if not loop.last %} y {% endif %}{% endfor %}: sin ese rol, su detalle daría un 403.
+      if (existente !== null || {% for r in access.get_roles %}puede("{{ r }}"){% if not loop.last %} && {% endif %}{% endfor %}) {
+        navegar(`/{{ plural }}/${guardado.id}`);
+{%- if access.list_roles and access.list_reachable %}
+      } else if ({% for r in access.list_roles %}puede("{{ r }}"){% if not loop.last %} && {% endif %}{% endfor %}) {
+        navegar("/{{ plural }}");
+      } else {
+        navegar("/?guardado");
+      }
+{%- elif access.list_roles %}
+      } else {
+        navegar("/?guardado");
+      }
+{%- else %}
+      } else {
+        navegar("/{{ plural }}");
+      }
+{%- endif %}
+{%- else %}
       navegar(`/{{ plural }}/${guardado.id}`);
+{%- endif %}
     } catch (error) {
       setFallo(error);
       setGuardando(false);

@@ -627,8 +627,9 @@ fn scaffold_web_producto(output: &Path, access: &scaffold::ScaffoldAccess) {
 fn the_panel_asks_for_a_session_only_when_a_list_it_counts_does() {
     // The panel counts every list: a protected one answers 401, which signs in anyway.
     let (dir, output) = auth_web_project("auth_web_panel");
-    let panel = "<Route path=\"/\">\n        <PaginaPanel entradas={entradasMenu} />";
-    let guarded_panel = "<Route path=\"/\">\n        <RequiereAuth>\n          <PaginaPanel entradas={entradasMenu} />";
+    let panel = "<Route path=\"/\">\n        <PaginaPanel entradas={entradas} />";
+    let guarded_panel =
+        "<Route path=\"/\">\n        <RequiereAuth>\n          <PaginaPanel entradas={entradas} />";
 
     scaffold_web_producto(&output, &access(&["listar_productos"], &[]));
     let routes = read(&output, "web/src/generado/rutas.tsx");
@@ -645,6 +646,110 @@ fn the_panel_asks_for_a_session_only_when_a_list_it_counts_does() {
     .unwrap();
     let routes = read(&output, "web/src/generado/rutas.tsx");
     assert!(routes.contains(guarded_panel), "{routes}");
+    cleanup(&dir);
+}
+
+#[test]
+fn the_menu_and_the_panel_offer_a_list_with_a_role_only_to_who_has_it() {
+    // 27.8: in Aforo, a user without the role saw «Entradas», a list that answered 403, and its
+    // panel card said «—».
+    let (dir, output) = auth_web_project("auth_web_menu_roles");
+    let main = read(&output, "web/src/main.tsx");
+    assert!(main.contains("<MarcoApp>"), "{main}");
+    assert!(!main.contains("<Marco menu="), "{main}");
+
+    scaffold_web_producto(&output, &access(&[], &["listar_productos=admin"]));
+
+    let routes = read(&output, "web/src/generado/rutas.tsx");
+    assert!(
+        routes.contains(
+            "const ROLES_LISTA: Record<string, string[]> = {\n  \"/productos\": [\"admin\"],\n};"
+        ),
+        "{routes}"
+    );
+    assert!(
+        routes.contains("export function useEntradasMenu(): EntradaMenu[] {"),
+        "{routes}"
+    );
+    assert!(
+        routes.contains("export function MarcoApp({ children }: { children: ReactNode }) {"),
+        "{routes}"
+    );
+    let test = read(&output, "web/src/generado/rutas.test.tsx");
+    for name in [
+        "debería ofrecer Productos en el menú y el panel a quien tiene su rol",
+        "no debería ofrecer Productos en el menú ni en el panel a quien no tiene su rol",
+    ] {
+        assert!(test.contains(name), "{test}");
+    }
+    // The list's role taken out of puerto.toml: bootstrap drops the menu's tests with it.
+    let manifest = read(&output, "puerto.toml");
+    let without_roles: String = manifest
+        .lines()
+        .filter(|line| !line.starts_with("listar_productos = "))
+        .map(|line| format!("{line}\n"))
+        .collect();
+    assert_ne!(manifest, without_roles, "{manifest}");
+    fs::write(output.join("puerto.toml"), without_roles).unwrap();
+    scaffold::run_bootstrap_command(&output, false).unwrap();
+    assert!(!output.join("web/src/generado/rutas.test.tsx").exists());
+    cleanup(&dir);
+
+    // Without a role on any list, the menu is every entry and there is nothing to test.
+    let (dir, output) = auth_web_project("auth_web_menu_no_roles");
+    scaffold_web_producto(&output, &access(&[], &["crear_producto=admin"]));
+    let routes = read(&output, "web/src/generado/rutas.tsx");
+    assert!(
+        routes.contains("const ROLES_LISTA: Record<string, string[]> = {};"),
+        "{routes}"
+    );
+    assert!(!output.join("web/src/generado/rutas.test.tsx").exists());
+    cleanup(&dir);
+}
+
+#[test]
+fn creating_without_the_role_to_see_it_goes_where_the_creator_can_go() {
+    // 27.8: in Aforo, a buyer without admin landed on `auth.prohibido` with the purchase saved.
+    let (dir, output) = auth_web_project("auth_web_after_create");
+    let form = "web/src/contextos/producto/contenedores/formulario-producto.tsx";
+    let form_test = "web/src/contextos/producto/contenedores/formulario-producto.test.tsx";
+
+    scaffold_web_producto(&output, &access(&[], &["obtener_producto=admin"]));
+    let container = read(&output, form);
+    assert!(
+        container.contains("if (existente !== null || puede(\"admin\")) {"),
+        "{container}"
+    );
+    assert!(
+        container.contains("navegar(\"/productos\");"),
+        "{container}"
+    );
+    assert!(
+        read(&output, form_test)
+            .contains("debería ir a la lista tras crear cuando no puede ver lo creado"),
+        "the list test"
+    );
+
+    scaffold_web_producto(
+        &output,
+        &access(&[], &["obtener_producto=admin", "listar_productos=admin"]),
+    );
+    let container = read(&output, form);
+    assert!(
+        container.contains("navegar(\"/?guardado\");"),
+        "{container}"
+    );
+    assert!(
+        read(&output, form_test)
+            .contains("debería ir al panel tras crear cuando no puede ver lo creado"),
+        "the panel test"
+    );
+    let routes = read(&output, "web/src/generado/rutas.tsx");
+    assert!(
+        routes.contains("<div role=\"status\" className=\"alert alert-success mb-6\">"),
+        "{routes}"
+    );
+    assert!(routes.contains("Guardado"), "{routes}");
     cleanup(&dir);
 }
 

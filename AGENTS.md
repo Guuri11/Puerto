@@ -453,7 +453,11 @@ make format/fix    # cargo fmt --all
   `/auth/callback`. Sin `oidc-client-ts`, sin `web/.env`
 - Con auth y `web/` (los dos modos): `main.tsx` monta las páginas de acceso (`/login` y
   `/registro`, o `/auth/callback`) en `MarcoAcceso` (`compartido/ui/marco-acceso.tsx`, la marca a
-  un lado y el formulario en una tarjeta) y el resto en `Marco`; `MenuUsuario` es un desplegable
+  un lado y el formulario en una tarjeta) y el resto en `MarcoApp` (`generado/rutas.tsx`: el
+  `Marco` con `useEntradasMenu()`, que quita del menú y del panel una lista cuyo rol no tiene quien
+  la usa — `ROLES_LISTA`, con su `generado/rutas.test.tsx` mientras alguna lista pida un rol). Tras
+  crear sin el rol de `obtener`, el formulario va a la lista o, sin poder verla, al panel con
+  `?guardado` (el aviso «Guardado»); `MenuUsuario` es un desplegable
   con `Avatar` (`compartido/ui/avatar.tsx`, `iniciales(usuario)`) que lleva a `/perfil`
   (`paginas/perfil.tsx`, de solo lectura sobre `GET /me`, en `<RequiereAuth>` en `rutas.tsx`)
 - `--auth oidc` con `web/`: escrito una vez, en `web/src/auth/` — `sesion.ts` (`PasarelaAuth`,

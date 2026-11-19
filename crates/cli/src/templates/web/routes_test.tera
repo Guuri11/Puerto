@@ -1,0 +1,39 @@
+// GENERADO por puerto. Edita puerto.toml y después ejecuta `puerto generar bootstrap`.
+
+import { describe, expect, test } from "bun:test";
+import { screen } from "@testing-library/react";
+import { apiFalsa } from "../pruebas/api-falsa";
+import { MadreUsuarioActual } from "../pruebas/auth";
+import { renderizarPantalla } from "../pruebas/renderizar";
+import { MarcoApp, RutasApp } from "./rutas";
+
+/** El menú y el panel, como los ve `usuario`. */
+async function abrirPanel(usuario = MadreUsuarioActual.llamante()) {
+  const app = (
+    <MarcoApp>
+      <RutasApp />
+    </MarcoApp>
+  );
+  renderizarPantalla(app, { api: apiFalsa([]) }, "/", { usuario });
+  await screen.findByText("Panel", { selector: "h1" });
+}
+
+describe("useEntradasMenu", () => {
+{%- for e in menu_roles %}
+  test("debería ofrecer {{ e.label_plural }} en el menú y el panel a quien tiene su rol", async () => {
+    // Actuar
+    await abrirPanel();
+
+    // Comprobar
+    expect(screen.getAllByText("{{ e.label_plural }}").length).toBeGreaterThan(0);
+  });
+
+  test("no debería ofrecer {{ e.label_plural }} en el menú ni en el panel a quien no tiene su rol", async () => {
+    // Actuar
+    await abrirPanel(MadreUsuarioActual.aleatorio());
+
+    // Comprobar
+    expect(screen.queryAllByText("{{ e.label_plural }}")).toHaveLength(0);
+  });
+{%- endfor %}
+});

@@ -2271,6 +2271,7 @@ use poem_openapi::{
 };
 use puerto_nucleo::PeticionPagina;
 use puerto_web::auth::BearerAuth;
+use puerto_web::requiere_rol;
 use uuid::Uuid;
 
 use crate::dto::{DtoEquipo, DtoPaginaEquipo, PeticionActualizarEquipo, PeticionCrearEquipo};
@@ -2322,6 +2323,7 @@ impl ApiEquipo {
 
     /// Obtiene: Equipo por id
     #[oai(path = "/equipos/:id", method = "get", tag = "ApiTags::Equipo")]
+    #[requiere_rol("admin")]
     async fn obtener(&self, auth: BearerAuth, id: Path<Uuid>) -> RespuestaObtenerEquipo {
         match self
             .obtener_equipo
@@ -2446,7 +2448,7 @@ mod tests {
     fn autenticador() -> Arc<dyn Autenticador> {
         let mut doble = MockAutenticador::new();
         doble.expect_autenticar().returning(|token| match token {
-            "llamante" => Ok(MadrePrincipal::aleatorio()),
+            "llamante" => Ok(MadrePrincipal::new().con_roles(["admin"]).construir()),
             "nadie" => Ok(MadrePrincipal::aleatorio()),
             _ => Err(ErrorAuth::Invalido),
         });
@@ -2725,6 +2727,29 @@ mod tests {
 
         // Comprobar
         respuesta.assert_status(StatusCode::UNAUTHORIZED);
+    }
+
+    #[tokio::test]
+    async fn deberia_responder_403_cuando_se_obtiene_sin_el_rol() {
+        // Preparar — sin expectativas: nunca se llega al caso de uso
+        let dobles = Dobles::default();
+
+        // Actuar
+        let respuesta = dobles
+            .cliente_con(Some("Bearer nadie"))
+            .get(ruta_elemento())
+            .send()
+            .await;
+
+        // Comprobar
+        respuesta.assert_status(StatusCode::FORBIDDEN);
+        respuesta
+            .json()
+            .await
+            .value()
+            .object()
+            .get("codigo")
+            .assert_string("auth.prohibido");
     }
 
     #[tokio::test]
@@ -6727,6 +6752,9 @@ casos_de_uso = [
     "borrar_equipo",
 ]
 db = true
+
+[entidad.roles]
+obtener_equipo = ["admin"]
 
 [[entidad.campos]]
 nombre = "nombre"
