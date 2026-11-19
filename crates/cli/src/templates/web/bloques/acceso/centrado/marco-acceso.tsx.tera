@@ -1,0 +1,22 @@
+import type { ReactNode } from "react";
+import { Link } from "wouter";
+import { marca } from "../../marca/marca";
+
+/**
+ * El marco de las páginas de acceso (iniciar sesión, crear una cuenta): sin el menú de la app, la
+ * marca encima, el formulario en una tarjeta en el centro y el eslogan debajo.
+ */
+export function MarcoAcceso({ children }: { children: ReactNode }) {
+  return (
+    <main className="flex min-h-screen flex-col items-center justify-center gap-6 bg-base-200 p-4">
+      <Link href="/" className="flex items-center gap-3 text-2xl font-bold">
+        <img src={marca.logo} alt="" className="size-10" />
+        {marca.nombre}
+      </Link>
+      <div className="card w-full max-w-sm bg-base-100 shadow-xl">
+        <div className="card-body gap-4">{children}</div>
+      </div>
+      <p className="max-w-sm text-center text-sm text-base-content/70">{marca.eslogan}</p>
+    </main>
+  );
+}

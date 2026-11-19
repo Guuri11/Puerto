@@ -1,0 +1,46 @@
+import { useAuth } from "../auth/auth";
+import { Avatar } from "../compartido/ui/avatar";
+
+/**
+ * Quién tiene la sesión iniciada, tal como lo responde la API (`GET /me`), y el botón para cerrarla:
+ * una banda de color con el avatar montado encima.
+ */
+export function PaginaPerfil() {
+  const { usuario, logout } = useAuth();
+  // `RequiereAuth` la protege: sin sesión, nunca llega a pintarse.
+  if (usuario === null) return null;
+  return (
+    <section className="mx-auto max-w-xl space-y-6">
+      <h1 className="text-3xl font-bold">Perfil</h1>
+      <div className="card overflow-hidden bg-base-100 shadow-sm">
+        <div className="h-28 bg-linear-to-r from-primary to-accent" />
+        <div className="card-body gap-6 pt-0">
+          <Avatar usuario={usuario} className="-mt-12 w-24 text-3xl ring-4 ring-base-100" />
+          <div>
+            <p className="text-2xl font-semibold">{usuario.nombre ?? "Sin nombre"}</p>
+            <p className="text-base-content/70">{usuario.email ?? "Sin email"}</p>
+          </div>
+          <div className="space-y-2">
+            <h2 className="font-semibold">Roles</h2>
+            {usuario.roles.length === 0 ? (
+              <p className="text-base-content/70">Sin roles</p>
+            ) : (
+              <ul className="flex flex-wrap gap-2">
+                {usuario.roles.map((rol) => (
+                  <li key={rol} className="badge badge-primary badge-soft">
+                    {rol}
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+          <div className="card-actions justify-end border-base-300 border-t pt-4">
+            <button type="button" className="btn" onClick={() => void logout()}>
+              Cerrar sesión
+            </button>
+          </div>
+        </div>
+      </div>
+    </section>
+  );
+}

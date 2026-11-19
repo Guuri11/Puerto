@@ -1,6 +1,7 @@
 # 0027 — La marca es un fichero del proyecto, sobre los temas de daisyUI
 
-**Estado:** Aceptada (2026-11-18). Especificación: `PLAN.md` § Fase 25.
+**Estado:** Aceptada (2026-11-18); el «un solo diseño» lo sustituye la ADR-0028. Especificación:
+`PLAN.md` § Fase 25.
 
 ## Contexto
 

@@ -1,0 +1,83 @@
+import { type ReactNode, useState } from "react";
+import { Link, useLocation } from "wouter";
+import type { Dependencias } from "../../generado/dependencias";
+import { marca } from "../../marca/marca";
+{% if auth -%}
+import { MenuUsuario } from "./menu-usuario";
+{% endif %}
+/** Una sección de la app: una entrada del menú y una tarjeta del panel. */
+export interface EntradaMenu {
+  etiqueta: string;
+  href: string;
+  /** Cuántos elementos tiene su lista: lo que enseña el panel. */
+  total: (dependencias: Dependencias) => Promise<number>;
+}
+
+/**
+{% if auth %} * La marca y el menú en una barra arriba, quien tiene la sesión a la derecha y el contenido debajo.
+{% else %} * La marca y el menú en una barra arriba y el contenido debajo.
+{% endif %} * En una pantalla estrecha el menú se despliega bajo la barra y se cierra al elegir una entrada.
+ */
+export function Marco({ menu, children }: { menu: EntradaMenu[]; children: ReactNode }) {
+  const [ubicacion] = useLocation();
+  const [abierto, setAbierto] = useState(false);
+  const enlaces = [{ href: "/", etiqueta: "Panel" }, ...menu].map(({ href, etiqueta }) => {
+    const actual = ubicacion === href || (href !== "/" && ubicacion.startsWith(`${href}/`));
+    return (
+      <li key={href}>
+        <Link
+          href={href}
+          className={actual ? "menu-active" : undefined}
+          aria-current={actual ? "page" : undefined}
+          onClick={() => setAbierto(false)}
+        >
+          {etiqueta}
+        </Link>
+      </li>
+    );
+  });
+
+  return (
+    <div className="flex min-h-screen flex-col bg-base-200">
+      <header className="sticky top-0 z-20 bg-base-100 shadow-sm">
+        <div className="navbar mx-auto max-w-6xl gap-2 px-4">
+          <button
+            type="button"
+            className="btn btn-square btn-ghost lg:hidden"
+            aria-label={abierto ? "Cerrar el menú" : "Abrir el menú"}
+            aria-expanded={abierto}
+            onClick={() => setAbierto(!abierto)}
+          >
+            <svg
+              viewBox="0 0 24 24"
+              className="size-6"
+              fill="none"
+              stroke="currentColor"
+              aria-hidden="true"
+            >
+              <path strokeLinecap="round" strokeWidth="2" d="M4 6h16M4 12h16M4 18h16" />
+            </svg>
+          </button>
+          <Link href="/" className="flex items-center gap-2 px-2 text-lg font-bold">
+            <img src={marca.logo} alt="" className="size-8" />
+            {marca.nombre}
+          </Link>
+          <nav className="hidden lg:block">
+            <ul className="menu menu-horizontal gap-1">{enlaces}</ul>
+          </nav>
+{%- if auth %}
+          <div className="ml-auto">
+            <MenuUsuario />
+          </div>
+{%- endif %}
+        </div>
+        {abierto && (
+          <nav className="border-base-300 border-t lg:hidden">
+            <ul className="menu w-full">{enlaces}</ul>
+          </nav>
+        )}
+      </header>
+      <main className="mx-auto w-full max-w-6xl flex-1 p-4 lg:p-8">{children}</main>
+    </div>
+  );
+}

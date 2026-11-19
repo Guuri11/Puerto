@@ -3606,3 +3606,104 @@ Ajustes de marca en ejecución y una marca por cliente; editar el perfil o cambi
 (casos de uso nuevos en `usuario`); un selector de tema claro/oscuro (se usa el del sistema);
 gráficas en el panel (pedirían endpoints de agregación); varias plantillas a elegir; la etiqueta de
 una referencia en las listas (hoy muestran su id; el detalle ya la muestra).
+
+## Fase 26 — Los bloques web: un escaparate de pantallas, secciones y temas (ADR-0028)
+
+**Estado:** en curso (2026-11-19). Decidido por Sergio el 2026-11-19: además de la marca, un
+escaparate al estilo de shadcnblocks en la web de Puerto, del que cada proyecto elige lo que quiere.
+Tres clases de bloques en la primera tanda: pantallas de la app, secciones de marketing para una
+portada pública y temas. Se instalan con la CLI (`puerto generar web-bloque`), no con un registro de
+shadcn ni copiando y pegando: la CLI sabe si el proyecto tiene auth o portada, y los bloques viajan
+con su versión. La portada se pregunta en `puerto nuevo` (si es un SaaS con portada pública, y en qué
+ruta va la app; por defecto `/panel`), con una bienvenida básica en `/`. Sustituye al «un solo
+diseño» de la ADR-0027.
+
+Un **bloque** es una variante de un **hueco**: un fichero con un export y unas props fijos
+(`paginas/panel.tsx` → `PaginaPanel({ entradas })`). Todas las variantes de un hueco cumplen su
+contrato y los textos que buscan los tests de la plantilla, así que instalar una no toca lo generado
+ni los tests. La primera variante de cada hueco es la que escribe `puerto nuevo`, y su fuente es el
+fichero de la plantilla: no hay copia que se desfase.
+
+### 26.1 — `puerto generar web-bloque` y las pantallas de la app
+
+- `puerto generar web-bloque [<hueco>/<variante>] [--forzar]`:
+  - Sin argumento: el catálogo, una línea por bloque con su descripción; `(auth)` o `(portada)`
+    cuando lo piden. Funciona fuera de un proyecto.
+  - Con uno: pide un proyecto con `[proyecto] web = true`. Rechaza un bloque desconocido (y lista
+    las variantes del hueco, o los huecos), uno de auth en un proyecto sin auth y uno de la portada
+    en un proyecto sin portada.
+  - Escribe sus ficheros (rutas de `generators/layout.rs`). Uno que existe con otro contenido está
+    protegido: pregunta en una terminal y, si no, se niega, salvo con `--forzar` (la misma guarda
+    que `scaffold`). Uno con el mismo contenido no se toca. Dice lo que escribió.
+- Huecos y variantes:
+  - `acceso` (auth) → `compartido/ui/marco-acceso.tsx`: `dividido` (el de hoy), `centrado` (la
+    tarjeta en el centro, el logo y el nombre encima, el eslogan debajo).
+  - `marco` → `compartido/ui/marco.tsx`: `lateral` (el de hoy), `superior` (una barra con la marca y
+    el menú en horizontal; en una pantalla estrecha, un desplegable). Con auth, con `MenuUsuario`.
+  - `panel` → `paginas/panel.tsx`: `tarjetas` (el de hoy), `resumen` (una banda con el título y el
+    eslogan sobre el color primario y los totales en una fila de `stats`).
+  - `perfil` (auth) → `paginas/perfil.tsx`: `tarjeta` (el de hoy), `banda` (una banda de color
+    sobre la tarjeta, con el avatar montado encima).
+- Tests: el catálogo; un bloque desconocido; uno de auth sin auth; sin web; la variante por defecto
+  en un proyecto nuevo no cambia nada; otra variante se niega sin `--forzar` (sin terminal) y con él
+  escribe solo el fichero de su hueco; el `marco` lleva `MenuUsuario` solo con auth.
+- Compile matrix: un escenario `--db --auth local --portada` con todas las variantes que no son la
+  de por defecto instaladas (de 26.1 a 26.4), y uno sin auth con `marco/superior` y `panel/resumen`.
+
+### 26.2 — Los temas
+
+- `tema` → `marca/tema.css`: `puerto` (el de hoy), `bosque`, `ciruela`, `coral`, `pizarra`,
+  `miel`. Cada uno es `@plugin "daisyui";` y los temas `light` (`default`) y `dark` (`prefersdark`),
+  solo con variables (colores, radios).
+- Tests: cada tema lleva el plugin, un `light` por defecto y un `dark` del sistema; `tema/puerto` es
+  el `tema.css` de la plantilla.
+
+### 26.3 — La portada (proyectos con web)
+
+- `puerto nuevo`, con web: «¿Es un SaaS con portada pública?» (no por defecto) y, si lo es, «¿En qué
+  ruta va la app?» (`/panel` por defecto). `--portada`, `--sin-portada`, `--ruta-app <ruta>` (pide
+  la portada). Sin terminal ni flags, sin portada: como hoy.
+- `puerto.toml`: `[proyecto] portada = true`, `ruta_app = "/panel"`. `puerto validar`: la portada
+  pide web; `ruta_app` pide la portada y es `/` seguido de segmentos `[a-z0-9-]+` (no `/` a secas);
+  `web/src/paginas/portada.tsx` existe.
+- `generado/rutas.tsx` exporta `rutaApp` (`"/"` sin portada). `main.tsx` con portada: un `Switch`
+  con `/` → `PaginaPortada`, las páginas de acceso (auth), `<Route path={rutaApp} nest>` → `Marco` con
+  `RutasApp` y, al final, `PaginaNoEncontrada`. Dentro de la app, wouter resuelve las rutas respecto
+  a `rutaApp`: los enlaces de las pantallas no cambian. Sin portada, `main.tsx` es el de hoy.
+- El login y el registro vuelven a `rutaApp` cuando no hay `?siguiente=`.
+- `portada/bienvenida` → `paginas/portada.tsx` (`PaginaPortada`): el logo, el nombre, el eslogan y
+  «Entrar» (a `rutaApp`). `paginas/portada.test.tsx`: muestra la marca y «Entrar» lleva a la app.
+- Tests de Puerto: los flags y el manifiesto; `rutaApp` en `rutas.tsx`; `main.tsx` con y sin
+  portada; `validar`; snapshots.
+
+### 26.4 — Las secciones de marketing (proyectos con portada)
+
+- `portada/producto` → `paginas/portada.tsx` y `web/src/portada/{cabecera,caracteristicas,precios,
+  preguntas,llamada,pie}.tsx`: una barra (logo, nombre, «Características», «Precios», «Preguntas
+  frecuentes», «Entrar») y las secciones (`SeccionCabecera`, `SeccionCaracteristicas`,
+  `SeccionPrecios`, `SeccionPreguntas`, `SeccionLlamada`, `SeccionPie`), cada una su variante por
+  defecto. Sigue pasando `portada.test.tsx`.
+- Variantes de cada sección: `cabecera/centrada`, `cabecera/dividida` (el texto a un lado y un
+  `mockup-browser` con un panel al otro), `caracteristicas/rejilla`, `precios/planes`,
+  `preguntas/acordeon` (`details` con `collapse`), `llamada/banda`, `pie/columnas`.
+- Los textos son de ejemplo, para cambiarlos en el fichero; usan `marca.nombre` y `marca.eslogan`.
+
+### 26.5 — El escaparate (`landing/`, `/bloques`)
+
+- `make site/bloques` (dentro de `make site/data`) genera con la CLI un proyecto (`--db --auth local
+  --portada`, dos entidades), instala cada bloque con `puerto generar web-bloque --forzar` y copia
+  cada variante junto a su hueco con un sufijo (`panel--resumen.tsx`: mismo directorio, mismos
+  imports relativos). Construye con ellas una app de vista previa (`?bloque=<id>&tema=light|dark`,
+  sobre `api-falsa` y la sesión de las pruebas) en `landing/public/bloques/vista/`, y escribe
+  `landing/src/data/bloques.json` (id, hueco, descripción, si pide auth o portada, el código de cada
+  fichero). Los temas entran en la vista renombrados (`bosque-light`) para convivir en un CSS.
+- `/bloques`: los huecos, cada uno con sus variantes (una miniatura en vivo, `loading="lazy"`).
+  `/bloques/<hueco>/<variante>`: la vista previa (claro/oscuro, escritorio/móvil), el comando, el
+  código de cada fichero y «Para tu agente» (el bloque en markdown, con el comando y su contrato).
+- Tests e2e de las dos páginas.
+
+### Fuera de alcance (Fase 26)
+
+Secciones con datos de la API (blog, testimonios); elegir bloques en `puerto nuevo` (`--bloques`);
+variantes de las pantallas CRUD de una entidad (lista, detalle, formulario); el SEO de la portada (es
+una SPA: si importa, la portada va en una web estática aparte); un registro compatible con shadcn.

@@ -77,6 +77,7 @@ mod typed_ids;
 mod use_cases;
 mod value_objects;
 mod walkthrough_fixes;
+mod web_blocks;
 mod web_slice;
 mod worker;
 mod worker_e2e;

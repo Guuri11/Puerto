@@ -342,6 +342,22 @@ decidió por el camino, con las mismas reglas.
 | rutas | `/perfil` |
 | textos | `Panel`, `Perfil`, `Roles`, `Sin roles`, `Sin nombre`, `Sin email`, `Ver la lista`, `Abrir el menú`, `Cerrar el menú`, el eslogan `Todo lo que gestionas, en un solo sitio.` |
 
+## Fase 26 — los bloques web (decidido el 2026-11-19)
+
+Sergio eligió `web-bloque` para el comando y aprobó tal cual los huecos, las variantes y los textos.
+`portada/bienvenida` sale de su «algo básico de bienvenida»; `ruta_app` / `rutaApp`, de «en qué
+ruta quieres el SaaS».
+
+| Dónde | Nombre |
+|---|---|
+| comando | `puerto generar web-bloque <hueco>/<variante>`; en `puerto nuevo`, `--portada`, `--sin-portada`, `--ruta-app` |
+| conceptos | un **bloque** es una variante de un **hueco**; el **escaparate** es `/bloques` en la web de Puerto |
+| huecos | `acceso`, `marco`, `panel`, `perfil`, `tema`, `portada`, `cabecera`, `caracteristicas`, `precios`, `preguntas`, `llamada` (la llamada a la acción), `pie` |
+| variantes | `acceso/{dividido,centrado}`, `marco/{lateral,superior}`, `panel/{tarjetas,resumen}`, `perfil/{tarjeta,banda}`, `tema/{puerto,bosque,ciruela,coral,pizarra,miel}`, `portada/{bienvenida,producto}`, `cabecera/{centrada,dividida}`, `caracteristicas/rejilla`, `precios/planes`, `preguntas/acordeon`, `llamada/banda`, `pie/columnas` |
+| ficheros | `paginas/portada.tsx`, `web/src/portada/{cabecera,caracteristicas,precios,preguntas,llamada,pie}.tsx` |
+| nombres | `PaginaPortada`, `SeccionCabecera`, `SeccionCaracteristicas`, `SeccionPrecios`, `SeccionPreguntas`, `SeccionLlamada`, `SeccionPie`, `rutaApp`; en `puerto.toml`, `[proyecto] portada`, `ruta_app` |
+| textos | `Entrar`, `Ir al panel`, `Características`, `Precios`, `Preguntas frecuentes` |
+
 ## Pendiente
 
 Nada por ahora. Una palabra nueva se pregunta antes de usarla.

@@ -35,4 +35,5 @@ ADR; supersede it with a new one and link both ways.
 | [0024](0024-lo-generado-en-castellano.md) | Lo que genera Puerto, en castellano | Aceptada |
 | [0025](0025-el-frontend-es-presentacion.md) | El frontend generado es presentación: contenedores sobre el cliente tipado | Aceptada |
 | [0026](0026-casos-de-uso-sin-fontaneria.md) | Los casos de uso de escritura: la entidad emite, la factoría guarda, el span registra | Aceptada |
-| [0027](0027-la-marca-es-del-proyecto.md) | La marca es un fichero del proyecto, sobre los temas de daisyUI | Aceptada |
+| [0027](0027-la-marca-es-del-proyecto.md) | La marca es un fichero del proyecto, sobre los temas de daisyUI | Aceptada (el «un solo diseño», sustituido por 0028) |
+| [0028](0028-los-bloques-web.md) | Los bloques web: variantes de un hueco, instaladas por la CLI | Aceptada |

@@ -195,6 +195,12 @@ de `generado/bootstrap.rs`. **Después de un scaffold y después de tocar una ru
 comprobación de desfase. `puerto generar scaffold` también escribe las pantallas de una entidad
 CRUD; `puerto generar web <Nombre>` las escribe solas.
 
+Las pantallas base (el acceso, el marco, el panel, el perfil), la portada y el tema tienen otras
+variantes: `puerto generar web-bloque` las lista, y `puerto generar web-bloque <hueco>/<variante>
+--forzar` cambia el fichero de ese hueco por otra. Cada variante cumple el contrato de su hueco (el
+mismo export, las mismas props), así que no toca nada más. Se ven en
+https://puerto-rs.vercel.app/bloques.
+
 ## Convenciones
 
 - **TDD.** Escribe primero el test que falla, y después el código mínimo. Nombres de test:

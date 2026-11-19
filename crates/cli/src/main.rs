@@ -257,6 +257,17 @@ enum GenerateAction {
         #[arg(long = "forzar")]
         force: bool,
     },
+    /// Instala un bloque del escaparate (https://puerto-rs.vercel.app/bloques): otra variante de una
+    /// pantalla, una sección o un tema de web/. Sin argumento, lista el catálogo
+    #[command(name = "web-bloque")]
+    WebBlock {
+        /// El bloque, `<hueco>/<variante>` (p. ej. marco/superior)
+        #[arg(value_name = "BLOQUE")]
+        id: Option<String>,
+        /// Sobrescribe el fichero del hueco, y pierde lo cambiado a mano
+        #[arg(long = "forzar")]
+        force: bool,
+    },
     /// Declara un objeto valor compartido en puerto.toml (lo pueden usar varias entidades)
     #[command(name = "objeto-valor")]
     ValueObject {
@@ -610,6 +621,38 @@ fn run(command: Commands) -> Result<(), Box<dyn std::error::Error>> {
             };
             commands::list::require_puerto_project(&cwd)
                 .and_then(|_| scaffold::run_generate_web(&name, &cwd, policy))
+        }
+        Commands::Generate {
+            action: GenerateAction::WebBlock { id: None, .. },
+        } => {
+            println!("Bloques de web/ (puerto generar web-bloque <hueco>/<variante>):\n");
+            print!("{}", crate::generators::blocks::catalog_text());
+            println!("\nCómo se ve cada uno: https://puerto-rs.vercel.app/bloques");
+            Ok(())
+        }
+        Commands::Generate {
+            action:
+                GenerateAction::WebBlock {
+                    id: Some(id),
+                    force,
+                },
+        } => {
+            let cwd = std::env::current_dir()?;
+            let policy = if force {
+                crate::generators::conflict::OverwritePolicy::Force
+            } else {
+                crate::generators::conflict::OverwritePolicy::Ask
+            };
+            commands::list::require_puerto_project(&cwd)
+                .and_then(|_| crate::generators::blocks::run_install(&id, &cwd, policy))
+                .map(|written| {
+                    if written.is_empty() {
+                        println!("✓ {id} ya estaba instalado: no ha cambiado nada");
+                    }
+                    for path in written {
+                        println!("✓ {}", path.display());
+                    }
+                })
         }
         Commands::Generate {
             action: GenerateAction::ValueObject { name, inner_type },

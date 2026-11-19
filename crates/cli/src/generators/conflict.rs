@@ -97,10 +97,7 @@ pub fn guard_files_overwrite(
         return Ok(());
     }
 
-    eprintln!(
-        "'{snake}' ya está generada: esto sobrescribiría {} fichero(s):",
-        conflicts.len()
-    );
+    eprintln!("'{snake}' sobrescribiría {} fichero(s):", conflicts.len());
     for f in conflicts.iter().take(10) {
         eprintln!("  {}", f.display());
     }

@@ -13,6 +13,9 @@ pub const CONTEXTS_DIR: &str = "contextos";
 pub const NUCLEO_DIR: &str = "nucleo";
 pub const NUCLEO_SRC: &str = "nucleo/src";
 
+// ── the frontend (`[proyecto] web`) ───────────────────────────────────────────────────────────
+pub const WEB_DIR: &str = "web";
+
 // ── migrations (`--db`) ───────────────────────────────────────────────────────────────────────
 pub const MIGRATIONS_DIR: &str = "migraciones";
 pub const MIGRADOR_DIR: &str = "migrador";
