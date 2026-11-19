@@ -3429,6 +3429,60 @@ export function RutasApp() {
   );
 }
 
+=== web/src/pruebas/api-falsa.test.ts ===
+import { describe, expect, test } from "bun:test";
+import { coleccion, fetchFalso } from "./api-falsa";
+
+function pedir(metodo: string, ruta: string) {
+  return new Request(`http://localhost/api${ruta}`, { method: metodo });
+}
+
+function sembrarCosas() {
+  return coleccion("/cosas", "cosa", [{ id: "1", estado: "Activa" }], {
+    cancelar: { estado: "Cancelada" },
+  });
+}
+
+describe("fetchFalso", () => {
+  test("debería poner en el elemento los campos de la acción cuando se le pide", async () => {
+    // Preparar
+    const cosas = sembrarCosas();
+
+    // Actuar
+    const respuesta = await fetchFalso([cosas])(pedir("POST", "/cosas/1/cancelar"));
+
+    // Comprobar
+    expect(respuesta.status).toBe(200);
+    expect(await respuesta.json()).toEqual({ id: "1", estado: "Cancelada" });
+    expect(cosas.elementos.get("1")).toEqual({ id: "1", estado: "Cancelada" });
+  });
+
+  test("debería responder 404 cuando la acción no existe", async () => {
+    // Preparar
+    const cosas = sembrarCosas();
+
+    // Actuar
+    const respuesta = await fetchFalso([cosas])(pedir("POST", "/cosas/1/archivar"));
+
+    // Comprobar
+    expect(respuesta.status).toBe(404);
+    expect(cosas.elementos.get("1")).toEqual({ id: "1", estado: "Activa" });
+  });
+
+  test("debería responder el fallo de la acción sin cambiar el elemento", async () => {
+    // Preparar
+    const cosas = sembrarCosas();
+    const fallos = { "POST /cosas/{id}/cancelar": "cosa.validacion.ya_cancelada" };
+
+    // Actuar
+    const respuesta = await fetchFalso([cosas], fallos)(pedir("POST", "/cosas/1/cancelar"));
+
+    // Comprobar
+    expect((await respuesta.json()).codigo).toBe("cosa.validacion.ya_cancelada");
+    expect(cosas.elementos.get("1")).toEqual({ id: "1", estado: "Activa" });
+  });
+});
+
 === web/src/pruebas/api-falsa.ts ===
 import { type ClienteApi, crearClienteApi } from "../api/cliente";
 
@@ -3438,42 +3492,61 @@ export interface Coleccion<T extends { id: string }> {
   /** El código que responde un elemento que no está: `producto.no_encontrado`. */
   noEncontrado: string;
   elementos: Map<string, T>;
+  /** Los campos que `POST <ruta>/{id}/<accion>` pone en el elemento, por acción. */
+  acciones: Record<string, Partial<T>>;
 }
 
-/** Los elementos bajo `ruta` (`/productos`) de `entidad` (`producto`), empezando por `semilla`. */
+/**
+ * Los elementos bajo `ruta` (`/productos`) de `entidad` (`producto`), empezando por `semilla`, y
+ * las `acciones` que entiende: `{ cancelar: { estado: "Cancelado" } }`.
+ */
 export function coleccion<T extends { id: string }>(
   ruta: string,
   entidad: string,
   semilla: T[] = [],
+  acciones: Record<string, Partial<T>> = {},
 ): Coleccion<T> {
   const elementos = new Map(semilla.map((elemento) => [elemento.id, elemento]));
-  return { ruta, noEncontrado: `${entidad}.no_encontrado`, elementos };
+  return { ruta, noEncontrado: `${entidad}.no_encontrado`, elementos, acciones };
 }
 
-/**
- * Un `ClienteApi` que responde como la API generada, sobre colecciones en memoria: una página por
- * `limite` / `desplazamiento`, un `404` con `<entidad>.no_encontrado`, `201`, `200` y `204`. Cada
- * uno de `fallos` (`{ "POST /productos": "producto.duplicado" }`) responde su código en su lugar.
- */
+/** Un `ClienteApi` sobre {@link fetchFalso}. */
 export function apiFalsa(
   colecciones: Coleccion<{ id: string }>[],
   fallos: Record<string, string> = {},
 ): ClienteApi {
   return crearClienteApi({
     baseUrl: "http://localhost/api",
-    fetch: async (peticion) => {
-      const url = new URL(peticion.url);
-      const ruta = url.pathname.replace(/^\/api/, "");
-      const objetivo = colecciones.find((c) => ruta === c.ruta || ruta.startsWith(`${c.ruta}/`));
-      if (objetivo === undefined) return responderError(404, "http.404");
-      const fallo = fallos[`${peticion.method} ${objetivo.ruta}`];
-      if (fallo !== undefined) return responderError(400, fallo);
-      const id = ruta.slice(objetivo.ruta.length + 1);
-      return id === ""
-        ? servirLista(objetivo, peticion, url)
-        : servirElemento(objetivo, peticion, id);
-    },
+    fetch: fetchFalso(colecciones, fallos),
   });
+}
+
+/**
+ * Un `fetch` que responde como la API generada, sobre colecciones en memoria: una página por
+ * `limite` / `desplazamiento`, un `404` con `<entidad>.no_encontrado`, `201`, `200` y `204`, y
+ * `200` con el elemento cambiado a una acción. Cada uno de `fallos` responde su código en su lugar:
+ * `{ "POST /productos": "producto.duplicado" }` (también a las acciones), o solo el de una acción,
+ * `{ "POST /productos/{id}/publicar": "producto.validacion.ya_publicado" }`.
+ */
+export function fetchFalso(
+  colecciones: Coleccion<{ id: string }>[],
+  fallos: Record<string, string> = {},
+) {
+  return async (peticion: Request): Promise<Response> => {
+    const url = new URL(peticion.url);
+    const ruta = url.pathname.replace(/^\/api/, "");
+    const objetivo = colecciones.find((c) => ruta === c.ruta || ruta.startsWith(`${c.ruta}/`));
+    if (objetivo === undefined) return responderError(404, "http.404");
+    const [id = "", accion] = ruta.slice(objetivo.ruta.length + 1).split("/");
+    const fallo =
+      fallos[`${peticion.method} ${objetivo.ruta}/{id}/${accion}`] ??
+      fallos[`${peticion.method} ${objetivo.ruta}`];
+    if (fallo !== undefined) return responderError(400, fallo);
+    if (accion !== undefined) return servirAccion(objetivo, peticion, id, accion);
+    return id === ""
+      ? servirLista(objetivo, peticion, url)
+      : servirElemento(objetivo, peticion, id);
+  };
 }
 
 async function servirLista(objetivo: Coleccion<{ id: string }>, peticion: Request, url: URL) {
@@ -3503,6 +3576,21 @@ async function servirElemento(objetivo: Coleccion<{ id: string }>, peticion: Req
     return Response.json(actualizado);
   }
   return Response.json(encontrado);
+}
+
+function servirAccion(
+  objetivo: Coleccion<{ id: string }>,
+  peticion: Request,
+  id: string,
+  accion: string,
+) {
+  const cambios = objetivo.acciones[accion];
+  if (peticion.method !== "POST" || cambios === undefined) return responderError(404, "http.404");
+  const encontrado = objetivo.elementos.get(id);
+  if (encontrado === undefined) return responderError(404, objetivo.noEncontrado);
+  const cambiado = { ...encontrado, ...cambios };
+  objetivo.elementos.set(id, cambiado);
+  return Response.json(cambiado);
 }
 
 /** Un `RespuestaError` como lo responde la API. */

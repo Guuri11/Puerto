@@ -21,8 +21,8 @@ use crate::generators::types::{WebFieldCtx, web_field_ctx};
 use crate::puerto_toml::{Entity, Field, PuertoConfig};
 
 /// Every frontend file `scaffold` writes for one entity, relative to the project root — what the
-/// overwrite guard checks. `api/cliente.ts` and `pruebas/api-falsa.ts` are not: they are written
-/// once, with the first entity, and never overwritten.
+/// overwrite guard checks. `api/cliente.ts` and `pruebas/api-falsa.ts` (and its test) are not:
+/// they are written once, with the first entity, and never overwritten.
 pub fn web_entity_files(snake: &str) -> Vec<PathBuf> {
     let k = snake_to_kebab(snake);
     [
@@ -59,9 +59,13 @@ pub fn web_required_files(snake: &str) -> Vec<PathBuf> {
 
 /// Written with the first entity, never overwritten: both import `api/esquema.d.ts`, which exists
 /// only after `make web/sync`, and a fresh project's `bun run typecheck` must pass.
-const ONCE_FILES: [(&str, &str); 2] = [
+const ONCE_FILES: [(&str, &str); 3] = [
     ("web/src/api/cliente.ts", "web/client.tera"),
     ("web/src/pruebas/api-falsa.ts", "web/fake_api.tera"),
+    (
+        "web/src/pruebas/api-falsa.test.ts",
+        "web/fake_api_test.tera",
+    ),
 ];
 
 /// Whether `entity` gets a frontend slice: it has the five CRUD use cases, the endpoints the

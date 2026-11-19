@@ -3768,7 +3768,7 @@ Los tests del formulario comparan con el texto literal («Estos valores ya está
 mensaje rompía 5 tests en Aforo. Comparan con `aProblema(codigo).texto`. Test: ningún test generado
 de formulario escribe un texto de `mensajes.ts`; `bun test` pasa con un mensaje cambiado.
 
-### 27.4 — La API falsa entiende las acciones
+### 27.4 — La API falsa entiende las acciones ✅
 
 `coleccion(ruta, entidad, semilla, acciones = {})`: `POST <ruta>/{id}/<accion>` mezcla en el
 elemento los campos de esa acción (`{ cancelar: { estado: "Cancelado" } }`) y responde 200. `fallos`

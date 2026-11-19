@@ -389,6 +389,7 @@ fn the_api_client_and_the_fake_api_are_written_once_and_never_overwritten() {
     let once = [
         output.join("web/src/api/cliente.ts"),
         output.join("web/src/pruebas/api-falsa.ts"),
+        output.join("web/src/pruebas/api-falsa.test.ts"),
     ];
     for file in &once {
         assert!(
@@ -406,6 +407,34 @@ fn the_api_client_and_the_fake_api_are_written_once_and_never_overwritten() {
 
     for file in &once {
         assert_eq!(fs::read_to_string(file).unwrap(), "// customised\n");
+    }
+    cleanup(&dir);
+}
+
+#[test]
+fn fake_api_answers_the_actions_of_a_collection() {
+    // 27.4: `POST <ruta>/{id}/<accion>` (a state transition) had no answer; Aforo extended it by
+    // hand.
+    let (dir, output) = web_project("web_fake_api_actions");
+    scaffold::run_scaffold("Producto", &output, &[], OverwritePolicy::Ask).unwrap();
+
+    let fake = read(&output, "web/src/pruebas/api-falsa.ts");
+    assert!(
+        fake.contains("acciones: Record<string, Partial<T>> = {},"),
+        "{fake}"
+    );
+    assert!(fake.contains("export function fetchFalso("), "{fake}");
+    assert!(
+        fake.contains("fallos[`${peticion.method} ${objetivo.ruta}/{id}/${accion}`] ??"),
+        "{fake}"
+    );
+    let test = read(&output, "web/src/pruebas/api-falsa.test.ts");
+    for name in [
+        "debería poner en el elemento los campos de la acción cuando se le pide",
+        "debería responder 404 cuando la acción no existe",
+        "debería responder el fallo de la acción sin cambiar el elemento",
+    ] {
+        assert!(test.contains(name), "{test}");
     }
     cleanup(&dir);
 }
