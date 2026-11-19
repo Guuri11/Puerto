@@ -841,6 +841,21 @@ fn vite_proxies_the_api_on_the_service_port_of_the_root_env() {
 }
 
 #[test]
+fn web_dates_are_written_in_spanish_whatever_the_browser_language() {
+    // 27.6: `toLocaleString()` follows the browser: «12/5/2026, 9:00:00 PM» in a Spanish product.
+    let file = |path: &str| {
+        crate::TEMPLATE_DIR
+            .get_file(path)
+            .and_then(|f| f.contents_utf8())
+            .unwrap()
+    };
+    let forms = file("web/src/compartido/formularios.ts");
+    assert!(forms.contains("toLocaleString(\"es-ES\""), "{forms}");
+    let tests = file("web/src/compartido/formularios.test.ts");
+    assert!(tests.contains(".toBe(\"15 dic 2026, 21:00\")"), "{tests}");
+}
+
+#[test]
 fn makefile_runs_the_frontend_checks_when_web_exists() {
     let dir = temp_dir("web_makefile");
     cleanup(&dir);

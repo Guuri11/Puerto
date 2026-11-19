@@ -3786,7 +3786,7 @@ Se usa en las vistas, los formularios y sus tests, `mensajes.ts` y las plantilla
 neutra (por decidir). Tests: `naming` (cada palabra del diccionario, una sin tilde, una compuesta,
 la de `puerto.toml`), el parser y `validar` de `etiqueta`, snapshots.
 
-### 27.6 — Las fechas, en castellano
+### 27.6 — Las fechas, en castellano ✅
 
 `formatearFechaHora` usa `toLocaleString()`, que en un navegador en inglés da
 «12/5/2026, 9:00:00 PM». Pasa a

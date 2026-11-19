@@ -70,9 +70,9 @@ export function fechaHoraOpcional(texto: string): string | undefined {
   return texto === "" ? undefined : deFechaHoraLocal(texto);
 }
 
-/** Un instante ISO 8601 en el idioma y la zona horaria de quien lo lee. */
+/** Un instante ISO 8601 en castellano, en la zona horaria de quien lo lee: «5 dic 2026, 21:00». */
 export function formatearFechaHora(iso: string): string {
-  return new Date(iso).toLocaleString();
+  return new Date(iso).toLocaleString("es-ES", { dateStyle: "medium", timeStyle: "short" });
 }
 
 /** Una opción del `<select>` de una referencia: el id que manda y lo que muestra. */

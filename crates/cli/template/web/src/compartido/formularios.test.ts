@@ -5,6 +5,7 @@ import {
   deFechaHoraLocal,
   fechaHoraOpcional,
   formatearEntradas,
+  formatearFechaHora,
   leerEntradas,
   numeroOpcional,
   opcionesReferencia,
@@ -30,6 +31,12 @@ describe("formularios", () => {
     expect(booleanoOpcional("")).toBeUndefined();
     expect(booleanoOpcional("true")).toBe(true);
     expect(booleanoOpcional("false")).toBe(false);
+  });
+
+  test("debería escribir una fecha en castellano aunque el navegador esté en otro idioma", () => {
+    // Las 21:00 del 15 de diciembre en la zona horaria de quien ejecuta el test.
+    const instante = new Date(2026, 11, 15, 21, 0).toISOString();
+    expect(formatearFechaHora(instante)).toBe("15 dic 2026, 21:00");
   });
 
   test("debería separar una lista por comas y descartar sus elementos vacíos", () => {
