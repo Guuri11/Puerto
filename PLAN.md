@@ -3949,7 +3949,7 @@ entidad. Tests: el fichero (ejecutable) y la regla de make.
 
 ### 27.22 — `make db/reiniciar` sin preguntar
 
-`CONFIRMAR=DESTRUIR make db/reiniciar` se salta la pregunta (para scripts y agentes; hoy solo con
+`CONFIRM=DESTRUIR make db/reiniciar` (decidido el 2026-11-19: en inglés, ADR-0024) se salta la pregunta (para scripts y agentes; hoy solo con
 `echo DESTRUIR |`). Test: la regla del Makefile.
 
 ### Por decidir (antes de su pieza, con Sergio)
@@ -3959,13 +3959,14 @@ entidad. Tests: el fichero (ejecutable) y la regla de make.
   snapshots y de los consumidores, así que iría con guía de migración. Si no se cambia, se documenta
   en el glosario.
 - **Palabras nuevas:**
-  - `etiqueta` de un campo, la clave de los textos de las variantes y la frase neutra de
-    «obligatorio»;
+  - ~~`etiqueta` de un campo, la clave de los textos de las variantes y la frase neutra de
+    «obligatorio»~~: decidido el 2026-11-19, `etiqueta`, `textos` y «`<Etiqueta>`: campo
+    obligatorio» (`docs/glosario.md` § Fase 27);
   - el comando y la clave de la transición, y su código de rechazo;
   - `interno`, `Principal::sistema`, el helper de páginas, `--usa` y el módulo compartido del worker;
   - `ejemplo`, las clases `email` y `dinero`;
   - `por_defecto`, `generado`, `propietario` y la ruta `mis-<plural>`;
-  - el hueco de la lista pública, `sembrar` y `CONFIRMAR`.
+  - el hueco de la lista pública y `sembrar` (`CONFIRM`, decidido el 2026-11-19).
 
 ### Comprobado y descartado
 
