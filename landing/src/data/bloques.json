@@ -1,0 +1,371 @@
+[
+  {
+    "id": "acceso/dividido",
+    "descripcion": "la marca sobre el color primario a un lado, el formulario en una tarjeta al otro",
+    "pide": "auth",
+    "hueco": "acceso",
+    "variante": "dividido",
+    "porDefecto": true,
+    "exporta": "MarcoAcceso",
+    "ficheros": [
+      {
+        "ruta": "web/src/compartido/ui/marco-acceso.tsx",
+        "codigo": "import type { ReactNode } from \"react\";\nimport { Link } from \"wouter\";\nimport { marca } from \"../../marca/marca\";\n\n/**\n * El marco de las páginas de acceso (iniciar sesión, crear una cuenta): sin el menú de la app, la\n * marca a un lado y el formulario en una tarjeta al otro. En una pantalla estrecha, solo la tarjeta.\n */\nexport function MarcoAcceso({ children }: { children: ReactNode }) {\n  return (\n    <div className=\"grid min-h-screen bg-base-200 lg:grid-cols-2\">\n      <aside className=\"hidden flex-col justify-between bg-primary p-12 text-primary-content lg:flex\">\n        <Link href=\"/\" className=\"flex items-center gap-3 text-2xl font-bold\">\n          <img src={marca.logo} alt=\"\" className=\"size-12\" />\n          {marca.nombre}\n        </Link>\n        <p className=\"max-w-md text-4xl font-semibold leading-tight\">{marca.eslogan}</p>\n      </aside>\n      <main className=\"flex items-center justify-center p-4\">\n        <div className=\"card w-full max-w-sm bg-base-100 shadow-xl\">\n          <div className=\"card-body gap-4\">\n            <Link href=\"/\" className=\"flex items-center gap-2 text-lg font-bold lg:hidden\">\n              <img src={marca.logo} alt=\"\" className=\"size-8\" />\n              {marca.nombre}\n            </Link>\n            {children}\n          </div>\n        </div>\n      </main>\n    </div>\n  );\n}\n"
+      }
+    ]
+  },
+  {
+    "id": "acceso/centrado",
+    "descripcion": "el formulario en una tarjeta en el centro, la marca encima y el eslogan debajo",
+    "pide": "auth",
+    "hueco": "acceso",
+    "variante": "centrado",
+    "porDefecto": false,
+    "exporta": "MarcoAcceso",
+    "ficheros": [
+      {
+        "ruta": "web/src/compartido/ui/marco-acceso.tsx",
+        "codigo": "import type { ReactNode } from \"react\";\nimport { Link } from \"wouter\";\nimport { marca } from \"../../marca/marca\";\n\n/**\n * El marco de las páginas de acceso (iniciar sesión, crear una cuenta): sin el menú de la app, la\n * marca encima, el formulario en una tarjeta en el centro y el eslogan debajo.\n */\nexport function MarcoAcceso({ children }: { children: ReactNode }) {\n  return (\n    <main className=\"flex min-h-screen flex-col items-center justify-center gap-6 bg-base-200 p-4\">\n      <Link href=\"/\" className=\"flex items-center gap-3 text-2xl font-bold\">\n        <img src={marca.logo} alt=\"\" className=\"size-10\" />\n        {marca.nombre}\n      </Link>\n      <div className=\"card w-full max-w-sm bg-base-100 shadow-xl\">\n        <div className=\"card-body gap-4\">{children}</div>\n      </div>\n      <p className=\"max-w-sm text-center text-sm text-base-content/70\">{marca.eslogan}</p>\n    </main>\n  );\n}\n"
+      }
+    ]
+  },
+  {
+    "id": "marco/lateral",
+    "descripcion": "la marca y el menú en un lateral; en el móvil, tras un botón",
+    "pide": null,
+    "hueco": "marco",
+    "variante": "lateral",
+    "porDefecto": true,
+    "exporta": "Marco",
+    "ficheros": [
+      {
+        "ruta": "web/src/compartido/ui/marco.tsx",
+        "codigo": "import { type ReactNode, useState } from \"react\";\nimport { Link, useLocation } from \"wouter\";\nimport type { Dependencias } from \"../../generado/dependencias\";\nimport { marca } from \"../../marca/marca\";\nimport { MenuUsuario } from \"./menu-usuario\";\n\n/** Una sección de la app: una entrada del menú y una tarjeta del panel. */\nexport interface EntradaMenu {\n  etiqueta: string;\n  href: string;\n  /** Cuántos elementos tiene su lista: lo que enseña el panel. */\n  total: (dependencias: Dependencias) => Promise<number>;\n}\n\n/**\n * La marca y el menú en un lateral, quien tiene la sesión arriba y el contenido debajo. En una\n * pantalla estrecha el lateral se esconde tras un botón y se cierra al elegir una entrada.\n */\nexport function Marco({ menu, children }: { menu: EntradaMenu[]; children: ReactNode }) {\n  const [ubicacion] = useLocation();\n  const [abierto, setAbierto] = useState(false);\n  const enlace = (href: string, etiqueta: string) => {\n    const actual = ubicacion === href || (href !== \"/\" && ubicacion.startsWith(`${href}/`));\n    return (\n      <li key={href}>\n        <Link\n          href={href}\n          className={actual ? \"menu-active\" : undefined}\n          aria-current={actual ? \"page\" : undefined}\n          onClick={() => setAbierto(false)}\n        >\n          {etiqueta}\n        </Link>\n      </li>\n    );\n  };\n\n  return (\n    <div className=\"drawer lg:drawer-open\">\n      <input\n        id=\"marco-menu\"\n        type=\"checkbox\"\n        className=\"drawer-toggle\"\n        checked={abierto}\n        onChange={(event) => setAbierto(event.target.checked)}\n      />\n      <div className=\"drawer-content flex min-h-screen flex-col bg-base-200\">\n        <header className=\"navbar bg-base-100 shadow-sm\">\n          <label\n            htmlFor=\"marco-menu\"\n            className=\"btn btn-square btn-ghost lg:hidden\"\n            aria-label=\"Abrir el menú\"\n          >\n            <svg\n              viewBox=\"0 0 24 24\"\n              className=\"size-6\"\n              fill=\"none\"\n              stroke=\"currentColor\"\n              aria-hidden=\"true\"\n            >\n              <path strokeLinecap=\"round\" strokeWidth=\"2\" d=\"M4 6h16M4 12h16M4 18h16\" />\n            </svg>\n          </label>\n          <Link href=\"/\" className=\"flex items-center gap-2 px-2 text-lg font-bold lg:hidden\">\n            <img src={marca.logo} alt=\"\" className=\"size-8\" />\n            {marca.nombre}\n          </Link>\n          <div className=\"ml-auto\">\n            <MenuUsuario />\n          </div>\n        </header>\n        <main className=\"mx-auto w-full max-w-6xl flex-1 p-4 lg:p-8\">{children}</main>\n      </div>\n      <div className=\"drawer-side z-20\">\n        <label htmlFor=\"marco-menu\" className=\"drawer-overlay\" aria-label=\"Cerrar el menú\" />\n        <aside className=\"flex min-h-full w-64 flex-col border-base-300 border-r bg-base-100\">\n          <Link href=\"/\" className=\"flex items-center gap-3 p-5 text-xl font-bold\">\n            <img src={marca.logo} alt=\"\" className=\"size-10\" />\n            {marca.nombre}\n          </Link>\n          <nav>\n            <ul className=\"menu w-full gap-1\">\n              {enlace(\"/\", \"Panel\")}\n              {menu.map((entrada) => enlace(entrada.href, entrada.etiqueta))}\n            </ul>\n          </nav>\n        </aside>\n      </div>\n    </div>\n  );\n}\n"
+      }
+    ]
+  },
+  {
+    "id": "marco/superior",
+    "descripcion": "la marca y el menú en una barra arriba; en el móvil, un desplegable",
+    "pide": null,
+    "hueco": "marco",
+    "variante": "superior",
+    "porDefecto": false,
+    "exporta": "Marco",
+    "ficheros": [
+      {
+        "ruta": "web/src/compartido/ui/marco.tsx",
+        "codigo": "import { type ReactNode, useState } from \"react\";\nimport { Link, useLocation } from \"wouter\";\nimport type { Dependencias } from \"../../generado/dependencias\";\nimport { marca } from \"../../marca/marca\";\nimport { MenuUsuario } from \"./menu-usuario\";\n\n/** Una sección de la app: una entrada del menú y una tarjeta del panel. */\nexport interface EntradaMenu {\n  etiqueta: string;\n  href: string;\n  /** Cuántos elementos tiene su lista: lo que enseña el panel. */\n  total: (dependencias: Dependencias) => Promise<number>;\n}\n\n/**\n * La marca y el menú en una barra arriba, quien tiene la sesión a la derecha y el contenido debajo.\n * En una pantalla estrecha el menú se despliega bajo la barra y se cierra al elegir una entrada.\n */\nexport function Marco({ menu, children }: { menu: EntradaMenu[]; children: ReactNode }) {\n  const [ubicacion] = useLocation();\n  const [abierto, setAbierto] = useState(false);\n  const enlaces = [{ href: \"/\", etiqueta: \"Panel\" }, ...menu].map(({ href, etiqueta }) => {\n    const actual = ubicacion === href || (href !== \"/\" && ubicacion.startsWith(`${href}/`));\n    return (\n      <li key={href}>\n        <Link\n          href={href}\n          className={actual ? \"menu-active\" : undefined}\n          aria-current={actual ? \"page\" : undefined}\n          onClick={() => setAbierto(false)}\n        >\n          {etiqueta}\n        </Link>\n      </li>\n    );\n  });\n\n  return (\n    <div className=\"flex min-h-screen flex-col bg-base-200\">\n      <header className=\"sticky top-0 z-20 bg-base-100 shadow-sm\">\n        <div className=\"navbar mx-auto max-w-6xl gap-2 px-4\">\n          <button\n            type=\"button\"\n            className=\"btn btn-square btn-ghost lg:hidden\"\n            aria-label={abierto ? \"Cerrar el menú\" : \"Abrir el menú\"}\n            aria-expanded={abierto}\n            onClick={() => setAbierto(!abierto)}\n          >\n            <svg\n              viewBox=\"0 0 24 24\"\n              className=\"size-6\"\n              fill=\"none\"\n              stroke=\"currentColor\"\n              aria-hidden=\"true\"\n            >\n              <path strokeLinecap=\"round\" strokeWidth=\"2\" d=\"M4 6h16M4 12h16M4 18h16\" />\n            </svg>\n          </button>\n          <Link href=\"/\" className=\"flex items-center gap-2 px-2 text-lg font-bold\">\n            <img src={marca.logo} alt=\"\" className=\"size-8\" />\n            {marca.nombre}\n          </Link>\n          <nav className=\"hidden lg:block\">\n            <ul className=\"menu menu-horizontal gap-1\">{enlaces}</ul>\n          </nav>\n          <div className=\"ml-auto\">\n            <MenuUsuario />\n          </div>\n        </div>\n        {abierto && (\n          <nav className=\"border-base-300 border-t lg:hidden\">\n            <ul className=\"menu w-full\">{enlaces}</ul>\n          </nav>\n        )}\n      </header>\n      <main className=\"mx-auto w-full max-w-6xl flex-1 p-4 lg:p-8\">{children}</main>\n    </div>\n  );\n}\n"
+      }
+    ]
+  },
+  {
+    "id": "panel/tarjetas",
+    "descripcion": "una tarjeta por sección con su total",
+    "pide": null,
+    "hueco": "panel",
+    "variante": "tarjetas",
+    "porDefecto": true,
+    "exporta": "PaginaPanel",
+    "ficheros": [
+      {
+        "ruta": "web/src/paginas/panel.tsx",
+        "codigo": "import { Link } from \"wouter\";\nimport type { EntradaMenu } from \"../compartido/ui/marco\";\nimport { SinElementos } from \"../compartido/ui/sin-elementos\";\nimport { useCarga } from \"../compartido/use-carga\";\nimport { useDependencias } from \"../dependencias\";\nimport { marca } from \"../marca/marca\";\n\n/** La API sirve su Swagger UI en su raíz (`make run`). */\nconst URL_DOCS_API = \"http://localhost:8080/\";\n\n/** La página de inicio: una tarjeta por sección, con cuántos elementos tiene. */\nexport function PaginaPanel({ entradas }: { entradas: EntradaMenu[] }) {\n  return (\n    <section className=\"space-y-6\">\n      <header>\n        <h1 className=\"text-3xl font-bold\">Panel</h1>\n        <p className=\"text-base-content/70\">{marca.eslogan}</p>\n      </header>\n      {entradas.length === 0 ? (\n        <SinElementos mensaje=\"Todavía no hay entidades. Añade una con `puerto generar scaffold <Nombre>`.\" />\n      ) : (\n        <ul className=\"grid gap-4 sm:grid-cols-2 xl:grid-cols-3\">\n          {entradas.map((entrada) => (\n            <li key={entrada.href}>\n              <TarjetaTotal entrada={entrada} />\n            </li>\n          ))}\n        </ul>\n      )}\n      <a className=\"link link-hover text-sm\" href={URL_DOCS_API}>\n        Documentación de la API (Swagger UI)\n      </a>\n    </section>\n  );\n}\n\nfunction TarjetaTotal({ entrada }: { entrada: EntradaMenu }) {\n  const dependencias = useDependencias();\n  const total = useCarga(() => entrada.total(dependencias), [entrada, dependencias]);\n  return (\n    <Link\n      href={entrada.href}\n      className=\"stats w-full bg-base-100 shadow-sm transition hover:shadow-md\"\n    >\n      <div className=\"stat\">\n        <div className=\"stat-title\">{entrada.etiqueta}</div>\n        <div className=\"stat-value text-primary\">\n          {total.estado === \"listo\" ? (\n            total.datos\n          ) : total.estado === \"cargando\" ? (\n            <span className=\"loading loading-dots\" />\n          ) : (\n            \"—\"\n          )}\n        </div>\n        <div className=\"stat-desc\">Ver la lista</div>\n      </div>\n    </Link>\n  );\n}\n"
+      }
+    ]
+  },
+  {
+    "id": "panel/resumen",
+    "descripcion": "una banda de color con el título y los totales en una fila",
+    "pide": null,
+    "hueco": "panel",
+    "variante": "resumen",
+    "porDefecto": false,
+    "exporta": "PaginaPanel",
+    "ficheros": [
+      {
+        "ruta": "web/src/paginas/panel.tsx",
+        "codigo": "import { Link } from \"wouter\";\nimport type { EntradaMenu } from \"../compartido/ui/marco\";\nimport { SinElementos } from \"../compartido/ui/sin-elementos\";\nimport { useCarga } from \"../compartido/use-carga\";\nimport { useDependencias } from \"../dependencias\";\nimport { marca } from \"../marca/marca\";\n\n/** La API sirve su Swagger UI en su raíz (`make run`). */\nconst URL_DOCS_API = \"http://localhost:8080/\";\n\n/** La página de inicio: una banda con la marca y, debajo, una fila con el total de cada sección. */\nexport function PaginaPanel({ entradas }: { entradas: EntradaMenu[] }) {\n  return (\n    <section className=\"space-y-6\">\n      <header className=\"rounded-box bg-primary p-8 text-primary-content\">\n        <h1 className=\"text-3xl font-bold\">Panel</h1>\n        <p className=\"opacity-80\">{marca.eslogan}</p>\n      </header>\n      {entradas.length === 0 ? (\n        <SinElementos mensaje=\"Todavía no hay entidades. Añade una con `puerto generar scaffold <Nombre>`.\" />\n      ) : (\n        <div className=\"stats stats-vertical w-full bg-base-100 shadow-sm lg:stats-horizontal\">\n          {entradas.map((entrada) => (\n            <TarjetaTotal key={entrada.href} entrada={entrada} />\n          ))}\n        </div>\n      )}\n      <a className=\"link link-hover text-sm\" href={URL_DOCS_API}>\n        Documentación de la API (Swagger UI)\n      </a>\n    </section>\n  );\n}\n\nfunction TarjetaTotal({ entrada }: { entrada: EntradaMenu }) {\n  const dependencias = useDependencias();\n  const total = useCarga(() => entrada.total(dependencias), [entrada, dependencias]);\n  return (\n    <Link href={entrada.href} className=\"stat transition hover:bg-base-200\">\n      <div className=\"stat-title\">{entrada.etiqueta}</div>\n      <div className=\"stat-value\">\n        {total.estado === \"listo\" ? (\n          total.datos\n        ) : total.estado === \"cargando\" ? (\n          <span className=\"loading loading-dots\" />\n        ) : (\n          \"—\"\n        )}\n      </div>\n      <div className=\"stat-desc\">Ver la lista</div>\n    </Link>\n  );\n}\n"
+      }
+    ]
+  },
+  {
+    "id": "perfil/tarjeta",
+    "descripcion": "el avatar, el nombre, el email y los roles en una tarjeta",
+    "pide": "auth",
+    "hueco": "perfil",
+    "variante": "tarjeta",
+    "porDefecto": true,
+    "exporta": "PaginaPerfil",
+    "ficheros": [
+      {
+        "ruta": "web/src/paginas/perfil.tsx",
+        "codigo": "import { useAuth } from \"../auth/auth\";\nimport { Avatar } from \"../compartido/ui/avatar\";\n\n/** Quién tiene la sesión iniciada, tal como lo responde la API (`GET /me`), y el botón para cerrarla. */\nexport function PaginaPerfil() {\n  const { usuario, logout } = useAuth();\n  // `RequiereAuth` la protege: sin sesión, nunca llega a pintarse.\n  if (usuario === null) return null;\n  return (\n    <section className=\"mx-auto max-w-xl space-y-6\">\n      <h1 className=\"text-3xl font-bold\">Perfil</h1>\n      <div className=\"card bg-base-100 shadow-sm\">\n        <div className=\"card-body gap-6\">\n          <div className=\"flex items-center gap-4\">\n            <Avatar usuario={usuario} className=\"w-16 text-xl\" />\n            <div>\n              <p className=\"text-xl font-semibold\">{usuario.nombre ?? \"Sin nombre\"}</p>\n              <p className=\"text-base-content/70\">{usuario.email ?? \"Sin email\"}</p>\n            </div>\n          </div>\n          <div className=\"space-y-2\">\n            <h2 className=\"font-semibold\">Roles</h2>\n            {usuario.roles.length === 0 ? (\n              <p className=\"text-base-content/70\">Sin roles</p>\n            ) : (\n              <ul className=\"flex flex-wrap gap-2\">\n                {usuario.roles.map((rol) => (\n                  <li key={rol} className=\"badge badge-outline\">\n                    {rol}\n                  </li>\n                ))}\n              </ul>\n            )}\n          </div>\n          <div className=\"card-actions justify-end\">\n            <button type=\"button\" className=\"btn\" onClick={() => void logout()}>\n              Cerrar sesión\n            </button>\n          </div>\n        </div>\n      </div>\n    </section>\n  );\n}\n"
+      }
+    ]
+  },
+  {
+    "id": "perfil/banda",
+    "descripcion": "una banda de color con el avatar montado encima",
+    "pide": "auth",
+    "hueco": "perfil",
+    "variante": "banda",
+    "porDefecto": false,
+    "exporta": "PaginaPerfil",
+    "ficheros": [
+      {
+        "ruta": "web/src/paginas/perfil.tsx",
+        "codigo": "import { useAuth } from \"../auth/auth\";\nimport { Avatar } from \"../compartido/ui/avatar\";\n\n/**\n * Quién tiene la sesión iniciada, tal como lo responde la API (`GET /me`), y el botón para cerrarla:\n * una banda de color con el avatar montado encima.\n */\nexport function PaginaPerfil() {\n  const { usuario, logout } = useAuth();\n  // `RequiereAuth` la protege: sin sesión, nunca llega a pintarse.\n  if (usuario === null) return null;\n  return (\n    <section className=\"mx-auto max-w-xl space-y-6\">\n      <h1 className=\"text-3xl font-bold\">Perfil</h1>\n      <div className=\"card overflow-hidden bg-base-100 shadow-sm\">\n        <div className=\"h-28 bg-linear-to-r from-primary to-accent\" />\n        <div className=\"card-body gap-6 pt-0\">\n          <Avatar usuario={usuario} className=\"-mt-12 w-24 text-3xl ring-4 ring-base-100\" />\n          <div>\n            <p className=\"text-2xl font-semibold\">{usuario.nombre ?? \"Sin nombre\"}</p>\n            <p className=\"text-base-content/70\">{usuario.email ?? \"Sin email\"}</p>\n          </div>\n          <div className=\"space-y-2\">\n            <h2 className=\"font-semibold\">Roles</h2>\n            {usuario.roles.length === 0 ? (\n              <p className=\"text-base-content/70\">Sin roles</p>\n            ) : (\n              <ul className=\"flex flex-wrap gap-2\">\n                {usuario.roles.map((rol) => (\n                  <li key={rol} className=\"badge badge-primary badge-soft\">\n                    {rol}\n                  </li>\n                ))}\n              </ul>\n            )}\n          </div>\n          <div className=\"card-actions justify-end border-base-300 border-t pt-4\">\n            <button type=\"button\" className=\"btn\" onClick={() => void logout()}>\n              Cerrar sesión\n            </button>\n          </div>\n        </div>\n      </div>\n    </section>\n  );\n}\n"
+      }
+    ]
+  },
+  {
+    "id": "portada/bienvenida",
+    "descripcion": "el logo, el nombre, el eslogan y «Entrar»",
+    "pide": "portada",
+    "hueco": "portada",
+    "variante": "bienvenida",
+    "porDefecto": true,
+    "exporta": "PaginaPortada",
+    "ficheros": [
+      {
+        "ruta": "web/src/paginas/portada.tsx",
+        "codigo": "import { Link } from \"wouter\";\nimport { rutaApp } from \"../generado/rutas\";\nimport { marca } from \"../marca/marca\";\n\n/**\n * La portada pública, en `/`: la marca y la entrada a la app. `puerto generar web-bloque` lista\n * otras (`portada/producto`: las secciones de una web de producto).\n */\nexport function PaginaPortada() {\n  return (\n    <main className=\"hero min-h-screen bg-base-200\">\n      <div className=\"hero-content flex-col gap-6 text-center\">\n        <img src={marca.logo} alt=\"\" className=\"size-20\" />\n        <h1 className=\"text-5xl font-bold\">{marca.nombre}</h1>\n        <p className=\"max-w-md text-lg text-base-content/70\">{marca.eslogan}</p>\n        <Link href={rutaApp} className=\"btn btn-primary btn-lg\">\n          Entrar\n        </Link>\n      </div>\n    </main>\n  );\n}\n"
+      }
+    ]
+  },
+  {
+    "id": "portada/producto",
+    "descripcion": "una web de producto: barra, cabecera, características, precios, preguntas, llamada y pie",
+    "pide": "portada",
+    "hueco": "portada",
+    "variante": "producto",
+    "porDefecto": false,
+    "exporta": "PaginaPortada",
+    "ficheros": [
+      {
+        "ruta": "web/src/paginas/portada.tsx",
+        "codigo": "import { Link } from \"wouter\";\nimport { rutaApp } from \"../generado/rutas\";\nimport { marca } from \"../marca/marca\";\nimport { SeccionCabecera } from \"../portada/cabecera\";\nimport { SeccionCaracteristicas } from \"../portada/caracteristicas\";\nimport { SeccionLlamada } from \"../portada/llamada\";\nimport { SeccionPie } from \"../portada/pie\";\nimport { SeccionPrecios } from \"../portada/precios\";\nimport { SeccionPreguntas } from \"../portada/preguntas\";\n\n/**\n * La portada pública, en `/`: una web de producto, con una sección por fichero de `portada/`.\n * Quítalas, cámbialas o reordénalas aquí; `puerto generar web-bloque` lista otras variantes.\n */\nexport function PaginaPortada() {\n  return (\n    <div className=\"min-h-screen bg-base-100\">\n      <header className=\"sticky top-0 z-20 border-base-300 border-b bg-base-100/90 backdrop-blur\">\n        <nav className=\"navbar mx-auto max-w-6xl gap-2 px-4\">\n          <Link href=\"/\" className=\"flex items-center gap-2 text-lg font-bold\">\n            <img src={marca.logo} alt=\"\" className=\"size-8\" />\n            {marca.nombre}\n          </Link>\n          <ul className=\"menu menu-horizontal ml-auto hidden gap-1 md:flex\">\n            <li>\n              <a href=\"#caracteristicas\">Características</a>\n            </li>\n            <li>\n              <a href=\"#precios\">Precios</a>\n            </li>\n            <li>\n              <a href=\"#preguntas\">Preguntas frecuentes</a>\n            </li>\n          </ul>\n          <Link href={rutaApp} className=\"btn btn-primary btn-sm ml-auto md:ml-0\">\n            Entrar\n          </Link>\n        </nav>\n      </header>\n      <main>\n        <SeccionCabecera />\n        <SeccionCaracteristicas />\n        <SeccionPrecios />\n        <SeccionPreguntas />\n        <SeccionLlamada />\n      </main>\n      <SeccionPie />\n    </div>\n  );\n}\n"
+      },
+      {
+        "ruta": "web/src/portada/cabecera.tsx",
+        "codigo": "import { Link } from \"wouter\";\nimport { rutaApp } from \"../generado/rutas\";\nimport { marca } from \"../marca/marca\";\n\n/** La primera pantalla de la portada: qué es, en el centro, y la entrada a la app. */\nexport function SeccionCabecera() {\n  return (\n    <section className=\"hero bg-linear-to-b from-base-200 to-base-100 px-4 py-24\">\n      <div className=\"hero-content max-w-3xl flex-col gap-6 text-center\">\n        <span className=\"badge badge-primary badge-soft\">Nuevo en {marca.nombre}</span>\n        <h1 className=\"text-balance text-5xl font-bold tracking-tight md:text-6xl\">\n          {marca.eslogan}\n        </h1>\n        <p className=\"max-w-xl text-lg text-base-content/70\">\n          Cuenta aquí qué resuelve {marca.nombre} y para quién, en una o dos frases.\n        </p>\n        <div className=\"flex flex-wrap justify-center gap-3\">\n          <Link href={rutaApp} className=\"btn btn-primary btn-lg\">\n            Entrar\n          </Link>\n          <a href=\"#caracteristicas\" className=\"btn btn-ghost btn-lg\">\n            Características\n          </a>\n        </div>\n      </div>\n    </section>\n  );\n}\n"
+      },
+      {
+        "ruta": "web/src/portada/caracteristicas.tsx",
+        "codigo": "/** Lo que hace el producto: un icono, un título y una frase cada cosa. Los textos son de ejemplo. */\nconst CARACTERISTICAS = [\n  {\n    titulo: \"Rápido\",\n    texto: \"Las pantallas cargan al momento, también con miles de elementos.\",\n    icono: \"M13 10V3L4 14h7v7l9-11h-7z\",\n  },\n  {\n    titulo: \"Seguro\",\n    texto: \"Cada cuenta ve lo suyo, y cada acción pide el permiso que toca.\",\n    icono: \"M12 3l8 4v5c0 5-3.5 8-8 9-4.5-1-8-4-8-9V7l8-4z\",\n  },\n  {\n    titulo: \"Tus datos\",\n    texto: \"Exporta lo que guardas cuando quieras, en un formato abierto.\",\n    icono: \"M4 7c0-2 3.6-3 8-3s8 1 8 3-3.6 3-8 3-8-1-8-3zm0 0v10c0 2 3.6 3 8 3s8-1 8-3V7\",\n  },\n  {\n    titulo: \"En equipo\",\n    texto: \"Invita a quien trabaja contigo y repartid el trabajo.\",\n    icono:\n      \"M16 19v-1a4 4 0 00-8 0v1M12 11a3 3 0 100-6 3 3 0 000 6zm7 8v-1a3 3 0 00-2-2.8M17 5.2a3 3 0 010 5.6\",\n  },\n  {\n    titulo: \"En el móvil\",\n    texto: \"La misma app en el ordenador, la tableta y el teléfono.\",\n    icono: \"M8 3h8a1 1 0 011 1v16a1 1 0 01-1 1H8a1 1 0 01-1-1V4a1 1 0 011-1zm3 15h2\",\n  },\n  {\n    titulo: \"Sin sorpresas\",\n    texto: \"Un precio claro cada mes, sin permanencia.\",\n    icono: \"M5 13l4 4L19 7\",\n  },\n];\n\n/** Lo que hace el producto, en una rejilla. */\nexport function SeccionCaracteristicas() {\n  return (\n    <section id=\"caracteristicas\" className=\"mx-auto max-w-6xl scroll-mt-16 px-4 py-20\">\n      <header className=\"mx-auto mb-12 max-w-2xl space-y-3 text-center\">\n        <h2 className=\"text-4xl font-bold\">Características</h2>\n        <p className=\"text-lg text-base-content/70\">Todo lo que necesitas, sin nada que sobre.</p>\n      </header>\n      <ul className=\"grid gap-6 sm:grid-cols-2 lg:grid-cols-3\">\n        {CARACTERISTICAS.map((caracteristica) => (\n          <li key={caracteristica.titulo} className=\"card border border-base-300 bg-base-100\">\n            <div className=\"card-body gap-3\">\n              <span className=\"flex size-11 items-center justify-center rounded-field bg-primary/10 text-primary\">\n                <svg\n                  viewBox=\"0 0 24 24\"\n                  className=\"size-6\"\n                  fill=\"none\"\n                  stroke=\"currentColor\"\n                  strokeWidth=\"2\"\n                  strokeLinecap=\"round\"\n                  strokeLinejoin=\"round\"\n                  aria-hidden=\"true\"\n                >\n                  <path d={caracteristica.icono} />\n                </svg>\n              </span>\n              <h3 className=\"card-title\">{caracteristica.titulo}</h3>\n              <p className=\"text-base-content/70\">{caracteristica.texto}</p>\n            </div>\n          </li>\n        ))}\n      </ul>\n    </section>\n  );\n}\n"
+      },
+      {
+        "ruta": "web/src/portada/precios.tsx",
+        "codigo": "import { Link } from \"wouter\";\nimport { rutaApp } from \"../generado/rutas\";\n\n/** Los planes: el destacado, en el centro. Los nombres, los precios y lo que incluyen son de ejemplo. */\nconst PLANES = [\n  {\n    nombre: \"Básico\",\n    precio: \"0 €\",\n    periodo: \"/mes\",\n    descripcion: \"Para probarlo a fondo.\",\n    incluye: [\"1 persona\", \"Hasta 100 elementos\", \"Soporte por email\"],\n    destacado: false,\n  },\n  {\n    nombre: \"Equipo\",\n    precio: \"29 €\",\n    periodo: \"/mes\",\n    descripcion: \"Para un equipo que ya trabaja con ello.\",\n    incluye: [\n      \"Hasta 10 personas\",\n      \"Elementos sin límite\",\n      \"Roles y permisos\",\n      \"Soporte prioritario\",\n    ],\n    destacado: true,\n  },\n  {\n    nombre: \"Empresa\",\n    precio: \"A medida\",\n    periodo: \"\",\n    descripcion: \"Para organizaciones grandes.\",\n    incluye: [\"Personas sin límite\", \"Acuerdo de servicio\", \"Ayuda para empezar\"],\n    destacado: false,\n  },\n];\n\n/** Los planes y su precio, uno al lado del otro. */\nexport function SeccionPrecios() {\n  return (\n    <section id=\"precios\" className=\"scroll-mt-16 bg-base-200 px-4 py-20\">\n      <div className=\"mx-auto max-w-6xl\">\n        <header className=\"mx-auto mb-12 max-w-2xl space-y-3 text-center\">\n          <h2 className=\"text-4xl font-bold\">Precios</h2>\n          <p className=\"text-lg text-base-content/70\">\n            Empieza gratis y cambia de plan cuando quieras.\n          </p>\n        </header>\n        <ul className=\"grid items-start gap-6 lg:grid-cols-3\">\n          {PLANES.map((plan) => (\n            <li\n              key={plan.nombre}\n              className={`card bg-base-100 ${plan.destacado ? \"border-2 border-primary shadow-xl\" : \"border border-base-300\"}`}\n            >\n              <div className=\"card-body gap-4\">\n                <div className=\"flex items-center justify-between\">\n                  <h3 className=\"card-title\">{plan.nombre}</h3>\n                  {plan.destacado && <span className=\"badge badge-primary\">Más elegido</span>}\n                </div>\n                <p className=\"text-base-content/70\">{plan.descripcion}</p>\n                <p>\n                  <span className=\"text-4xl font-bold\">{plan.precio}</span>\n                  <span className=\"text-base-content/70\">{plan.periodo}</span>\n                </p>\n                <ul className=\"space-y-2\">\n                  {plan.incluye.map((linea) => (\n                    <li key={linea} className=\"flex items-center gap-2\">\n                      <svg\n                        viewBox=\"0 0 24 24\"\n                        className=\"size-5 text-primary\"\n                        fill=\"none\"\n                        stroke=\"currentColor\"\n                        strokeWidth=\"2\"\n                        aria-hidden=\"true\"\n                      >\n                        <path strokeLinecap=\"round\" strokeLinejoin=\"round\" d=\"M5 13l4 4L19 7\" />\n                      </svg>\n                      {linea}\n                    </li>\n                  ))}\n                </ul>\n                <Link\n                  href={rutaApp}\n                  className={`btn mt-2 ${plan.destacado ? \"btn-primary\" : \"btn-outline\"}`}\n                >\n                  Entrar\n                </Link>\n              </div>\n            </li>\n          ))}\n        </ul>\n      </div>\n    </section>\n  );\n}\n"
+      },
+      {
+        "ruta": "web/src/portada/preguntas.tsx",
+        "codigo": "import { marca } from \"../marca/marca\";\n\n/** Las preguntas de siempre, con su respuesta. Son de ejemplo. */\nconst PREGUNTAS = [\n  {\n    pregunta: `¿Qué es ${marca.nombre}?`,\n    respuesta: marca.eslogan,\n  },\n  {\n    pregunta: \"¿Puedo probarlo gratis?\",\n    respuesta: \"Sí: el plan Básico es gratis, sin tarjeta y sin fecha de caducidad.\",\n  },\n  {\n    pregunta: \"¿Puedo cambiar de plan?\",\n    respuesta: \"Cuando quieras. El cambio se nota al momento y se cobra la parte que toca.\",\n  },\n  {\n    pregunta: \"¿Dónde están mis datos?\",\n    respuesta: \"En servidores de la Unión Europea, con copias de seguridad cada día.\",\n  },\n];\n\n/** Las preguntas frecuentes, en un acordeón: abrir una cierra la anterior. */\nexport function SeccionPreguntas() {\n  return (\n    <section id=\"preguntas\" className=\"mx-auto max-w-3xl scroll-mt-16 px-4 py-20\">\n      <h2 className=\"mb-10 text-center text-4xl font-bold\">Preguntas frecuentes</h2>\n      <div className=\"space-y-3\">\n        {PREGUNTAS.map(({ pregunta, respuesta }) => (\n          <details\n            key={pregunta}\n            name=\"preguntas\"\n            className=\"collapse collapse-arrow border border-base-300 bg-base-100\"\n          >\n            <summary className=\"collapse-title font-semibold\">{pregunta}</summary>\n            <p className=\"collapse-content text-base-content/70\">{respuesta}</p>\n          </details>\n        ))}\n      </div>\n    </section>\n  );\n}\n"
+      },
+      {
+        "ruta": "web/src/portada/llamada.tsx",
+        "codigo": "import { Link } from \"wouter\";\nimport { rutaApp } from \"../generado/rutas\";\nimport { marca } from \"../marca/marca\";\n\n/** La última invitación a entrar, en una banda del color de la marca. */\nexport function SeccionLlamada() {\n  return (\n    <section className=\"px-4 py-20\">\n      <div className=\"mx-auto max-w-6xl space-y-6 rounded-box bg-primary px-8 py-16 text-center text-primary-content\">\n        <h2 className=\"text-4xl font-bold\">Empieza hoy con {marca.nombre}</h2>\n        <p className=\"mx-auto max-w-xl text-lg opacity-80\">{marca.eslogan}</p>\n        <Link href={rutaApp} className=\"btn btn-lg border-0 bg-base-100 text-base-content\">\n          Ir al panel\n        </Link>\n      </div>\n    </section>\n  );\n}\n"
+      },
+      {
+        "ruta": "web/src/portada/pie.tsx",
+        "codigo": "import { Link } from \"wouter\";\nimport { rutaApp } from \"../generado/rutas\";\nimport { marca } from \"../marca/marca\";\n\n/** El pie: la marca y los enlaces de la portada, en columnas. */\nexport function SeccionPie() {\n  return (\n    <footer className=\"border-base-300 border-t bg-base-200 px-4\">\n      <div className=\"footer mx-auto max-w-6xl py-12 sm:footer-horizontal\">\n        <aside className=\"max-w-xs space-y-3\">\n          <p className=\"flex items-center gap-2 text-lg font-bold\">\n            <img src={marca.logo} alt=\"\" className=\"size-8\" />\n            {marca.nombre}\n          </p>\n          <p className=\"text-base-content/70\">{marca.eslogan}</p>\n        </aside>\n        <nav>\n          <h3 className=\"footer-title\">Producto</h3>\n          <a href=\"#caracteristicas\" className=\"link link-hover\">\n            Características\n          </a>\n          <a href=\"#precios\" className=\"link link-hover\">\n            Precios\n          </a>\n          <a href=\"#preguntas\" className=\"link link-hover\">\n            Preguntas frecuentes\n          </a>\n        </nav>\n        <nav>\n          <h3 className=\"footer-title\">Cuenta</h3>\n          <Link href={rutaApp} className=\"link link-hover\">\n            Entrar\n          </Link>\n        </nav>\n      </div>\n      <p className=\"mx-auto max-w-6xl border-base-300 border-t py-6 text-sm text-base-content/70\">\n        © {new Date().getFullYear()} {marca.nombre}\n      </p>\n    </footer>\n  );\n}\n"
+      }
+    ]
+  },
+  {
+    "id": "cabecera/centrada",
+    "descripcion": "el eslogan en grande en el centro y la entrada a la app",
+    "pide": "portada/producto",
+    "hueco": "cabecera",
+    "variante": "centrada",
+    "porDefecto": true,
+    "exporta": "SeccionCabecera",
+    "ficheros": [
+      {
+        "ruta": "web/src/portada/cabecera.tsx",
+        "codigo": "import { Link } from \"wouter\";\nimport { rutaApp } from \"../generado/rutas\";\nimport { marca } from \"../marca/marca\";\n\n/** La primera pantalla de la portada: qué es, en el centro, y la entrada a la app. */\nexport function SeccionCabecera() {\n  return (\n    <section className=\"hero bg-linear-to-b from-base-200 to-base-100 px-4 py-24\">\n      <div className=\"hero-content max-w-3xl flex-col gap-6 text-center\">\n        <span className=\"badge badge-primary badge-soft\">Nuevo en {marca.nombre}</span>\n        <h1 className=\"text-balance text-5xl font-bold tracking-tight md:text-6xl\">\n          {marca.eslogan}\n        </h1>\n        <p className=\"max-w-xl text-lg text-base-content/70\">\n          Cuenta aquí qué resuelve {marca.nombre} y para quién, en una o dos frases.\n        </p>\n        <div className=\"flex flex-wrap justify-center gap-3\">\n          <Link href={rutaApp} className=\"btn btn-primary btn-lg\">\n            Entrar\n          </Link>\n          <a href=\"#caracteristicas\" className=\"btn btn-ghost btn-lg\">\n            Características\n          </a>\n        </div>\n      </div>\n    </section>\n  );\n}\n"
+      }
+    ]
+  },
+  {
+    "id": "cabecera/dividida",
+    "descripcion": "el eslogan a un lado y, al otro, un navegador con un panel de ejemplo",
+    "pide": "portada/producto",
+    "hueco": "cabecera",
+    "variante": "dividida",
+    "porDefecto": false,
+    "exporta": "SeccionCabecera",
+    "ficheros": [
+      {
+        "ruta": "web/src/portada/cabecera.tsx",
+        "codigo": "import { Link } from \"wouter\";\nimport { rutaApp } from \"../generado/rutas\";\nimport { marca } from \"../marca/marca\";\n\n/** Unos totales y unas barras de ejemplo: el aspecto de la app, no sus datos. */\nconst TOTALES = [\n  { etiqueta: \"Clientes\", valor: \"1.284\" },\n  { etiqueta: \"Pedidos\", valor: \"342\" },\n  { etiqueta: \"Ingresos\", valor: \"18.940 €\" },\n];\nconst BARRAS = [\"h-2/5\", \"h-2/3\", \"h-1/2\", \"h-4/5\", \"h-3/5\", \"h-11/12\", \"h-3/4\"];\n\n/** La primera pantalla de la portada: qué es a un lado y, al otro, cómo se ve la app. */\nexport function SeccionCabecera() {\n  return (\n    <section className=\"bg-linear-to-b from-base-200 to-base-100 px-4 py-20\">\n      <div className=\"mx-auto grid max-w-6xl items-center gap-12 lg:grid-cols-2\">\n        <div className=\"space-y-6\">\n          <span className=\"badge badge-primary badge-soft\">Nuevo en {marca.nombre}</span>\n          <h1 className=\"text-balance text-5xl font-bold tracking-tight\">{marca.eslogan}</h1>\n          <p className=\"text-lg text-base-content/70\">\n            Cuenta aquí qué resuelve {marca.nombre} y para quién, en una o dos frases.\n          </p>\n          <div className=\"flex flex-wrap gap-3\">\n            <Link href={rutaApp} className=\"btn btn-primary btn-lg\">\n              Entrar\n            </Link>\n            <a href=\"#caracteristicas\" className=\"btn btn-ghost btn-lg\">\n              Características\n            </a>\n          </div>\n        </div>\n        <div\n          className=\"mockup-browser border border-base-300 bg-base-200 shadow-xl\"\n          aria-hidden=\"true\"\n        >\n          <div className=\"mockup-browser-toolbar\">\n            <div className=\"input\">{marca.nombre}</div>\n          </div>\n          <div className=\"space-y-4 bg-base-100 p-6\">\n            <div className=\"grid grid-cols-3 gap-3\">\n              {TOTALES.map(({ etiqueta, valor }) => (\n                <div key={etiqueta} className=\"rounded-box bg-base-200 p-3\">\n                  <p className=\"text-xs text-base-content/70\">{etiqueta}</p>\n                  <p className=\"text-xl font-bold text-primary\">{valor}</p>\n                </div>\n              ))}\n            </div>\n            <div className=\"flex h-32 items-end gap-2 rounded-box bg-base-200 p-3\">\n              {BARRAS.map((alto) => (\n                <div key={alto} className={`flex-1 rounded-t bg-primary ${alto}`} />\n              ))}\n            </div>\n          </div>\n        </div>\n      </div>\n    </section>\n  );\n}\n"
+      }
+    ]
+  },
+  {
+    "id": "caracteristicas/rejilla",
+    "descripcion": "seis características con su icono, en una rejilla",
+    "pide": "portada/producto",
+    "hueco": "caracteristicas",
+    "variante": "rejilla",
+    "porDefecto": true,
+    "exporta": "SeccionCaracteristicas",
+    "ficheros": [
+      {
+        "ruta": "web/src/portada/caracteristicas.tsx",
+        "codigo": "/** Lo que hace el producto: un icono, un título y una frase cada cosa. Los textos son de ejemplo. */\nconst CARACTERISTICAS = [\n  {\n    titulo: \"Rápido\",\n    texto: \"Las pantallas cargan al momento, también con miles de elementos.\",\n    icono: \"M13 10V3L4 14h7v7l9-11h-7z\",\n  },\n  {\n    titulo: \"Seguro\",\n    texto: \"Cada cuenta ve lo suyo, y cada acción pide el permiso que toca.\",\n    icono: \"M12 3l8 4v5c0 5-3.5 8-8 9-4.5-1-8-4-8-9V7l8-4z\",\n  },\n  {\n    titulo: \"Tus datos\",\n    texto: \"Exporta lo que guardas cuando quieras, en un formato abierto.\",\n    icono: \"M4 7c0-2 3.6-3 8-3s8 1 8 3-3.6 3-8 3-8-1-8-3zm0 0v10c0 2 3.6 3 8 3s8-1 8-3V7\",\n  },\n  {\n    titulo: \"En equipo\",\n    texto: \"Invita a quien trabaja contigo y repartid el trabajo.\",\n    icono:\n      \"M16 19v-1a4 4 0 00-8 0v1M12 11a3 3 0 100-6 3 3 0 000 6zm7 8v-1a3 3 0 00-2-2.8M17 5.2a3 3 0 010 5.6\",\n  },\n  {\n    titulo: \"En el móvil\",\n    texto: \"La misma app en el ordenador, la tableta y el teléfono.\",\n    icono: \"M8 3h8a1 1 0 011 1v16a1 1 0 01-1 1H8a1 1 0 01-1-1V4a1 1 0 011-1zm3 15h2\",\n  },\n  {\n    titulo: \"Sin sorpresas\",\n    texto: \"Un precio claro cada mes, sin permanencia.\",\n    icono: \"M5 13l4 4L19 7\",\n  },\n];\n\n/** Lo que hace el producto, en una rejilla. */\nexport function SeccionCaracteristicas() {\n  return (\n    <section id=\"caracteristicas\" className=\"mx-auto max-w-6xl scroll-mt-16 px-4 py-20\">\n      <header className=\"mx-auto mb-12 max-w-2xl space-y-3 text-center\">\n        <h2 className=\"text-4xl font-bold\">Características</h2>\n        <p className=\"text-lg text-base-content/70\">Todo lo que necesitas, sin nada que sobre.</p>\n      </header>\n      <ul className=\"grid gap-6 sm:grid-cols-2 lg:grid-cols-3\">\n        {CARACTERISTICAS.map((caracteristica) => (\n          <li key={caracteristica.titulo} className=\"card border border-base-300 bg-base-100\">\n            <div className=\"card-body gap-3\">\n              <span className=\"flex size-11 items-center justify-center rounded-field bg-primary/10 text-primary\">\n                <svg\n                  viewBox=\"0 0 24 24\"\n                  className=\"size-6\"\n                  fill=\"none\"\n                  stroke=\"currentColor\"\n                  strokeWidth=\"2\"\n                  strokeLinecap=\"round\"\n                  strokeLinejoin=\"round\"\n                  aria-hidden=\"true\"\n                >\n                  <path d={caracteristica.icono} />\n                </svg>\n              </span>\n              <h3 className=\"card-title\">{caracteristica.titulo}</h3>\n              <p className=\"text-base-content/70\">{caracteristica.texto}</p>\n            </div>\n          </li>\n        ))}\n      </ul>\n    </section>\n  );\n}\n"
+      }
+    ]
+  },
+  {
+    "id": "precios/planes",
+    "descripcion": "tres planes, el del centro destacado",
+    "pide": "portada/producto",
+    "hueco": "precios",
+    "variante": "planes",
+    "porDefecto": true,
+    "exporta": "SeccionPrecios",
+    "ficheros": [
+      {
+        "ruta": "web/src/portada/precios.tsx",
+        "codigo": "import { Link } from \"wouter\";\nimport { rutaApp } from \"../generado/rutas\";\n\n/** Los planes: el destacado, en el centro. Los nombres, los precios y lo que incluyen son de ejemplo. */\nconst PLANES = [\n  {\n    nombre: \"Básico\",\n    precio: \"0 €\",\n    periodo: \"/mes\",\n    descripcion: \"Para probarlo a fondo.\",\n    incluye: [\"1 persona\", \"Hasta 100 elementos\", \"Soporte por email\"],\n    destacado: false,\n  },\n  {\n    nombre: \"Equipo\",\n    precio: \"29 €\",\n    periodo: \"/mes\",\n    descripcion: \"Para un equipo que ya trabaja con ello.\",\n    incluye: [\n      \"Hasta 10 personas\",\n      \"Elementos sin límite\",\n      \"Roles y permisos\",\n      \"Soporte prioritario\",\n    ],\n    destacado: true,\n  },\n  {\n    nombre: \"Empresa\",\n    precio: \"A medida\",\n    periodo: \"\",\n    descripcion: \"Para organizaciones grandes.\",\n    incluye: [\"Personas sin límite\", \"Acuerdo de servicio\", \"Ayuda para empezar\"],\n    destacado: false,\n  },\n];\n\n/** Los planes y su precio, uno al lado del otro. */\nexport function SeccionPrecios() {\n  return (\n    <section id=\"precios\" className=\"scroll-mt-16 bg-base-200 px-4 py-20\">\n      <div className=\"mx-auto max-w-6xl\">\n        <header className=\"mx-auto mb-12 max-w-2xl space-y-3 text-center\">\n          <h2 className=\"text-4xl font-bold\">Precios</h2>\n          <p className=\"text-lg text-base-content/70\">\n            Empieza gratis y cambia de plan cuando quieras.\n          </p>\n        </header>\n        <ul className=\"grid items-start gap-6 lg:grid-cols-3\">\n          {PLANES.map((plan) => (\n            <li\n              key={plan.nombre}\n              className={`card bg-base-100 ${plan.destacado ? \"border-2 border-primary shadow-xl\" : \"border border-base-300\"}`}\n            >\n              <div className=\"card-body gap-4\">\n                <div className=\"flex items-center justify-between\">\n                  <h3 className=\"card-title\">{plan.nombre}</h3>\n                  {plan.destacado && <span className=\"badge badge-primary\">Más elegido</span>}\n                </div>\n                <p className=\"text-base-content/70\">{plan.descripcion}</p>\n                <p>\n                  <span className=\"text-4xl font-bold\">{plan.precio}</span>\n                  <span className=\"text-base-content/70\">{plan.periodo}</span>\n                </p>\n                <ul className=\"space-y-2\">\n                  {plan.incluye.map((linea) => (\n                    <li key={linea} className=\"flex items-center gap-2\">\n                      <svg\n                        viewBox=\"0 0 24 24\"\n                        className=\"size-5 text-primary\"\n                        fill=\"none\"\n                        stroke=\"currentColor\"\n                        strokeWidth=\"2\"\n                        aria-hidden=\"true\"\n                      >\n                        <path strokeLinecap=\"round\" strokeLinejoin=\"round\" d=\"M5 13l4 4L19 7\" />\n                      </svg>\n                      {linea}\n                    </li>\n                  ))}\n                </ul>\n                <Link\n                  href={rutaApp}\n                  className={`btn mt-2 ${plan.destacado ? \"btn-primary\" : \"btn-outline\"}`}\n                >\n                  Entrar\n                </Link>\n              </div>\n            </li>\n          ))}\n        </ul>\n      </div>\n    </section>\n  );\n}\n"
+      }
+    ]
+  },
+  {
+    "id": "preguntas/acordeon",
+    "descripcion": "las preguntas frecuentes en un acordeón",
+    "pide": "portada/producto",
+    "hueco": "preguntas",
+    "variante": "acordeon",
+    "porDefecto": true,
+    "exporta": "SeccionPreguntas",
+    "ficheros": [
+      {
+        "ruta": "web/src/portada/preguntas.tsx",
+        "codigo": "import { marca } from \"../marca/marca\";\n\n/** Las preguntas de siempre, con su respuesta. Son de ejemplo. */\nconst PREGUNTAS = [\n  {\n    pregunta: `¿Qué es ${marca.nombre}?`,\n    respuesta: marca.eslogan,\n  },\n  {\n    pregunta: \"¿Puedo probarlo gratis?\",\n    respuesta: \"Sí: el plan Básico es gratis, sin tarjeta y sin fecha de caducidad.\",\n  },\n  {\n    pregunta: \"¿Puedo cambiar de plan?\",\n    respuesta: \"Cuando quieras. El cambio se nota al momento y se cobra la parte que toca.\",\n  },\n  {\n    pregunta: \"¿Dónde están mis datos?\",\n    respuesta: \"En servidores de la Unión Europea, con copias de seguridad cada día.\",\n  },\n];\n\n/** Las preguntas frecuentes, en un acordeón: abrir una cierra la anterior. */\nexport function SeccionPreguntas() {\n  return (\n    <section id=\"preguntas\" className=\"mx-auto max-w-3xl scroll-mt-16 px-4 py-20\">\n      <h2 className=\"mb-10 text-center text-4xl font-bold\">Preguntas frecuentes</h2>\n      <div className=\"space-y-3\">\n        {PREGUNTAS.map(({ pregunta, respuesta }) => (\n          <details\n            key={pregunta}\n            name=\"preguntas\"\n            className=\"collapse collapse-arrow border border-base-300 bg-base-100\"\n          >\n            <summary className=\"collapse-title font-semibold\">{pregunta}</summary>\n            <p className=\"collapse-content text-base-content/70\">{respuesta}</p>\n          </details>\n        ))}\n      </div>\n    </section>\n  );\n}\n"
+      }
+    ]
+  },
+  {
+    "id": "llamada/banda",
+    "descripcion": "una banda del color de la marca que invita a entrar",
+    "pide": "portada/producto",
+    "hueco": "llamada",
+    "variante": "banda",
+    "porDefecto": true,
+    "exporta": "SeccionLlamada",
+    "ficheros": [
+      {
+        "ruta": "web/src/portada/llamada.tsx",
+        "codigo": "import { Link } from \"wouter\";\nimport { rutaApp } from \"../generado/rutas\";\nimport { marca } from \"../marca/marca\";\n\n/** La última invitación a entrar, en una banda del color de la marca. */\nexport function SeccionLlamada() {\n  return (\n    <section className=\"px-4 py-20\">\n      <div className=\"mx-auto max-w-6xl space-y-6 rounded-box bg-primary px-8 py-16 text-center text-primary-content\">\n        <h2 className=\"text-4xl font-bold\">Empieza hoy con {marca.nombre}</h2>\n        <p className=\"mx-auto max-w-xl text-lg opacity-80\">{marca.eslogan}</p>\n        <Link href={rutaApp} className=\"btn btn-lg border-0 bg-base-100 text-base-content\">\n          Ir al panel\n        </Link>\n      </div>\n    </section>\n  );\n}\n"
+      }
+    ]
+  },
+  {
+    "id": "pie/columnas",
+    "descripcion": "la marca y los enlaces de la portada, en columnas",
+    "pide": "portada/producto",
+    "hueco": "pie",
+    "variante": "columnas",
+    "porDefecto": true,
+    "exporta": "SeccionPie",
+    "ficheros": [
+      {
+        "ruta": "web/src/portada/pie.tsx",
+        "codigo": "import { Link } from \"wouter\";\nimport { rutaApp } from \"../generado/rutas\";\nimport { marca } from \"../marca/marca\";\n\n/** El pie: la marca y los enlaces de la portada, en columnas. */\nexport function SeccionPie() {\n  return (\n    <footer className=\"border-base-300 border-t bg-base-200 px-4\">\n      <div className=\"footer mx-auto max-w-6xl py-12 sm:footer-horizontal\">\n        <aside className=\"max-w-xs space-y-3\">\n          <p className=\"flex items-center gap-2 text-lg font-bold\">\n            <img src={marca.logo} alt=\"\" className=\"size-8\" />\n            {marca.nombre}\n          </p>\n          <p className=\"text-base-content/70\">{marca.eslogan}</p>\n        </aside>\n        <nav>\n          <h3 className=\"footer-title\">Producto</h3>\n          <a href=\"#caracteristicas\" className=\"link link-hover\">\n            Características\n          </a>\n          <a href=\"#precios\" className=\"link link-hover\">\n            Precios\n          </a>\n          <a href=\"#preguntas\" className=\"link link-hover\">\n            Preguntas frecuentes\n          </a>\n        </nav>\n        <nav>\n          <h3 className=\"footer-title\">Cuenta</h3>\n          <Link href={rutaApp} className=\"link link-hover\">\n            Entrar\n          </Link>\n        </nav>\n      </div>\n      <p className=\"mx-auto max-w-6xl border-base-300 border-t py-6 text-sm text-base-content/70\">\n        © {new Date().getFullYear()} {marca.nombre}\n      </p>\n    </footer>\n  );\n}\n"
+      }
+    ]
+  },
+  {
+    "id": "tema/puerto",
+    "descripcion": "cian y ámbar, esquinas redondeadas",
+    "pide": null,
+    "hueco": "tema",
+    "variante": "puerto",
+    "porDefecto": true,
+    "exporta": null,
+    "ficheros": [
+      {
+        "ruta": "web/src/marca/tema.css",
+        "codigo": "/*\n * Los colores de la marca, sobre los temas claro y oscuro de daisyUI (se usa el del sistema). Lo que\n * no se cambia aquí sale del tema original. Genera otros en https://daisyui.com/theme-generator/ y\n * pega sus variables.\n */\n@plugin \"daisyui\";\n\n@plugin \"daisyui/theme\" {\n  name: \"light\";\n  default: true;\n  --color-primary: oklch(52% 0.12 215);\n  --color-primary-content: oklch(98% 0.01 215);\n  --color-accent: oklch(75% 0.14 70);\n  --color-accent-content: oklch(25% 0.05 70);\n  --radius-box: 1rem;\n  --radius-field: 0.5rem;\n}\n\n@plugin \"daisyui/theme\" {\n  name: \"dark\";\n  prefersdark: true;\n  --color-primary: oklch(66% 0.11 215);\n  --color-primary-content: oklch(20% 0.04 215);\n  --color-accent: oklch(78% 0.13 70);\n  --color-accent-content: oklch(25% 0.05 70);\n  --radius-box: 1rem;\n  --radius-field: 0.5rem;\n}\n"
+      }
+    ]
+  },
+  {
+    "id": "tema/bosque",
+    "descripcion": "verde y lima",
+    "pide": null,
+    "hueco": "tema",
+    "variante": "bosque",
+    "porDefecto": false,
+    "exporta": null,
+    "ficheros": [
+      {
+        "ruta": "web/src/marca/tema.css",
+        "codigo": "/*\n * Los colores de la marca, sobre los temas claro y oscuro de daisyUI (se usa el del sistema). Lo que\n * no se cambia aquí sale del tema original. Genera otros en https://daisyui.com/theme-generator/ y\n * pega sus variables.\n */\n@plugin \"daisyui\";\n\n@plugin \"daisyui/theme\" {\n  name: \"light\";\n  default: true;\n  --color-primary: oklch(50% 0.12 155);\n  --color-primary-content: oklch(98% 0.02 155);\n  --color-accent: oklch(84% 0.17 120);\n  --color-accent-content: oklch(25% 0.05 110);\n  --radius-box: 0.75rem;\n  --radius-field: 0.5rem;\n}\n\n@plugin \"daisyui/theme\" {\n  name: \"dark\";\n  prefersdark: true;\n  --color-primary: oklch(70% 0.13 155);\n  --color-primary-content: oklch(20% 0.04 155);\n  --color-accent: oklch(85% 0.16 120);\n  --color-accent-content: oklch(25% 0.05 110);\n  --radius-box: 0.75rem;\n  --radius-field: 0.5rem;\n}\n"
+      }
+    ]
+  },
+  {
+    "id": "tema/ciruela",
+    "descripcion": "morado y rosa, muy redondeado",
+    "pide": null,
+    "hueco": "tema",
+    "variante": "ciruela",
+    "porDefecto": false,
+    "exporta": null,
+    "ficheros": [
+      {
+        "ruta": "web/src/marca/tema.css",
+        "codigo": "/*\n * Los colores de la marca, sobre los temas claro y oscuro de daisyUI (se usa el del sistema). Lo que\n * no se cambia aquí sale del tema original. Genera otros en https://daisyui.com/theme-generator/ y\n * pega sus variables.\n */\n@plugin \"daisyui\";\n\n@plugin \"daisyui/theme\" {\n  name: \"light\";\n  default: true;\n  --color-primary: oklch(48% 0.18 305);\n  --color-primary-content: oklch(98% 0.02 305);\n  --color-accent: oklch(72% 0.16 350);\n  --color-accent-content: oklch(20% 0.05 350);\n  --radius-box: 1.25rem;\n  --radius-field: 0.75rem;\n}\n\n@plugin \"daisyui/theme\" {\n  name: \"dark\";\n  prefersdark: true;\n  --color-primary: oklch(70% 0.15 305);\n  --color-primary-content: oklch(20% 0.05 305);\n  --color-accent: oklch(76% 0.14 350);\n  --color-accent-content: oklch(20% 0.05 350);\n  --radius-box: 1.25rem;\n  --radius-field: 0.75rem;\n}\n"
+      }
+    ]
+  },
+  {
+    "id": "tema/coral",
+    "descripcion": "coral y turquesa, botones de píldora",
+    "pide": null,
+    "hueco": "tema",
+    "variante": "coral",
+    "porDefecto": false,
+    "exporta": null,
+    "ficheros": [
+      {
+        "ruta": "web/src/marca/tema.css",
+        "codigo": "/*\n * Los colores de la marca, sobre los temas claro y oscuro de daisyUI (se usa el del sistema). Lo que\n * no se cambia aquí sale del tema original. Genera otros en https://daisyui.com/theme-generator/ y\n * pega sus variables.\n */\n@plugin \"daisyui\";\n\n@plugin \"daisyui/theme\" {\n  name: \"light\";\n  default: true;\n  --color-primary: oklch(62% 0.19 32);\n  --color-primary-content: oklch(99% 0.01 32);\n  --color-accent: oklch(70% 0.12 195);\n  --color-accent-content: oklch(20% 0.04 195);\n  --radius-box: 1.5rem;\n  --radius-field: 2rem;\n  --radius-selector: 2rem;\n}\n\n@plugin \"daisyui/theme\" {\n  name: \"dark\";\n  prefersdark: true;\n  --color-primary: oklch(72% 0.16 32);\n  --color-primary-content: oklch(20% 0.05 32);\n  --color-accent: oklch(74% 0.11 195);\n  --color-accent-content: oklch(20% 0.04 195);\n  --radius-box: 1.5rem;\n  --radius-field: 2rem;\n  --radius-selector: 2rem;\n}\n"
+      }
+    ]
+  },
+  {
+    "id": "tema/pizarra",
+    "descripcion": "casi negro y azul, esquinas rectas",
+    "pide": null,
+    "hueco": "tema",
+    "variante": "pizarra",
+    "porDefecto": false,
+    "exporta": null,
+    "ficheros": [
+      {
+        "ruta": "web/src/marca/tema.css",
+        "codigo": "/*\n * Los colores de la marca, sobre los temas claro y oscuro de daisyUI (se usa el del sistema). Lo que\n * no se cambia aquí sale del tema original. Genera otros en https://daisyui.com/theme-generator/ y\n * pega sus variables.\n */\n@plugin \"daisyui\";\n\n@plugin \"daisyui/theme\" {\n  name: \"light\";\n  default: true;\n  --color-primary: oklch(27% 0.02 260);\n  --color-primary-content: oklch(98% 0.005 260);\n  --color-accent: oklch(58% 0.17 255);\n  --color-accent-content: oklch(98% 0.01 255);\n  --color-base-200: oklch(97% 0.004 260);\n  --color-base-300: oklch(92% 0.006 260);\n  --radius-box: 0.5rem;\n  --radius-field: 0.375rem;\n  --radius-selector: 0.25rem;\n}\n\n@plugin \"daisyui/theme\" {\n  name: \"dark\";\n  prefersdark: true;\n  --color-primary: oklch(94% 0.01 260);\n  --color-primary-content: oklch(22% 0.02 260);\n  --color-accent: oklch(68% 0.15 255);\n  --color-accent-content: oklch(18% 0.03 255);\n  --color-base-100: oklch(20% 0.01 260);\n  --color-base-200: oklch(17% 0.01 260);\n  --color-base-300: oklch(26% 0.012 260);\n  --radius-box: 0.5rem;\n  --radius-field: 0.375rem;\n  --radius-selector: 0.25rem;\n}\n"
+      }
+    ]
+  },
+  {
+    "id": "tema/miel",
+    "descripcion": "ámbar y marrón sobre un fondo cálido",
+    "pide": null,
+    "hueco": "tema",
+    "variante": "miel",
+    "porDefecto": false,
+    "exporta": null,
+    "ficheros": [
+      {
+        "ruta": "web/src/marca/tema.css",
+        "codigo": "/*\n * Los colores de la marca, sobre los temas claro y oscuro de daisyUI (se usa el del sistema). Lo que\n * no se cambia aquí sale del tema original. Genera otros en https://daisyui.com/theme-generator/ y\n * pega sus variables.\n */\n@plugin \"daisyui\";\n\n@plugin \"daisyui/theme\" {\n  name: \"light\";\n  default: true;\n  --color-primary: oklch(76% 0.16 75);\n  --color-primary-content: oklch(25% 0.06 60);\n  --color-accent: oklch(48% 0.11 40);\n  --color-accent-content: oklch(97% 0.02 40);\n  --color-base-100: oklch(99% 0.01 85);\n  --color-base-200: oklch(96% 0.02 85);\n  --color-base-300: oklch(91% 0.03 85);\n  --color-base-content: oklch(25% 0.03 60);\n  --radius-box: 1rem;\n  --radius-field: 0.5rem;\n}\n\n@plugin \"daisyui/theme\" {\n  name: \"dark\";\n  prefersdark: true;\n  --color-primary: oklch(80% 0.15 75);\n  --color-primary-content: oklch(25% 0.06 60);\n  --color-accent: oklch(62% 0.12 40);\n  --color-accent-content: oklch(97% 0.02 40);\n  --color-base-100: oklch(23% 0.02 60);\n  --color-base-200: oklch(20% 0.02 60);\n  --color-base-300: oklch(30% 0.025 60);\n  --color-base-content: oklch(93% 0.02 85);\n  --radius-box: 1rem;\n  --radius-field: 0.5rem;\n}\n"
+      }
+    ]
+  }
+]

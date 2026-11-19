@@ -19,6 +19,7 @@ Se instala con `cargo install puerto --locked`. El HTTP es poem con poem-openapi
 - [Correo](https://puerto-rs.vercel.app/docs/guides/mail/): puertos de correo, plantillas, un envío por evento.
 - [Autenticación](https://puerto-rs.vercel.app/docs/guides/auth/): OIDC (Auth0, Keycloak) o cuentas locales, roles por ruta.
 - [El frontend web](https://puerto-rs.vercel.app/docs/guides/web/): React + daisyUI sobre Bun, tipado desde OpenAPI.
+- [Bloques](https://puerto-rs.vercel.app/bloques/): otras variantes de las pantallas, una portada con sus secciones y temas, cada una con su comando (`puerto generar web-bloque`) y su código.
 - [Trabajar con agentes](https://puerto-rs.vercel.app/docs/guides/agents/): AGENTS.md, la respuesta del compilador, los niveles de revisión.
 
 ## Referencia

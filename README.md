@@ -154,6 +154,11 @@ make web/install && make web/dev # http://localhost:5173, con /api redirigido a 
 `puerto generar web <Nombre>` escribe solo las pantallas, para una entidad que ya está en
 `puerto.toml`. El frontend también va en castellano: nombres, rutas, textos y tests.
 
+Las pantallas base (el acceso, el marco, el panel, el perfil) y el tema tienen otras variantes, y
+un SaaS puede llevar una portada pública (`puerto nuevo --portada`) con sus secciones:
+`puerto generar web-bloque` las lista y `puerto generar web-bloque <hueco>/<variante> --forzar`
+instala una. Todas, pintadas y con su código, en [el escaparate](https://puerto-rs.vercel.app/bloques/).
+
 ### Los campos de una entidad
 
 Crea entidades con campos tipados; los tipos van de `puerto.toml` a todas las capas:

@@ -9,6 +9,8 @@ web = true               # hay frontend web/ — lo pone `puerto nuevo`, ausente
 db = true                # SQLx/Postgres — lo pone `puerto nuevo --db`
 eventos = "db"           # eventos de dominio: "db" | "kafka"; ausente = ninguno. Exige db = true
 auth = "oidc"            # auth (ADR-0021): "oidc" | "local"; ausente = ninguna. "local" exige db = true
+portada = true           # un SaaS con portada pública en / (ADR-0028): `puerto nuevo --portada`. Exige web
+ruta_app = "/panel"      # dónde va la app bajo la portada (`--ruta-app`); solo con portada
 
 [[entidad]]
 nombre = "Producto"      # nombre de la entidad en PascalCase
@@ -268,7 +270,7 @@ entera de entidades:
 
 | Comando                                         | Efecto                                                                            |
 | ----------------------------------------------- | --------------------------------------------------------------------------------- |
-| `puerto nuevo [--nombre] [--db\|--sin-db] [--eventos db\|kafka] [--auth oidc\|local] [--sin-demo] [--sin-web] [--destino]` | Crea puerto.toml desde la plantilla con la entidad Saludo; `--eventos` (necesita `--db`) escribe `[proyecto] eventos` y la migración del outbox; `--auth` escribe `[proyecto] auth` y lista el caso de uso del Saludo en `publicos` (`local` necesita `--db`) |
+| `puerto nuevo [--nombre] [--db\|--sin-db] [--eventos db\|kafka] [--auth oidc\|local] [--sin-demo] [--sin-web] [--portada [--ruta-app <ruta>]\|--sin-portada] [--destino]` | Crea puerto.toml desde la plantilla con la entidad Saludo; `--eventos` (necesita `--db`) escribe `[proyecto] eventos` y la migración del outbox; `--auth` escribe `[proyecto] auth` y lista el caso de uso del Saludo en `publicos` (`local` necesita `--db`); `--portada` (necesita web) escribe `[proyecto] portada` y `ruta_app` (`/panel` por defecto) |
 | `puerto generar scaffold <Nombre>`              | Inserta o actualiza el bloque `[[entidad]]`, regenera `cableado` y `bootstrap.rs`. En proyectos con auth, `--publico <uc>[,…]` y `--rol <uc>=<rol>[,…]` fijan `publicos` / `roles` (se comprueban antes de escribir; un re-scaffold sin ellos conserva los del bloque) |
 | `puerto generar scaffold <Nombre> -- nombre:Tipo` | Igual, con `[[entidad.campos]]` sacados de los argumentos finales               |
 | `puerto generar dominio <Nombre> -- nombre:Tipo` | Registra la entidad **con sus campos**, para que los comandos por capa posteriores los vean |
@@ -276,6 +278,7 @@ entera de entidades:
 | `puerto generar caso-de-uso <Entidad> <accion>` | Añade la acción a `casos_de_uso`, escribe su fichero en `aplicacion_<c>` con su `pub mod`, añade el campo a `Api<Entidad>`, regenera el cableado. Rechaza una acción que ya existe |
 | `puerto generar objeto-valor <Nombre> <tipo>`   | Añade un bloque `[[objeto_valor]]`. Rechaza nombres o tipos inválidos y duplicados |
 | `puerto generar evento <Entidad> <nombre>`      | Proyectos con eventos, entidades CRUD: añade a `[[entidad]] eventos`, regenera `eventos.rs`. Rechaza un nombre CRUD, un duplicado (también por variante: `publicado` = `producto_publicado`) o un nombre que no es snake_case. No toca ningún caso de uso |
+| `puerto generar web-bloque [<hueco>/<variante>] [--forzar]` | Proyectos con web: sin argumento, el catálogo; con uno, escribe el fichero de su hueco (ADR-0028). No toca puerto.toml. Rechaza un bloque desconocido, uno de auth sin `auth` y uno de la portada sin `portada` (las secciones, sin `portada/producto`) |
 | `puerto generar web <Nombre> [--forzar]`        | Proyectos con web: el slice del frontend de la entidad + `core/generated/*`. No toca puerto.toml; rechaza una entidad no declarada o no CRUD |
 | `puerto generar migracion <nombre>`             | Crea una migración en `migraciones/` (solo proyectos `--db`) — no toca puerto.toml. La versión es única aunque sea en el mismo segundo |
 | `puerto generar consumidor <nombre> --tras <tipo>[,…]` | Proyectos con eventos (`db` o `kafka`): añade `[[consumidor]]`, escribe `presentacion/worker/src/consumidores/<nombre>.rs` (nunca lo sobrescribe), añade su `pub mod` a `consumidores.rs` (ordenado), regenera `generado/registro.rs`. Rechaza un nombre existente, un tipo de evento no declarado, un nombre que no es snake_case o uno cuyo tipo ya usa el worker |

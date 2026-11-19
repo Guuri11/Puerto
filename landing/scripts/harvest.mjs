@@ -52,6 +52,7 @@ const COMMANDS = [
   ['generar', 'consumidor'],
   ['generar', 'correo'],
   ['generar', 'web'],
+  ['generar', 'web-bloque'],
   ['generar', 'dominio'],
   ['generar', 'aplicacion'],
   ['generar', 'repositorio'],

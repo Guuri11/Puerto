@@ -39,6 +39,8 @@ const PAGINAS = [
   { ruta: '/docs/decisions/', h1: 'Por qué se escriben las decisiones' },
   { ruta: '/docs/decisions/adr/0018-domain-events-outbox-pluggable-transport/', h1: '0018' },
   { ruta: '/docs/changelog/', h1: 'Changelog' },
+  { ruta: '/bloques/', h1: 'Cambia una pieza.' },
+  { ruta: '/bloques/panel/resumen/', h1: 'panel/resumen' },
 ];
 
 test.describe('Todas las páginas', () => {

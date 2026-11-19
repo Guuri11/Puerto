@@ -24,9 +24,9 @@ build: ## Build puerto binary (release) → target/release/puerto
 	$(CARGO) build --release --bin puerto
 	@echo "Binary: $(shell pwd)/target/release/puerto"
 
-site/data: build ## Refresh what the website shows from this CLI: the terminal, the CLI reference, the compiler capture
+site/data: build ## Refresh what the website shows from this CLI: the terminal, the CLI reference, the compiler capture, the blocks
 	@echo "${GREEN}Harvesting the site's data from target/release/puerto...${NC}"
-	cd landing && pnpm harvest && pnpm capture:compiler
+	cd landing && pnpm harvest && pnpm capture:compiler && pnpm bloques
 
 install: ## Install puerto to ~/.cargo/bin
 	@echo "${GREEN}Installing puerto...${NC}"

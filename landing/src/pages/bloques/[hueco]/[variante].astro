@@ -1,0 +1,285 @@
+---
+/**
+ * Un bloque (ADR-0028): pintado en claro y en oscuro, en escritorio y en móvil, con el comando que
+ * lo instala, el código de cada fichero que escribe y el texto para un agente. Todo sale de
+ * `pnpm bloques`.
+ */
+import type { GetStaticPaths } from 'astro';
+import { Code } from 'astro:components';
+import BaseLayout from '@/layouts/BaseLayout.astro';
+import CopyCommand from '@/components/home/CopyCommand.astro';
+import Vista from '@/components/bloques/Vista.astro';
+import { bloques, comando, huecos, paraTuAgente, quePide, type Bloque } from '@/lib/bloques';
+import nightTheme from '@/themes/puerto-night.json';
+
+export const getStaticPaths = (() =>
+  bloques.map((bloque) => ({
+    params: { hueco: bloque.hueco, variante: bloque.variante },
+    props: { bloque },
+  }))) satisfies GetStaticPaths;
+
+const { bloque } = Astro.props as { bloque: Bloque };
+const hermanas = huecos.find((h) => h.hueco === bloque.hueco)!.variantes;
+const agente = paraTuAgente(bloque);
+const lenguaje = (ruta: string) => (ruta.endsWith('.css') ? 'css' : 'tsx');
+const frase = `${bloque.descripcion[0].toUpperCase()}${bloque.descripcion.slice(1)}`;
+// Entre 110 y 160 caracteres (los tests de la SERP): el comando, si cabe.
+const resumen = `${frase}. Un bloque del frontend de Puerto, con su vista previa y su código`;
+const descripcion = [
+  `${resumen}: ${comando(bloque)}.`,
+  `${resumen}, en claro y en oscuro.`,
+  `${resumen}.`,
+].find((candidata) => candidata.length <= 160)!;
+---
+
+<BaseLayout
+  title={`Bloque ${bloque.id}`}
+  description={descripcion}
+  path={`/bloques/${bloque.id}/`}
+>
+  <section class="frame bl-detalle">
+    <nav class="label bl-migas" aria-label="Migas">
+      <a class="link" href="/bloques/">Bloques</a>
+      <span aria-hidden="true">/</span>
+      <a class="link" href={`/bloques/#hueco-${bloque.hueco}`}>{bloque.hueco}</a>
+    </nav>
+    <h1 class="h2">{bloque.id}</h1>
+    <p class="lede measure">
+      {frase}.{bloque.porDefecto && ' Es la que escribe puerto nuevo.'}
+    </p>
+    {bloque.pide && <p class="bl-pide">Pide {quePide[bloque.pide]}.</p>}
+    <CopyCommand command={comando(bloque)} label={`Copiar el comando que instala ${bloque.id}`} />
+
+    <div class="bl-controles">
+      <div role="group" aria-label="Tema">
+        <button type="button" class="bl-boton" aria-pressed="true" data-modo="light">Claro</button>
+        <button type="button" class="bl-boton" aria-pressed="false" data-modo="dark">Oscuro</button>
+      </div>
+      <div role="group" aria-label="Pantalla">
+        <button type="button" class="bl-boton" aria-pressed="true" data-ancho="1280" data-alto="800">
+          Escritorio
+        </button>
+        <button type="button" class="bl-boton" aria-pressed="false" data-ancho="390" data-alto="780">
+          Móvil
+        </button>
+      </div>
+    </div>
+    <Vista bloque={bloque.id} />
+  </section>
+
+  <hr class="quay-line" />
+
+  <section class="frame bl-seccion" aria-labelledby="ficheros">
+    <h2 class="h3" id="ficheros">
+      {bloque.ficheros.length === 1 ? 'El fichero' : `Los ${bloque.ficheros.length} ficheros`}
+    </h2>
+    <p class="measure">
+      {
+        bloque.exporta
+          ? `Así queda en un proyecto con cuentas locales y portada. ${bloque.exporta} conserva su nombre y sus props: lo demás no cambia.`
+          : 'Así queda en un proyecto con cuentas locales y portada: solo variables de CSS.'
+      }
+    </p>
+    {
+      bloque.ficheros.map((f) => (
+        <figure class="bl-fichero">
+          <figcaption class="mono">{f.ruta}</figcaption>
+          <Code code={f.codigo} lang={lenguaje(f.ruta)} theme={nightTheme as never} />
+        </figure>
+      ))
+    }
+  </section>
+
+  <section class="frame bl-seccion" aria-labelledby="agente">
+    <h2 class="h3" id="agente">Para tu agente</h2>
+    <p class="measure">El bloque en markdown: pégalo en Claude Code, Cursor o el agente que uses.</p>
+    <pre class="bl-agente mono">{agente}</pre>
+    <button type="button" class="btn btn-secondary" data-copy={agente} aria-label="Copiar el texto para el agente">
+      <span data-copy-label aria-live="polite">Copiar</span>
+    </button>
+  </section>
+
+  {
+    hermanas.length > 1 && (
+      <nav class="frame bl-seccion" aria-labelledby="hermanas">
+        <h2 class="h3" id="hermanas">
+          Las variantes de {bloque.hueco}
+        </h2>
+        <ul class="bl-hermanas" role="list">
+          {hermanas.map((h) => (
+            <li>
+              <a
+                class="link mono"
+                href={`/bloques/${h.id}/`}
+                aria-current={h.id === bloque.id ? 'page' : undefined}
+              >
+                {h.id}
+              </a>
+            </li>
+          ))}
+        </ul>
+      </nav>
+    )
+  }
+</BaseLayout>
+
+<style>
+  /* Una columna que nunca crece hasta el iframe de 1280 px. */
+  .bl-detalle,
+  .bl-seccion {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .bl-detalle {
+    display: grid;
+    gap: 1.25rem;
+    justify-items: start;
+    padding-block: clamp(2.5rem, 6vw, 4.5rem);
+  }
+
+  .bl-detalle > :global(.vista) {
+    justify-self: stretch;
+  }
+
+  /* El comando con su bloque y --forzar no cabe en el ancho de la home. */
+  .bl-detalle > :global(.cmd) {
+    max-width: min(100%, 46rem);
+  }
+
+  .bl-detalle h1 {
+    margin: 0;
+    text-transform: none;
+  }
+
+  .bl-migas {
+    display: flex;
+    gap: 0.5rem;
+  }
+
+  .bl-pide {
+    margin: 0;
+    padding: 0.25rem 0.625rem;
+    border: 1px solid var(--color-ink);
+  }
+
+  .bl-controles {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 1rem;
+  }
+
+  .bl-controles [role='group'] {
+    display: flex;
+  }
+
+  .bl-boton {
+    min-height: 44px;
+    padding-inline: 1rem;
+    border: 2px solid var(--color-ink);
+    background: transparent;
+    color: var(--color-ink);
+    font-family: var(--font-sans);
+    font-weight: 600;
+    cursor: pointer;
+  }
+
+  .bl-boton + .bl-boton {
+    border-left: 0;
+  }
+
+  .bl-boton[aria-pressed='true'] {
+    background: var(--color-ink);
+    color: var(--color-surface);
+  }
+
+  .bl-boton:focus-visible {
+    outline: 3px solid var(--color-accent);
+    outline-offset: 2px;
+  }
+
+  .bl-seccion {
+    display: grid;
+    gap: 1rem;
+    padding-block: clamp(2.5rem, 6vw, 4rem);
+  }
+
+  .bl-seccion h2 {
+    margin: 0;
+  }
+
+  .bl-fichero {
+    margin: 0;
+    display: grid;
+    gap: 0.5rem;
+    min-width: 0;
+  }
+
+  .bl-fichero figcaption {
+    font-size: 0.875rem;
+  }
+
+  .bl-fichero :global(pre) {
+    max-height: 32rem;
+    overflow: auto;
+    padding: 1rem;
+    border: 2px solid var(--color-ink);
+    font-size: 0.8125rem;
+  }
+
+  .bl-agente {
+    margin: 0;
+    max-width: 100%;
+    overflow: auto;
+    padding: 1rem;
+    background: var(--color-surface);
+    border: 2px solid var(--color-ink);
+    font-size: 0.8125rem;
+    white-space: pre-wrap;
+  }
+
+  .bl-seccion .btn {
+    justify-self: start;
+  }
+
+  .bl-hermanas {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem 1.5rem;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+  }
+
+  .bl-hermanas [aria-current='page'] {
+    text-decoration-color: currentColor;
+  }
+</style>
+
+<script>
+  /** Claro u oscuro: cambia el tema de la vista. Escritorio o móvil: su ancho. */
+  const vista = document.querySelector<HTMLElement>('[data-vista]')!;
+  const marco = vista.querySelector('iframe')!;
+
+  const pulsar = (boton: HTMLButtonElement) =>
+    boton.parentElement!.querySelectorAll('button').forEach((b) =>
+      b.setAttribute('aria-pressed', String(b === boton)),
+    );
+
+  document.querySelectorAll<HTMLButtonElement>('button[data-modo]').forEach((boton) =>
+    boton.addEventListener('click', () => {
+      pulsar(boton);
+      const url = new URL(marco.src);
+      url.searchParams.set('tema', boton.dataset.modo!);
+      marco.src = url.toString();
+    }),
+  );
+
+  document.querySelectorAll<HTMLButtonElement>('button[data-ancho]').forEach((boton) =>
+    boton.addEventListener('click', () => {
+      pulsar(boton);
+      vista.dataset.ancho = boton.dataset.ancho;
+      vista.dataset.alto = boton.dataset.alto;
+      vista.dispatchEvent(new Event('vista:medida'));
+    }),
+  );
+</script>

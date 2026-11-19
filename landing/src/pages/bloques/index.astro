@@ -1,0 +1,200 @@
+---
+/**
+ * El escaparate de bloques (ADR-0028): cada hueco del frontend generado y sus variantes, pintadas
+ * de verdad. Todo sale de `pnpm bloques`: el catálogo de la CLI y los ficheros que instala.
+ */
+import BaseLayout from '@/layouts/BaseLayout.astro';
+import CopyCommand from '@/components/home/CopyCommand.astro';
+import Vista from '@/components/bloques/Vista.astro';
+import { bloques, grupos, quePide } from '@/lib/bloques';
+---
+
+<BaseLayout
+  title="Bloques para el frontend"
+  description={`${bloques.length} bloques para el frontend que genera Puerto: otras pantallas de la app, una portada con sus secciones y temas. Un comando instala cada uno sin tocar nada más.`}
+  path="/bloques/"
+>
+  <section class="frame bl-cabecera">
+    <p class="label">Bloques · {bloques.length} variantes</p>
+    <h1 class="h2">Cambia una pieza.<br />El resto sigue igual.</h1>
+    <p class="lede measure">
+      Otras variantes de las pantallas, la portada y el tema del frontend que genera Puerto. Cada una
+      cumple el contrato de su hueco: un comando la instala y no cambia nada más.
+    </p>
+    <CopyCommand command="puerto generar web-bloque" label="Copiar el comando que lista los bloques" />
+    <nav class="bl-indice" aria-label="Grupos de bloques">
+      {grupos.map((g) => <a class="link" href={`#${g.id}`}>{g.titulo}</a>)}
+    </nav>
+  </section>
+
+  {
+    grupos.map((grupo) => (
+      <>
+        <hr class="quay-line" />
+        <section class="frame bl-grupo" id={grupo.id} aria-labelledby={`${grupo.id}-titulo`}>
+          <h2 class="h2" id={`${grupo.id}-titulo`}>
+            {grupo.titulo}
+          </h2>
+          <p class="lede measure">{grupo.texto}</p>
+          {grupo.huecos.map((h) => (
+            <section class="bl-hueco" aria-labelledby={`hueco-${h.hueco}`}>
+              <header class="bl-hueco__cabecera">
+                <h3 class="h3" id={`hueco-${h.hueco}`}>
+                  {h.hueco}
+                </h3>
+                <code class="mono bl-hueco__fichero">{h.fichero}</code>
+                {h.pide && <span class="bl-pide">Pide {quePide[h.pide]}</span>}
+              </header>
+              <ul class="bl-variantes" role="list">
+                {h.variantes.map((b) => (
+                  <li class="bl-tarjeta">
+                    <Vista bloque={b.id} miniatura />
+                    <p class="bl-tarjeta__nombre">
+                      <a class="bl-tarjeta__enlace mono" href={`/bloques/${b.id}/`}>
+                        {b.id}
+                      </a>
+                      {b.porDefecto && <span class="label bl-tarjeta__defecto">por defecto</span>}
+                    </p>
+                    <p class="bl-tarjeta__descripcion">{b.descripcion}</p>
+                  </li>
+                ))}
+              </ul>
+            </section>
+          ))}
+        </section>
+      </>
+    ))
+  }
+</BaseLayout>
+
+<style>
+  .bl-cabecera {
+    display: grid;
+    gap: 1.5rem;
+    justify-items: start;
+    padding-block: clamp(3rem, 8vw, 6rem);
+  }
+
+  .bl-cabecera h1 {
+    margin: 0;
+  }
+
+  .bl-indice {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem 1.5rem;
+  }
+
+  /* Columnas que nunca crecen hasta el iframe de 1280 px de una miniatura. */
+  .bl-grupo,
+  .bl-hueco,
+  .bl-variantes,
+  .bl-tarjeta {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .bl-grupo {
+    display: grid;
+    gap: 1.5rem;
+    padding-block: clamp(3rem, 8vw, 6rem);
+  }
+
+  .bl-grupo h2 {
+    margin: 0;
+  }
+
+  .bl-hueco {
+    display: grid;
+    gap: 1rem;
+    padding-top: 2rem;
+    border-top: 1px solid var(--color-rule);
+  }
+
+  .bl-hueco__cabecera {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: 0.5rem 1rem;
+  }
+
+  .bl-hueco__cabecera h3 {
+    margin: 0;
+  }
+
+  .bl-hueco__fichero {
+    font-size: 0.8125rem;
+    color: var(--color-ink-muted);
+  }
+
+  .bl-pide {
+    padding: 0.125rem 0.5rem;
+    border: 1px solid var(--color-ink);
+    font-size: 0.8125rem;
+  }
+
+  .bl-variantes {
+    display: grid;
+    gap: 2rem 1.5rem;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+  }
+
+  @media (width >= 768px) {
+    .bl-variantes {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+  }
+
+  .bl-tarjeta {
+    position: relative;
+    display: grid;
+    gap: 0.5rem;
+  }
+
+  .bl-tarjeta__nombre {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    margin: 0.25rem 0 0;
+  }
+
+  .bl-tarjeta__enlace {
+    color: var(--color-ink);
+    font-size: 1rem;
+    font-weight: 600;
+    text-decoration: underline;
+    text-decoration-color: var(--color-accent);
+    text-decoration-thickness: 2px;
+    text-underline-offset: 0.2em;
+  }
+
+  /* Toda la tarjeta lleva al bloque; el enlace sigue siendo el único elemento con foco. */
+  .bl-tarjeta__enlace::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+  }
+
+  .bl-tarjeta__enlace:focus-visible {
+    outline: none;
+  }
+
+  .bl-tarjeta:has(.bl-tarjeta__enlace:focus-visible) {
+    outline: 3px solid var(--color-accent);
+    outline-offset: 4px;
+  }
+
+  .bl-tarjeta:hover .bl-tarjeta__enlace {
+    text-decoration-color: currentColor;
+  }
+
+  .bl-tarjeta__defecto {
+    color: var(--color-ink-muted);
+  }
+
+  .bl-tarjeta__descripcion {
+    margin: 0;
+    color: var(--color-ink-muted);
+  }
+</style>

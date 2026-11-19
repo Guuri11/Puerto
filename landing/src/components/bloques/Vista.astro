@@ -1,0 +1,81 @@
+---
+/**
+ * Un bloque pintado de verdad: la app de `public/bloques/vista/` (`pnpm bloques`), en un iframe
+ * del tamaño de una pantalla, encogido al ancho que haya. `miniatura`: no se puede tocar (va dentro
+ * de una tarjeta enlazada) y se carga al acercarse.
+ */
+interface Props {
+  bloque: string;
+  miniatura?: boolean;
+}
+
+const { bloque, miniatura = false } = Astro.props;
+const src = `/bloques/vista/vista.html?bloque=${encodeURIComponent(bloque)}&tema=light`;
+---
+
+<div
+  class:list={['vista', { 'vista--miniatura': miniatura }]}
+  data-vista
+  data-ancho="1280"
+  data-alto="800"
+  aria-hidden={miniatura ? 'true' : undefined}
+>
+  <iframe
+    src={src}
+    title={`Vista previa de ${bloque}`}
+    loading={miniatura ? 'lazy' : 'eager'}
+    tabindex={miniatura ? -1 : undefined}></iframe>
+</div>
+
+<style>
+  .vista {
+    position: relative;
+    overflow: hidden;
+    /* Antes de medir: la proporción de la pantalla. */
+    aspect-ratio: 16 / 10;
+    background: var(--color-surface);
+    border: 2px solid var(--color-ink);
+  }
+
+  .vista[data-medida] {
+    aspect-ratio: auto;
+  }
+
+  .vista iframe {
+    display: block;
+    width: 1280px;
+    height: 800px;
+    border: 0;
+    transform-origin: 0 0;
+    background: #fff;
+  }
+
+  .vista--miniatura iframe {
+    pointer-events: none;
+  }
+</style>
+
+<script>
+  /** Encoge cada iframe al ancho de su caja; centra el de móvil cuando cabe entero. */
+  const ajustar = (vista: HTMLElement) => {
+    const marco = vista.querySelector('iframe');
+    if (!marco) return;
+    const ancho = Number(vista.dataset.ancho);
+    const alto = Number(vista.dataset.alto);
+    const escala = Math.min(1, vista.clientWidth / ancho);
+    marco.style.width = `${ancho}px`;
+    marco.style.height = `${alto}px`;
+    marco.style.transform = `scale(${escala})`;
+    marco.style.marginLeft = `${Math.max(0, (vista.clientWidth - ancho * escala) / 2)}px`;
+    vista.style.height = `${alto * escala + 4}px`;
+    vista.dataset.medida = '';
+  };
+
+  const observador = new ResizeObserver((cambios) =>
+    cambios.forEach((cambio) => ajustar(cambio.target as HTMLElement)),
+  );
+  document.querySelectorAll<HTMLElement>('[data-vista]').forEach((vista) => {
+    observador.observe(vista);
+    vista.addEventListener('vista:medida', () => ajustar(vista));
+  });
+</script>

@@ -16,7 +16,8 @@ reciben. No hay dominio, casos de uso ni adaptadores propios; las reglas viven e
 | `api/` | `cliente.ts` (`crearClienteApi`, `ClienteApi`, `Esquemas`: los DTO por nombre), `http.ts` (`desenvolver`, `ErrorApi`, `TAMANO_PAGINA`) y `esquema.d.ts` (generado) |
 | `contextos/<entidad>/` | `contenedores/` (estado y llamadas a la API, con sus tests), `vistas/` (solo props) y `mensajes.ts` |
 | `marca/` | `marca.ts` (nombre, eslogan, logo) y `tema.css` (los colores de la marca sobre los temas claro y oscuro de daisyUI): tuyos, Puerto no los vuelve a escribir. El logo es `public/logo.svg` |
-| `paginas/` | las páginas que no son de una entidad (el panel, página no encontrada) |
+| `paginas/` | las páginas que no son de una entidad (el panel, página no encontrada, la portada) |
+| `portada/` | con `portada/producto`: las secciones de la portada, una por fichero |
 | `compartido/` | `formularios.ts` (texto del formulario ↔ valores de la API), `use-carga.ts` y `ui/` (componentes compartidos) |
 | `generado/` | la raíz de composición y la tabla de rutas: **las reescribe Puerto** |
 | `pruebas/` | `renderizarPantalla`, la API falsa y una madre por entidad: solo para los tests |
@@ -70,6 +71,12 @@ El marco (`compartido/ui/marco.tsx`) pone la marca y el menú en un lateral; cad
 entrada de `entradasMenu` y una tarjeta del panel (`paginas/panel.tsx`, en `/`), que muestra el
 `total` de su lista (`contarTotal(api.GET("/<plural>", PAGINA_DE_UNO))`, generado en
 `generado/rutas.tsx`).
+
+Con portada (`[proyecto] portada`), `main.tsx` monta `paginas/portada.tsx` en `/` y la app debajo de
+`rutaApp` (`generado/rutas.tsx`, de `[proyecto] ruta_app`); dentro de la app las rutas son
+relativas, así que ninguna pantalla nombra `rutaApp`. Las pantallas base, la portada y el tema
+tienen otras variantes: `puerto generar web-bloque` las lista, y cada una cumple el contrato de su
+hueco (el mismo export, las mismas props, los textos que buscan sus tests).
 
 ## Ficheros generados
 

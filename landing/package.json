@@ -10,6 +10,7 @@
     "preview": "astro preview",
     "check": "node scripts/sync-repo-docs.mjs && astro check",
     "harvest": "node scripts/harvest.mjs",
+    "bloques": "node scripts/bloques.mjs",
     "test:e2e": "pnpm build && astro preview stop > /dev/null 2>&1; astro preview --port 4347 > /dev/null && playwright test",
     "capture:compiler": "node scripts/capture-compiler.mjs",
     "brand:images": "node scripts/brand-images.mjs",

@@ -44,6 +44,30 @@ página de acceso con la marca a un lado y el formulario en una tarjeta. El men�
 un avatar con las iniciales y lleva al **perfil** (`/perfil`), que enseña lo que responde
 `GET /me`: nombre, email y roles.
 
+## Bloques: otras pantallas, la portada y los temas
+
+Cada pantalla base es un **hueco**: un fichero con un componente y unas props fijos
+(`paginas/panel.tsx` → `PaginaPanel({ entradas })`). Un **bloque** es otra variante de un hueco, y
+se instala con un comando:
+
+```bash
+puerto generar web-bloque                         # el catálogo
+puerto generar web-bloque marco/superior --forzar # el menú en una barra arriba
+puerto generar web-bloque tema/pizarra --forzar   # otro tema
+```
+
+Cada variante cumple el contrato de su hueco, así que instalarla cambia ese fichero y nada más: ni
+lo generado ni los tests. Sin `--forzar`, el comando no pisa un fichero que tenga otro contenido.
+Todos los bloques, pintados y con su código, están en [el escaparate](/bloques/)
+([ADR-0028](/docs/decisions/adr/0028-los-bloques-web/)).
+
+**La portada.** Si el proyecto es un SaaS con portada pública, `puerto nuevo` lo pregunta (o
+`--portada`, con `--ruta-app` para otra ruta que `/panel`): la portada va en `/`, la app debajo de
+su ruta, y el login vuelve a ella. La portada de partida es una bienvenida; `portada/producto` la
+cambia por una web de producto, con una sección por fichero en `web/src/portada/` (cabecera,
+características, precios, preguntas, llamada a la acción y pie), cada una con sus variantes. La
+portada la pinta el navegador: si el SEO importa, va mejor en una web estática aparte.
+
 ## El contrato es la especificación OpenAPI
 
 Las rutas del backend son poem-openapi, así que la API se describe sola. Un test de

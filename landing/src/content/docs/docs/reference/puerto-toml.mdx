@@ -119,6 +119,8 @@ tras = ["cliente_creado"]
 | `web` | bool | `nuevo` (por defecto), `--sin-web` | El frontend React en `web/` |
 | `eventos` | `"db"` \| `"kafka"` | `nuevo --eventos` | Los eventos de dominio y su transporte. Necesita `db` |
 | `auth` | `"oidc"` \| `"local"` | `nuevo --auth` | El modo de autenticación. `local` necesita `db` |
+| `portada` | bool | `nuevo --portada` | Un SaaS con portada pública: la portada en `/` y la app debajo de `ruta_app`. Necesita `web` |
+| `ruta_app` | string | `nuevo --ruta-app` | Dónde va la app bajo la portada; `/panel` por defecto. Solo con `portada` |
 
 ## `[[entidad]]`
 

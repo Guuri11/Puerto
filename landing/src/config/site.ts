@@ -30,6 +30,7 @@ export const site = {
     { text: 'Docs', href: '/docs/' },
     { text: 'Guías', href: '/docs/guides/entities/' },
     { text: 'Referencia', href: '/docs/reference/cli/' },
+    { text: 'Bloques', href: '/bloques/' },
     { text: 'Decisiones', href: '/docs/decisions/' },
   ],
 

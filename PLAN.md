@@ -3609,7 +3609,7 @@ una referencia en las listas (hoy muestran su id; el detalle ya la muestra).
 
 ## Fase 26 — Los bloques web: un escaparate de pantallas, secciones y temas (ADR-0028)
 
-**Estado:** en curso (2026-11-19). Decidido por Sergio el 2026-11-19: además de la marca, un
+**Estado:** hecha (2026-11-19), sin publicar. Decidido por Sergio el 2026-11-19: además de la marca, un
 escaparate al estilo de shadcnblocks en la web de Puerto, del que cada proyecto elige lo que quiere.
 Tres clases de bloques en la primera tanda: pantallas de la app, secciones de marketing para una
 portada pública y temas. Se instalan con la CLI (`puerto generar web-bloque`), no con un registro de
@@ -3624,7 +3624,7 @@ contrato y los textos que buscan los tests de la plantilla, así que instalar un
 ni los tests. La primera variante de cada hueco es la que escribe `puerto nuevo`, y su fuente es el
 fichero de la plantilla: no hay copia que se desfase.
 
-### 26.1 — `puerto generar web-bloque` y las pantallas de la app
+### 26.1 — `puerto generar web-bloque` y las pantallas de la app ✅
 
 - `puerto generar web-bloque [<hueco>/<variante>] [--forzar]`:
   - Sin argumento: el catálogo, una línea por bloque con su descripción; `(auth)` o `(portada)`
@@ -3634,7 +3634,8 @@ fichero de la plantilla: no hay copia que se desfase.
     en un proyecto sin portada.
   - Escribe sus ficheros (rutas de `generators/layout.rs`). Uno que existe con otro contenido está
     protegido: pregunta en una terminal y, si no, se niega, salvo con `--forzar` (la misma guarda
-    que `scaffold`). Uno con el mismo contenido no se toca. Dice lo que escribió.
+    que `scaffold`). Uno con el mismo contenido no se toca. Lista todos los ficheros del bloque:
+    `✓` los que escribió, `=` los que ya tenían su contenido (lo lee `landing/scripts/bloques.mjs`).
 - Huecos y variantes:
   - `acceso` (auth) → `compartido/ui/marco-acceso.tsx`: `dividido` (el de hoy), `centrado` (la
     tarjeta en el centro, el logo y el nombre encima, el eslogan debajo).
@@ -3647,10 +3648,12 @@ fichero de la plantilla: no hay copia que se desfase.
 - Tests: el catálogo; un bloque desconocido; uno de auth sin auth; sin web; la variante por defecto
   en un proyecto nuevo no cambia nada; otra variante se niega sin `--forzar` (sin terminal) y con él
   escribe solo el fichero de su hueco; el `marco` lleva `MenuUsuario` solo con auth.
-- Compile matrix: un escenario `--db --auth local --portada` con todas las variantes que no son la
-  de por defecto instaladas (de 26.1 a 26.4), y uno sin auth con `marco/superior` y `panel/resumen`.
+- Compile matrix: `web_blocks` (`--auth oidc --portada`, sin base de datos: corre en `make
+  test/full`) con todas las variantes que no son la de por defecto, `web_blocks_plain` (sin auth,
+  la app en `/app`) y `web_blocks_local` (`--db --auth local --portada`, en `make test/db`: el login
+  y el registro junto a la portada). Con sus snapshots.
 
-### 26.2 — Los temas
+### 26.2 — Los temas ✅
 
 - `tema` → `marca/tema.css`: `puerto` (el de hoy), `bosque`, `ciruela`, `coral`, `pizarra`,
   `miel`. Cada uno es `@plugin "daisyui";` y los temas `light` (`default`) y `dark` (`prefersdark`),
@@ -3658,11 +3661,11 @@ fichero de la plantilla: no hay copia que se desfase.
 - Tests: cada tema lleva el plugin, un `light` por defecto y un `dark` del sistema; `tema/puerto` es
   el `tema.css` de la plantilla.
 
-### 26.3 — La portada (proyectos con web)
+### 26.3 — La portada (proyectos con web) ✅
 
 - `puerto nuevo`, con web: «¿Es un SaaS con portada pública?» (no por defecto) y, si lo es, «¿En qué
-  ruta va la app?» (`/panel` por defecto). `--portada`, `--sin-portada`, `--ruta-app <ruta>` (pide
-  la portada). Sin terminal ni flags, sin portada: como hoy.
+  ruta va la app?» (`/panel` por defecto). `--portada`, `--sin-portada`, `--ruta-app <ruta>`
+  (implica la portada). Sin terminal ni flags, sin portada: como hoy.
 - `puerto.toml`: `[proyecto] portada = true`, `ruta_app = "/panel"`. `puerto validar`: la portada
   pide web; `ruta_app` pide la portada y es `/` seguido de segmentos `[a-z0-9-]+` (no `/` a secas);
   `web/src/paginas/portada.tsx` existe.
@@ -3676,7 +3679,7 @@ fichero de la plantilla: no hay copia que se desfase.
 - Tests de Puerto: los flags y el manifiesto; `rutaApp` en `rutas.tsx`; `main.tsx` con y sin
   portada; `validar`; snapshots.
 
-### 26.4 — Las secciones de marketing (proyectos con portada)
+### 26.4 — Las secciones de marketing (proyectos con portada) ✅
 
 - `portada/producto` → `paginas/portada.tsx` y `web/src/portada/{cabecera,caracteristicas,precios,
   preguntas,llamada,pie}.tsx`: una barra (logo, nombre, «Características», «Precios», «Preguntas
@@ -3688,7 +3691,7 @@ fichero de la plantilla: no hay copia que se desfase.
   `preguntas/acordeon` (`details` con `collapse`), `llamada/banda`, `pie/columnas`.
 - Los textos son de ejemplo, para cambiarlos en el fichero; usan `marca.nombre` y `marca.eslogan`.
 
-### 26.5 — El escaparate (`landing/`, `/bloques`)
+### 26.5 — El escaparate (`landing/`, `/bloques`) ✅
 
 - `make site/bloques` (dentro de `make site/data`) genera con la CLI un proyecto (`--db --auth local
   --portada`, dos entidades), instala cada bloque con `puerto generar web-bloque --forzar` y copia
@@ -3696,7 +3699,10 @@ fichero de la plantilla: no hay copia que se desfase.
   imports relativos). Construye con ellas una app de vista previa (`?bloque=<id>&tema=light|dark`,
   sobre `api-falsa` y la sesión de las pruebas) en `landing/public/bloques/vista/`, y escribe
   `landing/src/data/bloques.json` (id, hueco, descripción, si pide auth o portada, el código de cada
-  fichero). Los temas entran en la vista renombrados (`bosque-light`) para convivir en un CSS.
+  fichero). Los temas entran en la vista como variables bajo `[data-tema=…][data-theme=…]`, fuera
+  de las capas de daisyUI: con `data-theme` puesto, el `light` de serie de daisyUI pisa al de la
+  marca (su selector pesa más), así que la vista da siempre un `data-tema`. `vercel.json` deja
+  enmarcar `/bloques/vista/` desde la propia web (y no la indexa).
 - `/bloques`: los huecos, cada uno con sus variantes (una miniatura en vivo, `loading="lazy"`).
   `/bloques/<hueco>/<variante>`: la vista previa (claro/oscuro, escritorio/móvil), el comando, el
   código de cada fichero y «Para tu agente» (el bloque en markdown, con el comando y su contrato).
@@ -3707,3 +3713,5 @@ fichero de la plantilla: no hay copia que se desfase.
 Secciones con datos de la API (blog, testimonios); elegir bloques en `puerto nuevo` (`--bloques`);
 variantes de las pantallas CRUD de una entidad (lista, detalle, formulario); el SEO de la portada (es
 una SPA: si importa, la portada va en una web estática aparte); un registro compatible con shadcn.
+Un selector de claro/oscuro tendrá que contar con que el `light` de serie de daisyUI pisa al de la
+marca cuando se pone `data-theme="light"` (ver 26.5).

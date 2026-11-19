@@ -75,7 +75,8 @@ crates/
                       sobrescritura), consistency (deriva, incluida la deriva textual de auth en
                       `rutas.rs`), auth (`nuevo --auth`: el contexto `usuario`, aprovisionamiento,
                       `GET /me`, Keycloak), web (el slice del frontend +
-                      web/src/generado/*), events (`eventos.rs`, los puertos de
+                      web/src/generado/*), blocks (`generar web-bloque`: el catálogo de bloques
+                      de web/), events (`eventos.rs`, los puertos de
                       unidad de trabajo, `generar evento`), worker (`presentacion/worker`,
                       `registro.rs`, `generar consumidor`), mail (el contexto `correo`, `generar correo`),
                       naming (pascal/snake, el plural en castellano, los verbos CRUD), layout (dónde va
@@ -259,6 +260,7 @@ puerto nuevo --sin-demo                        # Sin el demo Saludo (proyecto va
 puerto nuevo --db --eventos db                 # Eventos de dominio (ADR-0018): unidades de trabajo + outbox (db | kafka)
 puerto nuevo --auth oidc                       # Auth (ADR-0021): tokens de un proveedor OIDC (Auth0, Keycloak); Keycloak en compose
 puerto nuevo --db --auth local                 # Auth: cuentas y sesiones en esta base de datos; /auth/registro|login|logout, pantallas /login y /register
+puerto nuevo --portada [--ruta-app /panel]     # Un SaaS con portada pública en / y la app debajo (ADR-0028); --sin-portada, sin preguntar
 
 puerto generar scaffold <Nombre>                                            # Entidad DDD nueva — todas las capas (db, deducida de puerto.toml)
 puerto generar scaffold <Nombre> --forzar                                   # Regenera una entidad existente, pisando los cambios a mano
@@ -284,6 +286,8 @@ puerto generar aplicacion <Nombre>                  # Solo el crate de aplicaci�
 puerto generar repositorio <Nombre>                 # Solo el crate de infraestructura: en memoria o Postgres (deducido de puerto.toml)
 puerto generar presentacion <Nombre>                # Solo el crate REST + regenera el cableado; se niega hasta que existe la aplicación
 puerto generar web <Nombre>                         # Proyectos con web: solo el slice del frontend (+ core/generated/*); --forzar sobrescribe
+puerto generar web-bloque                           # Proyectos con web: el catálogo de bloques (otras pantallas, la portada, temas)
+puerto generar web-bloque marco/superior --forzar   # Instala un bloque: el fichero de su hueco, nada más
 puerto generar caso-de-uso <Entidad> <accion>       # Añade un caso de uso (rechaza acciones existentes; añade el campo a Api<Entidad>)
 puerto generar migracion <nombre>                   # Nueva migración SQLx en migraciones/ (solo proyectos --db; las versiones nunca chocan)
 puerto generar bootstrap                            # Regenera cableado y bootstrap.rs desde puerto.toml (se niega si hay deriva manifiesto/disco)
@@ -382,6 +386,19 @@ make format/fix    # cargo fmt --all
   marca, «Panel» y una entrada por sección; `paginas/panel.tsx` (`PaginaPanel`, en `/`) muestra el
   `total` de cada lista, que da cada `EntradaMenu` (`contarTotal(api.GET("/<plural>",
   PAGINA_DE_UNO))`, generado en `rutas.tsx`; en `<RequiereAuth>` si alguna lista lo está)
+- Los bloques de `web/` (Fase 26, ADR-0028): `puerto generar web-bloque [<hueco>/<variante>]
+  [--forzar]` (`generators/blocks.rs`, plantillas en `templates/web/bloques/`). Un bloque es una
+  variante de un hueco (un fichero con un export y unas props fijos) y cumple su contrato y los
+  textos de los tests de la plantilla, así que instalarlo no toca nada más; la primera variante de
+  cada hueco es el fichero de la plantilla, no una copia. Huecos: `acceso`, `marco`, `panel`,
+  `perfil`, `tema`, `portada` y sus secciones (`cabecera`, `caracteristicas`, `precios`,
+  `preguntas`, `llamada`, `pie`). Sin argumento, el catálogo; con uno, rechaza un bloque de auth sin
+  auth y uno de la portada sin portada, y protege un fichero con otro contenido salvo `--forzar`
+- La portada (Fase 26): `puerto nuevo --portada [--ruta-app <ruta>]` (o la pregunta, con web):
+  `[proyecto] portada`, `ruta_app` (`/panel`), `paginas/portada.tsx` (`portada/bienvenida`) y su
+  test; `generado/rutas.tsx` exporta `rutaApp` (`"/"` sin portada) y `main.tsx` (de
+  `templates/web/main.tsx.tera`, que también escribe el de auth) monta la portada en `/` y la app
+  con `<Route path={rutaApp} nest>`; el login vuelve a `rutaApp`
 - Los formularios web dicen qué falló junto al campo: `contextos/<entidad>/mensajes.ts` (generado de
   los mismos códigos que `errores.rs`) asocia un código a un mensaje y un campo; `ErrorCampo` lo
   muestra bajo ese input, los demás códigos van a la alerta, los desconocidos se muestran tal cual
