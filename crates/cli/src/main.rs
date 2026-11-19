@@ -317,6 +317,10 @@ enum GenerateAction {
         /// El tipo primitivo interno: String, i64, bool, f64, Uuid, DateTime
         #[arg(value_name = "TIPO")]
         inner_type: String,
+        /// Un valor válido (String, i64, f64 o bool) que usan los tests de sus campos en vez de
+        /// "example": p. ej. ana@ejemplo.es para un Email con regla de formato
+        #[arg(value_name = "VALOR", long = "ejemplo")]
+        example: Option<String>,
     },
 }
 
@@ -748,11 +752,17 @@ fn run(command: Commands) -> Result<(), Box<dyn std::error::Error>> {
                 })
         }
         Commands::Generate {
-            action: GenerateAction::ValueObject { name, inner_type },
+            action:
+                GenerateAction::ValueObject {
+                    name,
+                    inner_type,
+                    example,
+                },
         } => {
             let cwd = std::env::current_dir()?;
-            commands::list::require_puerto_project(&cwd)
-                .and_then(|_| scaffold::run_value_object(&name, &inner_type, &cwd))
+            commands::list::require_puerto_project(&cwd).and_then(|_| {
+                scaffold::run_value_object(&name, &inner_type, example.as_deref(), &cwd)
+            })
         }
         Commands::List => {
             let cwd = std::env::current_dir()?;

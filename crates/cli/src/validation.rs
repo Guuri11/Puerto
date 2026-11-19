@@ -330,6 +330,29 @@ pub fn validate_shared_vo_inner_type(inner_type: &str) -> Result<(), String> {
     Ok(())
 }
 
+/// A shared value object's `ejemplo` (27.15): only for `String` (not blank), `i64`, `f64`
+/// (finite) and `bool`, and read as that type — it becomes a literal in the generated tests.
+pub fn validate_vo_example(inner_type: &str, example: &str) -> Result<(), String> {
+    let valid = match inner_type {
+        "String" => !example.trim().is_empty(),
+        "i64" => example.parse::<i64>().is_ok(),
+        "f64" => example.parse::<f64>().is_ok_and(f64::is_finite),
+        "bool" => matches!(example, "true" | "false"),
+        _ => {
+            return Err(format!(
+                "un ejemplo solo vale en un objeto valor String, i64, f64 o bool, no en \
+                 '{inner_type}'"
+            ));
+        }
+    };
+    if !valid {
+        return Err(format!(
+            "el ejemplo '{example}' no es un valor de tipo '{inner_type}'"
+        ));
+    }
+    Ok(())
+}
+
 /// Full check for an entity name, in the PascalCase form the user typed.
 pub fn validate_entity_name(pascal: &str) -> Result<(), String> {
     if pascal.is_empty() {
@@ -1017,6 +1040,7 @@ mod tests {
         let shared = vec![ValueObjectDefinition {
             name: "Email".into(),
             inner_type: "String".into(),
+            ..Default::default()
         }];
         let fields = vec![Field {
             name: "email".into(),
@@ -1036,6 +1060,7 @@ mod tests {
         let shared = vec![ValueObjectDefinition {
             name: "Email".into(),
             inner_type: "String".into(),
+            ..Default::default()
         }];
         let fields = vec![Field {
             name: "email".into(),
@@ -1053,6 +1078,7 @@ mod tests {
         let shared = vec![ValueObjectDefinition {
             name: "Status".into(),
             inner_type: "i64".into(),
+            ..Default::default()
         }];
         let fields = vec![Field {
             name: "status".into(),

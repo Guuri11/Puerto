@@ -23,8 +23,8 @@ pub(super) struct Scenario<'a> {
     pub(super) no_demo: bool,
     /// Strip the web frontend (`puerto nuevo --sin-web`).
     pub(super) no_web: bool,
-    /// Shared VOs declared in puerto.toml before any scaffold (`(name, inner_type)`).
-    pub(super) shared_vos: &'a [(&'a str, &'a str)],
+    /// Shared VOs declared in puerto.toml before any scaffold (`(name, inner_type, --ejemplo)`).
+    pub(super) shared_vos: &'a [(&'a str, &'a str, Option<&'a str>)],
     /// Entities to scaffold: `(PascalName, CLI field args)`.
     pub(super) entities: &'a [(&'a str, &'a [&'a str])],
     /// Auth projects: `(PascalName, --public use cases, --role use_case=role)` of a scaffold.
@@ -276,7 +276,11 @@ pub(super) const SHARED_VO: Scenario = Scenario {
     access: &[],
     no_demo: false,
     no_web: false,
-    shared_vos: &[("Email", "String"), ("Money", "i64")],
+    // 27.15: their examples reach the mothers, the route and use-case tests and the web's.
+    shared_vos: &[
+        ("Email", "String", Some("ana@ejemplo.es")),
+        ("Money", "i64", Some("1250")),
+    ],
     mails: &[],
     use_cases: &[],
     transitions: &[],
@@ -321,7 +325,7 @@ pub(super) const VO_KITCHEN_SINK: Scenario = Scenario {
     access: &[],
     no_demo: false,
     no_web: false,
-    shared_vos: &[("Email", "String")],
+    shared_vos: &[("Email", "String", None)],
     mails: &[],
     use_cases: &[],
     transitions: &[],
@@ -550,7 +554,7 @@ pub(super) const POSTGRES_EVERY_TYPE: Scenario = Scenario {
     access: &[],
     no_demo: false,
     no_web: false,
-    shared_vos: &[("Email", "String")],
+    shared_vos: &[("Email", "String", Some("ana@ejemplo.es"))],
     mails: &[],
     use_cases: &[("Producto", "archive_producto")],
     transitions: &[],
@@ -970,8 +974,8 @@ pub(super) fn apply_scenario(scenario: &Scenario, output: &Path) {
     let format = || crate::generators::format::format_project(output).unwrap();
     format();
 
-    for (vo_name, inner) in scenario.shared_vos {
-        puerto_toml::add_value_object(output, vo_name, inner).unwrap();
+    for (vo_name, inner, example) in scenario.shared_vos {
+        scaffold::run_value_object(vo_name, inner, *example, output).unwrap();
     }
 
     let shared_vos = puerto_toml::read(output).unwrap().value_object;

@@ -90,7 +90,7 @@ comprueba que los dos siguen de acuerdo. `puerto listar` muestra lo que declara,
 | `puerto generar dominio <Nombre> [-- campos…]` | solo la capa de dominio, y la entidad en `puerto.toml`; después `puerto generar aplicacion <Nombre>`, `puerto generar repositorio <Nombre>`, `puerto generar presentacion <Nombre>`: una capa cada vez, y cada una comprueba la anterior |
 | `puerto generar caso-de-uso <Entidad> <accion> [--interno]` | un caso de uso más: su fichero (trait + doble, la impl por rellenar; ver más abajo) y un campo en `Api<Entidad>`; con `--interno`, sin campo ni `actor`: lo llama el worker u otro caso de uso (`[[entidad]] internos`) |
 | `puerto generar transicion <Entidad> <verbo> [--evento <tipo>] [--rol <rol>] [--interno]` | un cambio de estado de punta a punta (`cancelar`): el método `<verbo>` de la entidad en `dominio/src/<verbo>.rs` (la regla, por escribir), el caso de uso `<verbo>_<entidad>` con sus tests, `POST /<plural>/{id}/<verbo>` en `rest/src/<verbo>_<entidad>.rs` y, con pantallas, su botón en el detalle; con `--interno`, sin ruta ni botón |
-| `puerto generar objeto-valor <Nombre> <tipo>` | un objeto valor compartido (`[[objeto_valor]]`), reutilizable por todas las entidades |
+| `puerto generar objeto-valor <Nombre> <tipo> [--ejemplo <valor>]` | un objeto valor compartido (`[[objeto_valor]]`), reutilizable por todas las entidades; con `--ejemplo`, el valor válido que usan los tests de sus campos (dale uno en cuanto su `new` tenga una regla) |
 | `puerto generar migracion <nombre>` | una migración SQL vacía (proyectos `db`) |
 | `puerto generar bootstrap` | vuelve a cablear `presentacion/cableado` y `generado/bootstrap.rs` a partir de `puerto.toml` |
 | `puerto generar evento <Entidad> <nombre>` | un evento de dominio propio (proyectos con `eventos`) |
@@ -3849,7 +3849,8 @@ impl MadreCliente {
     pub fn construir(self) -> Cliente {
         Cliente::new(PropsCliente {
             email: self.email.unwrap_or_else(|| {
-                Email::new("example".to_string()).expect("Email::new rechazó el valor de ejemplo")
+                Email::new("ana@ejemplo.es".to_string())
+                    .expect("Email::new rechazó el valor de ejemplo")
             }),
             name: self.name.unwrap_or_else(|| {
                 Name::new("example".to_string()).expect("Name::new rechazó el valor de ejemplo")
@@ -3873,7 +3874,8 @@ impl MadreCliente {
     pub fn construir_props(self) -> PropsCliente {
         PropsCliente {
             email: self.email.unwrap_or_else(|| {
-                Email::new("example".to_string()).expect("Email::new rechazó el valor de ejemplo")
+                Email::new("ana@ejemplo.es".to_string())
+                    .expect("Email::new rechazó el valor de ejemplo")
             }),
             name: self.name.unwrap_or_else(|| {
                 Name::new("example".to_string()).expect("Name::new rechazó el valor de ejemplo")
@@ -5136,7 +5138,7 @@ mod tests {
 
     fn peticion_crear() -> PeticionCrearCliente {
         PeticionCrearCliente {
-            email: "example".to_string(),
+            email: "ana@ejemplo.es".to_string(),
             name: "example".to_string(),
             code: "example".to_string(),
             age: 42,
@@ -5149,7 +5151,7 @@ mod tests {
 
     fn peticion_actualizar() -> PeticionActualizarCliente {
         PeticionActualizarCliente {
-            email: "example".to_string(),
+            email: "ana@ejemplo.es".to_string(),
             name: "example".to_string(),
             code: "example".to_string(),
             age: 42,
@@ -8973,6 +8975,7 @@ variantes = [
 [[objeto_valor]]
 nombre = "Email"
 tipo = "String"
+ejemplo = "ana@ejemplo.es"
 
 === web/src/api/cliente.ts ===
 import createClient, { type Client, type ClientOptions } from "openapi-fetch";
@@ -11526,7 +11529,7 @@ type PeticionCliente = Esquemas["PeticionCrearCliente"];
 export const MadreCliente = {
   peticion(cambios: Partial<PeticionCliente> = {}): PeticionCliente {
     return {
-      email: "example",
+      email: "ana@ejemplo.es",
       name: "example",
       code: "example",
       age: 42,

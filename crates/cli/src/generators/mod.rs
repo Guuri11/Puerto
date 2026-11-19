@@ -40,6 +40,7 @@ pub fn effective_fields(fields: &[Field]) -> Vec<Field> {
             references: None,
             label: None,
             texts: None,
+            example: None,
         }]
     } else {
         fields.to_vec()

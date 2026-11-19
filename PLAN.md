@@ -3962,12 +3962,21 @@ ni botón. Compile matrix: un caso de uso interno en `auth_oidc` y una transici�
 - `consumidores/comun.rs`: lo escribe `puerto nuevo --eventos` (y `generar consumidor` si falta),
   con su `pub mod comun;`. Ningún consumidor puede llamarse `comun`, y `validar` no lo toma por uno.
 
-### 27.15 — Un ejemplo por objeto valor compartido
+### 27.15 — Un ejemplo por objeto valor compartido ✅
 
 Añadir una regla de formato al `Email` rompió las madres de dos entidades, que usaban `"example"`.
 `[[objeto_valor]] ejemplo = "ana@ejemplo.es"` (`generar objeto-valor Email String --ejemplo …`) da
 el valor a todas las madres, a los tests de rutas, a la siembra y a las madres de la web. Tests: el
 parser, `validar`, y una madre y una siembra con el ejemplo.
+
+**Decidido (2026-11-19):** `[[objeto_valor]] ejemplo` y `--ejemplo`. Solo en los tipos `String`
+(no vacío), `i64`, `f64` y `bool`, y tiene que leerse como su tipo; lo comprueban `generar
+objeto-valor` y `validar`. Un campo cuyo `objeto_valor` es ese compartido lo lleva (no se escribe en
+el campo: `puerto_toml::read` y `apply_shared_vo_inference` se lo dan) a la madre (`Email::new(
+"ana@ejemplo.es".to_string())`), a los cuerpos de los tests de rutas y de los casos de uso, a la
+siembra de un campo no único (uno único sigue en `<campo>_unico()` de la madre, 27.2) y a la madre de
+la web. Un `f64` sin punto se escribe con `.0`. Tests: el manifiesto, cada rechazo, `validar`, y la
+madre, una ruta, la siembra y la web de una entidad con el ejemplo.
 
 ### 27.16 — Clases de objeto valor con regla: email y dinero
 

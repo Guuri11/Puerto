@@ -163,6 +163,7 @@ fn shared_value_objects_are_declared_in_shared_rs_without_mod_rs() {
     let vos = [ValueObjectDefinition {
         name: "Email".to_string(),
         inner_type: "String".to_string(),
+        ..Default::default()
     }];
     // Since 12.0 a project ships no `shared.rs`: the first shared VO creates it.
     assert!(!dir.join("nucleo/src/lib.rs").exists());

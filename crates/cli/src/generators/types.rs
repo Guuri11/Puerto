@@ -376,9 +376,11 @@ pub struct FieldCtx {
 pub fn field_ctx(field: &Field, pascal: &str, shared_vos: &[ValueObjectDefinition]) -> FieldCtx {
     let vo = field.value_object.clone().unwrap_or_default();
     let is_map = field.field_type == "HashMap<String, String>";
-    let default_literal = resolve_type(&field.field_type)
-        .map_or("", |m| m.default_expr)
-        .to_string();
+    let default_literal = example_literal(field, &field.field_type).unwrap_or_else(|| {
+        resolve_type(&field.field_type)
+            .map_or("", |m| m.default_expr)
+            .to_string()
+    });
     let ref_target = field.references.clone().unwrap_or_default();
     FieldCtx {
         camel: crate::generators::naming::snake_to_camel(&field.name),
@@ -508,8 +510,34 @@ fn mother_build(field: &Field) -> String {
 /// generated tests that did not compile.
 pub fn props_literal(field: &Field) -> String {
     literal_with(field, |ty| {
-        resolve_type(ty).map_or("", |m| m.default_expr).to_string()
+        example_literal(field, ty)
+            .unwrap_or_else(|| resolve_type(ty).map_or("", |m| m.default_expr).to_string())
     })
+}
+
+/// The `ejemplo` of the field's shared value object (27.15) as a Rust literal of `ty`, its
+/// primitive; `None` without one. An `f64` gets its decimal point (`12` → `12.0`).
+fn example_literal(field: &Field, ty: &str) -> Option<String> {
+    let example = field.example.as_deref()?;
+    match ty {
+        "String" => Some(format!("{example:?}.to_string()")),
+        "i64" | "bool" => Some(example.to_string()),
+        "f64" => example
+            .parse::<f64>()
+            .ok()
+            .map(|value| format!("{value:?}")),
+        _ => None,
+    }
+}
+
+/// [`example_literal`] in TypeScript, for the web's mothers.
+fn example_ts(field: &Field) -> Option<String> {
+    let example = field.example.as_deref()?;
+    match vo_inner_type(field).as_str() {
+        "String" => Some(ts_string(example)),
+        "i64" | "f64" | "bool" => Some(example.to_string()),
+        _ => None,
+    }
 }
 
 /// Like [`props_literal`], with the values the Pg integration tests seed.
@@ -521,6 +549,10 @@ pub fn props_literal(field: &Field) -> String {
 pub fn seed_literal(field: &Field) -> String {
     const FIXED_TIME: &str = "chrono::DateTime::from_timestamp(1_700_000_000, 0).unwrap()";
     literal_with(field, |ty| {
+        // A unique field seeds a fresh value per call: its example is one value.
+        if let Some(example) = example_literal(field, ty).filter(|_| !field.unique) {
+            return example;
+        }
         match (ty, field.unique) {
         ("String", true) => "Uuid::new_v4().to_string()".to_string(),
         ("i64", true) => "(Uuid::new_v4().as_u128() >> 65) as i64".to_string(),
@@ -855,6 +887,13 @@ pub fn web_field_ctx(field: &Field, entity_ident: &str) -> WebFieldCtx {
         WebShape::Text if vo_inner_type(field) == "Uuid" => ("text", "crypto.randomUUID()".into()),
         WebShape::Text => ("text", "\"example\"".into()),
     };
+    // A shared value object's example (27.15) is the valid value its rule accepts.
+    let mother = match shape {
+        WebShape::Text | WebShape::Number | WebShape::Checkbox => {
+            example_ts(field).unwrap_or(mother)
+        }
+        _ => mother,
+    };
 
     // An enum is the API's `string`: its select only offers the variants. A required text or number
     // needs no helper.
@@ -1038,6 +1077,7 @@ mod tests {
                 references: None,
                 label: None,
                 texts: None,
+                example: None,
             },
             Field {
                 name: "price".into(),
@@ -1050,6 +1090,7 @@ mod tests {
                 references: None,
                 label: None,
                 texts: None,
+                example: None,
             },
         ];
         assert!(validate_fields(&fields).is_ok());
@@ -1070,6 +1111,7 @@ mod tests {
                 references: None,
                 label: None,
                 texts: None,
+                example: None,
             },
             Field {
                 name: "bad".into(),
@@ -1082,6 +1124,7 @@ mod tests {
                 references: None,
                 label: None,
                 texts: None,
+                example: None,
             },
         ];
         let err = validate_fields(&fields).unwrap_err();
@@ -1245,6 +1288,7 @@ mod tests {
         let shared = [ValueObjectDefinition {
             name: "Email".into(),
             inner_type: "String".into(),
+            ..Default::default()
         }];
 
         let plain = field_ctx(&field("String", None), "P", &shared);
@@ -1279,6 +1323,45 @@ mod tests {
 
         let count = field_ctx(&field("i64", None), "P", &shared);
         assert!(!count.required_string && !count.is_vo);
+    }
+
+    #[test]
+    fn should_take_the_shared_value_object_example_wherever_a_test_needs_a_value() {
+        let shared = |name: &str, ty: &str, example: &str| Field {
+            name: name.into(),
+            field_type: ty.into(),
+            value_object: Some(crate::generators::naming::to_pascal_case(name)),
+            example: Some(example.into()),
+            ..Default::default()
+        };
+        let email = shared("email", "String", "ana@ejemplo.es");
+        let ratio = shared("ratio", "f64", "12");
+        let activo = shared("activo", "bool", "false");
+
+        assert_eq!(
+            props_literal(&email),
+            "Email::new(\"ana@ejemplo.es\".to_string()).expect(\"Email::new rechazó el valor de ejemplo\")"
+        );
+        assert_eq!(
+            field_ctx(&email, "Cliente", &[]).default_literal,
+            "\"ana@ejemplo.es\".to_string()"
+        );
+        assert_eq!(field_ctx(&ratio, "Cliente", &[]).default_literal, "12.0");
+        assert_eq!(field_ctx(&activo, "Cliente", &[]).default_literal, "false");
+        assert!(seed_literal(&email).contains("\"ana@ejemplo.es\""));
+        let unique = Field {
+            unique: true,
+            ..email.clone()
+        };
+        assert!(
+            !seed_literal(&unique).contains("ana@ejemplo.es"),
+            "a fresh value per seed"
+        );
+        assert_eq!(
+            web_field_ctx(&email, "cliente").mother,
+            "\"ana@ejemplo.es\""
+        );
+        assert_eq!(web_field_ctx(&ratio, "cliente").mother, "12");
     }
 
     #[test]
@@ -1367,6 +1450,7 @@ mod tests {
         let shared = [ValueObjectDefinition {
             name: "V".into(),
             inner_type: "String".into(),
+            ..Default::default()
         }];
         let local = |ty: &str| field_vo_conversion(&field(ty, Some("V")), "fila.", "P", &[]);
         let shared_ = |ty: &str| field_vo_conversion(&field(ty, Some("V")), "fila.", "P", &shared);

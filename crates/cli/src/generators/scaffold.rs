@@ -389,14 +389,19 @@ pub fn run_scaffold_with_options(
 ///
 /// Validated here, at the command that writes it: an invalid declaration used to land in
 /// puerto.toml and only surface later, in `puerto validar` or as uncompilable generated code.
+/// `example` (27.15, `--ejemplo`): the value its fields' tests use, checked against `inner_type`.
 pub fn run_value_object(
     name: &str,
     inner_type: &str,
+    example: Option<&str>,
     base: &Path,
 ) -> Result<(), Box<dyn std::error::Error>> {
     let inner_type = &crate::puerto_toml::expand_type(inner_type);
     crate::validation::validate_vo_name(name)?;
     crate::validation::validate_shared_vo_inner_type(inner_type)?;
+    if let Some(example) = example {
+        crate::validation::validate_vo_example(inner_type, example)?;
+    }
 
     let config = crate::puerto_toml::read(base)?;
     if config.value_object.iter().any(|vo| vo.name == name) {
@@ -406,6 +411,13 @@ pub fn run_value_object(
         .into());
     }
     crate::puerto_toml::add_value_object(base, name, inner_type)?;
+    if let Some(example) = example {
+        let mut config = crate::puerto_toml::read(base)?;
+        if let Some(vo) = config.value_object.iter_mut().find(|vo| vo.name == name) {
+            vo.example = Some(example.to_string());
+        }
+        crate::puerto_toml::write(base, &config)?;
+    }
     println!("✓ Objeto valor compartido '{name}' añadido a puerto.toml");
     Ok(())
 }

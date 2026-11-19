@@ -10,6 +10,7 @@ fn is_shared_vo_detection() {
     let shared_vos = vec![ValueObjectDefinition {
         name: "Email".to_string(),
         inner_type: "String".to_string(),
+        ..Default::default()
     }];
 
     let email_field = Field {
@@ -43,6 +44,7 @@ fn generate_shared_value_objects_string() {
     let vos = vec![ValueObjectDefinition {
         name: "Email".to_string(),
         inner_type: "String".to_string(),
+        ..Default::default()
     }];
 
     let result = generate_shared_value_objects(&vos).unwrap();
@@ -61,6 +63,7 @@ fn generate_shared_value_objects_numeric() {
     let vos = vec![ValueObjectDefinition {
         name: "Amount".to_string(),
         inner_type: "i64".to_string(),
+        ..Default::default()
     }];
 
     let result = generate_shared_value_objects(&vos).unwrap();
@@ -78,10 +81,12 @@ fn generate_shared_errors_combined_output() {
         ValueObjectDefinition {
             name: "Email".to_string(),
             inner_type: "String".to_string(),
+            ..Default::default()
         },
         ValueObjectDefinition {
             name: "Money".to_string(),
             inner_type: "i64".to_string(),
+            ..Default::default()
         },
     ];
 
@@ -100,6 +105,7 @@ fn generate_model_with_shared_vo_imports() {
     let shared_vos = vec![ValueObjectDefinition {
         name: "Email".to_string(),
         inner_type: "String".to_string(),
+        ..Default::default()
     }];
 
     let fields = vec![Field {
@@ -122,6 +128,7 @@ fn generate_model_local_vo_uses_local_import() {
     let shared_vos = vec![ValueObjectDefinition {
         name: "Email".to_string(),
         inner_type: "String".to_string(),
+        ..Default::default()
     }];
 
     let fields = vec![Field {
@@ -144,6 +151,7 @@ fn generate_create_use_case_shared_vo() {
     let shared_vos = vec![ValueObjectDefinition {
         name: "Email".to_string(),
         inner_type: "String".to_string(),
+        ..Default::default()
     }];
 
     let fields = vec![Field {
@@ -166,6 +174,7 @@ fn generate_infra_entity_shared_vo_import_path() {
     let shared_vos = vec![ValueObjectDefinition {
         name: "Email".to_string(),
         inner_type: "String".to_string(),
+        ..Default::default()
     }];
 
     let fields = vec![Field {
@@ -188,6 +197,7 @@ fn generate_infra_entity_shared_vo_try_from_map_err() {
     let shared_vos = vec![ValueObjectDefinition {
         name: "Email".to_string(),
         inner_type: "String".to_string(),
+        ..Default::default()
     }];
 
     let fields = vec![Field {
@@ -251,6 +261,7 @@ tipo = "String"
         &[crate::puerto_toml::ValueObjectDefinition {
             name: "Email".to_string(),
             inner_type: "String".to_string(),
+            ..Default::default()
         }],
     )
     .unwrap();
@@ -285,6 +296,7 @@ fn scaffold_with_all_shared_vos_does_not_patch_local_value_objects_mod() {
         &[ValueObjectDefinition {
             name: "Email".to_string(),
             inner_type: "String".to_string(),
+            ..Default::default()
         }],
     )
     .unwrap();
@@ -361,6 +373,7 @@ fn infer_shared_vo_string_type_from_name() {
     let shared_vos = vec![ValueObjectDefinition {
         name: "Email".to_string(),
         inner_type: "String".to_string(),
+        ..Default::default()
     }];
     let fields = vec![puerto_toml::Field {
         name: "email".to_string(),
@@ -379,6 +392,7 @@ fn infer_shared_vo_numeric_type_from_name() {
     let shared_vos = vec![ValueObjectDefinition {
         name: "Money".to_string(),
         inner_type: "i64".to_string(),
+        ..Default::default()
     }];
     let fields = vec![puerto_toml::Field {
         name: "price".to_string(),
@@ -395,6 +409,7 @@ fn infer_shared_vo_preserves_unique_flag() {
     let shared_vos = vec![ValueObjectDefinition {
         name: "Email".to_string(),
         inner_type: "String".to_string(),
+        ..Default::default()
     }];
     let fields = vec![puerto_toml::Field {
         name: "email".to_string(),
@@ -413,6 +428,7 @@ fn infer_shared_vo_leaves_explicit_vo_field_unchanged() {
     let shared_vos = vec![ValueObjectDefinition {
         name: "Email".to_string(),
         inner_type: "String".to_string(),
+        ..Default::default()
     }];
     let fields = vec![puerto_toml::Field {
         name: "email".to_string(),
@@ -430,6 +446,7 @@ fn infer_shared_vo_leaves_primitive_field_unchanged() {
     let shared_vos = vec![ValueObjectDefinition {
         name: "Email".to_string(),
         inner_type: "String".to_string(),
+        ..Default::default()
     }];
     let fields = vec![puerto_toml::Field {
         name: "title".to_string(),
@@ -458,6 +475,7 @@ fn infer_shared_vo_only_matches_registered_vo_names() {
     let shared_vos = vec![ValueObjectDefinition {
         name: "Email".to_string(),
         inner_type: "String".to_string(),
+        ..Default::default()
     }];
     let fields = vec![puerto_toml::Field {
         name: "phone".to_string(),
@@ -476,10 +494,12 @@ fn infer_shared_vo_handles_multiple_fields() {
         ValueObjectDefinition {
             name: "Email".to_string(),
             inner_type: "String".to_string(),
+            ..Default::default()
         },
         ValueObjectDefinition {
             name: "Money".to_string(),
             inner_type: "i64".to_string(),
+            ..Default::default()
         },
     ];
     let fields = vec![
@@ -517,10 +537,10 @@ fn value_object_command_rejects_invalid_name_type_and_duplicates() {
     fs::create_dir_all(&dir).unwrap();
     setup_puerto_stubs(&dir);
 
-    assert!(scaffold::run_value_object("email", "String", &dir).is_err());
-    assert!(scaffold::run_value_object("Email", "Strin", &dir).is_err());
-    scaffold::run_value_object("Email", "String", &dir).unwrap();
-    let dup = scaffold::run_value_object("Email", "String", &dir);
+    assert!(scaffold::run_value_object("email", "String", None, &dir).is_err());
+    assert!(scaffold::run_value_object("Email", "Strin", None, &dir).is_err());
+    scaffold::run_value_object("Email", "String", None, &dir).unwrap();
+    let dup = scaffold::run_value_object("Email", "String", None, &dir);
 
     assert!(dup.is_err());
     assert!(dup.unwrap_err().to_string().contains("ya está declarad"));
@@ -537,7 +557,7 @@ fn value_object_command_expands_datetime_shorthand() {
     fs::create_dir_all(&dir).unwrap();
     setup_puerto_stubs(&dir);
 
-    scaffold::run_value_object("When", "DateTime", &dir).unwrap();
+    scaffold::run_value_object("When", "DateTime", None, &dir).unwrap();
 
     let config = puerto_toml::read(&dir).unwrap();
     assert_eq!(config.value_object[0].inner_type, "DateTime<Utc>");
@@ -552,10 +572,12 @@ fn should_import_uuid_and_chrono_per_shared_value_object_that_wraps_them() {
         ValueObjectDefinition {
             name: "Ref".into(),
             inner_type: "Uuid".into(),
+            ..Default::default()
         },
         ValueObjectDefinition {
             name: "Since".into(),
             inner_type: "DateTime<Utc>".into(),
+            ..Default::default()
         },
     ];
 
@@ -565,4 +587,117 @@ fn should_import_uuid_and_chrono_per_shared_value_object_that_wraps_them() {
         out,
         "use crate::errores::ErrorRef;\nuse uuid::Uuid;\n\n#[derive(Debug, Clone, Copy, PartialEq)]\npub struct Ref(Uuid);\n\nimpl Ref {\n    pub fn new(valor: Uuid) -> Result<Self, ErrorRef> {\n        Ok(Self(valor))\n    }\n\n    pub fn valor(&self) -> Uuid {\n        self.0\n    }\n}\n\nuse crate::errores::ErrorSince;\nuse chrono::{DateTime, Utc};\n\n#[derive(Debug, Clone, PartialEq)]\npub struct Since(DateTime<Utc>);\n\nimpl Since {\n    pub fn new(valor: DateTime<Utc>) -> Result<Self, ErrorSince> {\n        Ok(Self(valor))\n    }\n\n    pub fn valor(&self) -> DateTime<Utc> {\n        self.0\n    }\n}\n"
     );
+}
+
+// ── 27.15: an example per shared value object ──────────────────────────────
+
+fn manifest_dir(name: &str, manifest: &str) -> PathBuf {
+    let dir = temp_dir(name);
+    cleanup(&dir);
+    fs::create_dir_all(&dir).unwrap();
+    fs::write(dir.join("puerto.toml"), manifest).unwrap();
+    dir
+}
+
+#[test]
+fn value_object_records_its_example_in_puerto_toml() {
+    let dir = manifest_dir("vo_example", "[proyecto]\nnombre = \"my-app\"\n");
+
+    scaffold::run_value_object("Email", "String", Some("ana@ejemplo.es"), &dir).unwrap();
+
+    let config = puerto_toml::read(&dir).unwrap();
+    assert_eq!(
+        config.value_object[0].example.as_deref(),
+        Some("ana@ejemplo.es")
+    );
+    assert!(
+        fs::read_to_string(dir.join("puerto.toml"))
+            .unwrap()
+            .contains("ejemplo = \"ana@ejemplo.es\"")
+    );
+    cleanup(&dir);
+}
+
+#[test]
+fn value_object_refuses_an_example_that_is_not_of_its_type_and_writes_nothing() {
+    let dir = manifest_dir("vo_example_bad", "[proyecto]\nnombre = \"my-app\"\n");
+
+    for (name, ty, example) in [
+        ("Edad", "i64", "doce"),
+        ("Ratio", "f64", "mucho"),
+        ("Activo", "bool", "si"),
+        ("Nombre", "String", " "),
+        ("Ref", "Uuid", "2b1f…"),
+    ] {
+        let err = scaffold::run_value_object(name, ty, Some(example), &dir).unwrap_err();
+        assert!(err.to_string().contains("ejemplo"), "{name}: {err}");
+    }
+    assert!(puerto_toml::read(&dir).unwrap().value_object.is_empty());
+    cleanup(&dir);
+}
+
+#[test]
+fn validate_rejects_an_example_that_is_not_of_its_type() {
+    let dir = manifest_dir(
+        "vo_example_validate",
+        "[proyecto]\nnombre = \"my-app\"\n\n[[objeto_valor]]\nnombre = \"Edad\"\ntipo = \"i64\"\nejemplo = \"doce\"\n",
+    );
+
+    let err = validate::run_validate(&dir).unwrap_err().to_string();
+
+    assert!(err.contains("Edad") && err.contains("ejemplo"), "{err}");
+    cleanup(&dir);
+}
+
+#[test]
+fn a_field_of_a_shared_value_object_takes_its_example_everywhere_a_test_needs_a_value() {
+    let dir = temp_dir("vo_example_everywhere");
+    cleanup(&dir);
+    fs::create_dir_all(&dir).unwrap();
+    let output = crate::commands::new::new_project(
+        Some("vo-example".into()),
+        crate::commands::new::NewOptions {
+            db: true,
+            no_portada: true,
+            ..Default::default()
+        },
+        Some(dir.clone()),
+    )
+    .unwrap();
+    scaffold::run_value_object("Email", "String", Some("ana@ejemplo.es"), &output).unwrap();
+    scaffold::run_value_object("Plazas", "i64", Some("12"), &output).unwrap();
+    let shared = puerto_toml::read(&output).unwrap().value_object;
+    let fields = puerto_toml::apply_shared_vo_inference(
+        vec![
+            puerto_toml::parse_field_arg("email:Email").unwrap(),
+            puerto_toml::parse_field_arg("plazas:Plazas").unwrap(),
+        ],
+        &shared,
+    );
+
+    scaffold::run_scaffold("Cliente", &output, &fields, OverwritePolicy::Ask).unwrap();
+
+    let read = |path: &str| fs::read_to_string(output.join(path)).unwrap();
+    let mother = read("contextos/cliente/dominio/src/pruebas/madres.rs");
+    assert!(
+        mother.contains("Email::new(\"ana@ejemplo.es\".to_string())"),
+        "{mother}"
+    );
+    assert!(mother.contains("Plazas::new(12)"), "{mother}");
+    let routes = read("contextos/cliente/rest/src/rutas.rs");
+    assert!(
+        routes.contains("email: \"ana@ejemplo.es\".to_string(),"),
+        "{routes}"
+    );
+    assert!(routes.contains("plazas: 12,"), "{routes}");
+    let seed = read("contextos/cliente/infraestructura/src/pruebas/siembra.rs");
+    assert!(
+        seed.contains("MadreCliente::aleatorio()"),
+        "the mother's values: {seed}"
+    );
+    let web = read("web/src/pruebas/cliente.ts");
+    assert!(web.contains("email: \"ana@ejemplo.es\","), "{web}");
+    assert!(web.contains("plazas: 12,"), "{web}");
+    assert!(!mother.contains("\"example\""), "{mother}");
+    cleanup(&dir);
 }

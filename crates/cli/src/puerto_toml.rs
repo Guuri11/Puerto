@@ -51,12 +51,15 @@ pub struct Consumer {
     pub events: Vec<String>,
 }
 
-#[derive(Debug, Deserialize, Serialize, Clone)]
+#[derive(Debug, Deserialize, Serialize, Clone, Default)]
 pub struct ValueObjectDefinition {
     #[serde(rename = "nombre")]
     pub name: String,
     #[serde(rename = "tipo")]
     pub inner_type: String,
+    /// The valid value its fields' tests use instead of the registry's (27.15): `ana@ejemplo.es`.
+    #[serde(default, skip_serializing_if = "Option::is_none", rename = "ejemplo")]
+    pub example: Option<String>,
 }
 
 /// Where the app goes under a portada unless `puerto nuevo --ruta-app` says otherwise.
@@ -221,6 +224,10 @@ pub struct Field {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[serde(rename = "etiqueta")]
     pub label: Option<String>,
+    /// Its shared value object's `ejemplo` (27.15), never written: [`read`] and
+    /// [`apply_shared_vo_inference`] give it to every field of that value object.
+    #[serde(skip)]
+    pub example: Option<String>,
     /// What the screens show for each variant of an enum (27.9: `{ AlaVenta = "A la venta" }`);
     /// a variant it leaves out, [`crate::generators::naming::texto_variante`].
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -416,7 +423,22 @@ pub fn expand_type(t: &str) -> String {
 pub fn read(base: &Path) -> Result<PuertoConfig, Box<dyn std::error::Error>> {
     let path = base.join("puerto.toml");
     let src = std::fs::read_to_string(&path)?;
-    Ok(toml::from_str(&src)?)
+    let mut config: PuertoConfig = toml::from_str(&src)?;
+    for entity in &mut config.entity {
+        give_examples(&mut entity.fields, &config.value_object);
+    }
+    Ok(config)
+}
+
+/// Each field of a shared value object with an `ejemplo` carries it (27.15).
+fn give_examples(fields: &mut [Field], shared_vos: &[ValueObjectDefinition]) {
+    for field in fields {
+        field.example = field
+            .value_object
+            .as_ref()
+            .and_then(|vo| shared_vos.iter().find(|s| &s.name == vo))
+            .and_then(|s| s.example.clone());
+    }
 }
 
 pub fn write(base: &Path, config: &PuertoConfig) -> Result<(), Box<dyn std::error::Error>> {
@@ -473,7 +495,7 @@ pub fn apply_shared_vo_inference(
     if shared_vos.is_empty() {
         return fields;
     }
-    fields
+    let mut fields: Vec<Field> = fields
         .into_iter()
         .map(|f| {
             if f.value_object.is_none() {
@@ -487,7 +509,9 @@ pub fn apply_shared_vo_inference(
             }
             f
         })
-        .collect()
+        .collect();
+    give_examples(&mut fields, shared_vos);
+    fields
 }
 
 /// Append a shared VO declaration to puerto.toml. No-op if already present.
@@ -503,6 +527,7 @@ pub fn add_value_object(
     config.value_object.push(ValueObjectDefinition {
         name: name.to_string(),
         inner_type: inner_type.to_string(),
+        ..Default::default()
     });
     write(base, &config)
 }

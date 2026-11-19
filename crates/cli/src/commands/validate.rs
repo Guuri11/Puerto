@@ -298,6 +298,11 @@ pub fn run_validate(cwd: &Path) -> Result<(), Box<dyn std::error::Error>> {
         if let Err(e) = crate::validation::validate_vo_name(&vo_def.name) {
             errors.push(format!("objeto_valor compartido '{}': {}", vo_def.name, e));
         }
+        if let Some(example) = &vo_def.example {
+            if let Err(e) = crate::validation::validate_vo_example(&vo_def.inner_type, example) {
+                errors.push(format!("objeto_valor compartido '{}': {e}", vo_def.name));
+            }
+        }
         if seen_shared_vo_names.contains(&vo_def.name) {
             errors.push(format!(
                 "el objeto_valor compartido '{}' está repetido",

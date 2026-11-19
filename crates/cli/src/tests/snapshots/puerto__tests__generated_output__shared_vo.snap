@@ -74,7 +74,7 @@ comprueba que los dos siguen de acuerdo. `puerto listar` muestra lo que declara,
 | `puerto generar dominio <Nombre> [-- campos…]` | solo la capa de dominio, y la entidad en `puerto.toml`; después `puerto generar aplicacion <Nombre>`, `puerto generar repositorio <Nombre>`, `puerto generar presentacion <Nombre>`: una capa cada vez, y cada una comprueba la anterior |
 | `puerto generar caso-de-uso <Entidad> <accion> [--interno]` | un caso de uso más: su fichero (trait + doble, la impl por rellenar; ver más abajo) y un campo en `Api<Entidad>`; con `--interno`, sin campo ni `actor`: lo llama el worker u otro caso de uso (`[[entidad]] internos`) |
 | `puerto generar transicion <Entidad> <verbo> [--evento <tipo>] [--rol <rol>] [--interno]` | un cambio de estado de punta a punta (`cancelar`): el método `<verbo>` de la entidad en `dominio/src/<verbo>.rs` (la regla, por escribir), el caso de uso `<verbo>_<entidad>` con sus tests, `POST /<plural>/{id}/<verbo>` en `rest/src/<verbo>_<entidad>.rs` y, con pantallas, su botón en el detalle; con `--interno`, sin ruta ni botón |
-| `puerto generar objeto-valor <Nombre> <tipo>` | un objeto valor compartido (`[[objeto_valor]]`), reutilizable por todas las entidades |
+| `puerto generar objeto-valor <Nombre> <tipo> [--ejemplo <valor>]` | un objeto valor compartido (`[[objeto_valor]]`), reutilizable por todas las entidades; con `--ejemplo`, el valor válido que usan los tests de sus campos (dale uno en cuanto su `new` tenga una regla) |
 | `puerto generar migracion <nombre>` | una migración SQL vacía (proyectos `db`) |
 | `puerto generar bootstrap` | vuelve a cablear `presentacion/cableado` y `generado/bootstrap.rs` a partir de `puerto.toml` |
 | `puerto generar evento <Entidad> <nombre>` | un evento de dominio propio (proyectos con `eventos`) |
@@ -1333,11 +1333,12 @@ impl MadreCliente {
         Cliente::new(PropsCliente {
             name: self.name.unwrap_or_else(|| "example".to_string()),
             email: self.email.unwrap_or_else(|| {
-                Email::new("example".to_string()).expect("Email::new rechazó el valor de ejemplo")
+                Email::new("ana@ejemplo.es".to_string())
+                    .expect("Email::new rechazó el valor de ejemplo")
             }),
-            credit: self
-                .credit
-                .unwrap_or_else(|| Money::new(42).expect("Money::new rechazó el valor de ejemplo")),
+            credit: self.credit.unwrap_or_else(|| {
+                Money::new(1250).expect("Money::new rechazó el valor de ejemplo")
+            }),
         })
         .expect("MadreCliente: Cliente::new rechazó los props")
     }
@@ -1346,11 +1347,12 @@ impl MadreCliente {
         PropsCliente {
             name: self.name.unwrap_or_else(|| "example".to_string()),
             email: self.email.unwrap_or_else(|| {
-                Email::new("example".to_string()).expect("Email::new rechazó el valor de ejemplo")
+                Email::new("ana@ejemplo.es".to_string())
+                    .expect("Email::new rechazó el valor de ejemplo")
             }),
-            credit: self
-                .credit
-                .unwrap_or_else(|| Money::new(42).expect("Money::new rechazó el valor de ejemplo")),
+            credit: self.credit.unwrap_or_else(|| {
+                Money::new(1250).expect("Money::new rechazó el valor de ejemplo")
+            }),
         }
     }
 
@@ -2124,16 +2126,16 @@ mod tests {
     fn peticion_crear() -> PeticionCrearCliente {
         PeticionCrearCliente {
             name: "example".to_string(),
-            email: "example".to_string(),
-            credit: 42,
+            email: "ana@ejemplo.es".to_string(),
+            credit: 1250,
         }
     }
 
     fn peticion_actualizar() -> PeticionActualizarCliente {
         PeticionActualizarCliente {
             name: "example".to_string(),
-            email: "example".to_string(),
-            credit: 42,
+            email: "ana@ejemplo.es".to_string(),
+            credit: 1250,
         }
     }
 
@@ -2869,10 +2871,12 @@ objeto_valor = "Money"
 [[objeto_valor]]
 nombre = "Email"
 tipo = "String"
+ejemplo = "ana@ejemplo.es"
 
 [[objeto_valor]]
 nombre = "Money"
 tipo = "i64"
+ejemplo = "1250"
 
 === web/src/api/cliente.ts ===
 import createClient, { type Client, type ClientOptions } from "openapi-fetch";
@@ -3761,8 +3765,8 @@ export const MadreCliente = {
   peticion(cambios: Partial<PeticionCliente> = {}): PeticionCliente {
     return {
       name: "example",
-      email: "example",
-      credit: 42,
+      email: "ana@ejemplo.es",
+      credit: 1250,
       ...cambios,
     };
   },

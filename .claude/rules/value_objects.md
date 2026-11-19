@@ -59,6 +59,12 @@ puerto generar objeto-valor Dinero i64
 Esto añade bloques `[[objeto_valor]]` a `puerto.toml`. Cuando el objeto valor de un campo coincide
 con uno compartido declarado, el import pasa de local (`crate::valores`) a `nucleo::valores`.
 
+`--ejemplo <valor>` (27.15, `[[objeto_valor]] ejemplo`; solo `String` no vacío, `i64`, `f64` y
+`bool`, leído como su tipo) es el valor válido que usan los tests de sus campos en vez de
+`"example"`: la madre, los cuerpos de los tests de rutas y de casos de uso, la siembra de un campo
+no único y la madre de la web. Un campo no lo guarda: `puerto_toml::read` y
+`apply_shared_vo_inference` se lo dan (`Field::example`, `#[serde(skip)]`).
+
 ## Esquema de puerto.toml
 
 ```toml
@@ -73,6 +79,7 @@ tipo = "String"
 [[objeto_valor]]
 nombre = "Dinero"
 tipo = "i64"
+ejemplo = "1250"                # opcional (27.15): lo que usan sus tests en vez del valor por defecto
 
 [[entidad]]
 nombre = "Cliente"
