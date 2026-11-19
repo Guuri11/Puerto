@@ -5,3 +5,6 @@
 /landing/dist
 /landing/.astro
 /mutants.out*
+
+# insta los deja al fallar un snapshot; se aceptan con make test/snapshots
+*.snap.new
