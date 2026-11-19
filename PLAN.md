@@ -3954,7 +3954,8 @@ entidad. Tests: el fichero (ejecutable) y la regla de make.
 
 ### Por decidir (antes de su pieza, con Sergio)
 
-- **El género de los eventos CRUD y de los códigos de objeto valor:** `entrada_creado` frente a
+- ~~**El género de los eventos CRUD y de los códigos de objeto valor:**~~ decidido el 2026-11-19: se
+  queda como está y se documenta en el glosario (§ Fase 27). `entrada_creado` frente a
   `entrada_anulada` (propio), `sala.capacidad_invalido`. Cambiarlo rompe el contrato de los
   snapshots y de los consumidores, así que iría con guía de migración. Si no se cambia, se documenta
   en el glosario.
@@ -3962,9 +3963,13 @@ entidad. Tests: el fichero (ejecutable) y la regla de make.
   - ~~`etiqueta` de un campo, la clave de los textos de las variantes y la frase neutra de
     «obligatorio»~~: decidido el 2026-11-19, `etiqueta`, `textos` y «`<Etiqueta>`: campo
     obligatorio» (`docs/glosario.md` § Fase 27);
-  - el comando y la clave de la transición, y su código de rechazo;
-  - `interno`, `Principal::sistema`, el helper de páginas, `--usa` y el módulo compartido del worker;
-  - `ejemplo`, las clases `email` y `dinero`;
+  - ~~el comando y la clave de la transición, y su código de rechazo~~: `transicion`,
+    `transiciones`, `no_se_puede_<verbo>` (2026-11-19);
+  - ~~`interno`, `Principal::sistema`, el helper de páginas, `--usa` y el módulo compartido del
+    worker~~: `--interno` / `internos`, `Principal::sistema`, `todas_las_paginas`, `--usa`,
+    `consumidores/comun.rs` (2026-11-19);
+  - `ejemplo`, las clases `email` y `dinero` (`dinero` se escribe en euros con coma, decidido el
+    2026-11-19);
   - `por_defecto`, `generado`, `propietario` y la ruta `mis-<plural>`;
   - el hueco de la lista pública y `sembrar` (`CONFIRM`, decidido el 2026-11-19).
 
