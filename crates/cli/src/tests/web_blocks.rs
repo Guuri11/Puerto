@@ -541,3 +541,164 @@ fn the_sections_need_a_project_with_portada() {
     assert!(err.contains("portada"), "{err}");
     cleanup(&dir);
 }
+
+// ── 27.20: the escaparate, a public list on the portada ────────────────────
+
+fn escaparate_project(name: &str) -> (PathBuf, PathBuf) {
+    let (dir, output) = with_portada(
+        name,
+        NewOptions {
+            auth: Some("oidc".into()),
+            ..Default::default()
+        },
+    );
+    blocks::run_install("portada/producto", &output, OverwritePolicy::Force).unwrap();
+    let access = |public: &[&str]| {
+        let strings = |args: &[&str]| args.iter().map(|a| a.to_string()).collect::<Vec<_>>();
+        scaffold::ScaffoldAccess::from_args(&strings(public), &[]).unwrap()
+    };
+    let fields = |args: &[&str]| -> Vec<puerto_toml::Field> {
+        args.iter()
+            .map(|a| puerto_toml::parse_field_arg(a).unwrap())
+            .collect()
+    };
+    let scaffold = |name: &str, fields: &[puerto_toml::Field], public: &[&str]| {
+        scaffold::run_scaffold_with_options(
+            name,
+            &output,
+            fields,
+            OverwritePolicy::Force,
+            &access(public),
+            &scaffold::EntityShape::default(),
+        )
+        .unwrap();
+    };
+    scaffold(
+        "Sala",
+        &fields(&["nombre:String"]),
+        &["listar_salas", "obtener_sala"],
+    );
+    scaffold(
+        "Concierto",
+        &fields(&[
+            "titulo:String",
+            "sala_id:ref:Sala",
+            "estado:EstadoConcierto:enum:AlaVenta/Agotado",
+            "precio:Precio:dinero",
+            "contacto:String",
+            "lote:Uuid",
+            "sala_reserva_id:ref:opt:Sala",
+            "sala_ensayo_id:ref:Sala",
+        ]),
+        &["listar_conciertos", "obtener_concierto"],
+    );
+    scaffold("Entrada", &fields(&["titular:String"]), &[]);
+    (dir, output)
+}
+
+#[test]
+fn the_escaparate_shows_the_first_of_a_public_list_and_joins_the_portada() {
+    let (dir, output) = escaparate_project("escaparate_install");
+
+    let installed = blocks::run_install_for(
+        "escaparate/tarjetas",
+        Some("Concierto"),
+        &output,
+        OverwritePolicy::Ask,
+    )
+    .unwrap();
+
+    assert!(installed.missing.is_empty(), "{:?}", installed.missing);
+    let section = read(&output, "web/src/portada/escaparate.tsx");
+    assert!(
+        section.contains("export function SeccionEscaparate()"),
+        "{section}"
+    );
+    assert!(
+        section.contains("api.GET(\"/conciertos\", PRIMEROS)"),
+        "{section}"
+    );
+    assert!(
+        section.contains("{concierto.titulo}"),
+        "the title: {section}"
+    );
+    assert!(
+        section.contains("etiquetasSala.get(concierto.salaId) ?? concierto.salaId"),
+        "{section}"
+    );
+    assert!(
+        section.contains("TEXTOS_ESTADO[concierto.estado]"),
+        "{section}"
+    );
+    assert!(section.contains("euros(concierto.precio)"), "{section}");
+    assert_eq!(
+        section.matches("api.GET(\"/salas\"").count(),
+        1,
+        "one load per target: {section}"
+    );
+    assert!(
+        !section.contains("concierto.lote"),
+        "a bare Uuid: {section}"
+    );
+    assert!(
+        !section.contains("salaReservaId"),
+        "an optional reference: {section}"
+    );
+    assert!(read(&output, "web/src/portada/escaparate.test.tsx").contains("SeccionEscaparate"));
+    let page = read(&output, "web/src/paginas/portada.tsx");
+    assert!(
+        page.contains("<SeccionCabecera />\n        <SeccionEscaparate />\n"),
+        "{page}"
+    );
+    assert!(
+        page.contains("import { SeccionEscaparate } from \"../portada/escaparate\";"),
+        "{page}"
+    );
+    let page_test = read(&output, "web/src/paginas/portada.test.tsx");
+    assert!(
+        page_test.contains("renderizarPantalla(<PaginaPortada />, { api: apiFalsa([]) })"),
+        "{page_test}"
+    );
+
+    // Again: nothing changes, and the page keeps one section.
+    blocks::run_install_for(
+        "escaparate/tarjetas",
+        Some("Concierto"),
+        &output,
+        OverwritePolicy::Ask,
+    )
+    .unwrap();
+    assert_eq!(
+        read(&output, "web/src/paginas/portada.tsx")
+            .matches("<SeccionEscaparate />")
+            .count(),
+        1
+    );
+    assert!(blocks::catalog_text().contains("escaparate/tarjetas"));
+    cleanup(&dir);
+}
+
+#[test]
+fn the_escaparate_needs_an_entity_whose_list_is_public() {
+    let (dir, output) = escaparate_project("escaparate_refusals");
+
+    let err = |entity: Option<&str>| {
+        blocks::run_install_for("escaparate/tarjetas", entity, &output, OverwritePolicy::Ask)
+            .unwrap_err()
+            .to_string()
+    };
+
+    assert!(err(None).contains("<Entidad>"), "{}", err(None));
+    assert!(
+        err(Some("Entrada")).contains("no es pública"),
+        "{}",
+        err(Some("Entrada"))
+    );
+    assert!(
+        err(Some("Nada")).contains("puerto.toml"),
+        "{}",
+        err(Some("Nada"))
+    );
+    assert!(!output.join("web/src/portada/escaparate.tsx").exists());
+    cleanup(&dir);
+}

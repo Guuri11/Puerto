@@ -48,7 +48,11 @@ function construir() {
       trabajo,
     );
     const proyecto = join(trabajo, 'acme');
-    puerto(['generar', 'scaffold', 'Producto', '--', 'nombre:String', 'precio:i64'], proyecto);
+    // Its list is public: the escaparate (`escaparate/<variante> Producto`) shows it on the portada.
+    puerto(
+      ['generar', 'scaffold', 'Producto', '--publico', 'listar_productos,obtener_producto', '--', 'nombre:String', 'precio:i64'],
+      proyecto,
+    );
     puerto(['generar', 'scaffold', 'Cliente', '--', 'nombre:String', 'email:String'], proyecto);
     // The sections of the portada are installed over `portada/producto`.
     puerto(['generar', 'web-bloque', 'portada/producto', '--forzar'], proyecto);
@@ -57,7 +61,9 @@ function construir() {
     const vistos = new Set();
     const bloques = catalogo.map((bloque) => {
       const [hueco, variante] = bloque.id.split('/');
-      const rutas = puerto(['generar', 'web-bloque', bloque.id, '--forzar'], proyecto)
+      // A block of the escaparate shows an entity (27.20 de Puerto).
+      const entidad = hueco === 'escaparate' ? ['Producto'] : [];
+      const rutas = puerto(['generar', 'web-bloque', bloque.id, ...entidad, '--forzar'], proyecto)
         .split('\n')
         .map((linea) => linea.match(FICHERO)?.[1])
         .filter(Boolean);

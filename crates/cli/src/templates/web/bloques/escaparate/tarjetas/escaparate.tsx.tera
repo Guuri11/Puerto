@@ -1,0 +1,97 @@
+import { Link } from "wouter";
+import type { Esquemas } from "../api/cliente";
+import { desenvolver{% if targets %}, LIMITE_PAGINA_MAXIMO{% endif %} } from "../api/http";
+{%- if helpers %}
+import { {{ helpers | join(sep=", ") }} } from "../compartido/formularios";
+{%- endif %}
+import { useCarga } from "../compartido/use-carga";
+import { useDependencias } from "../dependencias";
+import { rutaApp } from "../generado/rutas";
+
+type {{ pascal }} = Esquemas["Dto{{ pascal }}"];
+
+/** Cuántas tarjetas enseña: los primeros de la lista, en su orden (`[[entidad]] orden`). */
+const PRIMEROS = { params: { query: { limite: 6 } } };
+{%- if targets %}
+
+/** La primera página de cada entidad referenciada: las etiquetas de sus referencias. */
+const PRIMERA_PAGINA = { params: { query: { limite: LIMITE_PAGINA_MAXIMO } } };
+{%- endif %}
+{%- for f in shown %}{% if f.is_enum %}
+
+/** Lo que se lee de cada variante de `{{ f.texts_const }}`. */
+const {{ f.texts_const }}: Record<string, string> = {
+{%- for o in f.options %}
+  {{ o.value }}: "{{ o.label }}",
+{%- endfor %}
+};
+{%- endif %}{% endfor %}
+
+/** Su detalle, en la app. */
+const detalle = (id: string) => `${rutaApp}/{{ plural }}/${id}`;
+
+/**
+ * Los primeros elementos de la lista pública de {{ words_plural }}, en tarjetas (`puerto generar
+ * web-bloque escaparate/tarjetas {{ pascal }}`). Es tuyo: cambia cuántos, qué enseña cada tarjeta o
+ * su título. Sin elementos, no ocupa sitio.
+ */
+export function SeccionEscaparate() {
+  const { api } = useDependencias();
+{%- if load_inline %}
+  const {{ plural_ident }} = useCarga(() => desenvolver(api.GET("/{{ plural }}", PRIMEROS)), [api]);
+{%- else %}
+  const {{ plural_ident }} = useCarga(
+    () => desenvolver(api.GET("/{{ plural }}", PRIMEROS)),
+    [api],
+  );
+{%- endif %}
+{%- for t in targets %}
+{%- if t.load_inline %}
+  const {{ t.plural_ident }} = useCarga(() => desenvolver(api.GET("/{{ t.plural }}", PRIMERA_PAGINA)), [api]);
+{%- else %}
+  const {{ t.plural_ident }} = useCarga(
+    () => desenvolver(api.GET("/{{ t.plural }}", PRIMERA_PAGINA)),
+    [api],
+  );
+{%- endif %}
+{%- if t.labels_inline %}
+  const etiquetas{{ t.pascal }} = etiquetasReferencia({{ t.plural_ident }}, "{{ t.label }}");
+{%- else %}
+  const etiquetas{{ t.pascal }} = etiquetasReferencia(
+    {{ t.plural_ident }},
+    "{{ t.label }}",
+  );
+{%- endif %}
+{%- endfor %}
+  if ({{ plural_ident }}.estado !== "listo" || {{ plural_ident }}.datos.elementos.length === 0) {
+    return null;
+  }
+
+  return (
+    <section id="{{ plural }}" className="mx-auto max-w-6xl px-4 py-16">
+      <h2 className="mb-8 text-3xl font-bold">{{ label_plural }}</h2>
+      <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
+        {{ "{" }}{{ plural_ident }}.datos.elementos.map(({{ ident }}: {{ pascal }}) => (
+          <article key={{ "{" }}{{ ident }}.id} className="card bg-base-200">
+            <div className="card-body">
+              <h3 className="card-title">{{ "{" }}{{ ident }}.{{ title }}}</h3>
+{%- if shown %}
+              <dl className="grid grid-cols-[max-content_1fr] gap-x-4 gap-y-1 text-sm">
+{%- for f in shown %}
+                <dt className="font-semibold">{{ f.label }}</dt>
+                <dd>{{ "{" }}{{ f.display }}}</dd>
+{%- endfor %}
+              </dl>
+{%- endif %}
+              <div className="card-actions justify-end">
+                <Link href={detalle({{ ident }}.id)} className="btn btn-primary btn-sm">
+                  Ver
+                </Link>
+              </div>
+            </div>
+          </article>
+        ))}
+      </div>
+    </section>
+  );
+}

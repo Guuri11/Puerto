@@ -401,6 +401,12 @@ make format/fix    # cargo fmt --all
   `perfil`, `tema`, `portada` y sus secciones (`cabecera`, `caracteristicas`, `precios`,
   `preguntas`, `llamada`, `pie`). Sin argumento, el catálogo; con uno, rechaza un bloque de auth sin
   auth y uno de la portada sin portada, y protege un fichero con otro contenido salvo `--forzar`
+- El escaparate (27.20): `puerto generar web-bloque escaparate/tarjetas <Entidad>` (una entidad con
+  `listar` público, con la portada de producto) escribe `src/portada/escaparate.tsx`
+  (`SeccionEscaparate`: los 6 primeros en tarjetas, la etiqueta de cada referencia obligatoria, los
+  textos de los enums, `euros()`) y su test, y añade `<SeccionEscaparate />` tras la cabecera de
+  `paginas/portada.tsx` y `{ api: apiFalsa([]) }` a su test; `landing/scripts/bloques.mjs` lo instala
+  con `Producto`
 - La portada (Fase 26): `puerto nuevo --portada [--ruta-app <ruta>]` (o la pregunta, con web):
   `[proyecto] portada`, `ruta_app` (`/panel`), `paginas/portada.tsx` (`portada/bienvenida`) y su
   test; `generado/rutas.tsx` exporta `rutaApp` (`"/"` sin portada) y `main.tsx` (de

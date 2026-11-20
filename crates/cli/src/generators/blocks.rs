@@ -186,6 +186,13 @@ pub const CATALOG: &[Block] = &[
         &[(PIE, Source::Variant)],
     ),
     block(
+        "escaparate/tarjetas",
+        "los primeros elementos de la lista pública de una entidad, en tarjetas: \
+         `escaparate/tarjetas <Entidad>`",
+        Needs::Sections,
+        &[],
+    ),
+    block(
         "tema/puerto",
         "cian y ámbar, esquinas redondeadas",
         Needs::Nothing,
@@ -330,12 +337,80 @@ pub struct Installed {
     pub files: Vec<PathBuf>,
     /// The ones that changed: none when the block was already installed.
     pub written: Vec<PathBuf>,
+    /// What it could not place in a file of the user's (the portada without its anchor).
+    pub missing: Vec<String>,
+}
+
+/// The slot whose block shows an entity (27.20): installed as `escaparate/<variant> <Entity>`.
+const ESCAPARATE: &str = "escaparate";
+
+/// `paginas/portada.tsx` with `<SeccionEscaparate />` after its cabecera and its import; `None`
+/// without the cabecera. Unchanged when it has it.
+fn with_escaparate(page: &str) -> Option<String> {
+    if page.contains("<SeccionEscaparate />") {
+        return Some(page.to_string());
+    }
+    let anchor = page.lines().find(|l| l.trim() == "<SeccionCabecera />")?;
+    let indent = &anchor[..anchor.len() - anchor.trim_start().len()];
+    let page = page.replacen(
+        &format!("{anchor}\n"),
+        &format!("{anchor}\n{indent}<SeccionEscaparate />\n"),
+        1,
+    );
+    let import = "import { SeccionEscaparate } from \"../portada/escaparate\";";
+    let mut lines: Vec<&str> = page.lines().collect();
+    let last = lines
+        .iter()
+        .rposition(|l| l.starts_with("import "))
+        .map_or(0, |i| i + 1);
+    lines.insert(last, import);
+    Some(crate::generators::web::organize_imports(
+        &(lines.join("\n") + "\n"),
+    ))
+}
+
+const PORTADA_TEST: &str = "src/paginas/portada.test.tsx";
+
+/// The portada's test with an API for the escaparate to ask (`apiFalsa([])`: an empty list, so
+/// the section takes no room); `None` without its `renderizarPantalla(<PaginaPortada />, {})`.
+fn portada_test_with_api(test: &str) -> Option<String> {
+    if test.contains("apiFalsa(") {
+        return Some(test.to_string());
+    }
+    let call = "renderizarPantalla(<PaginaPortada />, {})";
+    if !test.contains(call) {
+        return None;
+    }
+    let test = test.replace(
+        call,
+        "renderizarPantalla(<PaginaPortada />, { api: apiFalsa([]) })",
+    );
+    let import = "import { apiFalsa } from \"../pruebas/api-falsa\";";
+    let mut lines: Vec<&str> = test.lines().collect();
+    let last = lines
+        .iter()
+        .rposition(|l| l.starts_with("import "))
+        .map_or(0, |i| i + 1);
+    lines.insert(last, import);
+    Some(crate::generators::web::organize_imports(
+        &(lines.join("\n") + "\n"),
+    ))
 }
 
 /// Installs the block `id` in the project at `base`. A file with other content is protected
 /// unless `policy` forces it.
 pub fn run_install(
     id: &str,
+    base: &Path,
+    policy: OverwritePolicy,
+) -> Result<Installed, Box<dyn std::error::Error>> {
+    run_install_for(id, None, base, policy)
+}
+
+/// [`run_install`] of a block that shows an entity (`escaparate/tarjetas Concierto`, 27.20).
+pub fn run_install_for(
+    id: &str,
+    entity: Option<&str>,
     base: &Path,
     policy: OverwritePolicy,
 ) -> Result<Installed, Box<dyn std::error::Error>> {
@@ -367,7 +442,26 @@ pub fn run_install(
         .into());
     }
 
-    let rendered = render_block(block, auth)?;
+    let showcase = slot(id) == ESCAPARATE;
+    let rendered = match (showcase, entity) {
+        (true, None) => {
+            return Err(format!(
+                "'{id}' enseña una entidad: `puerto generar web-bloque {id} <Entidad>`"
+            )
+            .into());
+        }
+        (true, Some(entity)) => crate::generators::web::render_escaparate(
+            &config,
+            &crate::generators::naming::to_pascal_case(entity),
+        )?
+        .into_iter()
+        .map(|(file, content)| (Path::new(layout::WEB_DIR).join(file), content))
+        .collect(),
+        (false, Some(_)) => {
+            return Err(format!("'{id}' no lleva entidad").into());
+        }
+        (false, None) => render_block(block, auth)?,
+    };
     let files: Vec<PathBuf> = rendered.iter().map(|(path, _)| path.clone()).collect();
     let changed: Vec<(PathBuf, String)> = rendered
         .into_iter()
@@ -380,5 +474,33 @@ pub fn run_install(
     for (path, content) in &changed {
         write_file(&base.join(path), content)?;
     }
-    Ok(Installed { files, written })
+    let mut missing = vec![];
+    if showcase {
+        let page_path = base.join(layout::WEB_DIR).join(PORTADA);
+        let page = fs::read_to_string(&page_path)?;
+        match with_escaparate(&page) {
+            Some(patched) if patched != page => write_file(&page_path, &patched)?,
+            Some(_) => {}
+            None => missing.push(format!(
+                "web/{PORTADA}: no encuentro `<SeccionCabecera />`; añade `<SeccionEscaparate />` \
+                 (de \"../portada/escaparate\") donde quieras la sección"
+            )),
+        }
+        let test_path = base.join(layout::WEB_DIR).join(PORTADA_TEST);
+        if let Ok(test) = fs::read_to_string(&test_path) {
+            match portada_test_with_api(&test) {
+                Some(patched) if patched != test => write_file(&test_path, &patched)?,
+                Some(_) => {}
+                None => missing.push(format!(
+                    "web/{PORTADA_TEST}: dale a `renderizarPantalla` una API \
+                     (`{{ api: apiFalsa([]) }}`): el escaparate la pide"
+                )),
+            }
+        }
+    }
+    Ok(Installed {
+        files,
+        written,
+        missing,
+    })
 }

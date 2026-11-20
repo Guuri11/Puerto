@@ -338,6 +338,10 @@ enum GenerateAction {
         /// El bloque, `<hueco>/<variante>` (p. ej. marco/superior)
         #[arg(value_name = "BLOQUE")]
         id: Option<String>,
+        /// La entidad que enseña un bloque del escaparate (p. ej. Concierto): una con la lista
+        /// pública
+        #[arg(value_name = "ENTIDAD")]
+        entity: Option<String>,
         /// Sobrescribe el fichero del hueco, y pierde lo cambiado a mano
         #[arg(long = "forzar")]
         force: bool,
@@ -774,6 +778,7 @@ fn run(command: Commands) -> Result<(), Box<dyn std::error::Error>> {
             action:
                 GenerateAction::WebBlock {
                     id: Some(id),
+                    entity,
                     force,
                 },
         } => {
@@ -784,7 +789,9 @@ fn run(command: Commands) -> Result<(), Box<dyn std::error::Error>> {
                 crate::generators::conflict::OverwritePolicy::Ask
             };
             commands::list::require_puerto_project(&cwd)
-                .and_then(|_| crate::generators::blocks::run_install(&id, &cwd, policy))
+                .and_then(|_| {
+                    crate::generators::blocks::run_install_for(&id, entity.as_deref(), &cwd, policy)
+                })
                 .map(|installed| {
                     for path in &installed.files {
                         if installed.written.contains(path) {
@@ -792,6 +799,9 @@ fn run(command: Commands) -> Result<(), Box<dyn std::error::Error>> {
                         } else {
                             println!("= {}  (ya lo tenía)", path.display());
                         }
+                    }
+                    for line in &installed.missing {
+                        eprintln!("⚠ {line}");
                     }
                 })
         }

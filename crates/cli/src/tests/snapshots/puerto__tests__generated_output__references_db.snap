@@ -222,7 +222,9 @@ de `generado/bootstrap.rs`. **Después de un scaffold y después de tocar una ru
 comprobación de desfase. `puerto generar scaffold` también escribe las pantallas de una entidad
 CRUD; `puerto generar web <Nombre>` las escribe solas.
 
-Las pantallas base (el acceso, el marco, el panel, el perfil), la portada y el tema tienen otras
+Con la portada de producto, `puerto generar web-bloque escaparate/tarjetas <Entidad>` (una con la
+lista pública) añade a la portada sus primeros elementos en tarjetas (`src/portada/escaparate.tsx`,
+tuyo). Las pantallas base (el acceso, el marco, el panel, el perfil), la portada y el tema tienen otras
 variantes: `puerto generar web-bloque` las lista, y `puerto generar web-bloque <hueco>/<variante>
 --forzar` cambia el fichero de ese hueco por otra. Cada variante cumple el contrato de su hueco (el
 mismo export, las mismas props), así que no toca nada más. Se ven en

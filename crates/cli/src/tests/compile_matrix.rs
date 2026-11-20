@@ -951,6 +951,8 @@ pub(super) const WEB_BLOCKS: Scenario = Scenario {
         "tema/miel",
         "portada/producto",
         "cabecera/dividida",
+        // 27.20: the public list of Producto, on the portada.
+        "escaparate/tarjetas Producto",
     ],
     ..AUTH_OIDC
 };
@@ -1106,8 +1108,13 @@ pub(super) fn apply_scenario(scenario: &Scenario, output: &Path) {
         format();
     }
 
-    for id in scenario.blocks {
-        crate::generators::blocks::run_install(id, output, OverwritePolicy::Force).unwrap();
+    for block in scenario.blocks {
+        // A block that shows an entity names it after a space: `escaparate/tarjetas Producto`.
+        let (id, entity) = block
+            .split_once(' ')
+            .map_or((*block, None), |(id, entity)| (id, Some(entity)));
+        crate::generators::blocks::run_install_for(id, entity, output, OverwritePolicy::Force)
+            .unwrap();
     }
 }
 

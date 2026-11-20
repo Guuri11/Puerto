@@ -985,6 +985,127 @@ fn insert_import(src: &str, import: &str) -> String {
     out
 }
 
+/// A field of an escaparate's card (27.20): what it is called and what it shows.
+#[derive(Serialize)]
+struct ShownField<'a> {
+    label: &'a str,
+    display: String,
+    is_enum: bool,
+    texts_const: &'a str,
+    options: &'a [crate::generators::types::WebOption],
+}
+
+/// What `escaparate/tarjetas <Entity>` renders from (27.20): the entity's slice context, the field
+/// that titles each card, the fields it shows — not a private one (the list is public), a bare
+/// `Uuid`, an optional reference or the title — and the targets of the references it names.
+pub fn escaparate_ctx(config: &PuertoConfig, pascal: &str) -> Result<tera::Context, String> {
+    let entity = config
+        .entity
+        .iter()
+        .find(|e| e.name == pascal)
+        .ok_or_else(|| format!("la entidad '{pascal}' no está en puerto.toml"))?;
+    if let Some(reason) = web_slice_refusal(entity) {
+        return Err(format!("{pascal} no tiene pantallas web: {reason}"));
+    }
+    let access = Access::in_config(config, pascal);
+    let web = web_entity_ctx(pascal);
+    let list = crud_use_case("list", &web.snake);
+    if access.is_protected(&list) {
+        return Err(format!(
+            "la lista de {pascal} no es pública: la portada no tiene sesión. Hazla pública \
+             (`--publico {list}`) o elige otra entidad"
+        ));
+    }
+    let eff = effective_fields(&entity.fields);
+    let title = eff
+        .iter()
+        .find(|f| f.field_type == "String" && !crate::generators::types::is_enum_vo(f))
+        .map(|f| f.name.clone());
+    let web_fields: Vec<WebFieldCtx> = eff.iter().map(|f| web_field_ctx(f, &web.ident)).collect();
+    let all_targets = web_targets(&eff, Some(config));
+    let mut helpers: Vec<&str> = vec![];
+    let mut targets = vec![];
+    let mut shown = vec![];
+    for (f, w) in eff.iter().zip(&web_fields) {
+        let bare_uuid = f.references.is_none() && vo_inner(f) == "Uuid";
+        let optional_ref = f.references.is_some() && f.field_type.starts_with("Option<");
+        if f.private || f.owner || bare_uuid || optional_ref || Some(&f.name) == title.as_ref() {
+            continue;
+        }
+        let display = match &f.references {
+            Some(target) => {
+                if let Some(t) = all_targets.iter().find(|t| &t.entity.pascal == target) {
+                    if !targets
+                        .iter()
+                        .any(|known: &&WebTargetCtx| known.entity.pascal == *target)
+                    {
+                        targets.push(t);
+                    }
+                }
+                helpers.push("etiquetasReferencia");
+                format!(
+                    "etiquetas{target}.get({0}.{1}) ?? {0}.{1}",
+                    web.ident, w.camel
+                )
+            }
+            None => {
+                helpers.extend(w.display_helpers.iter().copied());
+                w.display.clone()
+            }
+        };
+        shown.push(ShownField {
+            label: &w.label,
+            display,
+            is_enum: w.is_enum,
+            texts_const: &w.texts_const,
+            options: &w.options,
+        });
+    }
+    helpers.sort_unstable();
+    helpers.dedup();
+    let mut ctx = tera::Context::from_serialize(&web).map_err(|e| e.to_string())?;
+    ctx.insert(
+        "title",
+        &title.map_or_else(|| "id".to_string(), |name| snake_to_camel(&name)),
+    );
+    ctx.insert("shown", &shown);
+    ctx.insert("helpers", &helpers);
+    ctx.insert("targets", &targets);
+    ctx.insert(
+        "load_inline",
+        &fits(&format!(
+            "  const {} = useCarga(() => desenvolver(api.GET(\"/{}\", PRIMEROS)), [api]);",
+            web.plural_ident, web.plural
+        )),
+    );
+    Ok(ctx)
+}
+
+fn vo_inner(field: &Field) -> String {
+    crate::generators::types::vo_inner_type(field)
+}
+
+/// The escaparate's files (27.20), relative to `web/`: the section and its test.
+pub fn render_escaparate(
+    config: &PuertoConfig,
+    pascal: &str,
+) -> Result<Vec<(&'static str, String)>, Box<dyn std::error::Error>> {
+    let ctx = escaparate_ctx(config, pascal)?;
+    Ok(vec![
+        (
+            "src/portada/escaparate.tsx",
+            render_ts("web/bloques/escaparate/tarjetas/escaparate.tsx.tera", &ctx)?,
+        ),
+        (
+            "src/portada/escaparate.test.tsx",
+            render_ts(
+                "web/bloques/escaparate/tarjetas/escaparate.test.tsx.tera",
+                &ctx,
+            )?,
+        ),
+    ])
+}
+
 /// Renders a TypeScript template and orders its imports the way Biome's `organizeImports` does,
 /// so `bun run lint` passes on generated code.
 fn render_ts(template: &str, ctx: &tera::Context) -> Result<String, RenderError> {

@@ -226,7 +226,9 @@ de `generado/bootstrap.rs`. **Después de un scaffold y después de tocar una ru
 comprobación de desfase. `puerto generar scaffold` también escribe las pantallas de una entidad
 CRUD; `puerto generar web <Nombre>` las escribe solas.
 
-Las pantallas base (el acceso, el marco, el panel, el perfil), la portada y el tema tienen otras
+Con la portada de producto, `puerto generar web-bloque escaparate/tarjetas <Entidad>` (una con la
+lista pública) añade a la portada sus primeros elementos en tarjetas (`src/portada/escaparate.tsx`,
+tuyo). Las pantallas base (el acceso, el marco, el panel, el perfil), la portada y el tema tienen otras
 variantes: `puerto generar web-bloque` las lista, y `puerto generar web-bloque <hueco>/<variante>
 --forzar` cambia el fichero de ese hueco por otra. Cada variante cumple el contrato de su hueco (el
 mismo export, las mismas props), así que no toca nada más. Se ven en
@@ -10907,13 +10909,14 @@ import { describe, expect, test } from "bun:test";
 import { screen } from "@testing-library/react";
 import { rutaApp } from "../generado/rutas";
 import { marca } from "../marca/marca";
+import { apiFalsa } from "../pruebas/api-falsa";
 import { renderizarPantalla } from "../pruebas/renderizar";
 import { PaginaPortada } from "./portada";
 
 describe("PaginaPortada", () => {
   test("debería mostrar la marca y llevar a la app al entrar", async () => {
     // Actuar
-    renderizarPantalla(<PaginaPortada />, {});
+    renderizarPantalla(<PaginaPortada />, { api: apiFalsa([]) });
 
     // Comprobar
     expect((await screen.findAllByText(marca.nombre)).length).toBeGreaterThan(0);
@@ -10930,6 +10933,7 @@ import { rutaApp } from "../generado/rutas";
 import { marca } from "../marca/marca";
 import { SeccionCabecera } from "../portada/cabecera";
 import { SeccionCaracteristicas } from "../portada/caracteristicas";
+import { SeccionEscaparate } from "../portada/escaparate";
 import { SeccionLlamada } from "../portada/llamada";
 import { SeccionPie } from "../portada/pie";
 import { SeccionPrecios } from "../portada/precios";
@@ -10966,6 +10970,7 @@ export function PaginaPortada() {
       </header>
       <main>
         <SeccionCabecera />
+        <SeccionEscaparate />
         <SeccionCaracteristicas />
         <SeccionPrecios />
         <SeccionPreguntas />
@@ -11105,6 +11110,103 @@ export function SeccionCaracteristicas() {
           </li>
         ))}
       </ul>
+    </section>
+  );
+}
+
+=== web/src/portada/escaparate.test.tsx ===
+import { describe, expect, test } from "bun:test";
+import { screen } from "@testing-library/react";
+import { apiFalsa } from "../pruebas/api-falsa";
+import { coleccionProducto, MadreProducto } from "../pruebas/producto";
+import { renderizarPantalla } from "../pruebas/renderizar";
+import { SeccionEscaparate } from "./escaparate";
+
+describe("SeccionEscaparate", () => {
+  test("debería enseñar una tarjeta por cada producto de la lista", async () => {
+    // Preparar
+    const semilla = [MadreProducto.aleatorio(), MadreProducto.aleatorio()];
+    const api = apiFalsa([coleccionProducto(semilla)]);
+
+    // Actuar
+    renderizarPantalla(<SeccionEscaparate />, { api });
+
+    // Comprobar
+    expect(await screen.findAllByText("Ver")).toHaveLength(2);
+  });
+
+  test("no debería ocupar sitio cuando no hay productos", async () => {
+    // Preparar
+    const api = apiFalsa([coleccionProducto()]);
+
+    // Actuar
+    const { container } = renderizarPantalla(<SeccionEscaparate />, { api });
+
+    // Comprobar
+    await new Promise((listo) => setTimeout(listo, 0));
+    expect(container.querySelector("section")).toBeNull();
+  });
+});
+
+=== web/src/portada/escaparate.tsx ===
+import { Link } from "wouter";
+import type { Esquemas } from "../api/cliente";
+import { desenvolver } from "../api/http";
+import { useCarga } from "../compartido/use-carga";
+import { useDependencias } from "../dependencias";
+import { rutaApp } from "../generado/rutas";
+
+type Producto = Esquemas["DtoProducto"];
+
+/** Cuántas tarjetas enseña: los primeros de la lista, en su orden (`[[entidad]] orden`). */
+const PRIMEROS = { params: { query: { limite: 6 } } };
+
+/** Lo que se lee de cada variante de `TEXTOS_STATUS`. */
+const TEXTOS_STATUS: Record<string, string> = {
+  Draft: "Draft",
+  Live: "Live",
+};
+
+/** Su detalle, en la app. */
+const detalle = (id: string) => `${rutaApp}/productos/${id}`;
+
+/**
+ * Los primeros elementos de la lista pública de productos, en tarjetas (`puerto generar
+ * web-bloque escaparate/tarjetas Producto`). Es tuyo: cambia cuántos, qué enseña cada tarjeta o
+ * su título. Sin elementos, no ocupa sitio.
+ */
+export function SeccionEscaparate() {
+  const { api } = useDependencias();
+  const productos = useCarga(() => desenvolver(api.GET("/productos", PRIMEROS)), [api]);
+  if (productos.estado !== "listo" || productos.datos.elementos.length === 0) {
+    return null;
+  }
+
+  return (
+    <section id="productos" className="mx-auto max-w-6xl px-4 py-16">
+      <h2 className="mb-8 text-3xl font-bold">Productos</h2>
+      <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
+        {productos.datos.elementos.map((producto: Producto) => (
+          <article key={producto.id} className="card bg-base-200">
+            <div className="card-body">
+              <h3 className="card-title">{producto.name}</h3>
+              <dl className="grid grid-cols-[max-content_1fr] gap-x-4 gap-y-1 text-sm">
+                <dt className="font-semibold">Sku</dt>
+                <dd>{producto.sku}</dd>
+                <dt className="font-semibold">Price</dt>
+                <dd>{producto.price}</dd>
+                <dt className="font-semibold">Status</dt>
+                <dd>{TEXTOS_STATUS[producto.status] ?? producto.status}</dd>
+              </dl>
+              <div className="card-actions justify-end">
+                <Link href={detalle(producto.id)} className="btn btn-primary btn-sm">
+                  Ver
+                </Link>
+              </div>
+            </div>
+          </article>
+        ))}
+      </div>
     </section>
   );
 }

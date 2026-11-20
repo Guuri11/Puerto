@@ -4080,13 +4080,20 @@ vale en los dos modos.
 El formulario de crear lee `?<campoCamel>=<id>` y deja elegida esa referencia. Así un «Comprar»
 lleva a `…/entradas/nuevo?conciertoId=…`. Test: el select llega con el valor.
 
-### 27.20 — Una lista pública en la portada
+### 27.20 — Una lista pública en la portada ✅
 
 Aforo hizo a mano la cartelera: contenedor, vista y tests sobre `GET /conciertos`, que es pública. Un
 bloque de la portada (hueco por decidir) instala esa sección para una entidad con `listar` público:
 los primeros elementos, la etiqueta de cada referencia (27.7), los textos de los enums (27.9) y el
 dinero (27.16). El comando lleva la entidad como argumento. Tests: rechaza una entidad sin `listar`
 público; la sección y su test; el escaparate (`landing/`).
+
+**Decidido (2026-11-20, con Sergio):** el hueco `escaparate`, la variante `escaparate/tarjetas`
+(`puerto generar web-bloque escaparate/tarjetas <Entidad>`, de la portada de producto): los 6
+primeros de la lista pública (`[[entidad]] orden`) en tarjetas — el primer `String` como título,
+los demás campos salvo privados, `Uuid` sueltos y referencias opcionales —, y su detalle en la app.
+Rechaza una entidad sin pantallas o cuya lista está protegida. Parchea `paginas/portada.tsx` (tras
+`<SeccionCabecera />`) y el test de la portada (`{ api: apiFalsa([]) }`).
 
 ### 27.21 — Datos de ejemplo
 

@@ -1,0 +1,32 @@
+import { describe, expect, test } from "bun:test";
+import { screen } from "@testing-library/react";
+import { apiFalsa } from "../pruebas/api-falsa";
+import { coleccion{{ pascal }}, Madre{{ pascal }} } from "../pruebas/{{ kebab }}";
+import { renderizarPantalla } from "../pruebas/renderizar";
+import { SeccionEscaparate } from "./escaparate";
+
+describe("SeccionEscaparate", () => {
+  test("debería enseñar una tarjeta por cada {{ words }} de la lista", async () => {
+    // Preparar
+    const semilla = [Madre{{ pascal }}.aleatorio(), Madre{{ pascal }}.aleatorio()];
+    const api = apiFalsa([coleccion{{ pascal }}(semilla)]);
+
+    // Actuar
+    renderizarPantalla(<SeccionEscaparate />, { api });
+
+    // Comprobar
+    expect(await screen.findAllByText("Ver")).toHaveLength(2);
+  });
+
+  test("no debería ocupar sitio cuando no hay {{ words_plural }}", async () => {
+    // Preparar
+    const api = apiFalsa([coleccion{{ pascal }}()]);
+
+    // Actuar
+    const { container } = renderizarPantalla(<SeccionEscaparate />, { api });
+
+    // Comprobar
+    await new Promise((listo) => setTimeout(listo, 0));
+    expect(container.querySelector("section")).toBeNull();
+  });
+});
