@@ -1,4 +1,4 @@
-.PHONY: help setup run \
+.PHONY: help setup run sembrar \
         test test/dominio test/aplicacion test/infraestructura \
         lint format format/fix check clean clean/incremental \
         audit audit/fix \
@@ -30,6 +30,9 @@ setup: ## Instala las herramientas de desarrollo (una vez, tras clonar)
 run: ## Arranca el servidor de la API (http://localhost:8080)
 	@echo "${GREEN}Arrancando el servidor de la API (en memoria: los datos se pierden al reiniciar)...${NC}"
 	$(CARGO) run -p api
+
+sembrar: ## Siembra datos de ejemplo contra la API en marcha (scripts/sembrar.sh, tuyo)
+	@set -a; if [ -f .env ]; then . ./.env; fi; set +a; scripts/sembrar.sh
 
 test: ## Ejecuta todos los tests
 	@echo "${YELLOW}Ejecutando todos los tests...${NC}"

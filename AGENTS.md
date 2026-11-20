@@ -373,6 +373,8 @@ make format/fix    # cargo fmt --all
 - `/health`, `/health/ready`, apagado ordenado con SIGTERM (ADR-0008)
 - Toolchain fijada + edition 2024 (ADR-0009); `AGENTS.md` + `CLAUDE.md` en la raíz, y
   `contextos/AGENTS.md`, `presentacion/AGENTS.md` (ADR-0010)
+- `scripts/sembrar.sh` (27.21), escrito una vez y ejecutable: `peticion`, `crear` y, según el auth,
+  `sesion` / `conceder`; `make sembrar` lo ejecuta con el `.env` cargado
 - Targets de make: `test/dominio`, `test/aplicacion`, `test/infraestructura` (un glob de paquetes
   cada uno), `generar/entidad`, `generar/caso-de-uso`, `generar/bootstrap`, `clean/incremental`;
   con `--db`, `db/arrancar`, `db/parar`, `db/reiniciar`, `sqlx/*`, `generar/migracion`

@@ -4095,12 +4095,18 @@ los demás campos salvo privados, `Uuid` sueltos y referencias opcionales —, y
 Rechaza una entidad sin pantallas o cuya lista está protegida. Parchea `paginas/portada.tsx` (tras
 `<SeccionCabecera />`) y el test de la portada (`{ api: apiFalsa([]) }`).
 
-### 27.21 — Datos de ejemplo
+### 27.21 — Datos de ejemplo ✅
 
 `puerto nuevo` escribe una vez `scripts/sembrar.sh` (del usuario), con los helpers de
 `scripts/demo.sh` de Aforo: una petición, crear y devolver el id, iniciar sesión y conceder un rol.
 `make sembrar` lo ejecuta con el `.env` cargado. Por decidir si `scaffold` añade un ejemplo por
 entidad. Tests: el fichero (ejecutable) y la regla de make.
+
+**Decidido (2026-11-20, con Sergio):** `scripts/sembrar.sh` y `make sembrar`. Lo escribe `puerto
+nuevo` una vez, ejecutable, con `peticion` y `crear` (curl + jq) y, según el auth, `sesion` y
+`conceder` (local: registro + login, `make auth/conceder`) o `sesion` (OIDC, `make -s
+auth/token`), y un ejemplo comentado. `make sembrar` carga el `.env` si lo hay. `scaffold` no lo
+toca (sin ejemplo por entidad).
 
 ### 27.22 — `make db/reiniciar` sin preguntar ✅
 

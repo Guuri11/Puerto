@@ -942,3 +942,92 @@ fn web_only_agent_rules_stay_in_a_web_project_without_their_markers() {
     assert!(agents.contains("make web/sync"), "{agents}");
     cleanup(&dir);
 }
+
+// ── 27.21: example data, `scripts/sembrar.sh` and `make sembrar` ────────────
+
+#[test]
+fn new_writes_an_executable_seed_script_with_the_helpers_of_its_auth() {
+    use crate::commands::new::{NewOptions, new_project};
+    use std::os::unix::fs::PermissionsExt;
+    for (name, options, helpers, absent) in [
+        (
+            "seed_plain",
+            NewOptions {
+                no_db: true,
+                no_web: true,
+                ..Default::default()
+            },
+            &["peticion() {", "crear() {"][..],
+            &["sesion() {"][..],
+        ),
+        (
+            "seed_local",
+            NewOptions {
+                db: true,
+                no_web: true,
+                auth: Some("local".into()),
+                ..Default::default()
+            },
+            &[
+                "sesion() {",
+                "/auth/login",
+                "conceder() {",
+                "make -s auth/conceder",
+            ][..],
+            &["auth/token"][..],
+        ),
+        (
+            "seed_oidc",
+            NewOptions {
+                no_db: true,
+                no_web: true,
+                auth: Some("oidc".into()),
+                ..Default::default()
+            },
+            &["sesion() {", "make -s auth/token EMAIL=\"$1\""][..],
+            &["conceder() {"][..],
+        ),
+    ] {
+        let dir = temp_dir(name);
+        cleanup(&dir);
+        fs::create_dir_all(&dir).unwrap();
+        let output = new_project(
+            Some(name.replace('_', "-")),
+            NewOptions {
+                no_portada: true,
+                ..options
+            },
+            Some(dir.clone()),
+        )
+        .unwrap();
+
+        let path = output.join("scripts/sembrar.sh");
+        let script = fs::read_to_string(&path).unwrap();
+        assert!(script.starts_with("#!/usr/bin/env bash\n"), "{name}");
+        assert_ne!(
+            fs::metadata(&path).unwrap().permissions().mode() & 0o111,
+            0,
+            "{name}: executable"
+        );
+        for helper in helpers {
+            assert!(script.contains(helper), "{name}: {helper}\n{script}");
+        }
+        for helper in absent {
+            assert!(!script.contains(helper), "{name}: {helper}\n{script}");
+        }
+        let syntax = std::process::Command::new("bash")
+            .arg("-n")
+            .arg(&path)
+            .output()
+            .unwrap();
+        assert!(
+            syntax.status.success(),
+            "{name}: {}",
+            String::from_utf8_lossy(&syntax.stderr)
+        );
+        let makefile = fs::read_to_string(output.join("Makefile")).unwrap();
+        assert!(makefile.contains("\nsembrar: ##"), "{name}");
+        assert!(makefile.contains("; scripts/sembrar.sh\n"), "{name}");
+        cleanup(&dir);
+    }
+}

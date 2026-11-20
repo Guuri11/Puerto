@@ -250,6 +250,8 @@ pub fn new_project(
         crate::generators::auth::apply_auth_to_new_project(&output, mode)?;
     }
 
+    // After auth: the script's helpers depend on it (27.21).
+    crate::generators::project::write_seed_script(&output, resolved_auth.as_deref())?;
     crate::snippets::apply(&output, None)?;
 
     Ok(output)

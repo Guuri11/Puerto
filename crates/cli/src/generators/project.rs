@@ -304,6 +304,34 @@ pub(crate) fn insert_workspace_dependency(
 }
 
 /// Write the base `.env` and `.env.example` for every new project (db or not).
+/// `scripts/sembrar.sh` (27.21): the example data `make sembrar` sends to the running API, with the
+/// helpers of the project's auth. Written once, executable; the user's from then on.
+pub fn write_seed_script(
+    base: &Path,
+    auth: Option<&str>,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let path = base.join("scripts/sembrar.sh");
+    if path.exists() {
+        return Ok(());
+    }
+    let mut ctx = tera::Context::new();
+    ctx.insert("auth", &auth.unwrap_or_default());
+    let name = crate::puerto_toml::read(base)
+        .map(|c| c.project.name)
+        .unwrap_or_default();
+    ctx.insert("host", &name.replace('_', "-"));
+    crate::generators::naming::write_file(
+        &path,
+        &crate::generators::render::render("scripts/sembrar.sh.tera", &ctx)?,
+    )?;
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o755))?;
+    }
+    Ok(())
+}
+
 pub fn apply_base_env(base: &Path) -> Result<(), Box<dyn std::error::Error>> {
     let content = "SERVICE_PORT=8080\nENV=development\nRUST_LOG=info\nCORS_ALLOWED_ORIGINS=http://localhost:3000,http://localhost:5173\n";
     write_file(&base.join(".env"), content)?;

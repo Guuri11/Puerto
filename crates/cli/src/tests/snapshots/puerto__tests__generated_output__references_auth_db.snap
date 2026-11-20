@@ -262,6 +262,12 @@ producción.
 - **Nada de `unwrap()` / `expect()`** fuera de los tests.
 - **API primero:** cambia `rutas.rs` + `dto.rs` (el contrato) antes que la implementación.
 
+## Datos de ejemplo
+
+`scripts/sembrar.sh` es tuyo: escribe ahí, con sus helpers (`peticion`, `crear` y, con auth,
+`sesion`), las filas con las que quieres probar la app, y siémbralas con `make sembrar` con la API
+en marcha.
+
 ## Comprueba antes de terminar
 
 ```bash
@@ -346,7 +352,7 @@ infra_jugador = { path = "contextos/jugador/infraestructura" }
 rest_jugador = { path = "contextos/jugador/rest" }
 
 === Makefile ===
-.PHONY: help setup run \
+.PHONY: help setup run sembrar \
         test test/dominio test/aplicacion test/infraestructura \
         lint format format/fix check clean clean/incremental \
         audit audit/fix \
@@ -379,6 +385,9 @@ setup: ## Instala las herramientas de desarrollo (una vez, tras clonar)
 run: ## Arranca el servidor de la API (http://localhost:8080)
 	@echo "${GREEN}Arrancando el servidor de la API...${NC}"
 	$(CARGO) run -p api
+
+sembrar: ## Siembra datos de ejemplo contra la API en marcha (scripts/sembrar.sh, tuyo)
+	@set -a; if [ -f .env ]; then . ./.env; fi; set +a; scripts/sembrar.sh
 
 test: ## Ejecuta todos los tests
 	@echo "${YELLOW}Ejecutando todos los tests...${NC}"
