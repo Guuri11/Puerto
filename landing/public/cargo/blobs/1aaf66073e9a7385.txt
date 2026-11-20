@@ -1,0 +1,37 @@
+#!/usr/bin/env bash
+# Datos de ejemplo, contra la API en marcha (`make run`): `make sembrar` lo ejecuta con el `.env`
+# cargado. Es tuyo: `puerto` lo escribe una vez y no lo vuelve a tocar. Escribe aquí las filas con
+# las que quieres probar la app; sobre una base de datos vacía, una segunda pasada choca (409) con
+# lo que sembró la primera. Necesita `curl` y `jq`.
+set -euo pipefail
+
+API="${API:-http://localhost:${SERVICE_PORT:-8080}/api}"
+RESPUESTA="$(mktemp)"
+trap 'rm -f "$RESPUESTA"' EXIT
+
+# peticion METODO RUTA [TOKEN] [CUERPO] → imprime "<estado> <cuerpo>"
+peticion() {
+  local metodo=$1 ruta=$2 token=${3:-} cuerpo=${4:-}
+  local args=(-s -o "$RESPUESTA" -w '%{http_code}' -X "$metodo" "$API$ruta")
+  if [[ -n $token ]]; then args+=(-H "Authorization: Bearer $token"); fi
+  if [[ -n $cuerpo ]]; then args+=(-H 'Content-Type: application/json' -d "$cuerpo"); fi
+  local estado
+  estado=$(curl "${args[@]}")
+  echo "$estado $(cat "$RESPUESTA")"
+}
+
+# crear RUTA TOKEN CUERPO → imprime el id de lo creado; sale si la API no responde 201
+crear() {
+  local respuesta
+  respuesta=$(peticion POST "$1" "$2" "$3")
+  if [[ ${respuesta%% *} != 201 ]]; then
+    echo "POST $1 → $respuesta" >&2
+    exit 1
+  fi
+  jq -r .id <<<"${respuesta#* }"
+}
+
+# Un ejemplo, para una entidad `Producto` con un campo `nombre`:
+#   PRODUCTO=$(crear /productos "" '{"nombre":"Ejemplo"}')
+#   peticion GET "/productos/$PRODUCTO"
+echo "Nada que sembrar todavía: escribe tus filas en scripts/sembrar.sh"

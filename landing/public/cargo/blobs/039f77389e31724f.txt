@@ -1,0 +1,80 @@
+use crate::modelo::Producto;
+use crate::modelo::PropsProducto;
+
+pub struct MadreProducto {
+    nombre: Option<String>,
+    precio: Option<i64>,
+    sku: Option<String>,
+}
+
+impl MadreProducto {
+    pub fn new() -> Self {
+        Self {
+            nombre: None,
+            precio: None,
+            sku: None,
+        }
+    }
+
+    pub fn con_nombre(mut self, nombre: &str) -> Self {
+        self.nombre = Some(nombre.to_string());
+        self
+    }
+
+    pub fn con_precio(mut self, precio: i64) -> Self {
+        self.precio = Some(precio);
+        self
+    }
+
+    pub fn con_sku(mut self, sku: &str) -> Self {
+        self.sku = Some(sku.to_string());
+        self
+    }
+
+    pub fn con_nombre_vacio(mut self) -> Self {
+        self.nombre = Some(String::new());
+        self
+    }
+
+    pub fn con_sku_vacio(mut self) -> Self {
+        self.sku = Some(String::new());
+        self
+    }
+
+    pub fn construir(self) -> Producto {
+        Producto::new(PropsProducto {
+            nombre: self.nombre.unwrap_or_else(|| "example".to_string()),
+            precio: self.precio.unwrap_or(42),
+            sku: self.sku.unwrap_or_else(|| "example".to_string()),
+        })
+        .expect("MadreProducto: Producto::new rechazó los props")
+    }
+
+    pub fn construir_props(self) -> PropsProducto {
+        PropsProducto {
+            nombre: self.nombre.unwrap_or_else(|| "example".to_string()),
+            precio: self.precio.unwrap_or(42),
+            sku: self.sku.unwrap_or_else(|| "example".to_string()),
+        }
+    }
+
+    pub fn aleatorio() -> Producto {
+        Self::new().construir()
+    }
+
+    pub fn aleatorios(n: usize) -> Vec<Producto> {
+        (0..n).map(|_| Self::aleatorio()).collect()
+    }
+
+    /// Un `sku` distinto en cada llamada, para las filas que guardan los tests de los
+    /// repositorios (es único). Si una regla del dominio lo rechaza, cámbialo aquí.
+    pub fn sku_unico() -> String {
+        uuid::Uuid::new_v4().simple().to_string()[..12].to_string()
+    }
+}
+
+impl Default for MadreProducto {
+    fn default() -> Self {
+        Self::new()
+    }
+}

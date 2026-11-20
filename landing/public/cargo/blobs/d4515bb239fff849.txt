@@ -1,0 +1,168 @@
+use async_trait::async_trait;
+use sqlx::PgPool;
+
+use dominio_pedido::{
+    eventos::EventoPedido,
+    modelo::Pedido,
+    unit_of_work::{UnitOfWorkFactoryPedido, UnitOfWorkPedido},
+};
+use puerto_nucleo::ErrorRepositorio;
+use puerto_sqlx::mapear_error_sqlx;
+use puerto_sqlx::uow::TransaccionPostgres;
+
+use crate::fila::FilaPedido;
+
+/// Abre una transacción de Postgres por escritura: la fila de pedido y su evento del outbox
+/// hacen commit juntos.
+pub struct UnitOfWorkFactoryPedidoPostgres {
+    pub pool: PgPool,
+}
+
+impl UnitOfWorkFactoryPedidoPostgres {
+    pub fn new(pool: PgPool) -> Self {
+        Self { pool }
+    }
+}
+
+#[async_trait]
+impl UnitOfWorkFactoryPedido for UnitOfWorkFactoryPedidoPostgres {
+    async fn begin(&self) -> Result<Box<dyn UnitOfWorkPedido>, ErrorRepositorio> {
+        let tx = TransaccionPostgres::begin(&self.pool).await?;
+        Ok(Box::new(UnitOfWorkPedidoPostgres { tx }))
+    }
+}
+
+struct UnitOfWorkPedidoPostgres {
+    tx: TransaccionPostgres,
+}
+
+#[async_trait]
+impl UnitOfWorkPedido for UnitOfWorkPedidoPostgres {
+    async fn guardar(&mut self, entidad: &Pedido) -> Result<(), ErrorRepositorio> {
+        tracing::debug!(id = %entidad.id, "guardar");
+        let db = FilaPedido::from(entidad);
+        sqlx::query!(
+            "INSERT INTO pedidos (id, creado_en, actualizado_en, borrado, borrado_en, importe, estado, nota)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+             ON CONFLICT (id) DO UPDATE
+             SET actualizado_en = $3, borrado = $4, borrado_en = $5, importe = $6, estado = $7, nota = $8",
+            db.id,
+            db.creado_en,
+            db.actualizado_en,
+            db.borrado,
+            db.borrado_en,
+            db.importe,
+            db.estado,
+            db.nota,
+        )
+        .execute(self.tx.tx())
+        .await
+        .map_err(|e| {
+            let error = mapear_error_sqlx(&e);
+            match error {
+                // Lo rechaza quien llama (409 / 422): no es un fallo del servidor.
+                ErrorRepositorio::Duplicado | ErrorRepositorio::ReferenciaInexistente(_) => {
+                    tracing::warn!(error = %e, "guardar rechazado")
+                }
+                _ => tracing::error!(error = %e, "guardar falló"),
+            }
+            error
+        })?;
+        Ok(())
+    }
+
+    async fn registrar(&mut self, evento: EventoPedido) -> Result<(), ErrorRepositorio> {
+        self.tx.registrar(&evento).await
+    }
+
+    async fn commit(self: Box<Self>) -> Result<(), ErrorRepositorio> {
+        self.tx.commit().await
+    }
+}
+
+#[cfg(test)]
+mod pruebas_integracion {
+    use super::*;
+    use dominio_pedido::{eventos::SnapshotPedido, repositorio::RepositorioPedido};
+
+    use crate::pruebas::siembra::construir;
+    use crate::repositorio::RepositorioPedidoPostgres;
+
+    /// Lo que hace un caso de uso de creación: guardar, registrar, commit.
+    async fn crear(pool: &PgPool, entidad: &Pedido) -> Result<(), ErrorRepositorio> {
+        let mut uow = UnitOfWorkFactoryPedidoPostgres::new(pool.clone())
+            .begin()
+            .await?;
+        uow.guardar(entidad).await?;
+        uow.registrar(EventoPedido::Creado(SnapshotPedido::from_entidad(entidad)))
+            .await?;
+        uow.commit().await
+    }
+
+    async fn contar(pool: &PgPool, sql: &str) -> i64 {
+        sqlx::query_scalar(sql).fetch_one(pool).await.unwrap()
+    }
+
+    #[sqlx::test(migrator = "migrador::MIGRADOR")]
+    async fn deberia_escribir_pedido_y_su_evento_cuando_hace_commit(pool: PgPool) {
+        // Preparar
+        let entidad = construir();
+
+        // Actuar
+        crear(&pool, &entidad).await.unwrap();
+
+        // Comprobar
+        let encontrado = RepositorioPedidoPostgres::new(pool.clone())
+            .buscar_por_id(entidad.id)
+            .await
+            .unwrap();
+        assert!(encontrado.is_some());
+        let (tipo_evento, id_agregado): (String, uuid::Uuid) =
+            sqlx::query_as("SELECT tipo_evento, id_agregado FROM outbox")
+                .fetch_one(&pool)
+                .await
+                .unwrap();
+        assert_eq!(tipo_evento, "pedido_creado");
+        assert_eq!(id_agregado, entidad.id.valor());
+    }
+
+    #[sqlx::test(migrator = "migrador::MIGRADOR")]
+    async fn no_deberia_escribir_nada_cuando_se_libera_sin_commit(pool: PgPool) {
+        // Preparar
+        let entidad = construir();
+
+        // Actuar
+        {
+            let mut uow = UnitOfWorkFactoryPedidoPostgres::new(pool.clone())
+                .begin()
+                .await
+                .unwrap();
+            uow.guardar(&entidad).await.unwrap();
+            uow.registrar(EventoPedido::Creado(SnapshotPedido::from_entidad(&entidad)))
+                .await
+                .unwrap();
+        }
+
+        // Comprobar
+        assert_eq!(contar(&pool, "SELECT COUNT(*) FROM pedidos").await, 0);
+        assert_eq!(contar(&pool, "SELECT COUNT(*) FROM outbox").await, 0);
+    }
+
+    #[sqlx::test(migrator = "migrador::MIGRADOR")]
+    async fn deberia_actualizar_pedido_cuando_se_guarda_de_nuevo(pool: PgPool) {
+        // Preparar
+        let entidad = construir();
+        crear(&pool, &entidad).await.unwrap();
+
+        // Actuar
+        let mut uow = UnitOfWorkFactoryPedidoPostgres::new(pool.clone())
+            .begin()
+            .await
+            .unwrap();
+        uow.guardar(&entidad).await.unwrap();
+        uow.commit().await.unwrap();
+
+        // Comprobar
+        assert_eq!(contar(&pool, "SELECT COUNT(*) FROM pedidos").await, 1);
+    }
+}

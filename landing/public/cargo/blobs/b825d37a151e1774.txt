@@ -1,0 +1,78 @@
+// GENERADO por puerto. Edita puerto.toml y después ejecuta `puerto generar bootstrap`.
+
+import type { ReactNode } from "react";
+import { Route, Switch } from "wouter";
+import { contarTotal, PAGINA_DE_UNO } from "../api/http";
+import { RequiereAuth, useAuth } from "../auth/auth";
+import { type EntradaMenu, Marco } from "../compartido/ui/marco";
+import { ContenedorDetalleProducto } from "../contextos/producto/contenedores/detalle-producto";
+import { ContenedorFormularioProducto } from "../contextos/producto/contenedores/formulario-producto";
+import { ContenedorListaProducto } from "../contextos/producto/contenedores/lista-producto";
+import { PaginaNoEncontrada } from "../paginas/no-encontrada";
+import { PaginaPanel } from "../paginas/panel";
+import { PaginaPerfil } from "../paginas/perfil";
+import { rutasPropias } from "../rutas";
+
+/** Dónde va la app: en la raíz o, con portada, en `[proyecto] ruta_app` (`puerto nuevo --portada`). */
+export const rutaApp = "/";
+
+export const entradasMenu: EntradaMenu[] = [
+  {
+    etiqueta: "Productos",
+    href: "/productos",
+    total: ({ api }) => contarTotal(api.GET("/productos", PAGINA_DE_UNO)),
+  },
+];
+
+/** Los roles que pide la lista de cada sección (`[[entidad]] roles`): sin ellos, daría un 403. */
+const ROLES_LISTA: Record<string, string[]> = {};
+
+/** Las secciones que puede abrir quien usa la app: el menú y el panel no le ofrecen un 403. */
+export function useEntradasMenu(): EntradaMenu[] {
+  const { puede } = useAuth();
+  return entradasMenu.filter((entrada) => (ROLES_LISTA[entrada.href] ?? []).every(puede));
+}
+
+/** El marco de la app, con las secciones de {@link useEntradasMenu}. */
+export function MarcoApp({ children }: { children: ReactNode }) {
+  const entradas = useEntradasMenu();
+  return <Marco menu={entradas}>{children}</Marco>;
+}
+
+export function RutasApp() {
+  const entradas = useEntradasMenu();
+  return (
+    <Switch>
+      <Route path="/">
+        <PaginaPanel entradas={entradas} />
+      </Route>
+      <Route path="/perfil">
+        <RequiereAuth>
+          <PaginaPerfil />
+        </RequiereAuth>
+      </Route>
+      {rutasPropias}
+      <Route path="/productos">
+        <ContenedorListaProducto />
+      </Route>
+      <Route path="/productos/nuevo">
+        <RequiereAuth>
+          <ContenedorFormularioProducto />
+        </RequiereAuth>
+      </Route>
+      <Route path="/productos/:id/editar">
+        {(params) => (
+          <RequiereAuth>
+            <ContenedorFormularioProducto id={params.id} />
+          </RequiereAuth>
+        )}
+      </Route>
+      <Route path="/productos/:id">
+        {(params) => <ContenedorDetalleProducto id={params.id} />}
+      </Route>
+      <Route>
+        <PaginaNoEncontrada />
+      </Route>
+    </Switch>
+  );
+}

@@ -2,6 +2,7 @@
   {
     "id": "acceso/dividido",
     "descripcion": "la marca sobre el color primario a un lado, el formulario en una tarjeta al otro",
+    "argumentos": null,
     "pide": "auth",
     "hueco": "acceso",
     "variante": "dividido",
@@ -17,6 +18,7 @@
   {
     "id": "acceso/centrado",
     "descripcion": "el formulario en una tarjeta en el centro, la marca encima y el eslogan debajo",
+    "argumentos": null,
     "pide": "auth",
     "hueco": "acceso",
     "variante": "centrado",
@@ -32,6 +34,7 @@
   {
     "id": "marco/lateral",
     "descripcion": "la marca y el menú en un lateral; en el móvil, tras un botón",
+    "argumentos": null,
     "pide": null,
     "hueco": "marco",
     "variante": "lateral",
@@ -47,6 +50,7 @@
   {
     "id": "marco/superior",
     "descripcion": "la marca y el menú en una barra arriba; en el móvil, un desplegable",
+    "argumentos": null,
     "pide": null,
     "hueco": "marco",
     "variante": "superior",
@@ -62,6 +66,7 @@
   {
     "id": "panel/tarjetas",
     "descripcion": "una tarjeta por sección con su total",
+    "argumentos": null,
     "pide": null,
     "hueco": "panel",
     "variante": "tarjetas",
@@ -77,6 +82,7 @@
   {
     "id": "panel/resumen",
     "descripcion": "una banda de color con el título y los totales en una fila",
+    "argumentos": null,
     "pide": null,
     "hueco": "panel",
     "variante": "resumen",
@@ -92,6 +98,7 @@
   {
     "id": "perfil/tarjeta",
     "descripcion": "el avatar, el nombre, el email y los roles en una tarjeta",
+    "argumentos": null,
     "pide": "auth",
     "hueco": "perfil",
     "variante": "tarjeta",
@@ -107,6 +114,7 @@
   {
     "id": "perfil/banda",
     "descripcion": "una banda de color con el avatar montado encima",
+    "argumentos": null,
     "pide": "auth",
     "hueco": "perfil",
     "variante": "banda",
@@ -122,6 +130,7 @@
   {
     "id": "portada/bienvenida",
     "descripcion": "el logo, el nombre, el eslogan y «Entrar»",
+    "argumentos": null,
     "pide": "portada",
     "hueco": "portada",
     "variante": "bienvenida",
@@ -137,6 +146,7 @@
   {
     "id": "portada/producto",
     "descripcion": "una web de producto: barra, cabecera, características, precios, preguntas, llamada y pie",
+    "argumentos": null,
     "pide": "portada",
     "hueco": "portada",
     "variante": "producto",
@@ -176,6 +186,7 @@
   {
     "id": "cabecera/centrada",
     "descripcion": "el eslogan en grande en el centro y la entrada a la app",
+    "argumentos": null,
     "pide": "portada/producto",
     "hueco": "cabecera",
     "variante": "centrada",
@@ -191,6 +202,7 @@
   {
     "id": "cabecera/dividida",
     "descripcion": "el eslogan a un lado y, al otro, un navegador con un panel de ejemplo",
+    "argumentos": null,
     "pide": "portada/producto",
     "hueco": "cabecera",
     "variante": "dividida",
@@ -206,6 +218,7 @@
   {
     "id": "caracteristicas/rejilla",
     "descripcion": "seis características con su icono, en una rejilla",
+    "argumentos": null,
     "pide": "portada/producto",
     "hueco": "caracteristicas",
     "variante": "rejilla",
@@ -221,6 +234,7 @@
   {
     "id": "precios/planes",
     "descripcion": "tres planes, el del centro destacado",
+    "argumentos": null,
     "pide": "portada/producto",
     "hueco": "precios",
     "variante": "planes",
@@ -236,6 +250,7 @@
   {
     "id": "preguntas/acordeon",
     "descripcion": "las preguntas frecuentes en un acordeón",
+    "argumentos": null,
     "pide": "portada/producto",
     "hueco": "preguntas",
     "variante": "acordeon",
@@ -251,6 +266,7 @@
   {
     "id": "llamada/banda",
     "descripcion": "una banda del color de la marca que invita a entrar",
+    "argumentos": null,
     "pide": "portada/producto",
     "hueco": "llamada",
     "variante": "banda",
@@ -266,6 +282,7 @@
   {
     "id": "pie/columnas",
     "descripcion": "la marca y los enlaces de la portada, en columnas",
+    "argumentos": null,
     "pide": "portada/producto",
     "hueco": "pie",
     "variante": "columnas",
@@ -279,8 +296,29 @@
     ]
   },
   {
+    "id": "escaparate/tarjetas",
+    "descripcion": "los primeros elementos de la lista pública de una entidad, en tarjetas",
+    "argumentos": "<Entidad>",
+    "pide": "portada/producto",
+    "hueco": "escaparate",
+    "variante": "tarjetas",
+    "porDefecto": true,
+    "exporta": "SeccionEscaparate",
+    "ficheros": [
+      {
+        "ruta": "web/src/portada/escaparate.tsx",
+        "codigo": "import { Link } from \"wouter\";\nimport type { Esquemas } from \"../api/cliente\";\nimport { desenvolver } from \"../api/http\";\nimport { useCarga } from \"../compartido/use-carga\";\nimport { useDependencias } from \"../dependencias\";\nimport { rutaApp } from \"../generado/rutas\";\n\ntype Producto = Esquemas[\"DtoProducto\"];\n\n/** Cuántas tarjetas enseña: los primeros de la lista, en su orden (`[[entidad]] orden`). */\nconst PRIMEROS = { params: { query: { limite: 6 } } };\n\n/** Su detalle, en la app. */\nconst detalle = (id: string) => `${rutaApp}/productos/${id}`;\n\n/**\n * Los primeros elementos de la lista pública de productos, en tarjetas (`puerto generar\n * web-bloque escaparate/tarjetas Producto`). Es tuyo: cambia cuántos, qué enseña cada tarjeta o\n * su título. Sin elementos, no ocupa sitio.\n */\nexport function SeccionEscaparate() {\n  const { api } = useDependencias();\n  const productos = useCarga(() => desenvolver(api.GET(\"/productos\", PRIMEROS)), [api]);\n  if (productos.estado !== \"listo\" || productos.datos.elementos.length === 0) {\n    return null;\n  }\n\n  return (\n    <section id=\"productos\" className=\"mx-auto max-w-6xl px-4 py-16\">\n      <h2 className=\"mb-8 text-3xl font-bold\">Productos</h2>\n      <div className=\"grid gap-6 sm:grid-cols-2 lg:grid-cols-3\">\n        {productos.datos.elementos.map((producto: Producto) => (\n          <article key={producto.id} className=\"card bg-base-200\">\n            <div className=\"card-body\">\n              <h3 className=\"card-title\">{producto.nombre}</h3>\n              <dl className=\"grid grid-cols-[max-content_1fr] gap-x-4 gap-y-1 text-sm\">\n                <dt className=\"font-semibold\">Precio</dt>\n                <dd>{producto.precio}</dd>\n              </dl>\n              <div className=\"card-actions justify-end\">\n                <Link href={detalle(producto.id)} className=\"btn btn-primary btn-sm\">\n                  Ver\n                </Link>\n              </div>\n            </div>\n          </article>\n        ))}\n      </div>\n    </section>\n  );\n}\n"
+      },
+      {
+        "ruta": "web/src/portada/escaparate.test.tsx",
+        "codigo": "import { describe, expect, test } from \"bun:test\";\nimport { screen } from \"@testing-library/react\";\nimport { apiFalsa } from \"../pruebas/api-falsa\";\nimport { coleccionProducto, MadreProducto } from \"../pruebas/producto\";\nimport { renderizarPantalla } from \"../pruebas/renderizar\";\nimport { SeccionEscaparate } from \"./escaparate\";\n\ndescribe(\"SeccionEscaparate\", () => {\n  test(\"debería enseñar una tarjeta por cada producto de la lista\", async () => {\n    // Preparar\n    const semilla = [MadreProducto.aleatorio(), MadreProducto.aleatorio()];\n    const api = apiFalsa([coleccionProducto(semilla)]);\n\n    // Actuar\n    renderizarPantalla(<SeccionEscaparate />, { api });\n\n    // Comprobar\n    expect(await screen.findAllByText(\"Ver\")).toHaveLength(2);\n  });\n\n  test(\"no debería ocupar sitio cuando no hay productos\", async () => {\n    // Preparar\n    const api = apiFalsa([coleccionProducto()]);\n\n    // Actuar\n    const { container } = renderizarPantalla(<SeccionEscaparate />, { api });\n\n    // Comprobar\n    await new Promise((listo) => setTimeout(listo, 0));\n    expect(container.querySelector(\"section\")).toBeNull();\n  });\n});\n"
+      }
+    ]
+  },
+  {
     "id": "tema/puerto",
     "descripcion": "cian y ámbar, esquinas redondeadas",
+    "argumentos": null,
     "pide": null,
     "hueco": "tema",
     "variante": "puerto",
@@ -296,6 +334,7 @@
   {
     "id": "tema/bosque",
     "descripcion": "verde y lima",
+    "argumentos": null,
     "pide": null,
     "hueco": "tema",
     "variante": "bosque",
@@ -311,6 +350,7 @@
   {
     "id": "tema/ciruela",
     "descripcion": "morado y rosa, muy redondeado",
+    "argumentos": null,
     "pide": null,
     "hueco": "tema",
     "variante": "ciruela",
@@ -326,6 +366,7 @@
   {
     "id": "tema/coral",
     "descripcion": "coral y turquesa, botones de píldora",
+    "argumentos": null,
     "pide": null,
     "hueco": "tema",
     "variante": "coral",
@@ -341,6 +382,7 @@
   {
     "id": "tema/pizarra",
     "descripcion": "casi negro y azul, esquinas rectas",
+    "argumentos": null,
     "pide": null,
     "hueco": "tema",
     "variante": "pizarra",
@@ -356,6 +398,7 @@
   {
     "id": "tema/miel",
     "descripcion": "ámbar y marrón sobre un fondo cálido",
+    "argumentos": null,
     "pide": null,
     "hueco": "tema",
     "variante": "miel",

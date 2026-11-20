@@ -1,0 +1,29 @@
+/** Lo que una pantalla muestra de un error de la API: bajo el input del que trata, o en la alerta. */
+export interface ProblemaProducto {
+  campo: string | null;
+  texto: string;
+}
+
+/**
+ * Los mensajes de los códigos de `errores.rs` del backend, generados de la misma lista. Un código que
+ * no está aquí se muestra tal cual.
+ */
+const TEXTOS: Record<string, string> = {
+  "producto.validacion.nombre_vacio": "Nombre: campo obligatorio",
+  "producto.validacion.sku_vacio": "Sku: campo obligatorio",
+  "producto.duplicado": "Sku: ya está en uso",
+  "producto.no_encontrado": "Ya no existe",
+  "producto.repositorio": "No se ha podido guardar; inténtalo más tarde",
+  "producto.desconocido": "Algo ha ido mal",
+};
+
+/** El input del que trata el código de cada campo. */
+const CAMPOS: Record<string, string> = {
+  "producto.validacion.nombre_vacio": "nombre",
+  "producto.validacion.sku_vacio": "sku",
+  "producto.duplicado": "sku",
+};
+
+export function aProblema(codigo: string): ProblemaProducto {
+  return { campo: CAMPOS[codigo] ?? null, texto: TEXTOS[codigo] ?? codigo };
+}

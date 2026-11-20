@@ -1,0 +1,68 @@
+import { describe, expect, test } from "bun:test";
+import { coleccion, fetchFalso } from "./api-falsa";
+
+function pedir(metodo: string, ruta: string) {
+  return new Request(`http://localhost/api${ruta}`, { method: metodo });
+}
+
+function sembrarCosas() {
+  return coleccion("/cosas", "cosa", [{ id: "1", estado: "Activa" }], {
+    cancelar: { estado: "Cancelada" },
+  });
+}
+
+describe("fetchFalso", () => {
+  test("debería conservar al actualizar solo lo que la colección conserva", async () => {
+    // Preparar
+    const semilla: { id: string; codigo: string; nota?: string }[] = [
+      { id: "1", codigo: "AB12", nota: "vieja" },
+    ];
+    const cosas = coleccion("/cosas", "cosa", semilla, {}, ["codigo"]);
+    const pedido = new Request("http://localhost/api/cosas/1", { method: "PUT", body: "{}" });
+
+    // Actuar
+    const respuesta = await fetchFalso([cosas])(pedido);
+
+    // Comprobar: `nota` no se mandó, así que queda vacía; `codigo` la pone la API.
+    expect(respuesta.status).toBe(200);
+    expect(cosas.elementos.get("1")).toEqual({ id: "1", codigo: "AB12" });
+  });
+
+  test("debería poner en el elemento los campos de la acción cuando se le pide", async () => {
+    // Preparar
+    const cosas = sembrarCosas();
+
+    // Actuar
+    const respuesta = await fetchFalso([cosas])(pedir("POST", "/cosas/1/cancelar"));
+
+    // Comprobar
+    expect(respuesta.status).toBe(200);
+    expect(await respuesta.json()).toEqual({ id: "1", estado: "Cancelada" });
+    expect(cosas.elementos.get("1")).toEqual({ id: "1", estado: "Cancelada" });
+  });
+
+  test("debería responder 404 cuando la acción no existe", async () => {
+    // Preparar
+    const cosas = sembrarCosas();
+
+    // Actuar
+    const respuesta = await fetchFalso([cosas])(pedir("POST", "/cosas/1/archivar"));
+
+    // Comprobar
+    expect(respuesta.status).toBe(404);
+    expect(cosas.elementos.get("1")).toEqual({ id: "1", estado: "Activa" });
+  });
+
+  test("debería responder el fallo de la acción sin cambiar el elemento", async () => {
+    // Preparar
+    const cosas = sembrarCosas();
+    const fallos = { "POST /cosas/{id}/cancelar": "cosa.validacion.ya_cancelada" };
+
+    // Actuar
+    const respuesta = await fetchFalso([cosas], fallos)(pedir("POST", "/cosas/1/cancelar"));
+
+    // Comprobar
+    expect((await respuesta.json()).codigo).toBe("cosa.validacion.ya_cancelada");
+    expect(cosas.elementos.get("1")).toEqual({ id: "1", estado: "Activa" });
+  });
+});

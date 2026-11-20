@@ -1,0 +1,111 @@
+import { describe, expect, test } from "bun:test";
+import { fireEvent, screen, waitFor } from "@testing-library/react";
+import type { Esquemas } from "../../../api/cliente";
+import { apiFalsa } from "../../../pruebas/api-falsa";
+import { coleccionCliente, MadreCliente } from "../../../pruebas/cliente";
+import { renderizarPantalla } from "../../../pruebas/renderizar";
+import { aProblema } from "../mensajes";
+import { ContenedorFormularioCliente } from "./formulario-cliente";
+
+function escribir(etiqueta: string, valor: string) {
+  fireEvent.change(screen.getByLabelText(etiqueta), { target: { value: valor } });
+}
+
+/** Rellena el formulario vacío con `peticion`, como lo haría quien lo usa. */
+async function rellenar(peticion: Esquemas["PeticionCrearCliente"]) {
+  await screen.findByText("Guardar");
+  escribir("Email", peticion.email);
+  escribir("Nombre", peticion.nombre);
+  escribir("Etiquetas", peticion.etiquetas.join(", "));
+}
+
+describe("ContenedorFormularioCliente", () => {
+  test("debería crear con lo escrito e ir a su detalle", async () => {
+    // Preparar
+    const peticion = MadreCliente.peticion();
+    const guardados = coleccionCliente();
+    const api = apiFalsa([guardados]);
+    const pantalla = <ContenedorFormularioCliente />;
+    const { historial } = renderizarPantalla(pantalla, { api });
+    await rellenar(peticion);
+
+    // Actuar
+    fireEvent.click(screen.getByText("Guardar"));
+
+    // Comprobar
+    await waitFor(() => expect(historial.at(-1)).toStartWith("/clientes/"));
+    const [creado] = guardados.elementos.values();
+    expect(creado).toMatchObject(peticion);
+    expect(historial.at(-1)).toBe(`/clientes/${creado?.id}`);
+  });
+
+  test("debería guardar la edición cuando se envía el formulario", async () => {
+    // Preparar
+    const sembrado = MadreCliente.aleatorio();
+    const guardados = coleccionCliente([sembrado]);
+    const api = apiFalsa([guardados]);
+    const pantalla = <ContenedorFormularioCliente id={sembrado.id} />;
+    const { historial } = renderizarPantalla(pantalla, { api });
+
+    // Actuar
+    fireEvent.click(await screen.findByText("Guardar"));
+
+    // Comprobar
+    await waitFor(() => expect(historial.at(-1)).toBe(`/clientes/${sembrado.id}`));
+    expect(guardados.elementos.get(sembrado.id)).toEqual(sembrado);
+  });
+
+  test("debería mostrar el propio código cuando la API responde uno que el formulario no conoce", async () => {
+    // Preparar
+    const peticion = MadreCliente.peticion();
+    const codigo = "cliente.validacion.invalido";
+    const fallos = { "POST /clientes": codigo };
+    const api = apiFalsa([coleccionCliente()], fallos);
+    renderizarPantalla(<ContenedorFormularioCliente />, { api });
+    await rellenar(peticion);
+
+    // Actuar
+    fireEvent.click(screen.getByText("Guardar"));
+
+    // Comprobar
+    expect((await screen.findByRole("alert")).textContent).toBe(codigo);
+  });
+
+  test("debería decir bajo su input que Email ya está en uso cuando la API responde un duplicado", async () => {
+    // Preparar
+    const peticion = MadreCliente.peticion();
+    const codigo = "cliente.duplicado";
+    const fallos = { "POST /clientes": codigo };
+    const api = apiFalsa([coleccionCliente()], fallos);
+    renderizarPantalla(<ContenedorFormularioCliente />, { api });
+    await rellenar(peticion);
+
+    // Actuar
+    fireEvent.click(screen.getByText("Guardar"));
+
+    // Comprobar
+    expect(await screen.findByText(aProblema(codigo).texto)).toBeTruthy();
+    const campo = screen.getByLabelText("Email");
+    expect(campo.getAttribute("aria-invalid")).toBe("true");
+    expect(screen.queryByRole("alert")).toBeNull();
+  });
+
+  test("debería mostrar el mensaje bajo su input cuando la API rechaza un campo", async () => {
+    // Preparar
+    const peticion = MadreCliente.peticion();
+    const codigo = "cliente.email_invalido";
+    const fallos = { "POST /clientes": codigo };
+    const api = apiFalsa([coleccionCliente()], fallos);
+    renderizarPantalla(<ContenedorFormularioCliente />, { api });
+    await rellenar(peticion);
+
+    // Actuar
+    fireEvent.click(screen.getByText("Guardar"));
+
+    // Comprobar
+    expect(await screen.findByText(aProblema(codigo).texto)).toBeTruthy();
+    const campo = screen.getByLabelText("Email");
+    expect(campo.getAttribute("aria-invalid")).toBe("true");
+    expect(screen.queryByRole("alert")).toBeNull();
+  });
+});

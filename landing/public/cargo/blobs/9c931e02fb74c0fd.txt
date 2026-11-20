@@ -1,0 +1,3 @@
+//! Lo que comparten varios consumidores: una consulta, una regla del worker, un helper de sus
+//! tests. Es tuyo: `puerto` lo escribe una vez y no lo toma por un consumidor (ninguno puede
+//! llamarse `comun`). Úsalo desde un consumidor con `use super::comun::…;`.

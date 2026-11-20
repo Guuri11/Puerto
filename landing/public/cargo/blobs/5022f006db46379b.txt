@@ -1,0 +1,107 @@
+import type { Esquemas } from "../../../api/cliente";
+import { textoDe, textoOpcional } from "../../../compartido/formularios";
+import { ErrorCampo } from "../../../compartido/ui/error-campo";
+import type { ProblemaPedido } from "../mensajes";
+
+type Pedido = Esquemas["DtoPedido"];
+type PeticionPedido = Esquemas["PeticionCrearPedido"];
+
+/** Lo que guardan los inputs: el texto de cada input, `checked` en una casilla. */
+export interface ValoresFormularioPedido {
+  importe: string;
+  estado: string;
+  nota: string;
+}
+
+/** Los inputs de `pedido`, vacíos cuando todavía no hay ninguno. */
+export function aFormularioPedido(pedido: Pedido | null): ValoresFormularioPedido {
+  if (pedido === null) {
+    return {
+      importe: "",
+      estado: "Pendiente",
+      nota: "",
+    };
+  }
+  return {
+    importe: String(pedido.importe),
+    estado: pedido.estado,
+    nota: textoDe(pedido.nota),
+  };
+}
+
+/** Lo que mandan crear y actualizar: los mismos campos en los dos. */
+export function aPeticionPedido(valores: ValoresFormularioPedido): PeticionPedido {
+  return {
+    importe: Number(valores.importe),
+    estado: valores.estado,
+    nota: textoOpcional(valores.nota),
+  };
+}
+
+export function VistaFormularioPedido({
+  valores,
+  guardando,
+  problema,
+  alCambiar,
+  alEnviar,
+}: {
+  valores: ValoresFormularioPedido;
+  guardando: boolean;
+  /** Lo que dijo la API del último envío: se muestra bajo su input. */
+  problema: ProblemaPedido | null;
+  alCambiar: (valores: ValoresFormularioPedido) => void;
+  alEnviar: () => void;
+}) {
+  return (
+    <form
+      className="space-y-2"
+      onSubmit={(event) => {
+        event.preventDefault();
+        alEnviar();
+      }}
+    >
+      <label className="fieldset">
+        <span className="fieldset-legend">Importe</span>
+        <input
+          className="input w-full"
+          type="number"
+          aria-invalid={problema?.campo === "importe"}
+          step="any"
+          required
+          value={valores.importe}
+          onChange={(event) => alCambiar({ ...valores, importe: event.target.value })}
+        />
+      </label>
+      <ErrorCampo problema={problema} campo="importe" />
+      <label className="fieldset">
+        <span className="fieldset-legend">Estado</span>
+        <select
+          className="select w-full"
+          aria-invalid={problema?.campo === "estado"}
+          required
+          value={valores.estado}
+          onChange={(event) => alCambiar({ ...valores, estado: event.target.value })}
+        >
+          <option value="Pendiente">Pendiente</option>
+          <option value="Confirmado">Confirmado</option>
+          <option value="Cancelado">Cancelado</option>
+        </select>
+      </label>
+      <ErrorCampo problema={problema} campo="estado" />
+      <label className="fieldset">
+        <span className="fieldset-legend">Nota</span>
+        <input
+          className="input w-full"
+          type="text"
+          aria-invalid={problema?.campo === "nota"}
+          value={valores.nota}
+          onChange={(event) => alCambiar({ ...valores, nota: event.target.value })}
+        />
+      </label>
+      <ErrorCampo problema={problema} campo="nota" />
+      <button type="submit" className="btn btn-primary" disabled={guardando}>
+        Guardar
+      </button>
+    </form>
+  );
+}

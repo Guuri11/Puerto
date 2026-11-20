@@ -1,1 +1,0 @@
-//! Un módulo por cada `[[consumidor]]` de puerto.toml: los añade `puerto generar consumidor`.
