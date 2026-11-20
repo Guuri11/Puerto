@@ -1,3 +1,75 @@
+## [0.28.0] - 2026-11-20
+
+Lo que encontró Aforo (una venta de entradas para salas pequeñas, hecha con la 0.27 para
+enseñar todo Puerto) entra en Puerto (PLAN Fase 27): el grupo A arregla lo que ya se generaba y el B
+genera lo que Aforo escribió a mano. Aforo, rehecha desde cero con esta versión, ya no escribe a mano
+ni casos de uso de cambio de estado, ni rutas, ni botones, ni la cartelera pública, ni la fontanería
+de sus consumidores.
+
+### Added
+
+- **`puerto generar transicion <Entidad> <verbo> [--evento <tipo>] [--rol <rol>]`**: un cambio de
+  estado de punta a punta en una entidad CRUD. El método `dominio/src/<verbo>.rs` (la regla es
+  tuya, con el código `<entidad>.validacion.no_se_puede_<verbo>`), el caso de uso `<verbo>_<entidad>`
+  con sus tests, `POST /<plural>/:id/<verbo>` en su propio `rest/src/<verbo>_<entidad>.rs` (con su
+  `Api<Caso>`, que `bootstrap.rs` monta) y el botón con su diálogo en el detalle web.
+  `[[entidad]] transiciones`.
+- **`--interno`** en `generar caso-de-uso` y `generar transicion`: un caso de uso sin ruta, sin
+  `actor` y sin botón, que llama el worker. `[[entidad]] internos`.
+- **Lo que necesita un consumidor**: `generar consumidor … --usa <caso_de_uso>,…` le da un campo
+  por caso de uso, sacado de `cableado`, con sus dependencias en el `Cargo.toml` del worker y un
+  doble en sus tests; `Principal::sistema(nombre)` (el `actor` del worker) y
+  `puerto_nucleo::todas_las_paginas` (una lista entera) en `puerto-nucleo`; y
+  `consumidores/comun.rs`, para lo que comparten.
+- **`generar objeto-valor … --ejemplo <valor>`** (`[[objeto_valor]] ejemplo`): el valor válido que
+  usan los tests de sus campos (madres, cuerpos de las rutas, siembra, la madre de la web).
+- **Objetos valor con regla**: `email:Email:email` (`usuario@dominio.tld`) y `precio:Precio:dinero`
+  (un `i64` de céntimos, nunca negativo), también compartidos (`generar objeto-valor Email email`),
+  con sus tests. En la web, `<input type="email">` y el dinero en euros con coma, mostrado con
+  `euros()`.
+- **Campos que pone el servidor**: `scaffold --por-defecto estado=Pendiente` (fuera de la petición
+  de crear) y `--generado codigo` (un `String` único que inventa `<Entidad>::generar_<campo>()`,
+  en `dominio/src/generados.rs`; fuera de las dos peticiones).
+- **El propietario de una fila**: `scaffold --propietario comprador_id` (proyectos con auth).
+  `crear` lo pone con quien llama; `obtener`, `actualizar` y `borrar` dejan pasar al propietario o
+  a quien tiene los roles de la ruta, que comprueba el caso de uso; `GET /mis_<plural>`
+  (`listar_mis_<plural>`) y «Mis <plural>» en la web.
+- **El escaparate de una lista pública**: `generar web-bloque escaparate/tarjetas <Entidad>` pone en
+  la portada de producto los primeros elementos de una lista pública, en tarjetas.
+- **Datos de ejemplo**: `puerto nuevo` escribe `scripts/sembrar.sh` (con `peticion`, `crear` y,
+  según el auth, `sesion` y `conceder`), y `make sembrar` lo ejecuta con el `.env` cargado.
+- `[[entidad.campos]] etiqueta` (lo que dicen las pantallas de un campo) y `textos` (lo que se lee
+  de cada variante de un enum).
+- `/<plural>/nuevo?<referencia>=<id>` abre el formulario con esa referencia elegida.
+- `CONFIRM=DESTRUIR make db/reiniciar` no pregunta.
+
+### Changed
+
+- Las etiquetas de los campos llevan sus tildes (`direccion` → Dirección), y los enums se leen
+  como texto en las pantallas (`EnRevision` → En revisión); un enum obligatorio empieza en su
+  primera variante.
+- Las fechas de la web se muestran en castellano, sea cual sea el idioma del navegador, y las
+  listas nombran cada referencia por su etiqueta, no por su id.
+- La web respeta los roles de las rutas: el menú y el panel quitan una lista que quien la usa no
+  puede ver, y tras crear sin poder ver el detalle se vuelve a la lista o al panel.
+- Un duplicado nombra en el formulario el campo único o el grupo que choca.
+- Los puertos de Postgres y de Mailpit están en `.env` (`DB_HOST_PORT`, `SMTP_HOST_PORT`,
+  `MAILPIT_UI_PORT`), el proxy de Vite sigue a `SERVICE_PORT`, y `puerto nuevo` y el primer
+  `generar correo` avisan de los puertos ocupados.
+- La API falsa de los tests web entiende las acciones (`POST <ruta>/{id}/<accion>`), y conserva al
+  actualizar lo que la API no deja cambiar.
+
+### Fixed
+
+- La siembra de un campo único en los tests de Postgres sale de la madre, así que cumple las reglas
+  de su objeto valor.
+- Los tests del formulario web sacan sus textos de `mensajes.ts`.
+- Un duplicado o una referencia inexistente al guardar se registran como `warn`, no como `error`:
+  son un `409` o un `422`, no un fallo del servidor.
+
+Un proyecto de 0.27 sube con los crates del runtime a `0.28` en su `Cargo.toml` raíz; lo nuevo
+llega con los scaffolds y los comandos nuevos, y ningún fichero suyo cambia.
+
 ## [0.27.0] - 2026-11-19
 
 Un escaparate de bloques para el frontend generado: otras pantallas de la app, una portada pública
