@@ -200,8 +200,7 @@ fn keycloak_oidc_project_refuses_without_token_or_role_and_provisions_each_calle
     assert!(is_error(&body, "auth.prohibido"), "{body}");
     let (status, _) = http_as(port, "GET", "/api/productos", "", Some(&user)).unwrap();
     assert_eq!(status, 200);
-    let (status, body) = http_as(port, "GET", "/api/pedidos", "", Some(&user)).unwrap();
-    assert_eq!(status, 200, "{body}");
+    assert_own_orders(port, &user);
     assert_eq!(users(&project), 2, "user@ provisioned on its first call");
 
     // A restarted API has no cache: it finds the rows instead of adding them.
@@ -220,6 +219,30 @@ fn keycloak_oidc_project_refuses_without_token_or_role_and_provisions_each_calle
 const LOCAL_PROJECT: &str = "e2e-auth-local";
 
 /// The `"<field>":"<value>"` of a JSON body.
+/// Pedido's list and detail are `admin`'s (27.8), and each Pedido is its buyer's (27.18): a caller
+/// without the role is refused the list, creates one — owned by its own `id_usuario`, which the
+/// OIDC provisioning sets too — and finds it in `/mis_pedidos`.
+fn assert_own_orders(port: u16, token: &str) {
+    let (status, body) = http_as(port, "GET", "/api/pedidos", "", Some(token)).unwrap();
+    assert_eq!(status, 403, "the list asks for `admin`: {body}");
+    let (status, body) = http_as(
+        port,
+        "POST",
+        "/api/pedidos",
+        r#"{"total":1200}"#,
+        Some(token),
+    )
+    .unwrap();
+    assert_eq!(status, 201, "{body}");
+    let id = field(&body, "id");
+    let (status, body) = http_as(port, "GET", "/api/mis_pedidos", "", Some(token)).unwrap();
+    assert_eq!(status, 200, "{body}");
+    assert!(body.contains(&id), "the caller's own order: {body}");
+    let (status, body) =
+        http_as(port, "GET", &format!("/api/pedidos/{id}"), "", Some(token)).unwrap();
+    assert_eq!(status, 200, "its owner reads it without the role: {body}");
+}
+
 fn field(body: &str, name: &str) -> String {
     let json: serde_json::Value =
         serde_json::from_str(body).unwrap_or_else(|_| panic!("not JSON: {body}"));
@@ -271,8 +294,7 @@ fn postgres_local_auth_project_registers_signs_in_and_revokes_on_logout() {
     let (status, body) = http_as(port, "GET", "/api/me", "", Some(&token)).unwrap();
     assert_eq!(status, 200, "{body}");
     assert_eq!(field(&body, "email"), "ada@example.com");
-    let (status, body) = http_as(port, "GET", "/api/pedidos", "", Some(&token)).unwrap();
-    assert_eq!(status, 200, "{body}");
+    assert_own_orders(port, &token);
     let (status, body) = http_as(port, "POST", "/api/productos", PRODUCT, Some(&token)).unwrap();
     assert_eq!(status, 403, "{body}");
     assert!(is_error(&body, "auth.prohibido"), "{body}");
