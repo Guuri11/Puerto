@@ -10575,11 +10575,25 @@ describe("ContenedorFormularioCompra", () => {
     expect(campo.getAttribute("aria-invalid")).toBe("true");
     expect(screen.queryByRole("alert")).toBeNull();
   });
+
+  test("debería dejar elegido Proveedor cuando la URL lo trae", async () => {
+    // Preparar: «Comprar» desde Proveedor lleva a `/compras/nuevo?proveedorId=…`
+    const peticion = MadreCompra.peticion();
+    const api = apiFalsa([coleccionCompra(), ...referenciadosPor(peticion)]);
+    const ruta = `/compras/nuevo?proveedorId=${peticion.proveedorId}`;
+
+    // Actuar
+    renderizarPantalla(<ContenedorFormularioCompra />, { api }, ruta);
+
+    // Comprobar
+    const select = (await screen.findByLabelText("Proveedor")) as HTMLSelectElement;
+    await waitFor(() => expect(select.value).toBe(peticion.proveedorId));
+  });
 });
 
 === web/src/contextos/compra/contenedores/formulario-compra.tsx ===
 import { useState } from "react";
-import { Link, useLocation } from "wouter";
+import { Link, useLocation, useSearch } from "wouter";
 import type { Esquemas } from "../../../api/cliente";
 import { desenvolver, LIMITE_PAGINA_MAXIMO } from "../../../api/http";
 import { opcionesReferencia } from "../../../compartido/formularios";
@@ -10627,7 +10641,17 @@ function FormularioCompra({ existente }: { existente: Compra | null }) {
   const { api } = useDependencias();
   const proveedores = useCarga(() => desenvolver(api.GET("/proveedores", PRIMERA_PAGINA)), [api]);
   const [, navegar] = useLocation();
-  const [valores, setValores] = useState(aFormularioCompra(existente));
+  // 27.19: al crear, la referencia que trae la URL (`?proveedorId=…`) llega elegida.
+  const desdeUrl = new URLSearchParams(useSearch());
+  const [valores, setValores] = useState(() => {
+    const iniciales = aFormularioCompra(existente);
+    if (existente !== null) return iniciales;
+    return {
+      ...iniciales,
+      proveedorId: desdeUrl.get("proveedorId") ?? iniciales.proveedorId,
+      approverId: desdeUrl.get("approverId") ?? iniciales.approverId,
+    };
+  });
   const [guardando, setGuardando] = useState(false);
   const [fallo, setFallo] = useState<unknown>(null);
   const problema = fallo === null ? null : aProblema(codigoError(fallo));
@@ -11409,11 +11433,25 @@ describe("ContenedorFormularioEntrega", () => {
     expect(campo.getAttribute("aria-invalid")).toBe("true");
     expect(screen.queryByRole("alert")).toBeNull();
   });
+
+  test("debería dejar elegido Compra cuando la URL lo trae", async () => {
+    // Preparar: «Comprar» desde Compra lleva a `/entregas/nuevo?compraId=…`
+    const peticion = MadreEntrega.peticion();
+    const api = apiFalsa([coleccionEntrega(), ...referenciadosPor(peticion)]);
+    const ruta = `/entregas/nuevo?compraId=${peticion.compraId}`;
+
+    // Actuar
+    renderizarPantalla(<ContenedorFormularioEntrega />, { api }, ruta);
+
+    // Comprobar
+    const select = (await screen.findByLabelText("Compra")) as HTMLSelectElement;
+    await waitFor(() => expect(select.value).toBe(peticion.compraId));
+  });
 });
 
 === web/src/contextos/entrega/contenedores/formulario-entrega.tsx ===
 import { useState } from "react";
-import { Link, useLocation } from "wouter";
+import { Link, useLocation, useSearch } from "wouter";
 import type { Esquemas } from "../../../api/cliente";
 import { desenvolver, LIMITE_PAGINA_MAXIMO } from "../../../api/http";
 import { opcionesReferencia } from "../../../compartido/formularios";
@@ -11462,7 +11500,17 @@ function FormularioEntrega({ existente }: { existente: Entrega | null }) {
   const compras = useCarga(() => desenvolver(api.GET("/compras", PRIMERA_PAGINA)), [api]);
   const proveedores = useCarga(() => desenvolver(api.GET("/proveedores", PRIMERA_PAGINA)), [api]);
   const [, navegar] = useLocation();
-  const [valores, setValores] = useState(aFormularioEntrega(existente));
+  // 27.19: al crear, la referencia que trae la URL (`?compraId=…`) llega elegida.
+  const desdeUrl = new URLSearchParams(useSearch());
+  const [valores, setValores] = useState(() => {
+    const iniciales = aFormularioEntrega(existente);
+    if (existente !== null) return iniciales;
+    return {
+      ...iniciales,
+      compraId: desdeUrl.get("compraId") ?? iniciales.compraId,
+      destinatarioId: desdeUrl.get("destinatarioId") ?? iniciales.destinatarioId,
+    };
+  });
   const [guardando, setGuardando] = useState(false);
   const [fallo, setFallo] = useState<unknown>(null);
   const problema = fallo === null ? null : aProblema(codigoError(fallo));

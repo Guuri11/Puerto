@@ -4075,7 +4075,7 @@ vale en los dos modos.
 - **Tests:** el caso de uso (propietario, otro, rol), las rutas, el filtro y la web; compile
   matrix en un escenario con auth y web, y en otro de Postgres.
 
-### 27.19 — Una referencia elegida desde la URL
+### 27.19 — Una referencia elegida desde la URL ✅
 
 El formulario de crear lee `?<campoCamel>=<id>` y deja elegida esa referencia. Así un «Comprar»
 lleva a `…/entradas/nuevo?conciertoId=…`. Test: el select llega con el valor.

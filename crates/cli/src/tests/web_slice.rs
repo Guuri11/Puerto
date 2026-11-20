@@ -750,3 +750,55 @@ fn messages_of_an_entity_without_field_codes_map_no_field() {
 
     cleanup(&dir);
 }
+
+// ── 27.19: a reference picked from the URL ─────────────────────────────────
+
+#[test]
+fn the_create_form_picks_the_reference_the_url_brings() {
+    let (dir, output) = web_project("web_reference_from_url");
+    scaffold::run_scaffold(
+        "Cliente",
+        &output,
+        &fields(&["nombre:String"]),
+        OverwritePolicy::Ask,
+    )
+    .unwrap();
+
+    scaffold::run_scaffold(
+        "Pedido",
+        &output,
+        &fields(&[
+            "total:i64",
+            "cliente_id:ref:Cliente",
+            "revisor_id:ref:opt:Cliente",
+        ]),
+        OverwritePolicy::Ask,
+    )
+    .unwrap();
+
+    let form = read(
+        &output,
+        "web/src/contextos/pedido/contenedores/formulario-pedido.tsx",
+    );
+    assert!(
+        form.contains("const desdeUrl = new URLSearchParams(useSearch());"),
+        "{form}"
+    );
+    assert!(
+        form.contains("clienteId: desdeUrl.get(\"clienteId\") ?? iniciales.clienteId,"),
+        "{form}"
+    );
+    assert!(
+        form.contains("revisorId: desdeUrl.get(\"revisorId\") ?? iniciales.revisorId,"),
+        "{form}"
+    );
+    let test = read(
+        &output,
+        "web/src/contextos/pedido/contenedores/formulario-pedido.test.tsx",
+    );
+    assert!(
+        test.contains("/pedidos/nuevo?clienteId=${peticion.clienteId}"),
+        "{test}"
+    );
+    cleanup(&dir);
+}

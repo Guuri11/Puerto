@@ -8226,11 +8226,25 @@ describe("ContenedorFormularioJugador", () => {
     expect(campo.getAttribute("aria-invalid")).toBe("true");
     expect(screen.queryByRole("alert")).toBeNull();
   });
+
+  test("debería dejar elegido Equipo cuando la URL lo trae", async () => {
+    // Preparar: «Comprar» desde Equipo lleva a `/jugadores/nuevo?equipoId=…`
+    const peticion = MadreJugador.peticion();
+    const api = apiFalsa([coleccionJugador(), ...referenciadosPor(peticion)]);
+    const ruta = `/jugadores/nuevo?equipoId=${peticion.equipoId}`;
+
+    // Actuar
+    renderizarPantalla(<ContenedorFormularioJugador />, { api }, ruta);
+
+    // Comprobar
+    const select = (await screen.findByLabelText("Equipo")) as HTMLSelectElement;
+    await waitFor(() => expect(select.value).toBe(peticion.equipoId));
+  });
 });
 
 === web/src/contextos/jugador/contenedores/formulario-jugador.tsx ===
 import { useState } from "react";
-import { Link, useLocation } from "wouter";
+import { Link, useLocation, useSearch } from "wouter";
 import type { Esquemas } from "../../../api/cliente";
 import { desenvolver, LIMITE_PAGINA_MAXIMO } from "../../../api/http";
 import { opcionesReferencia } from "../../../compartido/formularios";
@@ -8278,7 +8292,16 @@ function FormularioJugador({ existente }: { existente: Jugador | null }) {
   const { api } = useDependencias();
   const equipos = useCarga(() => desenvolver(api.GET("/equipos", PRIMERA_PAGINA)), [api]);
   const [, navegar] = useLocation();
-  const [valores, setValores] = useState(aFormularioJugador(existente));
+  // 27.19: al crear, la referencia que trae la URL (`?equipoId=…`) llega elegida.
+  const desdeUrl = new URLSearchParams(useSearch());
+  const [valores, setValores] = useState(() => {
+    const iniciales = aFormularioJugador(existente);
+    if (existente !== null) return iniciales;
+    return {
+      ...iniciales,
+      equipoId: desdeUrl.get("equipoId") ?? iniciales.equipoId,
+    };
+  });
   const [guardando, setGuardando] = useState(false);
   const [fallo, setFallo] = useState<unknown>(null);
   const problema = fallo === null ? null : aProblema(codigoError(fallo));

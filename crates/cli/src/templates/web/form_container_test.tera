@@ -222,4 +222,20 @@ describe("ContenedorFormulario{{ pascal }}", () => {
     expect(screen.queryByRole("alert")).toBeNull();
   });
 {%- endif %}
+{%- for r in references | filter(attribute="required", value=true) %}{% if loop.first %}
+
+  test("debería dejar elegido {{ r.label }} cuando la URL lo trae", async () => {
+    // Preparar: «Comprar» desde {{ r.label }} lleva a `/{{ plural }}/nuevo?{{ r.camel }}=…`
+    const peticion = Madre{{ pascal }}.peticion();
+    const api = apiFalsa([coleccion{{ pascal }}(), ...referenciadosPor(peticion)]);
+    const ruta = `/{{ plural }}/nuevo?{{ r.camel }}=${peticion.{{ r.camel }}}`;
+
+    // Actuar
+    renderizarPantalla(<ContenedorFormulario{{ pascal }} />, { api }, ruta);
+
+    // Comprobar
+    const select = (await screen.findByLabelText("{{ r.label }}")) as HTMLSelectElement;
+    await waitFor(() => expect(select.value).toBe(peticion.{{ r.camel }}));
+  });
+{%- endif %}{% endfor %}
 });

@@ -8397,11 +8397,25 @@ describe("ContenedorFormularioEnvio", () => {
     expect(campo.getAttribute("aria-invalid")).toBe("true");
     expect(screen.queryByRole("alert")).toBeNull();
   });
+
+  test("debería dejar elegido Pedido cuando la URL lo trae", async () => {
+    // Preparar: «Comprar» desde Pedido lleva a `/envios/nuevo?pedidoId=…`
+    const peticion = MadreEnvio.peticion();
+    const api = apiFalsa([coleccionEnvio(), ...referenciadosPor(peticion)]);
+    const ruta = `/envios/nuevo?pedidoId=${peticion.pedidoId}`;
+
+    // Actuar
+    renderizarPantalla(<ContenedorFormularioEnvio />, { api }, ruta);
+
+    // Comprobar
+    const select = (await screen.findByLabelText("Pedido")) as HTMLSelectElement;
+    await waitFor(() => expect(select.value).toBe(peticion.pedidoId));
+  });
 });
 
 === web/src/contextos/envio/contenedores/formulario-envio.tsx ===
 import { useState } from "react";
-import { Link, useLocation } from "wouter";
+import { Link, useLocation, useSearch } from "wouter";
 import type { Esquemas } from "../../../api/cliente";
 import { desenvolver, LIMITE_PAGINA_MAXIMO } from "../../../api/http";
 import { opcionesReferencia } from "../../../compartido/formularios";
@@ -8446,7 +8460,17 @@ function FormularioEnvio({ existente }: { existente: Envio | null }) {
   const pedidos = useCarga(() => desenvolver(api.GET("/pedidos", PRIMERA_PAGINA)), [api]);
   const clientes = useCarga(() => desenvolver(api.GET("/clientes", PRIMERA_PAGINA)), [api]);
   const [, navegar] = useLocation();
-  const [valores, setValores] = useState(aFormularioEnvio(existente));
+  // 27.19: al crear, la referencia que trae la URL (`?pedidoId=…`) llega elegida.
+  const desdeUrl = new URLSearchParams(useSearch());
+  const [valores, setValores] = useState(() => {
+    const iniciales = aFormularioEnvio(existente);
+    if (existente !== null) return iniciales;
+    return {
+      ...iniciales,
+      pedidoId: desdeUrl.get("pedidoId") ?? iniciales.pedidoId,
+      destinatarioId: desdeUrl.get("destinatarioId") ?? iniciales.destinatarioId,
+    };
+  });
   const [guardando, setGuardando] = useState(false);
   const [fallo, setFallo] = useState<unknown>(null);
   const problema = fallo === null ? null : aProblema(codigoError(fallo));
@@ -9207,11 +9231,25 @@ describe("ContenedorFormularioPedido", () => {
     expect(campo.getAttribute("aria-invalid")).toBe("true");
     expect(screen.queryByRole("alert")).toBeNull();
   });
+
+  test("debería dejar elegido Cliente cuando la URL lo trae", async () => {
+    // Preparar: «Comprar» desde Cliente lleva a `/pedidos/nuevo?clienteId=…`
+    const peticion = MadrePedido.peticion();
+    const api = apiFalsa([coleccionPedido(), ...referenciadosPor(peticion)]);
+    const ruta = `/pedidos/nuevo?clienteId=${peticion.clienteId}`;
+
+    // Actuar
+    renderizarPantalla(<ContenedorFormularioPedido />, { api }, ruta);
+
+    // Comprobar
+    const select = (await screen.findByLabelText("Cliente")) as HTMLSelectElement;
+    await waitFor(() => expect(select.value).toBe(peticion.clienteId));
+  });
 });
 
 === web/src/contextos/pedido/contenedores/formulario-pedido.tsx ===
 import { useState } from "react";
-import { Link, useLocation } from "wouter";
+import { Link, useLocation, useSearch } from "wouter";
 import type { Esquemas } from "../../../api/cliente";
 import { desenvolver, LIMITE_PAGINA_MAXIMO } from "../../../api/http";
 import { opcionesReferencia } from "../../../compartido/formularios";
@@ -9259,7 +9297,17 @@ function FormularioPedido({ existente }: { existente: Pedido | null }) {
   const { api } = useDependencias();
   const clientes = useCarga(() => desenvolver(api.GET("/clientes", PRIMERA_PAGINA)), [api]);
   const [, navegar] = useLocation();
-  const [valores, setValores] = useState(aFormularioPedido(existente));
+  // 27.19: al crear, la referencia que trae la URL (`?clienteId=…`) llega elegida.
+  const desdeUrl = new URLSearchParams(useSearch());
+  const [valores, setValores] = useState(() => {
+    const iniciales = aFormularioPedido(existente);
+    if (existente !== null) return iniciales;
+    return {
+      ...iniciales,
+      clienteId: desdeUrl.get("clienteId") ?? iniciales.clienteId,
+      reviewerId: desdeUrl.get("reviewerId") ?? iniciales.reviewerId,
+    };
+  });
   const [guardando, setGuardando] = useState(false);
   const [fallo, setFallo] = useState<unknown>(null);
   const problema = fallo === null ? null : aProblema(codigoError(fallo));

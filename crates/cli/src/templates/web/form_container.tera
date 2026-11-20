@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Link, useLocation } from "wouter";
+import { Link, useLocation{% if references %}, useSearch{% endif %} } from "wouter";
 import type { Esquemas } from "../../../api/cliente";
 import { desenvolver{% if targets %}, LIMITE_PAGINA_MAXIMO{% endif %} } from "../../../api/http";
 {%- if access.get_roles %}
@@ -62,7 +62,22 @@ function Formulario{{ pascal }}({ existente }: { existente: {{ pascal }} | null 
 {%- endif %}
 {%- endfor %}
   const [, navegar] = useLocation();
+{%- if references %}
+  // 27.19: al crear, la referencia que trae la URL (`?{{ references.0.camel }}=…`) llega elegida.
+  const desdeUrl = new URLSearchParams(useSearch());
+  const [valores, setValores] = useState(() => {
+    const iniciales = aFormulario{{ pascal }}(existente);
+    if (existente !== null) return iniciales;
+    return {
+      ...iniciales,
+{%- for r in references %}
+      {{ r.camel }}: desdeUrl.get("{{ r.camel }}") ?? iniciales.{{ r.camel }},
+{%- endfor %}
+    };
+  });
+{%- else %}
   const [valores, setValores] = useState(aFormulario{{ pascal }}(existente));
+{%- endif %}
   const [guardando, setGuardando] = useState(false);
   const [fallo, setFallo] = useState<unknown>(null);
   const problema = fallo === null ? null : aProblema(codigoError(fallo));
