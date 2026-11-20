@@ -988,6 +988,7 @@ fn insert_import(src: &str, import: &str) -> String {
 /// A field of an escaparate's card (27.20): what it is called and what it shows.
 #[derive(Serialize)]
 struct ShownField<'a> {
+    camel: &'a str,
     label: &'a str,
     display: String,
     is_enum: bool,
@@ -1054,6 +1055,7 @@ pub fn escaparate_ctx(config: &PuertoConfig, pascal: &str) -> Result<tera::Conte
             }
         };
         shown.push(ShownField {
+            camel: &w.camel,
             label: &w.label,
             display,
             is_enum: w.is_enum,

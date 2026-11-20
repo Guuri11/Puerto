@@ -11170,7 +11170,7 @@ type Producto = Esquemas["DtoProducto"];
 /** Cuántas tarjetas enseña: los primeros de la lista, en su orden (`[[entidad]] orden`). */
 const PRIMEROS = { params: { query: { limite: 6 } } };
 
-/** Lo que se lee de cada variante de `TEXTOS_STATUS`. */
+/** Lo que se lee de cada variante de `status`. */
 const TEXTOS_STATUS: Record<string, string> = {
   Draft: "Draft",
   Live: "Live",

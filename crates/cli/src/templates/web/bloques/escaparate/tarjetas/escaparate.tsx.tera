@@ -19,7 +19,7 @@ const PRIMERA_PAGINA = { params: { query: { limite: LIMITE_PAGINA_MAXIMO } } };
 {%- endif %}
 {%- for f in shown %}{% if f.is_enum %}
 
-/** Lo que se lee de cada variante de `{{ f.texts_const }}`. */
+/** Lo que se lee de cada variante de `{{ f.camel }}`. */
 const {{ f.texts_const }}: Record<string, string> = {
 {%- for o in f.options %}
   {{ o.value }}: "{{ o.label }}",
