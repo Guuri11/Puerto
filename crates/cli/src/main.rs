@@ -138,6 +138,11 @@ enum GenerateAction {
         /// `<Entidad>::generar_<campo>()`, en dominio/src/generados.rs
         #[arg(value_name = "CAMPOS", long = "generado", value_delimiter = ',')]
         generated: Vec<String>,
+        /// Proyectos con auth: el campo Uuid de quien es cada fila (p. ej. comprador_id). Lo pone
+        /// crear; obtener, actualizar y borrar solo dejan pasar a su propietario o a quien tiene el
+        /// rol de la ruta
+        #[arg(value_name = "CAMPO", long = "propietario")]
+        owner: Option<String>,
         /// Los campos, tras --. Primitivos: titulo:String precio:i64! nota:opt:String etiquetas:vec:String
         /// Objetos valor: nombre:Nombre:String edad:Edad:i64 estado:Estado:enum:Activo/Inactivo apodo:Apodo:opt:String
         /// Objeto valor compartido (el tipo sale de puerto.toml): email:Email
@@ -285,6 +290,11 @@ enum GenerateAction {
         /// `<Entidad>::generar_<campo>()`, en dominio/src/generados.rs
         #[arg(value_name = "CAMPOS", long = "generado", value_delimiter = ',')]
         generated: Vec<String>,
+        /// Proyectos con auth: el campo Uuid de quien es cada fila (p. ej. comprador_id). Lo pone
+        /// crear; obtener, actualizar y borrar solo dejan pasar a su propietario o a quien tiene el
+        /// rol de la ruta
+        #[arg(value_name = "CAMPO", long = "propietario")]
+        owner: Option<String>,
         /// Los campos, tras --. La misma sintaxis que `generar scaffold`. Se escriben en
         /// puerto.toml, así que `generar aplicacion/repositorio/presentacion` los ven.
         #[arg(value_name = "CAMPOS", raw = true)]
@@ -578,6 +588,7 @@ fn run(command: Commands) -> Result<(), Box<dyn std::error::Error>> {
                     private,
                     defaults,
                     generated,
+                    owner,
                     fields,
                 },
         } => {
@@ -592,7 +603,8 @@ fn run(command: Commands) -> Result<(), Box<dyn std::error::Error>> {
                 .and_then(|parsed| {
                     let access = scaffold::ScaffoldAccess::from_args(&public, &role)?;
                     let shape = scaffold::EntityShape::from_args(&unique, &order, &private)
-                        .with_server_set(&defaults, &generated);
+                        .with_server_set(&defaults, &generated)
+                        .with_owner(owner);
                     scaffold::run_scaffold_with_options(
                         &name, &cwd, &parsed, policy, &access, &shape,
                     )
@@ -699,6 +711,7 @@ fn run(command: Commands) -> Result<(), Box<dyn std::error::Error>> {
                     private,
                     defaults,
                     generated,
+                    owner,
                     fields,
                 },
         } => {
@@ -707,7 +720,8 @@ fn run(command: Commands) -> Result<(), Box<dyn std::error::Error>> {
                 .and_then(|_| parse_cli_fields(&cwd, &fields))
                 .and_then(|parsed| {
                     let shape = scaffold::EntityShape::from_args(&unique, &order, &private)
-                        .with_server_set(&defaults, &generated);
+                        .with_server_set(&defaults, &generated)
+                        .with_owner(owner);
                     scaffold::run_generate_domain_with(&name, &cwd, &parsed, &shape)
                 })
                 .map(|()| format_after_generation(&cwd))

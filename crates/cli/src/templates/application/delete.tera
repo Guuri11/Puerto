@@ -1,4 +1,4 @@
-{% set required = fields | filter(attribute="required_string", value=true) %}{% set string_vos = fields | filter(attribute="string_vo", value=true) %}use std::sync::Arc;
+{% import "application/macros.tera" as macros %}{% if owner %}{% set caller = "propietario()" %}{% else %}{% set caller = "MadrePrincipal::aleatorio()" %}{% endif %}{% set required = fields | filter(attribute="required_string", value=true) %}{% set string_vos = fields | filter(attribute="string_vo", value=true) %}use std::sync::Arc;
 
 use async_trait::async_trait;
 
@@ -15,7 +15,7 @@ pub struct Borrar{{ pascal }}Impl {
 impl Borrar{{ pascal }} for Borrar{{ pascal }}Impl {
     #[tracing::instrument(name = "borrar_{{ snake }}", skip_all, fields(id = %params.id), err(level = "warn"))]
     async fn ejecutar(&self, params: ParamsBorrar{{ pascal }}) -> Result<(), Error{{ pascal }}> {
-        let mut entidad = self.repositorio.buscar_por_id(params.id).await?.ok_or(Error{{ pascal }}::NoEncontrado)?;
+        let mut entidad = self.repositorio.buscar_por_id(params.id).await?.ok_or(Error{{ pascal }}::NoEncontrado)?;{% if owner %}{{ macros::owner_check(owner=owner, roles=owner_roles, pascal=pascal) }}{% endif %}
         entidad.borrar();
         self.repositorio.guardar(&entidad).await?;
         Ok(())
@@ -32,7 +32,8 @@ mod tests {
         repositorio::dobles::MockRepositorio{{ pascal }},
     };
 
-
+{% if owner %}
+{{ macros::owner_caller() }}{% endif %}
     #[tokio::test]
     async fn deberia_hacer_borrado_logico_de_{{ snake }}_cuando_el_id_existe() {
         let entidad = Madre{{ pascal }}::aleatorio();
@@ -47,7 +48,7 @@ mod tests {
         };
 
         let resultado = caso_de_uso
-            .ejecutar(ParamsBorrar{{ pascal }} { {% if actor %}actor: MadrePrincipal::aleatorio(), {% endif %}id: id_entidad })
+            .ejecutar(ParamsBorrar{{ pascal }} { {% if actor %}actor: {{ caller }}, {% endif %}id: id_entidad })
             .await;
 
         assert!(resultado.is_ok());
@@ -62,10 +63,11 @@ mod tests {
         };
 
         let resultado = caso_de_uso
-            .ejecutar(ParamsBorrar{{ pascal }} { {% if actor %}actor: MadrePrincipal::aleatorio(), {% endif %}id: Id{{ pascal }}::generar() })
+            .ejecutar(ParamsBorrar{{ pascal }} { {% if actor %}actor: {{ caller }}, {% endif %}id: Id{{ pascal }}::generar() })
             .await;
 
         assert!(resultado.is_err());
         assert_eq!(resultado.unwrap_err().to_string(), "{{ snake }}.no_encontrado");
     }
-}
+{% if owner %}{{ macros::owner_tests(pascal=pascal, snake=snake, impl="Borrar" ~ pascal ~ "Impl", params="ParamsBorrar" ~ pascal, uow=false, saves=true, roles=owner_roles, asked=[], update=false) }}
+{% endif %}}

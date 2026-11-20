@@ -321,7 +321,18 @@ pub fn auth_drift(base: &Path, config: &PuertoConfig) -> Vec<String> {
                     entity.name
                 ));
             }
-            for role in entity.roles.get(uc).into_iter().flatten() {
+            // 27.18: an owned entity's use case checks these roles itself, next to the owner.
+            let in_use_case = entity.owner.is_some()
+                && ["get", "update", "delete"]
+                    .iter()
+                    .any(|action| crate::generators::naming::crud_use_case(action, &snake) == *uc);
+            for role in entity
+                .roles
+                .get(uc)
+                .into_iter()
+                .flatten()
+                .filter(|_| !in_use_case)
+            {
                 if !handler.requires_role(role) {
                     lines.push(format!(
                         "entidad '{}': '{uc}' exige el rol '{role}' en puerto.toml, pero su \

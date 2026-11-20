@@ -22,6 +22,10 @@ transiciones = ["cancelar"]      # opcional (27.12, `generar transicion`): verbo
                                  # dominio/src/<verbo>.rs, el caso de uso <verbo>_<entidad> (también en
                                  # casos_de_uso) y la ruta rest/src/<verbo>_<entidad>.rs con su Api<Caso>,
                                  # que bootstrap.rs monta junto a Api<Entidad> (sin campo en ella)
+propietario = "comprador_id"     # opcional (27.18, `--propietario`, proyectos con auth): el Uuid de quien
+                                 # es cada fila; crear lo pone (actor.id_usuario), obtener/actualizar/borrar
+                                 # dejan pasar al propietario o a quien tiene los roles de la ruta (que
+                                 # comprueba el caso de uso, no la ruta)
 internos = ["agotar_producto"]   # opcional (27.13, `--interno`): casos de uso sin ruta — sus Params sin
                                  # actor, sin campo en Api<Entidad>, una transición sin Api<Caso> ni
                                  # botón; cableado los construye. Ni CRUD, ni publicos, ni roles

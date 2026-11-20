@@ -53,7 +53,7 @@ pub(super) struct Scenario<'a> {
 
 pub(super) type Access<'a> = (&'a str, &'a [&'a str], &'a [&'a str]);
 
-/// `(entity, --unico, --orden, --privado, --por-defecto, --generado)`.
+/// `(entity, --unico, --orden, --privado, --por-defecto, --generado, --propietario)`.
 pub(super) type Shape<'a> = (
     &'a str,
     &'a [&'a str],
@@ -61,6 +61,7 @@ pub(super) type Shape<'a> = (
     &'a [&'a str],
     &'a [&'a str],
     &'a [&'a str],
+    Option<&'a str>,
 );
 
 pub(super) type Transition<'a> = (&'a str, &'a str, Option<&'a str>, &'a [&'a str], bool);
@@ -363,7 +364,15 @@ pub(super) const VO_KITCHEN_SINK: Scenario = Scenario {
         ],
     )],
     // 27.17: the server sets them — `status` on create, `sku` made up by the domain.
-    shapes: &[("Cuenta", &[], &[], &[], &["status=Archived"], &["sku"])],
+    shapes: &[(
+        "Cuenta",
+        &[],
+        &[],
+        &[],
+        &["status=Archived"],
+        &["sku"],
+        None,
+    )],
     portada: None,
     blocks: &[],
 };
@@ -622,6 +631,7 @@ pub(super) const POSTGRES_EVERY_TYPE: Scenario = Scenario {
         &[],
         &["active=true", "rating=2"],
         &["sku"],
+        None,
     )],
     portada: None,
     blocks: &[],
@@ -822,7 +832,7 @@ pub(super) const AUTH_OIDC: Scenario = Scenario {
                 "status:Status:enum:Draft/Live",
             ],
         ),
-        ("Pedido", &["total:i64"]),
+        ("Pedido", &["total:i64", "comprador_id:Uuid"]),
     ],
     // Producto: public reads, two roles on one route, a protected route with no role. Pedido: every
     // route protected, its list and its detail for `admin` only (27.8: the menu hides it, creating
@@ -843,7 +853,8 @@ pub(super) const AUTH_OIDC: Scenario = Scenario {
             &["listar_pedidos=admin", "obtener_pedido=admin"],
         ),
     ],
-    shapes: &[],
+    // 27.18: a Pedido is its buyer's — or admin's, the role of its detail.
+    shapes: &[("Pedido", &[], &[], &[], &[], &[], Some("comprador_id"))],
     portada: None,
     blocks: &[],
 };
@@ -889,6 +900,7 @@ pub(super) const REFERENCES_AUTH: Scenario = Scenario {
         &["email"],
         &[],
         &[],
+        None,
     )],
     portada: None,
     blocks: &[],
@@ -1035,7 +1047,7 @@ pub(super) fn apply_scenario(scenario: &Scenario, output: &Path) {
             .shapes
             .iter()
             .find(|(name, ..)| name == entity)
-            .map(|(_, uniques, order, private, defaults, generated)| {
+            .map(|(_, uniques, order, private, defaults, generated, owner)| {
                 let strings =
                     |args: &[&str]| args.iter().map(|a| a.to_string()).collect::<Vec<_>>();
                 scaffold::EntityShape::from_args(
@@ -1044,6 +1056,7 @@ pub(super) fn apply_scenario(scenario: &Scenario, output: &Path) {
                     &strings(private),
                 )
                 .with_server_set(&strings(defaults), &strings(generated))
+                .with_owner(owner.map(str::to_string))
             })
             .unwrap_or_default();
         scaffold::run_scaffold_with_options(

@@ -268,6 +268,7 @@ puerto generar scaffold <Nombre> -- nombre:String precio:i64!              # Cam
 puerto generar scaffold Linea --unico jugador_id,partido_id -- …          # Un único sobre varios campos ([[entidad]] unicos)
 puerto generar scaffold Clasificacion --orden=-puntos,nombre -- …         # El orden de la lista ([[entidad]] orden; - = descendente)
 puerto generar scaffold Entrada --por-defecto estado=Pendiente --generado codigo -- …   # Lo que pone el servidor al crear (27.17)
+puerto generar scaffold Entrada --propietario comprador_id -- comprador_id:Uuid …   # Proyectos con auth: de quién es cada fila (27.18)
 puerto generar scaffold Jugador --publico obtener_jugador --privado email -- …   # Proyectos con auth: un campo que las rutas públicas solo dan con sesión
 puerto generar scaffold <Nombre> -- descripcion:opt:String etiquetas:vec:String   # Primitivos Option / Vec
 puerto generar scaffold <Nombre> -- nombre:Nombre:String edad:Edad:i64     # Campos con objeto valor

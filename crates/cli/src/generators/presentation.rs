@@ -84,7 +84,7 @@ fn insert_access(ctx: &mut tera::Context, snake: &str, access: &Access, private:
         optional_auth |= optional;
         per_action.insert(
             action.into(),
-            json!({ "protected": protected, "roles": access.roles(&use_case), "optional": optional }),
+            json!({ "protected": protected, "roles": access.route_roles(&use_case), "optional": optional }),
         );
     }
     let use_cases = crud_use_cases(snake);
@@ -95,7 +95,9 @@ fn insert_access(ctx: &mut tera::Context, snake: &str, access: &Access, private:
     ctx.insert("auth", &(bearer || optional_auth));
     ctx.insert(
         "any_role",
-        &use_cases.iter().any(|uc| !access.roles(uc).is_empty()),
+        &use_cases
+            .iter()
+            .any(|uc| !access.route_roles(uc).is_empty()),
     );
     ctx.insert("caller_roles", &access.all_roles(&use_cases));
 }

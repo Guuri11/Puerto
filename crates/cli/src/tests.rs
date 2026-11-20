@@ -65,6 +65,7 @@ mod mail_e2e;
 mod manifest_validation;
 mod migrations;
 mod new_project;
+mod owner;
 mod paged_lists;
 mod patchers;
 mod references;

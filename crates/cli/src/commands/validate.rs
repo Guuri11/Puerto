@@ -290,6 +290,24 @@ pub fn run_validate(cwd: &Path) -> Result<(), Box<dyn std::error::Error>> {
                 errors.push(format!("entidad '{}': {e}", entity.name));
             }
         }
+        if let Some(owner) = &entity.owner {
+            match entity.fields.iter().find(|f| &f.name == owner) {
+                None => errors.push(format!(
+                    "entidad '{}': propietario: '{owner}' no es uno de sus campos",
+                    entity.name
+                )),
+                Some(field) => {
+                    if let Err(e) = crate::validation::validate_owner(
+                        &snake,
+                        field,
+                        config.project.has_auth(),
+                        &entity.public,
+                    ) {
+                        errors.push(format!("entidad '{}': {e}", entity.name));
+                    }
+                }
+            }
+        }
         for field in entity.fields.iter().filter(|f| f.references.is_some()) {
             if let Err(e) = crate::validation::validate_field(field) {
                 errors.push(format!("entidad '{}': {e}", entity.name));

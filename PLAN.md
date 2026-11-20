@@ -4054,6 +4054,27 @@ petición):
   `AutenticadorOidc` solo, no.
 - Tests: el caso de uso (propietario, otro, rol), las rutas y la web.
 
+**Decidido (2026-11-20, con Sergio).** `scaffold --propietario <campo>` →
+`[[entidad]] propietario = "<campo>"`; el campo lo declara el scaffold (`comprador_id:Uuid`).
+Proyectos con auth, y ni crear, ni obtener, ni actualizar, ni borrar son `publicos`. Con OIDC el
+`AutenticadorAprovisionador` del proyecto pone `id_usuario` (busca o crea el `Usuario`), así que
+vale en los dos modos.
+
+- **(a) Crear y la comprobación.** El campo no va en ninguna petición ni en los `Params` de crear
+  y actualizar: `crear` lo pone (`params.actor.id_usuario`) y `actualizar` lo conserva.
+  `obtener`, `actualizar` y `borrar` comprueban, tras encontrar la fila, que quien llama es su
+  propietario o tiene **todos** los roles de esa ruta; si no, `Prohibido` (403). Sin rol, solo el
+  propietario. Esos roles se comprueban en el caso de uso, no en la ruta (sin `#[requiere_rol]`,
+  que dejaría fuera al propietario), y la deriva de auth de `validar` lo sabe.
+- **(b) `GET /mis_<plural>`.** El caso de uso `listar_mis_<plural>` (`ParamsListarMis… { actor,
+  pagina }`) y su ruta en `rutas.rs`, protegida y sin rol. El filtro del repositorio gana el
+  propietario (`Filtro<Entidad> { <campo>: Option<Uuid> }`, en memoria y en Postgres).
+- **(c) Web.** «Mis <plural>» en el menú para quien tiene sesión (`/mis_<plural>`, la vista de la
+  lista sobre `GET /mis_<plural>`); Editar y Borrar se ven para el propietario o con el rol; crear
+  lleva siempre al detalle (quien crea es el propietario).
+- **Tests:** el caso de uso (propietario, otro, rol), las rutas, el filtro y la web; compile
+  matrix en un escenario con auth y web, y en otro de Postgres.
+
 ### 27.19 — Una referencia elegida desde la URL
 
 El formulario de crear lee `?<campoCamel>=<id>` y deja elegida esa referencia. Así un «Comprar»

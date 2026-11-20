@@ -392,6 +392,10 @@ pub struct FieldCtx {
 
 /// [`FieldCtx::server_value`] (27.17); `""` for a field `crear` asks for.
 fn server_value(field: &Field, pascal: &str, shared_vos: &[ValueObjectDefinition]) -> String {
+    // 27.18: the owner is who creates it.
+    if field.owner {
+        return "params.actor.id_usuario".to_string();
+    }
     let primitive = if field.generated {
         format!("{pascal}::generar_{}()", field.name)
     } else if let Some(value) = &field.default {
@@ -505,8 +509,8 @@ pub fn field_ctx(field: &Field, pascal: &str, shared_vos: &[ValueObjectDefinitio
             storage => storage.to_string(),
         },
         mother_build: mother_build(field),
-        in_create: !field.generated && field.default.is_none(),
-        in_update: !field.generated,
+        in_create: !field.generated && field.default.is_none() && !field.owner,
+        in_update: !field.generated && !field.owner,
         generated: field.generated,
         server_value: server_value(field, pascal, shared_vos),
     }
@@ -537,6 +541,10 @@ fn mother_storage(field: &Field) -> String {
 
 fn mother_build(field: &Field) -> String {
     let slot = format!("self.{}", field.name);
+    // 27.18: the mother's rows are the nil user's — the `propietario()` of the use cases' tests.
+    if field.owner {
+        return format!("{slot}.unwrap_or_default()");
+    }
     if field.field_type.starts_with("Option<") {
         return slot;
     }
@@ -1088,7 +1096,8 @@ pub fn web_field_ctx(field: &Field, entity_ident: &str) -> WebFieldCtx {
         },
         is_enum: shape == WebShape::Enum,
         defaulted: field.default.is_some(),
-        generated: field.generated,
+        // The owner (27.18) is in no form either, and `actualizar` keeps it.
+        generated: field.generated || field.owner,
         texts_const,
         to_form,
         request_to_form,
@@ -1178,6 +1187,7 @@ mod tests {
                 example: None,
                 default: None,
                 generated: false,
+                owner: false,
             },
             Field {
                 name: "price".into(),
@@ -1193,6 +1203,7 @@ mod tests {
                 example: None,
                 default: None,
                 generated: false,
+                owner: false,
             },
         ];
         assert!(validate_fields(&fields).is_ok());
@@ -1216,6 +1227,7 @@ mod tests {
                 example: None,
                 default: None,
                 generated: false,
+                owner: false,
             },
             Field {
                 name: "bad".into(),
@@ -1231,6 +1243,7 @@ mod tests {
                 example: None,
                 default: None,
                 generated: false,
+                owner: false,
             },
         ];
         let err = validate_fields(&fields).unwrap_err();

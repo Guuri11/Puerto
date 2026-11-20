@@ -1,4 +1,4 @@
-{% import "application/macros.tera" as macros %}{% set asked = update_fields %}{% set required = asked | filter(attribute="required_string", value=true) %}{% set string_vos = asked | filter(attribute="string_vo", value=true) %}use std::sync::Arc;
+{% import "application/macros.tera" as macros %}{% if owner %}{% set caller = "propietario()" %}{% else %}{% set caller = "MadrePrincipal::aleatorio()" %}{% endif %}{% set asked = update_fields %}{% set required = asked | filter(attribute="required_string", value=true) %}{% set string_vos = asked | filter(attribute="string_vo", value=true) %}use std::sync::Arc;
 
 use async_trait::async_trait;
 {% for import in update_vo_imports %}use {{ import }};
@@ -17,9 +17,9 @@ pub struct Actualizar{{ pascal }}Impl {
 impl Actualizar{{ pascal }} for Actualizar{{ pascal }}Impl {
     #[tracing::instrument(name = "actualizar_{{ snake }}", skip_all, fields(id = %params.id), err(level = "warn"))]
     async fn ejecutar(&self, params: ParamsActualizar{{ pascal }}) -> Result<{{ pascal }}, Error{{ pascal }}> {
-        let mut entidad = self.repositorio.buscar_por_id(params.id).await?.ok_or(Error{{ pascal }}::NoEncontrado)?;
+        let mut entidad = self.repositorio.buscar_por_id(params.id).await?.ok_or(Error{{ pascal }}::NoEncontrado)?;{% if owner %}{{ macros::owner_check(owner=owner, roles=owner_roles, pascal=pascal) }}{% endif %}
 {% for f in asked | filter(attribute="is_vo", value=true) %}let {{ f.name }}{% if f.is_vec_vo %}: Vec<{{ f.vo }}>{% endif %} = {{ f.from_params }};
-{% endfor %}{% for f in fields | filter(attribute="generated", value=true) %}        let {{ f.name }} = entidad.{{ f.name }}.clone();
+{% endfor %}{% for f in fields | filter(attribute="in_update", value=false) %}        let {{ f.name }} = entidad.{{ f.name }}{% if f.needs_clone %}.clone(){% endif %};
 {% endfor %}        entidad
             .actualizar(Props{{ pascal }} {
 {% for f in fields %}                {{ f.name }}{% if f.in_update and not f.is_vo %}: params.{{ f.name }}{% endif %},
@@ -39,7 +39,8 @@ mod tests {
         repositorio::dobles::MockRepositorio{{ pascal }},
     };
 
-
+{% if owner %}
+{{ macros::owner_caller() }}{% endif %}
     #[tokio::test]
     async fn deberia_actualizar_{{ snake }}_cuando_los_parametros_son_validos() {
         // Preparar
@@ -60,7 +61,7 @@ mod tests {
         // Actuar
         let resultado = caso_de_uso
             .ejecutar(ParamsActualizar{{ pascal }} {
-{% if actor %}                actor: MadrePrincipal::aleatorio(),
+{% if actor %}                actor: {{ caller }},
 {% endif %}            id: id_entidad,
 {{ macros::params_madre(fields=asked) }}            })
             .await;
@@ -82,7 +83,7 @@ mod tests {
         // Actuar
         let resultado = caso_de_uso
             .ejecutar(ParamsActualizar{{ pascal }} {
-{% if actor %}                actor: MadrePrincipal::aleatorio(),
+{% if actor %}                actor: {{ caller }},
 {% endif %}            id: Id{{ pascal }}::generar(),
 {{ macros::params_madre(fields=asked) }}            })
             .await;
@@ -109,7 +110,7 @@ mod tests {
         // Actuar
         let resultado = caso_de_uso
             .ejecutar(ParamsActualizar{{ pascal }} {
-{% if actor %}                actor: MadrePrincipal::aleatorio(),
+{% if actor %}                actor: {{ caller }},
 {% endif %}            id: id_entidad,
 {{ macros::params_madre(fields=asked, empty=f.name) }}            })
             .await;
@@ -121,4 +122,5 @@ mod tests {
             "{% if f.is_vo %}{{ snake }}.{{ f.vo_snake }}_invalido{% else %}{{ snake }}.validacion.{{ f.name }}_vacio{% endif %}"
         );
     }
-{% endfor %}}
+{% endfor %}{% if owner %}{{ macros::owner_tests(pascal=pascal, snake=snake, impl="Actualizar" ~ pascal ~ "Impl", params="ParamsActualizar" ~ pascal, uow=false, saves=true, roles=owner_roles, asked=asked, update=true) }}
+{% endif %}}

@@ -1,4 +1,4 @@
-use std::sync::Arc;
+{% import "application/macros.tera" as macros %}{% if owner %}{% set caller = "propietario()" %}{% else %}{% set caller = "MadrePrincipal::aleatorio()" %}{% endif %}use std::sync::Arc;
 
 use async_trait::async_trait;
 
@@ -17,7 +17,7 @@ pub struct Borrar{{ pascal }}Impl {
 impl Borrar{{ pascal }} for Borrar{{ pascal }}Impl {
     #[tracing::instrument(name = "borrar_{{ snake }}", skip_all, fields(id = %params.id), err(level = "warn"))]
     async fn ejecutar(&self, params: ParamsBorrar{{ pascal }}) -> Result<(), Error{{ pascal }}> {
-        let mut entidad = self.repositorio.buscar_por_id(params.id).await?.ok_or(Error{{ pascal }}::NoEncontrado)?;
+        let mut entidad = self.repositorio.buscar_por_id(params.id).await?.ok_or(Error{{ pascal }}::NoEncontrado)?;{% if owner %}{{ macros::owner_check(owner=owner, roles=owner_roles, pascal=pascal) }}{% endif %}
         let evento = entidad.borrar();
         self.uow_factory.guardar(&entidad, evento).await?;
         Ok(())
@@ -36,7 +36,8 @@ mod tests {
     };
     use puerto_nucleo::EventoDominio;
 
-
+{% if owner %}
+{{ macros::owner_caller() }}{% endif %}
     #[tokio::test]
     async fn deberia_registrar_el_evento_{{ snake }}_borrado_cuando_el_id_existe() {
         // Preparar
@@ -54,7 +55,7 @@ mod tests {
 
         // Actuar
         let resultado = caso_de_uso
-            .ejecutar(ParamsBorrar{{ pascal }} { {% if actor %}actor: MadrePrincipal::aleatorio(), {% endif %}id: id_entidad })
+            .ejecutar(ParamsBorrar{{ pascal }} { {% if actor %}actor: {{ caller }}, {% endif %}id: id_entidad })
             .await;
 
         // Comprobar
@@ -80,7 +81,7 @@ mod tests {
 
         // Actuar
         let resultado = caso_de_uso
-            .ejecutar(ParamsBorrar{{ pascal }} { {% if actor %}actor: MadrePrincipal::aleatorio(), {% endif %}id: Id{{ pascal }}::generar() })
+            .ejecutar(ParamsBorrar{{ pascal }} { {% if actor %}actor: {{ caller }}, {% endif %}id: Id{{ pascal }}::generar() })
             .await;
 
         // Comprobar
@@ -88,4 +89,5 @@ mod tests {
         assert_eq!(resultado.unwrap_err().to_string(), "{{ snake }}.no_encontrado");
         assert!(uow_factory.grabado().eventos.is_empty());
     }
-}
+{% if owner %}{{ macros::owner_tests(pascal=pascal, snake=snake, impl="Borrar" ~ pascal ~ "Impl", params="ParamsBorrar" ~ pascal, uow=true, saves=true, roles=owner_roles, asked=[], update=false) }}
+{% endif %}}

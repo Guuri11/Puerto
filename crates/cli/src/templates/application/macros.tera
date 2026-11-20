@@ -2,3 +2,79 @@
    así que una regla nueva del modelo solo pide cambiar la madre. `empty` nombra el campo que va a "". #}
 {% macro params_madre(fields, empty="") %}{% for f in fields %}            {{ f.name }}: {% if f.name == empty %}"".to_string(){% else %}{{ f.from_props }}{% endif %},
 {% endfor %}{% endmacro params_madre %}
+
+{# 27.18: the use case of an owned entity lets through only its owner, or who holds every role of
+   the route. `check` goes right after the entity is found. #}
+{% macro owner_check(owner, roles, pascal) %}
+        // Solo su propietario{% if roles %}, o quien tiene {% for r in roles %}el rol `{{ r }}`{% if not loop.last %} y {% endif %}{% endfor %}{% endif %} (`propietario` en puerto.toml).
+        if entidad.{{ owner }} != params.actor.id_usuario{% if roles %} && !({% for r in roles %}params.actor.tiene_rol("{{ r }}"){% if not loop.last %} && {% endif %}{% endfor %}){% endif %} {
+            return Err(Error{{ pascal }}::Prohibido);
+        }
+{%- endmacro owner_check %}
+
+{# The caller of the tests of an owned entity's use cases: the owner of the mother's rows. #}
+{% macro owner_caller() %}
+    /// Quien llama en estos tests: el propietario de las filas de la madre (`Uuid::nil()`).
+    fn propietario() -> Principal {
+        Principal::new(Default::default(), "propietario")
+    }
+{% endmacro owner_caller %}
+
+{# Who else reaches an owned entity's row: someone else (`Prohibido`, nothing saved), and who holds
+   the roles of the route. #}
+{% macro owner_tests(pascal, snake, impl, params, uow, saves, roles, asked, update=false) %}
+{%- for case in ["otro", "rol"] %}{% if case == "otro" or roles %}
+
+    #[tokio::test]
+    async fn deberia_{% if case == "otro" %}responder_prohibido_cuando_quien_llama_no_es_su_propietario{% else %}dejar_pasar_cuando_quien_llama_tiene_el_rol{% endif %}() {
+        // Preparar: la fila es de otro
+{%- if update %}
+        let props = Madre{{ pascal }}::new().construir_props();
+{%- endif %}
+        let entidad = Madre{{ pascal }}::aleatorio();
+        let id_entidad = entidad.id;
+        let mut repositorio_doble = MockRepositorio{{ pascal }}::new();
+        repositorio_doble
+            .expect_buscar_por_id()
+            .returning(move |_| Ok(Some(entidad.clone())));
+{%- if saves and not uow %}
+        repositorio_doble
+            .expect_guardar()
+            .times({% if case == "otro" %}0{% else %}1{% endif %})
+            .returning(|_| Ok(()));
+{%- endif %}
+{%- if uow %}
+        let uow_factory = UnitOfWorkFactoryGrabadora::new();
+{%- endif %}
+        let caso_de_uso = {{ impl }} {
+            repositorio: Arc::new(repositorio_doble),
+{%- if uow %}
+            uow_factory: Arc::new(uow_factory.clone()),
+{%- endif %}
+        };
+
+        // Actuar
+        let resultado = caso_de_uso
+            .ejecutar({{ params }} {
+                actor: {% if case == "otro" %}MadrePrincipal::aleatorio(){% else %}MadrePrincipal::new()
+                    .con_roles([{% for r in roles %}"{{ r }}"{% if not loop.last %}, {% endif %}{% endfor %}])
+                    .construir(){% endif %},
+                id: id_entidad,
+{% if update %}{{ self::params_madre(fields=asked) }}{% endif %}            })
+            .await;
+
+        // Comprobar
+{%- if case == "otro" %}
+        assert_eq!(
+            resultado.map(|_| ()).unwrap_err().to_string(),
+            "{{ snake }}.prohibido"
+        );
+{%- if uow %}
+        assert!(uow_factory.grabado().eventos.is_empty());
+{%- endif %}
+{%- else %}
+        assert!(resultado.is_ok(), "{:?}", resultado.map(|_| ()));
+{%- endif %}
+    }
+{%- endif %}{% endfor %}
+{%- endmacro owner_tests %}

@@ -221,8 +221,10 @@ pub(crate) fn generate_use_case_trait(
     let eff: Vec<Field> = effective_fields(fields)
         .into_iter()
         .filter(|f| match template {
-            t if t.ends_with("use_case_create.tera") => !f.generated && f.default.is_none(),
-            t if t.ends_with("use_case_update.tera") => !f.generated,
+            t if t.ends_with("use_case_create.tera") => {
+                !f.generated && f.default.is_none() && !f.owner
+            }
+            t if t.ends_with("use_case_update.tera") => !f.generated && !f.owner,
             _ => true,
         })
         .collect();

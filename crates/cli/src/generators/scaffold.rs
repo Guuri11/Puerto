@@ -113,6 +113,8 @@ pub struct EntityShape {
     pub defaults: Vec<(String, String)>,
     /// `--generado codigo` (27.17).
     pub generated: Vec<String>,
+    /// `--propietario comprador_id` (27.18).
+    pub owner: Option<String>,
 }
 
 impl EntityShape {
@@ -131,6 +133,14 @@ impl EntityShape {
         }
     }
 
+    /// `--propietario <field>` (27.18).
+    pub fn with_owner(mut self, owner: Option<String>) -> Self {
+        self.owner = owner
+            .map(|o| o.trim().to_string())
+            .filter(|o| !o.is_empty());
+        self
+    }
+
     /// `--por-defecto <field>=<value>,…` and `--generado <field>,…` (27.17) as the CLI got them.
     pub fn with_server_set(mut self, defaults: &[String], generated: &[String]) -> Self {
         self.defaults = defaults
@@ -145,7 +155,7 @@ impl EntityShape {
     }
 
     fn is_empty(&self) -> bool {
-        self.uniques.is_empty() && self.order.is_empty()
+        self.uniques.is_empty() && self.order.is_empty() && self.owner.is_none()
     }
 
     /// `fields` with `--privado` applied: the named ones private. Without `--privado`, a field keeps
@@ -174,6 +184,7 @@ impl EntityShape {
             self.defaults.iter().map(|(f, _)| f).collect(),
         )?;
         named("generado", self.generated.iter().collect())?;
+        named("propietario", self.owner.iter().collect())?;
         let before = |f: &Field| declared.iter().find(|d| d.name == f.name);
         // 27.17: without the flags, a field keeps what the block said of it.
         let server_set = self.defaults.is_empty() && self.generated.is_empty();
@@ -199,6 +210,11 @@ impl EntityShape {
                     f.generated || before(&f).is_some_and(|d| d.generated)
                 } else {
                     self.generated.contains(&f.name)
+                },
+                // 27.18: without `--propietario`, the block's owner stays.
+                owner: match &self.owner {
+                    Some(owner) => *owner == f.name,
+                    None => f.owner || before(&f).is_some_and(|d| d.owner),
                 },
                 ..f
             })
@@ -256,6 +272,9 @@ pub(crate) fn record_shape(
             if !shape.order.is_empty() {
                 entity.order = shape.order.clone();
             }
+            if shape.owner.is_some() {
+                entity.owner = shape.owner.clone();
+            }
         }
         None => config.entity.push(crate::puerto_toml::Entity {
             name: pascal.to_string(),
@@ -264,6 +283,7 @@ pub(crate) fn record_shape(
             fields: fields.to_vec(),
             uniques: shape.uniques.clone(),
             order: shape.order.clone(),
+            owner: shape.owner.clone(),
             ..Default::default()
         }),
     }
@@ -418,6 +438,24 @@ pub fn run_scaffold_with_options(
     )?;
     // Checked before the access is written: a refused shape leaves nothing behind.
     check_shape(&pascal, &fields, shape)?;
+    if let Some(owner) = fields.iter().find(|f| f.owner) {
+        let public = if access.is_empty() {
+            config
+                .entity
+                .iter()
+                .find(|e| e.name == pascal)
+                .map(|e| e.public.clone())
+                .unwrap_or_default()
+        } else {
+            access.public.clone()
+        };
+        crate::validation::validate_owner(
+            &pascal_to_snake(&pascal),
+            owner,
+            config.project.has_auth(),
+            &public,
+        )?;
+    }
     record_access(base, &pascal, db, &fields, access)?;
     record_shape(base, &pascal, db, &fields, shape)?;
 

@@ -85,7 +85,10 @@ también por el repositorio en memoria; queda en `[[entidad]] unicos`. El orden 
 `[[entidad]] orden`. Lo que pone el servidor no lo pide `crear`: `--por-defecto estado=Pendiente`
 le da un valor al crear (actualizar sí lo cambia) y `--generado codigo` (un `String` único) lo
 inventa `<Entidad>::generar_codigo()`, en `dominio/src/generados.rs`, que es tuyo; actualizar lo
-conserva. Quedan en el campo (`por_defecto`, `generado`).
+conserva. Quedan en el campo (`por_defecto`, `generado`). En un proyecto con auth, `--propietario comprador_id` (un campo
+`Uuid`) dice de quién es cada fila: `crear` lo pone con quien llama, y obtener, actualizar y borrar
+solo dejan pasar a su propietario o a quien tiene los roles de la ruta (`Prohibido`, 403, a
+cualquier otro).
 
 En un proyecto con auth, `scaffold` también acepta `--publico <caso_de_uso>[,…]` (sin token),
 `--rol <caso_de_uso>=<rol>[,…]` (ver la sección Auth) y `--privado <campo>[,…]`: un campo de texto

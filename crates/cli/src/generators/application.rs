@@ -67,7 +67,15 @@ fn render_use_case(
     fields: &[Field],
     shared_vos: &[ValueObjectDefinition],
 ) -> Result<String, RenderError> {
-    render_use_case_as(action, pascal, snake, fields, shared_vos, false)
+    render_use_case_as(
+        action,
+        pascal,
+        snake,
+        fields,
+        shared_vos,
+        false,
+        &Owner::default(),
+    )
 }
 
 /// `actor`: a protected use case of an auth project — its tests pass a `PrincipalMother` caller.
@@ -78,10 +86,25 @@ fn render_use_case_as(
     fields: &[Field],
     shared_vos: &[ValueObjectDefinition],
     actor: bool,
+    owner: &Owner,
 ) -> Result<String, RenderError> {
     let mut ctx = use_case_context(pascal, snake, fields, shared_vos);
     ctx.insert("actor", &actor);
+    insert_owner(&mut ctx, owner);
     render(&format!("application/{action}.tera"), &ctx)
+}
+
+/// 27.18: the owner field and the roles of the route that also reach a row — for `obtener`,
+/// `actualizar` and `borrar` of an owned entity; nothing otherwise.
+#[derive(Default)]
+struct Owner {
+    field: Option<String>,
+    roles: Vec<String>,
+}
+
+fn insert_owner(ctx: &mut tera::Context, owner: &Owner) {
+    ctx.insert("owner", &owner.field.clone().unwrap_or_default());
+    ctx.insert("owner_roles", &owner.roles);
 }
 
 /// The writes of an `events` project: through the unit of work, recording their event.
@@ -92,9 +115,11 @@ fn render_write_use_case_with_events(
     fields: &[Field],
     shared_vos: &[ValueObjectDefinition],
     actor: bool,
+    owner: &Owner,
 ) -> Result<String, RenderError> {
     let mut ctx = use_case_context(pascal, snake, fields, shared_vos);
     ctx.insert("actor", &actor);
+    insert_owner(&mut ctx, owner);
     render(&format!("application/{action}_events.tera"), &ctx)
 }
 
@@ -202,11 +227,20 @@ pub fn write_application_files(
     for action in ["create", "get", "list", "update", "delete"] {
         let use_case = crud_use_case(action, snake);
         let actor = access.is_protected(&use_case);
+        let owner = match fields.iter().find(|f| f.owner) {
+            Some(field) if actor && matches!(action, "get" | "update" | "delete") => Owner {
+                field: Some(field.name.clone()),
+                roles: access.roles(&use_case),
+            },
+            _ => Owner::default(),
+        };
         // An `events` project's writes go through the unit of work, recording their event.
         let implementation = if events && matches!(action, "create" | "update" | "delete") {
-            render_write_use_case_with_events(action, pascal, snake, fields, shared_vos, actor)?
+            render_write_use_case_with_events(
+                action, pascal, snake, fields, shared_vos, actor, &owner,
+            )?
         } else {
-            render_use_case_as(action, pascal, snake, fields, shared_vos, actor)?
+            render_use_case_as(action, pascal, snake, fields, shared_vos, actor, &owner)?
         };
         let contract = render_contract(action, pascal, snake, fields, shared_vos, actor)?;
         write_file(

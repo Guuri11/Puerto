@@ -166,6 +166,12 @@ pub struct Entity {
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     #[serde(rename = "internos")]
     pub internal: Vec<String>,
+    /// The `Uuid` field that holds who owns each row (27.18, `--propietario`): `crear` sets it to the
+    /// caller, and `obtener`, `actualizar` and `borrar` let through only its owner or who holds
+    /// every role of the route.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[serde(rename = "propietario")]
+    pub owner: Option<String>,
 }
 
 impl Entity {
@@ -246,6 +252,9 @@ pub struct Field {
         rename = "generado"
     )]
     pub generated: bool,
+    /// It is its entity's `propietario` (27.18), never written: [`read`] sets it.
+    #[serde(skip)]
+    pub owner: bool,
     /// Its shared value object's `ejemplo` (27.15), never written: [`read`] and
     /// [`apply_shared_vo_inference`] give it to every field of that value object.
     #[serde(skip)]
@@ -454,6 +463,9 @@ pub fn read(base: &Path) -> Result<PuertoConfig, Box<dyn std::error::Error>> {
     let mut config: PuertoConfig = toml::from_str(&src)?;
     for entity in &mut config.entity {
         give_examples(&mut entity.fields, &config.value_object);
+        for field in &mut entity.fields {
+            field.owner = entity.owner.as_deref() == Some(field.name.as_str());
+        }
     }
     Ok(config)
 }

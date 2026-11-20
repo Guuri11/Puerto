@@ -43,6 +43,7 @@ pub fn effective_fields(fields: &[Field]) -> Vec<Field> {
             example: None,
             default: None,
             generated: false,
+            owner: false,
         }]
     } else {
         fields.to_vec()

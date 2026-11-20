@@ -43,6 +43,9 @@ pub struct Access {
     auth: bool,
     public: Vec<String>,
     roles: std::collections::BTreeMap<String, Vec<String>>,
+    /// 27.18: the use cases whose roles the use case checks, not the route — `obtener`,
+    /// `actualizar` and `borrar` of an owned entity, which its owner reaches without them.
+    owner_checked: Vec<String>,
 }
 
 impl Access {
@@ -56,10 +59,21 @@ impl Access {
     /// The entity `pascal`'s, as `config` records it.
     pub fn in_config(config: &crate::puerto_toml::PuertoConfig, pascal: &str) -> Self {
         let entity = config.entity.iter().find(|e| e.name == pascal);
+        let owner_checked = entity
+            .filter(|e| e.owner.is_some())
+            .map(|e| {
+                let snake = crate::generators::naming::pascal_to_snake(&e.name);
+                ["get", "update", "delete"]
+                    .iter()
+                    .map(|action| crate::generators::naming::crud_use_case(action, &snake))
+                    .collect()
+            })
+            .unwrap_or_default();
         Self {
             auth: config.project.has_auth(),
             public: entity.map(|e| e.public.clone()).unwrap_or_default(),
             roles: entity.map(|e| e.roles.clone()).unwrap_or_default(),
+            owner_checked,
         }
     }
 
@@ -80,10 +94,20 @@ impl Access {
         self.roles.get(use_case).cloned().unwrap_or_default()
     }
 
-    /// Every role any of `use_cases` requires, once each — what the route tests' caller holds.
+    /// The roles its route requires (`#[requiere_rol]`): [`Self::roles`], but none for a use case
+    /// that checks them itself, next to the owner (27.18).
+    pub fn route_roles(&self, use_case: &str) -> Vec<String> {
+        if self.owner_checked.iter().any(|uc| uc == use_case) {
+            return vec![];
+        }
+        self.roles(use_case)
+    }
+
+    /// Every role any of `use_cases`' routes requires, once each — what the route tests' caller
+    /// holds.
     pub fn all_roles(&self, use_cases: &[String]) -> Vec<String> {
         let mut all: Vec<String> = vec![];
-        for role in use_cases.iter().flat_map(|uc| self.roles(uc)) {
+        for role in use_cases.iter().flat_map(|uc| self.route_roles(uc)) {
             if !all.contains(&role) {
                 all.push(role);
             }
@@ -821,6 +845,7 @@ mod tests {
                 .iter()
                 .map(|(uc, r)| (uc.to_string(), r.iter().map(|s| s.to_string()).collect()))
                 .collect(),
+            owner_checked: vec![],
         }
     }
 

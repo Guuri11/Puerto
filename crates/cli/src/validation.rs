@@ -330,6 +330,45 @@ pub fn validate_shared_vo_inner_type(inner_type: &str) -> Result<(), String> {
     Ok(())
 }
 
+/// An entity's owner (27.18): a plain `Uuid` field of an auth project, and none of the use cases that
+/// write or read one row is public — there would be no caller to compare with.
+pub fn validate_owner(
+    snake: &str,
+    field: &Field,
+    auth: bool,
+    public: &[String],
+) -> Result<(), String> {
+    if !auth {
+        return Err(
+            "--propietario necesita un proyecto con auth (`puerto nuevo --auth`): el propietario \
+             es quien llama"
+                .into(),
+        );
+    }
+    let name = &field.name;
+    if field.field_type != "Uuid"
+        || field.value_object.is_some()
+        || field.references.is_some()
+        || field.default.is_some()
+        || field.generated
+    {
+        return Err(format!(
+            "el propietario '{name}' tiene que ser un campo Uuid sin objeto valor, referencia, \
+             por_defecto ni generado"
+        ));
+    }
+    for action in ["create", "get", "update", "delete"] {
+        let uc = crate::generators::naming::crud_use_case(action, snake);
+        if public.contains(&uc) {
+            return Err(format!(
+                "'{uc}' es público, pero la entidad tiene propietario: sin sesión no hay a quién \
+                 comparar con '{name}'"
+            ));
+        }
+    }
+    Ok(())
+}
+
 /// A field the server sets (27.17): a `por_defecto` is a variant of its enum or a literal of its
 /// `String` (not blank), `i64`, `f64` or `bool`; a `generado` is a unique `String` or its value
 /// object, never an enum; a field is not both, nor a reference.
@@ -1026,6 +1065,47 @@ pub fn validate_entity_access(entity: &crate::puerto_toml::Entity) -> Vec<String
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn an_owner_is_a_plain_uuid_of_an_auth_project_whose_rows_are_never_public() {
+        let owner = |f: Field| validate_owner("entrada", &f, true, &[]);
+        let uuid = Field {
+            name: "comprador_id".into(),
+            field_type: "Uuid".into(),
+            ..Default::default()
+        };
+        assert!(owner(uuid.clone()).is_ok());
+        for wrong in [
+            Field {
+                field_type: "String".into(),
+                ..uuid.clone()
+            },
+            Field {
+                value_object: Some("Comprador".into()),
+                ..uuid.clone()
+            },
+            Field {
+                references: Some("Cliente".into()),
+                ..uuid.clone()
+            },
+            Field {
+                default: Some("x".into()),
+                ..uuid.clone()
+            },
+            Field {
+                generated: true,
+                ..uuid.clone()
+            },
+        ] {
+            assert!(owner(wrong.clone()).is_err(), "{wrong:?}");
+        }
+        assert!(
+            validate_owner("entrada", &uuid, false, &[]).is_err(),
+            "no auth"
+        );
+        assert!(validate_owner("entrada", &uuid, true, &["obtener_entrada".into()]).is_err());
+        assert!(validate_owner("entrada", &uuid, true, &["listar_entradas".into()]).is_ok());
+    }
 
     #[test]
     fn rejects_system_field_names() {

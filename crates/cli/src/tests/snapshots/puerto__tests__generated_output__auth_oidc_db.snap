@@ -122,7 +122,10 @@ también por el repositorio en memoria; queda en `[[entidad]] unicos`. El orden 
 `[[entidad]] orden`. Lo que pone el servidor no lo pide `crear`: `--por-defecto estado=Pendiente`
 le da un valor al crear (actualizar sí lo cambia) y `--generado codigo` (un `String` único) lo
 inventa `<Entidad>::generar_codigo()`, en `dominio/src/generados.rs`, que es tuyo; actualizar lo
-conserva. Quedan en el campo (`por_defecto`, `generado`).
+conserva. Quedan en el campo (`por_defecto`, `generado`). En un proyecto con auth, `--propietario comprador_id` (un campo
+`Uuid`) dice de quién es cada fila: `crear` lo pone con quien llama, y obtener, actualizar y borrar
+solo dejan pasar a su propietario o a quien tiene los roles de la ruta (`Prohibido`, 403, a
+cualquier otro).
 
 En un proyecto con auth, `scaffold` también acepta `--publico <caso_de_uso>[,…]` (sin token),
 `--rol <caso_de_uso>=<rol>[,…]` (ver la sección Auth) y `--privado <campo>[,…]`: un campo de texto
@@ -640,8 +643,14 @@ impl ActualizarPedido for ActualizarPedidoImpl {
             .buscar_por_id(params.id)
             .await?
             .ok_or(ErrorPedido::NoEncontrado)?;
+        // Solo su propietario (`propietario` en puerto.toml).
+        if entidad.comprador_id != params.actor.id_usuario {
+            return Err(ErrorPedido::Prohibido);
+        }
+        let comprador_id = entidad.comprador_id;
         entidad.actualizar(PropsPedido {
             total: params.total,
+            comprador_id,
         })?;
         self.repositorio.guardar(&entidad).await?;
         Ok(entidad)
@@ -655,6 +664,11 @@ mod tests {
         modelo::IdPedido, pruebas::madres::MadrePedido, repositorio::dobles::MockRepositorioPedido,
     };
     use puerto_nucleo::auth::dobles::MadrePrincipal;
+
+    /// Quien llama en estos tests: el propietario de las filas de la madre (`Uuid::nil()`).
+    fn propietario() -> Principal {
+        Principal::new(Default::default(), "propietario")
+    }
 
     #[tokio::test]
     async fn deberia_actualizar_pedido_cuando_los_parametros_son_validos() {
@@ -674,7 +688,7 @@ mod tests {
         // Actuar
         let resultado = caso_de_uso
             .ejecutar(ParamsActualizarPedido {
-                actor: MadrePrincipal::aleatorio(),
+                actor: propietario(),
                 id: id_entidad,
                 total: props.total,
             })
@@ -699,7 +713,7 @@ mod tests {
         // Actuar
         let resultado = caso_de_uso
             .ejecutar(ParamsActualizarPedido {
-                actor: MadrePrincipal::aleatorio(),
+                actor: propietario(),
                 id: IdPedido::generar(),
                 total: props.total,
             })
@@ -708,6 +722,40 @@ mod tests {
         // Comprobar
         assert!(resultado.is_err());
         assert_eq!(resultado.unwrap_err().to_string(), "pedido.no_encontrado");
+    }
+
+    #[tokio::test]
+    async fn deberia_responder_prohibido_cuando_quien_llama_no_es_su_propietario() {
+        // Preparar: la fila es de otro
+        let props = MadrePedido::new().construir_props();
+        let entidad = MadrePedido::aleatorio();
+        let id_entidad = entidad.id;
+        let mut repositorio_doble = MockRepositorioPedido::new();
+        repositorio_doble
+            .expect_buscar_por_id()
+            .returning(move |_| Ok(Some(entidad.clone())));
+        repositorio_doble
+            .expect_guardar()
+            .times(0)
+            .returning(|_| Ok(()));
+        let caso_de_uso = ActualizarPedidoImpl {
+            repositorio: Arc::new(repositorio_doble),
+        };
+
+        // Actuar
+        let resultado = caso_de_uso
+            .ejecutar(ParamsActualizarPedido {
+                actor: MadrePrincipal::aleatorio(),
+                id: id_entidad,
+                total: props.total,
+            })
+            .await;
+
+        // Comprobar
+        assert_eq!(
+            resultado.map(|_| ()).unwrap_err().to_string(),
+            "pedido.prohibido"
+        );
     }
 }
 
@@ -761,6 +809,10 @@ impl BorrarPedido for BorrarPedidoImpl {
             .buscar_por_id(params.id)
             .await?
             .ok_or(ErrorPedido::NoEncontrado)?;
+        // Solo su propietario (`propietario` en puerto.toml).
+        if entidad.comprador_id != params.actor.id_usuario {
+            return Err(ErrorPedido::Prohibido);
+        }
         entidad.borrar();
         self.repositorio.guardar(&entidad).await?;
         Ok(())
@@ -774,6 +826,11 @@ mod tests {
         modelo::IdPedido, pruebas::madres::MadrePedido, repositorio::dobles::MockRepositorioPedido,
     };
     use puerto_nucleo::auth::dobles::MadrePrincipal;
+
+    /// Quien llama en estos tests: el propietario de las filas de la madre (`Uuid::nil()`).
+    fn propietario() -> Principal {
+        Principal::new(Default::default(), "propietario")
+    }
 
     #[tokio::test]
     async fn deberia_hacer_borrado_logico_de_pedido_cuando_el_id_existe() {
@@ -790,7 +847,7 @@ mod tests {
 
         let resultado = caso_de_uso
             .ejecutar(ParamsBorrarPedido {
-                actor: MadrePrincipal::aleatorio(),
+                actor: propietario(),
                 id: id_entidad,
             })
             .await;
@@ -810,13 +867,45 @@ mod tests {
 
         let resultado = caso_de_uso
             .ejecutar(ParamsBorrarPedido {
-                actor: MadrePrincipal::aleatorio(),
+                actor: propietario(),
                 id: IdPedido::generar(),
             })
             .await;
 
         assert!(resultado.is_err());
         assert_eq!(resultado.unwrap_err().to_string(), "pedido.no_encontrado");
+    }
+
+    #[tokio::test]
+    async fn deberia_responder_prohibido_cuando_quien_llama_no_es_su_propietario() {
+        // Preparar: la fila es de otro
+        let entidad = MadrePedido::aleatorio();
+        let id_entidad = entidad.id;
+        let mut repositorio_doble = MockRepositorioPedido::new();
+        repositorio_doble
+            .expect_buscar_por_id()
+            .returning(move |_| Ok(Some(entidad.clone())));
+        repositorio_doble
+            .expect_guardar()
+            .times(0)
+            .returning(|_| Ok(()));
+        let caso_de_uso = BorrarPedidoImpl {
+            repositorio: Arc::new(repositorio_doble),
+        };
+
+        // Actuar
+        let resultado = caso_de_uso
+            .ejecutar(ParamsBorrarPedido {
+                actor: MadrePrincipal::aleatorio(),
+                id: id_entidad,
+            })
+            .await;
+
+        // Comprobar
+        assert_eq!(
+            resultado.map(|_| ()).unwrap_err().to_string(),
+            "pedido.prohibido"
+        );
     }
 }
 
@@ -936,6 +1025,7 @@ impl CrearPedido for CrearPedidoImpl {
     async fn ejecutar(&self, params: ParamsCrearPedido) -> Result<Pedido, ErrorPedido> {
         let entidad = Pedido::new(PropsPedido {
             total: params.total,
+            comprador_id: params.actor.id_usuario,
         })?;
         self.repositorio.guardar(&entidad).await?;
         Ok(entidad)
@@ -1181,10 +1271,16 @@ pub struct ObtenerPedidoImpl {
 impl ObtenerPedido for ObtenerPedidoImpl {
     #[tracing::instrument(name = "obtener_pedido", skip_all, fields(id = %params.id), err(level = "warn"))]
     async fn ejecutar(&self, params: ParamsObtenerPedido) -> Result<Pedido, ErrorPedido> {
-        self.repositorio
+        let entidad = self
+            .repositorio
             .buscar_por_id(params.id)
             .await?
-            .ok_or(ErrorPedido::NoEncontrado)
+            .ok_or(ErrorPedido::NoEncontrado)?;
+        // Solo su propietario, o quien tiene el rol `admin` (`propietario` en puerto.toml).
+        if entidad.comprador_id != params.actor.id_usuario && !(params.actor.tiene_rol("admin")) {
+            return Err(ErrorPedido::Prohibido);
+        }
+        Ok(entidad)
     }
 }
 
@@ -1196,6 +1292,11 @@ mod tests {
     };
     use puerto_nucleo::ErrorRepositorio;
     use puerto_nucleo::auth::dobles::MadrePrincipal;
+
+    /// Quien llama en estos tests: el propietario de las filas de la madre (`Uuid::nil()`).
+    fn propietario() -> Principal {
+        Principal::new(Default::default(), "propietario")
+    }
 
     #[tokio::test]
     async fn deberia_devolver_pedido_cuando_el_id_existe() {
@@ -1211,7 +1312,7 @@ mod tests {
 
         let resultado = caso_de_uso
             .ejecutar(ParamsObtenerPedido {
-                actor: MadrePrincipal::aleatorio(),
+                actor: propietario(),
                 id: id_entidad,
             })
             .await;
@@ -1231,7 +1332,7 @@ mod tests {
 
         let resultado = caso_de_uso
             .ejecutar(ParamsObtenerPedido {
-                actor: MadrePrincipal::aleatorio(),
+                actor: propietario(),
                 id: IdPedido::generar(),
             })
             .await;
@@ -1252,13 +1353,66 @@ mod tests {
 
         let resultado = caso_de_uso
             .ejecutar(ParamsObtenerPedido {
-                actor: MadrePrincipal::aleatorio(),
+                actor: propietario(),
                 id: IdPedido::generar(),
             })
             .await;
 
         assert!(resultado.is_err());
         assert_eq!(resultado.unwrap_err().to_string(), "pedido.repositorio");
+    }
+
+    #[tokio::test]
+    async fn deberia_responder_prohibido_cuando_quien_llama_no_es_su_propietario() {
+        // Preparar: la fila es de otro
+        let entidad = MadrePedido::aleatorio();
+        let id_entidad = entidad.id;
+        let mut repositorio_doble = MockRepositorioPedido::new();
+        repositorio_doble
+            .expect_buscar_por_id()
+            .returning(move |_| Ok(Some(entidad.clone())));
+        let caso_de_uso = ObtenerPedidoImpl {
+            repositorio: Arc::new(repositorio_doble),
+        };
+
+        // Actuar
+        let resultado = caso_de_uso
+            .ejecutar(ParamsObtenerPedido {
+                actor: MadrePrincipal::aleatorio(),
+                id: id_entidad,
+            })
+            .await;
+
+        // Comprobar
+        assert_eq!(
+            resultado.map(|_| ()).unwrap_err().to_string(),
+            "pedido.prohibido"
+        );
+    }
+
+    #[tokio::test]
+    async fn deberia_dejar_pasar_cuando_quien_llama_tiene_el_rol() {
+        // Preparar: la fila es de otro
+        let entidad = MadrePedido::aleatorio();
+        let id_entidad = entidad.id;
+        let mut repositorio_doble = MockRepositorioPedido::new();
+        repositorio_doble
+            .expect_buscar_por_id()
+            .returning(move |_| Ok(Some(entidad.clone())));
+        let caso_de_uso = ObtenerPedidoImpl {
+            repositorio: Arc::new(repositorio_doble),
+        };
+
+        // Actuar
+        let resultado = caso_de_uso
+            .ejecutar(ParamsObtenerPedido {
+                actor: MadrePrincipal::new().con_roles(["admin"]).construir(),
+                id: id_entidad,
+            })
+            .await;
+
+        // Comprobar
+        assert!(resultado.is_ok(), "{:?}", resultado.map(|_| ()));
     }
 }
 
@@ -1534,6 +1688,7 @@ impl std::fmt::Display for IdPedido {
 #[derive(Debug, Clone)]
 pub struct PropsPedido {
     pub total: i64,
+    pub comprador_id: Uuid,
 }
 
 #[derive(Debug, Clone)]
@@ -1544,6 +1699,7 @@ pub struct Pedido {
     pub borrado: bool,
     pub borrado_en: Option<DateTime<Utc>>,
     pub total: i64,
+    pub comprador_id: Uuid,
 }
 
 impl Pedido {
@@ -1557,6 +1713,7 @@ impl Pedido {
             borrado: false,
             borrado_en: None,
             total: props.total,
+            comprador_id: props.comprador_id,
         })
     }
 
@@ -1564,6 +1721,7 @@ impl Pedido {
     pub fn actualizar(&mut self, props: PropsPedido) -> Result<(), ErrorPedido> {
         Self::validar(&props)?;
         self.total = props.total;
+        self.comprador_id = props.comprador_id;
         self.actualizado_en = chrono::Utc::now();
         Ok(())
     }
@@ -1666,14 +1824,19 @@ mod tests {
 === contextos/pedido/dominio/src/pruebas/madres.rs ===
 use crate::modelo::Pedido;
 use crate::modelo::PropsPedido;
+use uuid::Uuid;
 
 pub struct MadrePedido {
     total: Option<i64>,
+    comprador_id: Option<Uuid>,
 }
 
 impl MadrePedido {
     pub fn new() -> Self {
-        Self { total: None }
+        Self {
+            total: None,
+            comprador_id: None,
+        }
     }
 
     pub fn con_total(mut self, total: i64) -> Self {
@@ -1681,9 +1844,15 @@ impl MadrePedido {
         self
     }
 
+    pub fn con_comprador_id(mut self, comprador_id: Uuid) -> Self {
+        self.comprador_id = Some(comprador_id);
+        self
+    }
+
     pub fn construir(self) -> Pedido {
         Pedido::new(PropsPedido {
             total: self.total.unwrap_or(42),
+            comprador_id: self.comprador_id.unwrap_or_default(),
         })
         .expect("MadrePedido: Pedido::new rechazó los props")
     }
@@ -1691,6 +1860,7 @@ impl MadrePedido {
     pub fn construir_props(self) -> PropsPedido {
         PropsPedido {
             total: self.total.unwrap_or(42),
+            comprador_id: self.comprador_id.unwrap_or_default(),
         }
     }
 
@@ -1789,6 +1959,7 @@ pub struct FilaPedido {
     pub borrado: bool,
     pub borrado_en: Option<DateTime<Utc>>,
     pub total: i64,
+    pub comprador_id: Uuid,
 }
 
 impl TryFrom<FilaPedido> for Pedido {
@@ -1802,6 +1973,7 @@ impl TryFrom<FilaPedido> for Pedido {
             borrado: fila.borrado,
             borrado_en: fila.borrado_en,
             total: fila.total,
+            comprador_id: fila.comprador_id,
         }))
     }
 }
@@ -1815,6 +1987,7 @@ impl From<&Pedido> for FilaPedido {
             borrado: entidad.borrado,
             borrado_en: entidad.borrado_en,
             total: entidad.total,
+            comprador_id: entidad.comprador_id,
         }
     }
 }
@@ -1900,7 +2073,7 @@ impl RepositorioPedido for RepositorioPedidoPostgres {
         );
         let filas = sqlx::query_as!(
             FilaPedido,
-            "SELECT id, creado_en, actualizado_en, borrado, borrado_en, total
+            "SELECT id, creado_en, actualizado_en, borrado, borrado_en, total, comprador_id
              FROM pedidos WHERE borrado = false
              ORDER BY creado_en DESC, id LIMIT $1 OFFSET $2",
             i64::from(pagina.limite()),
@@ -1935,7 +2108,7 @@ impl RepositorioPedido for RepositorioPedidoPostgres {
         tracing::debug!(%id, "buscar_por_id");
         let fila = sqlx::query_as!(
             FilaPedido,
-            "SELECT id, creado_en, actualizado_en, borrado, borrado_en, total
+            "SELECT id, creado_en, actualizado_en, borrado, borrado_en, total, comprador_id
              FROM pedidos WHERE id = $1 AND borrado = false",
             id.valor()
         )
@@ -1953,16 +2126,17 @@ impl RepositorioPedido for RepositorioPedidoPostgres {
         tracing::debug!(id = %entidad.id, "guardar");
         let db = FilaPedido::from(entidad);
         sqlx::query!(
-            "INSERT INTO pedidos (id, creado_en, actualizado_en, borrado, borrado_en, total)
-             VALUES ($1, $2, $3, $4, $5, $6)
+            "INSERT INTO pedidos (id, creado_en, actualizado_en, borrado, borrado_en, total, comprador_id)
+             VALUES ($1, $2, $3, $4, $5, $6, $7)
              ON CONFLICT (id) DO UPDATE
-             SET actualizado_en = $3, borrado = $4, borrado_en = $5, total = $6",
+             SET actualizado_en = $3, borrado = $4, borrado_en = $5, total = $6, comprador_id = $7",
             db.id,
             db.creado_en,
             db.actualizado_en,
             db.borrado,
             db.borrado_en,
             db.total,
+            db.comprador_id,
         )
         .execute(&self.pool)
         .await
@@ -2005,6 +2179,7 @@ mod pruebas_integracion {
         // Comprobar
         assert_eq!(encontrado.id, entidad.id);
         assert_eq!(encontrado.total, entidad.total);
+        assert_eq!(encontrado.comprador_id, entidad.comprador_id);
         assert!(!encontrado.borrado);
     }
 
@@ -2118,6 +2293,7 @@ use uuid::Uuid;
 pub struct DtoPedido {
     pub id: Uuid,
     pub total: i64,
+    pub comprador_id: Uuid,
 }
 
 impl DtoPedido {
@@ -2125,6 +2301,7 @@ impl DtoPedido {
         Self {
             id: entidad.id.valor(),
             total: entidad.total,
+            comprador_id: entidad.comprador_id,
         }
     }
 }
@@ -2697,7 +2874,6 @@ impl ApiPedido {
 
     /// Obtiene: Pedido por id
     #[oai(path = "/pedidos/:id", method = "get", tag = "ApiTags::Pedido")]
-    #[requiere_rol("admin")]
     async fn obtener(&self, auth: BearerAuth, id: Path<Uuid>) -> RespuestaObtenerPedido {
         match self
             .obtener_pedido
@@ -3098,29 +3274,6 @@ mod tests {
 
         // Comprobar
         respuesta.assert_status(StatusCode::UNAUTHORIZED);
-    }
-
-    #[tokio::test]
-    async fn deberia_responder_403_cuando_se_obtiene_sin_el_rol() {
-        // Preparar — sin expectativas: nunca se llega al caso de uso
-        let dobles = Dobles::default();
-
-        // Actuar
-        let respuesta = dobles
-            .cliente_con(Some("Bearer nadie"))
-            .get(ruta_elemento())
-            .send()
-            .await;
-
-        // Comprobar
-        respuesta.assert_status(StatusCode::FORBIDDEN);
-        respuesta
-            .json()
-            .await
-            .value()
-            .object()
-            .get("codigo")
-            .assert_string("auth.prohibido");
     }
 
     #[tokio::test]
@@ -7301,6 +7454,7 @@ volumes:
 CREATE TABLE pedidos (
     id UUID PRIMARY KEY,
     total BIGINT NOT NULL,
+    comprador_id UUID NOT NULL,
     creado_en TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     actualizado_en TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     borrado BOOLEAN NOT NULL DEFAULT FALSE,
@@ -7693,6 +7847,7 @@ casos_de_uso = [
 db = true
 transiciones = ["pagar"]
 internos = ["close_pedido"]
+propietario = "comprador_id"
 
 [entidad.roles]
 listar_pedidos = ["admin"]
@@ -7701,6 +7856,10 @@ obtener_pedido = ["admin"]
 [[entidad.campos]]
 nombre = "total"
 tipo = "i64"
+
+[[entidad.campos]]
+nombre = "comprador_id"
+tipo = "Uuid"
 
 === web/.dependency-cruiser.cjs ===
 (borrado)
