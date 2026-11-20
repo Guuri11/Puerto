@@ -36,7 +36,16 @@ const catalogo = puerto(['generar', 'web-bloque'])
   .split('\n')
   .map((linea) => linea.match(LINEA))
   .filter(Boolean)
-  .map(([, id, descripcion, pide]) => ({ id, descripcion, pide: pide ?? null }));
+  .map(([, id, texto, pide]) => {
+    // A block that takes arguments ends with its usage: "…, en tarjetas: `escaparate/tarjetas <Entidad>`".
+    const uso = texto.match(/^(.*): `\S+ (.+)`$/);
+    return {
+      id,
+      descripcion: uso ? uso[1] : texto,
+      argumentos: uso ? uso[2] : null,
+      pide: pide ?? null,
+    };
+  });
 if (catalogo.length === 0) {
   console.error(`${BIN} no lista ningún bloque: ¿es anterior a la 0.27?`);
   process.exit(1);

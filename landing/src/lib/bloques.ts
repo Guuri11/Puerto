@@ -12,6 +12,8 @@ export interface Fichero {
 export interface Bloque {
   id: string;
   descripcion: string;
+  /** Lo que pide tras su id, como `<Entidad>` en el escaparate. `null` si nada. */
+  argumentos: string | null;
   pide: 'auth' | 'portada' | 'portada/producto' | null;
   hueco: string;
   variante: string;
@@ -66,7 +68,8 @@ export const quePide: Record<NonNullable<Bloque['pide']>, string> = {
   'portada/producto': 'la portada de producto instalada (portada/producto)',
 };
 
-export const comando = (b: Bloque) => `puerto generar web-bloque ${b.id} --forzar`;
+export const comando = (b: Bloque) =>
+  `puerto generar web-bloque ${b.id}${b.argumentos ? ` ${b.argumentos}` : ''} --forzar`;
 
 /** El bloque en markdown, para pegárselo a un agente de código. */
 export function paraTuAgente(b: Bloque): string {

@@ -44,6 +44,14 @@ test('la página de un bloque da su comando, sus ficheros y el texto para un age
   await expect(page.locator('.bl-agente')).toContainText(`# Bloque \`${bloque.id}\` de Puerto`);
 });
 
+test('un bloque que pide una entidad la da en su comando', async ({ page }) => {
+  await page.goto('/bloques/escaparate/tarjetas/');
+
+  await expect(
+    page.getByText('puerto generar web-bloque escaparate/tarjetas <Entidad> --forzar').first(),
+  ).toBeVisible();
+});
+
 test('la vista previa cambia de tema y de ancho', async ({ page }) => {
   await page.goto('/bloques/marco/superior/');
   const vista = page.locator('[data-vista]');
