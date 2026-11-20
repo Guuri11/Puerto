@@ -380,6 +380,11 @@ pub struct FieldCtx {
     pub mother_storage: String,
     pub mother_param: String,
     pub mother_build: String,
+    /// A field the list filters by (`Filtro<Entity>`): a reference (18.4) or the owner (27.18), with
+    /// its type in the filter and the value Postgres binds.
+    pub filters: bool,
+    pub filter_type: String,
+    pub filter_bind: String,
     /// What `crear` asks for (27.17): neither a `por_defecto` nor a `generado` field.
     pub in_create: bool,
     /// What `actualizar` asks for: not a `generado` field, which keeps its value.
@@ -509,6 +514,16 @@ pub fn field_ctx(field: &Field, pascal: &str, shared_vos: &[ValueObjectDefinitio
             storage => storage.to_string(),
         },
         mother_build: mother_build(field),
+        filters: is_reference(field) || field.owner,
+        filter_type: match reference_id(field) {
+            Some(id) => format!("Option<{id}>"),
+            None => "Option<uuid::Uuid>".to_string(),
+        },
+        filter_bind: if field.owner {
+            format!("filtro.{}", field.name)
+        } else {
+            format!("filtro.{}.map(|id| id.valor())", field.name)
+        },
         in_create: !field.generated && field.default.is_none() && !field.owner,
         in_update: !field.generated && !field.owner,
         generated: field.generated,

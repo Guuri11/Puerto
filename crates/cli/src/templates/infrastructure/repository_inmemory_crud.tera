@@ -1,10 +1,10 @@
 use std::collections::HashMap;
 use std::sync::{PoisonError, RwLock, RwLockReadGuard, RwLockWriteGuard};
 
-{% set refs = fields | filter(attribute="is_ref", value=true) %}use async_trait::async_trait;
+{% set refs = fields | filter(attribute="is_ref", value=true) %}{% set filters = fields | filter(attribute="filters", value=true) %}use async_trait::async_trait;
 use dominio_{{ snake }}::{
     modelo::{{ "{" }}{{ pascal }}, Id{{ pascal }}},
-    repositorio::{% if refs %}{{ "{" }}Filtro{{ pascal }}, Repositorio{{ pascal }}}{% else %}Repositorio{{ pascal }}{% endif %},
+    repositorio::{% if filters %}{{ "{" }}Filtro{{ pascal }}, Repositorio{{ pascal }}}{% else %}Repositorio{{ pascal }}{% endif %},
 };
 use puerto_nucleo::{Pagina, PeticionPagina, ErrorRepositorio};
 
@@ -36,13 +36,13 @@ impl Repositorio{{ pascal }}EnMemoria {
 
 #[async_trait]
 impl Repositorio{{ pascal }} for Repositorio{{ pascal }}EnMemoria {
-    async fn buscar_todos(&self, pagina: PeticionPagina{% if refs %}, filtro: Filtro{{ pascal }}{% endif %}) -> Result<Pagina<{{ pascal }}>, ErrorRepositorio> {
+    async fn buscar_todos(&self, pagina: PeticionPagina{% if filters %}, filtro: Filtro{{ pascal }}{% endif %}) -> Result<Pagina<{{ pascal }}>, ErrorRepositorio> {
         tracing::debug!(limite = pagina.limite(), desplazamiento = pagina.desplazamiento(), "buscar_todos");
         let filas = self.leer();
         let mut vivos: Vec<&{{ pascal }}> = filas
             .values()
             .filter(|fila| !fila.borrado)
-{% for r in refs %}            .filter(|fila| filtro.{{ r.name }}.is_none_or(|id| fila.{{ r.name }} == {% if r.field_type is starting_with("Option<") %}Some(id){% else %}id{% endif %}))
+{% for r in filters %}            .filter(|fila| filtro.{{ r.name }}.is_none_or(|id| fila.{{ r.name }} == {% if r.field_type is starting_with("Option<") %}Some(id){% else %}id{% endif %}))
 {% endfor %}            .collect();
         vivos.sort_by(|a, b| {{ "{" }}
             {{ order_chain }}
@@ -124,7 +124,7 @@ mod tests {
         repositorio.guardar(&entidad).await.unwrap();
 
         // Comprobar
-        let pagina = repositorio.buscar_todos(PeticionPagina::default(){% if refs %}, Filtro{{ pascal }}::default(){% endif %}).await.unwrap();
+        let pagina = repositorio.buscar_todos(PeticionPagina::default(){% if filters %}, Filtro{{ pascal }}::default(){% endif %}).await.unwrap();
         assert_eq!(pagina.total, 1);
         assert_eq!(pagina.elementos[0].actualizado_en, entidad.actualizado_en);
     }
@@ -140,7 +140,7 @@ mod tests {
 
         // Actuar
         let encontrado = repositorio.buscar_por_id(entidad.id).await.unwrap();
-        let pagina = repositorio.buscar_todos(PeticionPagina::default(){% if refs %}, Filtro{{ pascal }}::default(){% endif %}).await.unwrap();
+        let pagina = repositorio.buscar_todos(PeticionPagina::default(){% if filters %}, Filtro{{ pascal }}::default(){% endif %}).await.unwrap();
 
         // Comprobar
         assert!(encontrado.is_none());
@@ -156,7 +156,7 @@ mod tests {
         }
 
         // Actuar
-        let pagina = repositorio.buscar_todos(PeticionPagina::new(Some(2), Some(2)){% if refs %}, Filtro{{ pascal }}::default(){% endif %}).await.unwrap();
+        let pagina = repositorio.buscar_todos(PeticionPagina::new(Some(2), Some(2)){% if filters %}, Filtro{{ pascal }}::default(){% endif %}).await.unwrap();
 
         // Comprobar
         assert_eq!(pagina.elementos.len(), 1);
@@ -227,7 +227,7 @@ mod tests {
             .buscar_todos(
                 PeticionPagina::default(),
                 Filtro{{ pascal }} {
-{% for o in refs %}                    {{ o.name }}: {% if o.name == r.name %}Some({{ r.name }}){% else %}None{% endif %},
+{% for o in filters %}                    {{ o.name }}: {% if o.name == r.name %}Some({{ r.name }}){% else %}None{% endif %},
 {% endfor %}                },
             )
             .await

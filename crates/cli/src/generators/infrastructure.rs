@@ -67,11 +67,12 @@ fn sql_params_list(n: usize) -> String {
 }
 
 /// The `WHERE` of the list's page (`first` = 3, after `LIMIT` and `OFFSET`) or of its `COUNT`
-/// (`first` = 1): live rows, then one `($n::uuid IS NULL OR field = $n)` per reference (18.4).
+/// (`first` = 1): live rows, then one `($n::uuid IS NULL OR field = $n)` per reference (18.4) and
+/// for the owner (27.18), in field order.
 fn sql_list_where(eff: &[Field], first: usize) -> String {
     let filters: String = eff
         .iter()
-        .filter(|f| is_reference(f))
+        .filter(|f| is_reference(f) || f.owner)
         .enumerate()
         .map(|(i, f)| {
             let n = first + i;

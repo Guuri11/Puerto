@@ -248,6 +248,25 @@ pub fn write_application_files(
             &merge_use_case(&contract, &implementation),
         )?;
     }
+    // 27.18: an owned entity also lists its caller's rows.
+    if let Some(owner) = fields.iter().find(|f| f.owner) {
+        let mut ctx = entity_ctx(pascal, snake);
+        ctx.insert("owner", &owner.name);
+        // Every field of the filter, in order: the owner's is the caller, the references' none.
+        let filters: Vec<(&str, bool)> = fields
+            .iter()
+            .filter(|f| f.owner || f.references.is_some())
+            .map(|f| (f.name.as_str(), f.owner))
+            .collect();
+        ctx.insert("filters", &filters);
+        write_file(
+            &base.join(layout::use_case(
+                snake,
+                &crate::generators::naming::mine_use_case(snake),
+            )),
+            &render("application/list_mine.tera", &ctx)?,
+        )?;
+    }
     crate::generators::crates::finish(
         base,
         snake,

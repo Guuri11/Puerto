@@ -215,6 +215,11 @@ pub fn crud_use_case(action: &str, snake: &str) -> String {
     }
 }
 
+/// The use case that lists the caller's rows of an owned entity (27.18): `listar_mis_entradas`.
+pub fn mine_use_case(snake: &str) -> String {
+    format!("listar_mis_{}", pluralize(snake))
+}
+
 /// The use case of a transition (27.12): `cancelar` of `linea_pedido` is `cancelar_linea_pedido`.
 pub fn transition_use_case(verb: &str, snake: &str) -> String {
     format!("{verb}_{snake}")

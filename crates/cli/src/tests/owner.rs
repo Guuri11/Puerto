@@ -170,3 +170,66 @@ fn scaffold_refuses_an_owner_it_cannot_check_before_writing() {
     assert!(err.contains("auth"), "{err}");
     cleanup(&dir);
 }
+
+// ── 27.18 (b): `GET /mis_<plural>` ──────────────────────────────────────────
+
+#[test]
+fn an_owned_entity_lists_its_callers_rows() {
+    let (dir, output) = auth_project("owner_mine");
+
+    scaffold_entrada(&output, "comprador_id", &[], &[]).unwrap();
+
+    let entity = puerto_toml::read(&output)
+        .unwrap()
+        .entity
+        .into_iter()
+        .find(|e| e.name == "Entrada")
+        .unwrap();
+    assert!(
+        entity
+            .use_cases
+            .contains(&"listar_mis_entradas".to_string())
+    );
+    let mine = read(
+        &output,
+        "contextos/entrada/aplicacion/src/listar_mis_entradas.rs",
+    );
+    assert!(
+        mine.contains("comprador_id: Some(params.actor.id_usuario),"),
+        "{mine}"
+    );
+    let port = read(&output, "contextos/entrada/dominio/src/repositorio.rs");
+    assert!(
+        block(&port, "pub struct FiltroEntrada").contains("pub comprador_id: Option<uuid::Uuid>,"),
+        "{port}"
+    );
+    let list = read(
+        &output,
+        "contextos/entrada/aplicacion/src/listar_entradas.rs",
+    );
+    assert!(
+        list.contains("comprador_id: None,"),
+        "the whole list: {list}"
+    );
+    let memory = read(
+        &output,
+        "contextos/entrada/infraestructura/src/repositorio.rs",
+    );
+    assert!(
+        memory.contains("filtro.comprador_id.is_none_or("),
+        "{memory}"
+    );
+    let routes = read(&output, "contextos/entrada/rest/src/rutas.rs");
+    assert!(routes.contains("path = \"/mis_entradas\""), "{routes}");
+    assert!(routes.contains("pub listar_mis_entradas: Arc<dyn ListarMisEntradas>,"));
+    assert!(
+        routes.contains("deberia_responder_401_cuando_se_piden_las_entradas_propias_sin_token")
+    );
+    assert!(wiring(&output).contains("ListarMisEntradasImpl"));
+    assert!(
+        validate::run_validate(&output).is_ok(),
+        "{:?}",
+        validate::run_validate(&output).err()
+    );
+    cleanup(&dir);
+}

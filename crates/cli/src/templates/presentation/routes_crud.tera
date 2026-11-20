@@ -7,7 +7,8 @@ use dominio_{{ snake }}::modelo::Id{{ pascal }};
     borrar_{{ snake }}::{ParamsBorrar{{ pascal }}, Borrar{{ pascal }}},
     obtener_{{ snake }}::{ParamsObtener{{ pascal }}, Obtener{{ pascal }}},
     listar_{{ plural }}::{ParamsListar{{ plural_pascal }}, Listar{{ plural_pascal }}},
-    actualizar_{{ snake }}::{ParamsActualizar{{ pascal }}, Actualizar{{ pascal }}},
+{% if owner %}    listar_mis_{{ plural }}::{ParamsListarMis{{ plural_pascal }}, ListarMis{{ plural_pascal }}},
+{% endif %}    actualizar_{{ snake }}::{ParamsActualizar{{ pascal }}, Actualizar{{ pascal }}},
 };
 use poem_openapi::{
     OpenApi, Tags,
@@ -40,7 +41,8 @@ pub struct Api{{ pascal }} {
     pub crear_{{ snake }}: Arc<dyn Crear{{ pascal }}>,
     pub obtener_{{ snake }}: Arc<dyn Obtener{{ pascal }}>,
     pub listar_{{ plural }}: Arc<dyn Listar{{ plural_pascal }}>,
-    pub actualizar_{{ snake }}: Arc<dyn Actualizar{{ pascal }}>,
+{% if owner %}    pub listar_mis_{{ plural }}: Arc<dyn ListarMis{{ plural_pascal }}>,
+{% endif %}    pub actualizar_{{ snake }}: Arc<dyn Actualizar{{ pascal }}>,
     pub borrar_{{ snake }}: Arc<dyn Borrar{{ pascal }}>,
 }
 
@@ -111,7 +113,27 @@ impl Api{{ pascal }} {
         }
     }
 
-    /// Actualiza: {{ pascal }}
+{% if owner %}    /// Lista las de quien llama (`{{ owner }}`), página a página
+    #[oai(path = "/mis_{{ plural }}", method = "get", tag = "ApiTags::{{ pascal }}")]
+    async fn listar_mis(&self, auth: BearerAuth, limite: Query<Option<u32>>, desplazamiento: Query<Option<u32>>) -> RespuestaListar{{ plural_pascal }} {
+        match self
+            .listar_mis_{{ plural }}
+            .ejecutar(ParamsListarMis{{ plural_pascal }} {
+                actor: auth.0,
+                pagina: PeticionPagina::new(limite.0, desplazamiento.0),
+            })
+            .await
+        {
+            Ok(pagina) => RespuestaListar{{ plural_pascal }}::Ok(Json(DtoPagina{{ pascal }}::from_dominio(&pagina))),
+            Err(err) => {
+                let (status, error) = a_respuesta_error(err);
+                tracing::error!(codigo = %error.0.codigo, "listar_mis_{{ plural }} falló");
+                RespuestaListar{{ plural_pascal }}::from_status(status, error)
+            }
+        }
+    }
+
+{% endif %}    /// Actualiza: {{ pascal }}
     #[oai(path = "/{{ plural }}/:id", method = "put", tag = "ApiTags::{{ pascal }}")]
 {% for role in access.update.roles %}    #[requiere_rol("{{ role }}")]
 {% endfor %}    async fn actualizar(&self, {% if access.update.protected %}auth: BearerAuth, {% elif access.update.optional %}auth: BearerAuthOpcional, {% endif %}id: Path<Uuid>, cuerpo: Json<PeticionActualizar{{ pascal }}>) -> RespuestaActualizar{{ pascal }} {
@@ -167,7 +189,8 @@ mod tests {
     use aplicacion_{{ snake }}::{
         crear_{{ snake }}::dobles::MockCrear{{ pascal }}, borrar_{{ snake }}::dobles::MockBorrar{{ pascal }},
         obtener_{{ snake }}::dobles::MockObtener{{ pascal }}, listar_{{ plural }}::dobles::MockListar{{ plural_pascal }},
-        actualizar_{{ snake }}::dobles::MockActualizar{{ pascal }},
+{% if owner %}        listar_mis_{{ plural }}::dobles::MockListarMis{{ plural_pascal }},
+{% endif %}        actualizar_{{ snake }}::dobles::MockActualizar{{ pascal }},
     };
     use dominio_{{ snake }}::pruebas::madres::Madre{{ pascal }};{% if auth %}
     use puerto_nucleo::auth::dobles::MadrePrincipal;
@@ -188,7 +211,8 @@ mod tests {
         crear: MockCrear{{ pascal }},
         obtener: MockObtener{{ pascal }},
         listar: MockListar{{ plural_pascal }},
-        actualizar: MockActualizar{{ pascal }},
+{% if owner %}        listar_mis: MockListarMis{{ plural_pascal }},
+{% endif %}        actualizar: MockActualizar{{ pascal }},
         borrar: MockBorrar{{ pascal }},
     }
 
@@ -219,7 +243,8 @@ mod tests {
                 crear_{{ snake }}: Arc::new(self.crear),
                 obtener_{{ snake }}: Arc::new(self.obtener),
                 listar_{{ plural }}: Arc::new(self.listar),
-                actualizar_{{ snake }}: Arc::new(self.actualizar),
+{% if owner %}                listar_mis_{{ plural }}: Arc::new(self.listar_mis),
+{% endif %}                actualizar_{{ snake }}: Arc::new(self.actualizar),
                 borrar_{{ snake }}: Arc::new(self.borrar),
             };
 {% if auth %}            let cliente = TestClient::new(
@@ -393,7 +418,36 @@ mod tests {
         cuerpo.get("total").assert_i64(7);
     }
 
+{% if owner %}    #[tokio::test]
+    async fn deberia_responder_200_con_las_{{ plural }}_de_quien_llama() {
+        // Preparar
+        let mut dobles = Dobles::default();
+        dobles
+            .listar_mis
+            .expect_ejecutar()
+            .returning(|params| Ok(Pagina::new(Madre{{ pascal }}::aleatorios(1), 1, params.pagina)));
+
+        // Actuar
+        let respuesta = dobles.cliente().get("/mis_{{ plural }}").send().await;
+
+        // Comprobar
+        respuesta.assert_status(StatusCode::OK);
+        respuesta.json().await.value().object().get("total").assert_i64(1);
+    }
+
     #[tokio::test]
+    async fn deberia_responder_401_cuando_se_piden_las_{{ plural }}_propias_sin_token() {
+        // Preparar — sin expectativas: nunca se llega al caso de uso
+        let dobles = Dobles::default();
+
+        // Actuar
+        let respuesta = dobles.cliente_con(None).get("/mis_{{ plural }}").send().await;
+
+        // Comprobar
+        respuesta.assert_status(StatusCode::UNAUTHORIZED);
+    }
+
+{% endif %}    #[tokio::test]
     async fn deberia_pasar_limite_y_desplazamiento_al_caso_de_uso() {
         // Preparar
         let mut dobles = Dobles::default();

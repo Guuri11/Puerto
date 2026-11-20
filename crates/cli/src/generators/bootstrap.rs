@@ -53,7 +53,11 @@ fn build_context(
             // (update, delete and every custom use case) read, then write. Without one, every use
             // case holds the repository.
             let create = crud_use_case("create", &snake);
-            let reads = [crud_use_case("get", &snake), crud_use_case("list", &snake)];
+            let reads = [
+                crud_use_case("get", &snake),
+                crud_use_case("list", &snake),
+                crate::generators::naming::mine_use_case(&snake),
+            ];
             let use_cases: Vec<BootstrapUseCase> = entity
                 .use_cases
                 .iter()

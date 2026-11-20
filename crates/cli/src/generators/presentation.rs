@@ -120,6 +120,13 @@ fn build_routes_crud_ctx(
     let mut reference_imports = vec![];
     crate::generators::domain::push_reference_imports(&mut reference_imports, &eff);
     let mut ctx = simple_ctx(pascal, snake, &eff);
+    // 27.18: an owned entity also lists its caller's rows, `GET /mis_<plural>`.
+    let owner = eff
+        .iter()
+        .find(|f| f.owner)
+        .map(|f| f.name.clone())
+        .unwrap_or_default();
+    ctx.insert("owner", &owner);
     ctx.insert("test_imports", &test_imports);
     ctx.insert("reference_imports", &reference_imports);
     insert_access(&mut ctx, snake, access, eff.iter().any(|f| f.private));

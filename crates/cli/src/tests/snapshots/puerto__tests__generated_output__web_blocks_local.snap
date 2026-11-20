@@ -1124,15 +1124,113 @@ pub mod actualizar_pedido;
 pub mod borrar_pedido;
 pub mod close_pedido;
 pub mod crear_pedido;
+pub mod listar_mis_pedidos;
 pub mod listar_pedidos;
 pub mod obtener_pedido;
 pub mod pagar_pedido;
+
+=== contextos/pedido/aplicacion/src/listar_mis_pedidos.rs ===
+use std::sync::Arc;
+
+use async_trait::async_trait;
+use puerto_nucleo::auth::Principal;
+use puerto_nucleo::{Pagina, PeticionPagina};
+
+use dominio_pedido::{
+    errores::ErrorPedido,
+    modelo::Pedido,
+    repositorio::{FiltroPedido, RepositorioPedido},
+};
+
+#[derive(Debug, Clone)]
+pub struct ParamsListarMisPedidos {
+    /// Quien lo pide: la lista son sus filas (`propietario` en puerto.toml).
+    pub actor: Principal,
+    pub pagina: PeticionPagina,
+}
+
+/// Las filas de quien llama, paginadas: `GET /mis_pedidos`.
+#[async_trait]
+pub trait ListarMisPedidos: Send + Sync {
+    async fn ejecutar(&self, params: ParamsListarMisPedidos)
+    -> Result<Pagina<Pedido>, ErrorPedido>;
+}
+
+#[cfg(any(test, feature = "pruebas"))]
+pub mod dobles {
+    use mockall::mock;
+
+    use super::*;
+
+    mock! {
+        pub ListarMisPedidos {}
+
+        #[async_trait]
+        impl ListarMisPedidos for ListarMisPedidos {
+            async fn ejecutar(&self, params: ParamsListarMisPedidos) -> Result<Pagina<Pedido>, ErrorPedido>;
+        }
+    }
+}
+
+pub struct ListarMisPedidosImpl {
+    pub repositorio: Arc<dyn RepositorioPedido>,
+}
+
+#[async_trait]
+impl ListarMisPedidos for ListarMisPedidosImpl {
+    #[tracing::instrument(name = "listar_mis_pedidos", skip_all, err(level = "warn"))]
+    async fn ejecutar(
+        &self,
+        params: ParamsListarMisPedidos,
+    ) -> Result<Pagina<Pedido>, ErrorPedido> {
+        let filtro = FiltroPedido {
+            comprador_id: Some(params.actor.id_usuario),
+        };
+        self.repositorio
+            .buscar_todos(params.pagina, filtro)
+            .await
+            .map_err(ErrorPedido::from)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use dominio_pedido::repositorio::dobles::MockRepositorioPedido;
+    use puerto_nucleo::auth::dobles::MadrePrincipal;
+
+    #[tokio::test]
+    async fn deberia_pedir_al_repositorio_solo_las_filas_de_quien_llama() {
+        // Preparar
+        let actor = MadrePrincipal::aleatorio();
+        let suyo = Some(actor.id_usuario);
+        let mut repositorio_doble = MockRepositorioPedido::new();
+        repositorio_doble
+            .expect_buscar_todos()
+            .withf(move |_, filtro| filtro.comprador_id == suyo)
+            .returning(|pagina, _| Ok(Pagina::new(vec![], 0, pagina)));
+        let caso_de_uso = ListarMisPedidosImpl {
+            repositorio: Arc::new(repositorio_doble),
+        };
+
+        // Actuar
+        let resultado = caso_de_uso
+            .ejecutar(ParamsListarMisPedidos {
+                actor,
+                pagina: PeticionPagina::default(),
+            })
+            .await;
+
+        // Comprobar
+        assert!(resultado.is_ok(), "{:?}", resultado.map(|_| ()));
+    }
+}
 
 === contextos/pedido/aplicacion/src/listar_pedidos.rs ===
 use async_trait::async_trait;
 use dominio_pedido::errores::ErrorPedido;
 use dominio_pedido::modelo::Pedido;
-use dominio_pedido::repositorio::RepositorioPedido;
+use dominio_pedido::repositorio::{FiltroPedido, RepositorioPedido};
 use puerto_nucleo::auth::Principal;
 use puerto_nucleo::{Pagina, PeticionPagina};
 use std::sync::Arc;
@@ -1175,7 +1273,7 @@ impl ListarPedidos for ListarPedidosImpl {
     #[tracing::instrument(name = "listar_pedidos", skip_all, err(level = "warn"))]
     async fn ejecutar(&self, params: ParamsListarPedidos) -> Result<Pagina<Pedido>, ErrorPedido> {
         self.repositorio
-            .buscar_todos(params.pagina)
+            .buscar_todos(params.pagina, FiltroPedido { comprador_id: None })
             .await
             .map_err(ErrorPedido::from)
     }
@@ -1196,7 +1294,7 @@ mod tests {
         let mut repositorio_doble = MockRepositorioPedido::new();
         repositorio_doble
             .expect_buscar_todos()
-            .returning(move |pagina| Ok(Pagina::new(entidades.clone(), 2, pagina)));
+            .returning(move |pagina, _| Ok(Pagina::new(entidades.clone(), 2, pagina)));
         let caso_de_uso = ListarPedidosImpl {
             repositorio: Arc::new(repositorio_doble),
         };
@@ -1218,7 +1316,7 @@ mod tests {
         let mut repositorio_doble = MockRepositorioPedido::new();
         repositorio_doble
             .expect_buscar_todos()
-            .returning(|pagina| Ok(Pagina::new(vec![], 0, pagina)));
+            .returning(|pagina, _| Ok(Pagina::new(vec![], 0, pagina)));
         let caso_de_uso = ListarPedidosImpl {
             repositorio: Arc::new(repositorio_doble),
         };
@@ -1240,8 +1338,8 @@ mod tests {
         let mut repositorio_doble = MockRepositorioPedido::new();
         repositorio_doble
             .expect_buscar_todos()
-            .withf(|pagina| pagina.limite() == 5 && pagina.desplazamiento() == 10)
-            .returning(|pagina| Ok(Pagina::new(vec![], 0, pagina)));
+            .withf(|pagina, _| pagina.limite() == 5 && pagina.desplazamiento() == 10)
+            .returning(|pagina, _| Ok(Pagina::new(vec![], 0, pagina)));
         let caso_de_uso = ListarPedidosImpl {
             repositorio: Arc::new(repositorio_doble),
         };
@@ -1916,11 +2014,18 @@ use puerto_nucleo::{ErrorRepositorio, Pagina, PeticionPagina};
 
 use crate::modelo::{IdPedido, Pedido};
 
+/// A qué reduce `buscar_todos` la página: un id por referencia; `None` no filtra.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct FiltroPedido {
+    pub comprador_id: Option<uuid::Uuid>,
+}
+
 #[async_trait]
 pub trait RepositorioPedido: Send + Sync {
     async fn buscar_todos(
         &self,
         pagina: PeticionPagina,
+        filtro: FiltroPedido,
     ) -> Result<Pagina<Pedido>, ErrorRepositorio>;
     async fn buscar_por_id(&self, id: IdPedido) -> Result<Option<Pedido>, ErrorRepositorio>;
     async fn guardar(&self, entidad: &Pedido) -> Result<(), ErrorRepositorio>;
@@ -1937,7 +2042,7 @@ pub mod dobles {
 
         #[async_trait]
         impl RepositorioPedido for RepositorioPedido {
-            async fn buscar_todos(&self, pagina: PeticionPagina) -> Result<Pagina<Pedido>, ErrorRepositorio>;
+            async fn buscar_todos(&self, pagina: PeticionPagina, filtro: FiltroPedido) -> Result<Pagina<Pedido>, ErrorRepositorio>;
             async fn buscar_por_id(&self, id: IdPedido) -> Result<Option<Pedido>, ErrorRepositorio>;
             async fn guardar(&self, entidad: &Pedido) -> Result<(), ErrorRepositorio>;
         }
@@ -2064,7 +2169,7 @@ use sqlx::PgPool;
 
 use dominio_pedido::{
     modelo::{IdPedido, Pedido},
-    repositorio::RepositorioPedido,
+    repositorio::{FiltroPedido, RepositorioPedido},
 };
 use puerto_nucleo::{ErrorRepositorio, Pagina, PeticionPagina};
 use puerto_sqlx::mapear_error_sqlx;
@@ -2096,19 +2201,24 @@ impl RepositorioPedido for RepositorioPedidoPostgres {
     async fn buscar_todos(
         &self,
         pagina: PeticionPagina,
+        filtro: FiltroPedido,
     ) -> Result<Pagina<Pedido>, ErrorRepositorio> {
         tracing::debug!(
             limite = pagina.limite(),
             desplazamiento = pagina.desplazamiento(),
             "buscar_todos"
         );
+        // Una sola consulta estática sea cual sea el filtro: un id sin valor es NULL y casa con
+        // todas las filas.
+        let comprador_id = filtro.comprador_id;
         let filas = sqlx::query_as!(
             FilaPedido,
             "SELECT id, creado_en, actualizado_en, borrado, borrado_en, total, comprador_id
-             FROM pedidos WHERE borrado = false
+             FROM pedidos WHERE borrado = false AND ($3::uuid IS NULL OR comprador_id = $3)
              ORDER BY creado_en DESC, id LIMIT $1 OFFSET $2",
             i64::from(pagina.limite()),
-            i64::from(pagina.desplazamiento())
+            i64::from(pagina.desplazamiento()),
+            comprador_id
         )
         .fetch_all(&self.pool)
         .await
@@ -2117,7 +2227,8 @@ impl RepositorioPedido for RepositorioPedidoPostgres {
             mapear_error_sqlx(&e)
         })?;
         let total = sqlx::query_scalar!(
-            r#"SELECT COUNT(*) AS "total!" FROM pedidos WHERE borrado = false"#
+            r#"SELECT COUNT(*) AS "total!" FROM pedidos WHERE borrado = false AND ($1::uuid IS NULL OR comprador_id = $1)"#,
+            comprador_id
         )
         .fetch_one(&self.pool)
         .await
@@ -2259,7 +2370,7 @@ mod pruebas_integracion {
 
         // Actuar
         let pagina = repositorio_de_prueba(pool)
-            .buscar_todos(PeticionPagina::default())
+            .buscar_todos(PeticionPagina::default(), FiltroPedido::default())
             .await
             .unwrap();
 
@@ -2277,7 +2388,10 @@ mod pruebas_integracion {
 
         // Actuar
         let pagina = repositorio_de_prueba(pool)
-            .buscar_todos(PeticionPagina::new(Some(2), Some(2)))
+            .buscar_todos(
+                PeticionPagina::new(Some(2), Some(2)),
+                FiltroPedido::default(),
+            )
             .await
             .unwrap();
 
@@ -2842,6 +2956,7 @@ use aplicacion_pedido::{
     actualizar_pedido::{ActualizarPedido, ParamsActualizarPedido},
     borrar_pedido::{BorrarPedido, ParamsBorrarPedido},
     crear_pedido::{CrearPedido, ParamsCrearPedido},
+    listar_mis_pedidos::{ListarMisPedidos, ParamsListarMisPedidos},
     listar_pedidos::{ListarPedidos, ParamsListarPedidos},
     obtener_pedido::{ObtenerPedido, ParamsObtenerPedido},
 };
@@ -2873,6 +2988,7 @@ pub struct ApiPedido {
     pub crear_pedido: Arc<dyn CrearPedido>,
     pub obtener_pedido: Arc<dyn ObtenerPedido>,
     pub listar_pedidos: Arc<dyn ListarPedidos>,
+    pub listar_mis_pedidos: Arc<dyn ListarMisPedidos>,
     pub actualizar_pedido: Arc<dyn ActualizarPedido>,
     pub borrar_pedido: Arc<dyn BorrarPedido>,
 }
@@ -2949,6 +3065,31 @@ impl ApiPedido {
         }
     }
 
+    /// Lista las de quien llama (`comprador_id`), página a página
+    #[oai(path = "/mis_pedidos", method = "get", tag = "ApiTags::Pedido")]
+    async fn listar_mis(
+        &self,
+        auth: BearerAuth,
+        limite: Query<Option<u32>>,
+        desplazamiento: Query<Option<u32>>,
+    ) -> RespuestaListarPedidos {
+        match self
+            .listar_mis_pedidos
+            .ejecutar(ParamsListarMisPedidos {
+                actor: auth.0,
+                pagina: PeticionPagina::new(limite.0, desplazamiento.0),
+            })
+            .await
+        {
+            Ok(pagina) => RespuestaListarPedidos::Ok(Json(DtoPaginaPedido::from_dominio(&pagina))),
+            Err(err) => {
+                let (status, error) = a_respuesta_error(err);
+                tracing::error!(codigo = %error.0.codigo, "listar_mis_pedidos falló");
+                RespuestaListarPedidos::from_status(status, error)
+            }
+        }
+    }
+
     /// Actualiza: Pedido
     #[oai(path = "/pedidos/:id", method = "put", tag = "ApiTags::Pedido")]
     async fn actualizar(
@@ -3000,8 +3141,8 @@ impl ApiPedido {
 mod tests {
     use aplicacion_pedido::{
         actualizar_pedido::dobles::MockActualizarPedido, borrar_pedido::dobles::MockBorrarPedido,
-        crear_pedido::dobles::MockCrearPedido, listar_pedidos::dobles::MockListarPedidos,
-        obtener_pedido::dobles::MockObtenerPedido,
+        crear_pedido::dobles::MockCrearPedido, listar_mis_pedidos::dobles::MockListarMisPedidos,
+        listar_pedidos::dobles::MockListarPedidos, obtener_pedido::dobles::MockObtenerPedido,
     };
     use dominio_pedido::errores::ErrorPedido;
     use dominio_pedido::pruebas::madres::MadrePedido;
@@ -3021,6 +3162,7 @@ mod tests {
         crear: MockCrearPedido,
         obtener: MockObtenerPedido,
         listar: MockListarPedidos,
+        listar_mis: MockListarMisPedidos,
         actualizar: MockActualizarPedido,
         borrar: MockBorrarPedido,
     }
@@ -3049,6 +3191,7 @@ mod tests {
                 crear_pedido: Arc::new(self.crear),
                 obtener_pedido: Arc::new(self.obtener),
                 listar_pedidos: Arc::new(self.listar),
+                listar_mis_pedidos: Arc::new(self.listar_mis),
                 actualizar_pedido: Arc::new(self.actualizar),
                 borrar_pedido: Arc::new(self.borrar),
             };
@@ -3168,6 +3311,41 @@ mod tests {
         let cuerpo = json.value().object();
         cuerpo.get("elementos").array().assert_len(2);
         cuerpo.get("total").assert_i64(7);
+    }
+
+    #[tokio::test]
+    async fn deberia_responder_200_con_las_pedidos_de_quien_llama() {
+        // Preparar
+        let mut dobles = Dobles::default();
+        dobles
+            .listar_mis
+            .expect_ejecutar()
+            .returning(|params| Ok(Pagina::new(MadrePedido::aleatorios(1), 1, params.pagina)));
+
+        // Actuar
+        let respuesta = dobles.cliente().get("/mis_pedidos").send().await;
+
+        // Comprobar
+        respuesta.assert_status(StatusCode::OK);
+        respuesta
+            .json()
+            .await
+            .value()
+            .object()
+            .get("total")
+            .assert_i64(1);
+    }
+
+    #[tokio::test]
+    async fn deberia_responder_401_cuando_se_piden_las_pedidos_propias_sin_token() {
+        // Preparar — sin expectativas: nunca se llega al caso de uso
+        let dobles = Dobles::default();
+
+        // Actuar
+        let respuesta = dobles.cliente_con(None).get("/mis_pedidos").send().await;
+
+        // Comprobar
+        respuesta.assert_status(StatusCode::UNAUTHORIZED);
     }
 
     #[tokio::test]
@@ -8576,6 +8754,7 @@ pub async fn construir_app(config: puerto_web::Config) -> Result<impl Endpoint, 
         listar_pedidos: casos_pedido.listar_pedidos,
         actualizar_pedido: casos_pedido.actualizar_pedido,
         borrar_pedido: casos_pedido.borrar_pedido,
+        listar_mis_pedidos: casos_pedido.listar_mis_pedidos,
     };
     let api_pagar_pedido = ApiPagarPedido {
         pagar_pedido: casos_pedido.pagar_pedido,
@@ -8615,6 +8794,7 @@ mod tests {
     use aplicacion_pedido::actualizar_pedido::dobles::MockActualizarPedido;
     use aplicacion_pedido::borrar_pedido::dobles::MockBorrarPedido;
     use aplicacion_pedido::crear_pedido::dobles::MockCrearPedido;
+    use aplicacion_pedido::listar_mis_pedidos::dobles::MockListarMisPedidos;
     use aplicacion_pedido::listar_pedidos::dobles::MockListarPedidos;
     use aplicacion_pedido::obtener_pedido::dobles::MockObtenerPedido;
     use aplicacion_pedido::pagar_pedido::dobles::MockPagarPedido;
@@ -8654,6 +8834,7 @@ mod tests {
             listar_pedidos: Arc::new(MockListarPedidos::new()),
             actualizar_pedido: Arc::new(MockActualizarPedido::new()),
             borrar_pedido: Arc::new(MockBorrarPedido::new()),
+            listar_mis_pedidos: Arc::new(MockListarMisPedidos::new()),
         };
         let api_pagar_pedido = ApiPagarPedido {
             pagar_pedido: Arc::new(MockPagarPedido::new()),
@@ -8772,6 +8953,7 @@ pub mod pedido {
     use aplicacion_pedido::borrar_pedido::{BorrarPedido, BorrarPedidoImpl};
     use aplicacion_pedido::close_pedido::{ClosePedido, ClosePedidoImpl};
     use aplicacion_pedido::crear_pedido::{CrearPedido, CrearPedidoImpl};
+    use aplicacion_pedido::listar_mis_pedidos::{ListarMisPedidos, ListarMisPedidosImpl};
     use aplicacion_pedido::listar_pedidos::{ListarPedidos, ListarPedidosImpl};
     use aplicacion_pedido::obtener_pedido::{ObtenerPedido, ObtenerPedidoImpl};
     use aplicacion_pedido::pagar_pedido::{PagarPedido, PagarPedidoImpl};
@@ -8785,6 +8967,7 @@ pub mod pedido {
         pub listar_pedidos: Arc<dyn ListarPedidos>,
         pub actualizar_pedido: Arc<dyn ActualizarPedido>,
         pub borrar_pedido: Arc<dyn BorrarPedido>,
+        pub listar_mis_pedidos: Arc<dyn ListarMisPedidos>,
         pub close_pedido: Arc<dyn ClosePedido>,
         pub pagar_pedido: Arc<dyn PagarPedido>,
     }
@@ -8806,6 +8989,9 @@ pub mod pedido {
                 repositorio: Arc::clone(&repositorio),
             }),
             borrar_pedido: Arc::new(BorrarPedidoImpl {
+                repositorio: Arc::clone(&repositorio),
+            }),
+            listar_mis_pedidos: Arc::new(ListarMisPedidosImpl {
                 repositorio: Arc::clone(&repositorio),
             }),
             close_pedido: Arc::new(ClosePedidoImpl {
@@ -8888,6 +9074,7 @@ casos_de_uso = [
     "listar_pedidos",
     "actualizar_pedido",
     "borrar_pedido",
+    "listar_mis_pedidos",
     "close_pedido",
     "pagar_pedido",
 ]

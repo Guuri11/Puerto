@@ -1,0 +1,99 @@
+use std::sync::Arc;
+
+use async_trait::async_trait;
+use puerto_nucleo::auth::Principal;
+use puerto_nucleo::{Pagina, PeticionPagina};
+
+use dominio_{{ snake }}::{
+    errores::Error{{ pascal }},
+    modelo::{{ pascal }},
+    repositorio::{Filtro{{ pascal }}, Repositorio{{ pascal }}},
+};
+
+#[derive(Debug, Clone)]
+pub struct ParamsListarMis{{ plural_pascal }} {
+    /// Quien lo pide: la lista son sus filas (`propietario` en puerto.toml).
+    pub actor: Principal,
+    pub pagina: PeticionPagina,
+}
+
+/// Las filas de quien llama, paginadas: `GET /mis_{{ plural }}`.
+#[async_trait]
+pub trait ListarMis{{ plural_pascal }}: Send + Sync {
+    async fn ejecutar(
+        &self,
+        params: ParamsListarMis{{ plural_pascal }},
+    ) -> Result<Pagina<{{ pascal }}>, Error{{ pascal }}>;
+}
+
+#[cfg(any(test, feature = "pruebas"))]
+pub mod dobles {
+    use mockall::mock;
+
+    use super::*;
+
+    mock! {
+        pub ListarMis{{ plural_pascal }} {}
+
+        #[async_trait]
+        impl ListarMis{{ plural_pascal }} for ListarMis{{ plural_pascal }} {
+            async fn ejecutar(&self, params: ParamsListarMis{{ plural_pascal }}) -> Result<Pagina<{{ pascal }}>, Error{{ pascal }}>;
+        }
+    }
+}
+
+pub struct ListarMis{{ plural_pascal }}Impl {
+    pub repositorio: Arc<dyn Repositorio{{ pascal }}>,
+}
+
+#[async_trait]
+impl ListarMis{{ plural_pascal }} for ListarMis{{ plural_pascal }}Impl {
+    #[tracing::instrument(name = "listar_mis_{{ plural }}", skip_all, err(level = "warn"))]
+    async fn ejecutar(
+        &self,
+        params: ParamsListarMis{{ plural_pascal }},
+    ) -> Result<Pagina<{{ pascal }}>, Error{{ pascal }}> {
+        let filtro = Filtro{{ pascal }} {
+{%- for f in filters %}
+            {{ f.0 }}: {% if f.1 %}Some(params.actor.id_usuario){% else %}None{% endif %},
+{%- endfor %}
+        };
+        self.repositorio
+            .buscar_todos(params.pagina, filtro)
+            .await
+            .map_err(Error{{ pascal }}::from)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use dominio_{{ snake }}::repositorio::dobles::MockRepositorio{{ pascal }};
+    use puerto_nucleo::auth::dobles::MadrePrincipal;
+
+    #[tokio::test]
+    async fn deberia_pedir_al_repositorio_solo_las_filas_de_quien_llama() {
+        // Preparar
+        let actor = MadrePrincipal::aleatorio();
+        let suyo = Some(actor.id_usuario);
+        let mut repositorio_doble = MockRepositorio{{ pascal }}::new();
+        repositorio_doble
+            .expect_buscar_todos()
+            .withf(move |_, filtro| filtro.{{ owner }} == suyo)
+            .returning(|pagina, _| Ok(Pagina::new(vec![], 0, pagina)));
+        let caso_de_uso = ListarMis{{ plural_pascal }}Impl {
+            repositorio: Arc::new(repositorio_doble),
+        };
+
+        // Actuar
+        let resultado = caso_de_uso
+            .ejecutar(ParamsListarMis{{ plural_pascal }} {
+                actor,
+                pagina: PeticionPagina::default(),
+            })
+            .await;
+
+        // Comprobar
+        assert!(resultado.is_ok(), "{:?}", resultado.map(|_| ()));
+    }
+}

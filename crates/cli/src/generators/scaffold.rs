@@ -34,7 +34,12 @@ pub fn run(
         write_web_files(&pascal, base, fields)?;
     }
 
-    crate::puerto_toml::add_entity(base, &pascal, crud_use_cases(&snake), db, fields.to_vec())?;
+    let mut use_cases = crud_use_cases(&snake);
+    // 27.18: an owned entity also lists its caller's rows.
+    if fields.iter().any(|f| f.owner) {
+        use_cases.push(crate::generators::naming::mine_use_case(&snake));
+    }
+    crate::puerto_toml::add_entity(base, &pascal, use_cases, db, fields.to_vec())?;
     crate::patchers::routes_rs::patch_routes_from_manifest(base, &pascal, &snake)?;
     crate::generators::bootstrap::regenerate_bootstrap(base)?;
 

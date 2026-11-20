@@ -3,9 +3,9 @@ use sqlx::PgPool;
 {% if has_map %}use sqlx::types::Json;
 use std::collections::HashMap;
 {% endif %}
-{% set refs = fields | filter(attribute="is_ref", value=true) %}use dominio_{{ snake }}::{
+{% set refs = fields | filter(attribute="is_ref", value=true) %}{% set filters = fields | filter(attribute="filters", value=true) %}use dominio_{{ snake }}::{
     modelo::{{ "{" }}{{ pascal }}, Id{{ pascal }}},
-    repositorio::{% if refs %}{{ "{" }}Filtro{{ pascal }}, Repositorio{{ pascal }}}{% else %}Repositorio{{ pascal }}{% endif %},
+    repositorio::{% if filters %}{{ "{" }}Filtro{{ pascal }}, Repositorio{{ pascal }}}{% else %}Repositorio{{ pascal }}{% endif %},
 };
 use puerto_nucleo::{Pagina, PeticionPagina, ErrorRepositorio};
 {% if references and not events %}use puerto_sqlx::{ClaveForanea, mapear_error_sqlx, mapear_error_sqlx_con};
@@ -35,18 +35,18 @@ fn to_dominio(fila: Fila{{ pascal }}) -> Result<{{ pascal }}, ErrorRepositorio> 
 
 #[async_trait]
 impl Repositorio{{ pascal }} for Repositorio{{ pascal }}Postgres {
-    async fn buscar_todos(&self, pagina: PeticionPagina{% if refs %}, filtro: Filtro{{ pascal }}{% endif %}) -> Result<Pagina<{{ pascal }}>, ErrorRepositorio> {
+    async fn buscar_todos(&self, pagina: PeticionPagina{% if filters %}, filtro: Filtro{{ pascal }}{% endif %}) -> Result<Pagina<{{ pascal }}>, ErrorRepositorio> {
         tracing::debug!(limite = pagina.limite(), desplazamiento = pagina.desplazamiento(), "buscar_todos");
-{% if refs %}        // Una sola consulta estática sea cual sea el filtro: un id sin valor es NULL y casa con
+{% if filters %}        // Una sola consulta estática sea cual sea el filtro: un id sin valor es NULL y casa con
         // todas las filas.
-{% for r in refs %}        let {{ r.name }} = filtro.{{ r.name }}.map(|id| id.valor());
+{% for r in filters %}        let {{ r.name }} = {{ r.filter_bind }};
 {% endfor %}{% endif %}        let filas = sqlx::query_as!(
             Fila{{ pascal }},
             "SELECT {{ select_cols }}
              FROM {{ plural }} WHERE {{ page_where }}
              ORDER BY {{ order_by }} LIMIT $1 OFFSET $2",
             i64::from(pagina.limite()),
-            i64::from(pagina.desplazamiento()){% for r in refs %},
+            i64::from(pagina.desplazamiento()){% for r in filters %},
             {{ r.name }}{% endfor %}
         )
         .fetch_all(&self.pool)
@@ -56,7 +56,7 @@ impl Repositorio{{ pascal }} for Repositorio{{ pascal }}Postgres {
             mapear_error_sqlx(&e)
         })?;
         let total = sqlx::query_scalar!(
-            r#"SELECT COUNT(*) AS "total!" FROM {{ plural }} WHERE {{ count_where }}"#{% for r in refs %},
+            r#"SELECT COUNT(*) AS "total!" FROM {{ plural }} WHERE {{ count_where }}"#{% for r in filters %},
             {{ r.name }}{% endfor %}
         )
         .fetch_one(&self.pool)
@@ -189,7 +189,7 @@ mod pruebas_integracion {
         {% if events %}guardar(&pool, &borrado).await;{% else %}repositorio_de_prueba(pool.clone()).guardar(&borrado).await.unwrap();{% endif %}
 
         // Actuar
-        let pagina = repositorio_de_prueba(pool).buscar_todos(PeticionPagina::default(){% if refs %}, Filtro{{ pascal }}::default(){% endif %}).await.unwrap();
+        let pagina = repositorio_de_prueba(pool).buscar_todos(PeticionPagina::default(){% if filters %}, Filtro{{ pascal }}::default(){% endif %}).await.unwrap();
 
         // Comprobar
         assert_eq!(pagina.elementos.len(), 1);
@@ -205,7 +205,7 @@ mod pruebas_integracion {
 
         // Actuar
         let pagina = repositorio_de_prueba(pool)
-            .buscar_todos(PeticionPagina::new(Some(2), Some(2)){% if refs %}, Filtro{{ pascal }}::default(){% endif %})
+            .buscar_todos(PeticionPagina::new(Some(2), Some(2)){% if filters %}, Filtro{{ pascal }}::default(){% endif %})
             .await
             .unwrap();
 
@@ -274,7 +274,7 @@ mod pruebas_integracion {
             .buscar_todos(
                 PeticionPagina::default(),
                 Filtro{{ pascal }} {
-{% for o in refs %}                    {{ o.name }}: {% if o.name == r.name %}Some(destino.id){% else %}None{% endif %},
+{% for o in filters %}                    {{ o.name }}: {% if o.name == r.name %}Some(destino.id){% else %}None{% endif %},
 {% endfor %}                },
             )
             .await

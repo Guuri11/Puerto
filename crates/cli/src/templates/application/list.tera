@@ -1,4 +1,4 @@
-{% set required = fields | filter(attribute="required_string", value=true) %}{% set string_vos = fields | filter(attribute="string_vo", value=true) %}{% set refs = fields | filter(attribute="is_ref", value=true) %}use std::sync::Arc;
+{% set required = fields | filter(attribute="required_string", value=true) %}{% set string_vos = fields | filter(attribute="string_vo", value=true) %}{% set refs = fields | filter(attribute="is_ref", value=true) %}{% set filters = fields | filter(attribute="filters", value=true) %}use std::sync::Arc;
 
 use async_trait::async_trait;
 use puerto_nucleo::Pagina;
@@ -6,7 +6,7 @@ use puerto_nucleo::Pagina;
 use dominio_{{ snake }}::{
     errores::Error{{ pascal }},
     modelo::{{ pascal }},
-    repositorio::{% if refs %}{{ "{" }}Filtro{{ pascal }}, Repositorio{{ pascal }}}{% else %}Repositorio{{ pascal }}{% endif %},
+    repositorio::{% if filters %}{{ "{" }}Filtro{{ pascal }}, Repositorio{{ pascal }}}{% else %}Repositorio{{ pascal }}{% endif %},
 };
 
 pub struct Listar{{ plural_pascal }}Impl {
@@ -18,10 +18,10 @@ impl Listar{{ plural_pascal }} for Listar{{ plural_pascal }}Impl {
     #[tracing::instrument(name = "listar_{{ plural }}", skip_all, err(level = "warn"))]
     async fn ejecutar(&self, params: ParamsListar{{ plural_pascal }}) -> Result<Pagina<{{ pascal }}>, Error{{ pascal }}> {
         self.repositorio
-{% if refs %}            .buscar_todos(
+{% if filters %}            .buscar_todos(
                 params.pagina,
                 Filtro{{ pascal }} {
-{% for r in refs %}                    {{ r.name }}: params.{{ r.name }},
+{% for r in filters %}                    {{ r.name }}: {% if r.is_ref %}params.{{ r.name }}{% else %}None{% endif %},
 {% endfor %}                },
             )
 {% else %}            .buscar_todos(params.pagina)
@@ -48,7 +48,7 @@ mod tests {
         let mut repositorio_doble = MockRepositorio{{ pascal }}::new();
         repositorio_doble
             .expect_buscar_todos()
-            .returning(move |pagina{% if refs %}, _{% endif %}| Ok(Pagina::new(entidades.clone(), 2, pagina)));
+            .returning(move |pagina{% if filters %}, _{% endif %}| Ok(Pagina::new(entidades.clone(), 2, pagina)));
         let caso_de_uso = Listar{{ plural_pascal }}Impl {
             repositorio: Arc::new(repositorio_doble),
         };
@@ -67,7 +67,7 @@ mod tests {
         let mut repositorio_doble = MockRepositorio{{ pascal }}::new();
         repositorio_doble
             .expect_buscar_todos()
-            .returning(|pagina{% if refs %}, _{% endif %}| Ok(Pagina::new(vec![], 0, pagina)));
+            .returning(|pagina{% if filters %}, _{% endif %}| Ok(Pagina::new(vec![], 0, pagina)));
         let caso_de_uso = Listar{{ plural_pascal }}Impl {
             repositorio: Arc::new(repositorio_doble),
         };
@@ -86,8 +86,8 @@ mod tests {
         let mut repositorio_doble = MockRepositorio{{ pascal }}::new();
         repositorio_doble
             .expect_buscar_todos()
-            .withf(|pagina{% if refs %}, _{% endif %}| pagina.limite() == 5 && pagina.desplazamiento() == 10)
-            .returning(|pagina{% if refs %}, _{% endif %}| Ok(Pagina::new(vec![], 0, pagina)));
+            .withf(|pagina{% if filters %}, _{% endif %}| pagina.limite() == 5 && pagina.desplazamiento() == 10)
+            .returning(|pagina{% if filters %}, _{% endif %}| Ok(Pagina::new(vec![], 0, pagina)));
         let caso_de_uso = Listar{{ plural_pascal }}Impl {
             repositorio: Arc::new(repositorio_doble),
         };
@@ -102,7 +102,7 @@ mod tests {
     #[tokio::test]
     async fn deberia_pasar_el_filtro_al_repositorio() {
         let filtro = Filtro{{ pascal }} {
-{% for r in refs %}            {{ r.name }}: Some(Id{{ r.ref_target }}::generar()),
+{% for r in filters %}            {{ r.name }}: {% if r.is_ref %}Some(Id{{ r.ref_target }}::generar()){% else %}None{% endif %},
 {% endfor %}        };
         let mut repositorio_doble = MockRepositorio{{ pascal }}::new();
         repositorio_doble

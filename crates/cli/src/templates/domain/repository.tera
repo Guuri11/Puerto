@@ -3,11 +3,11 @@ use puerto_nucleo::{Pagina, PeticionPagina, ErrorRepositorio};
 
 use crate::modelo::{{ "{" }}{{ pascal }}, Id{{ pascal }}};
 {% for import in reference_imports %}use {{ import }};
-{% endfor %}{% set refs = fields | filter(attribute="is_ref", value=true) %}{% if refs %}
+{% endfor %}{% set refs = fields | filter(attribute="filters", value=true) %}{% if refs %}
 /// A qué reduce `buscar_todos` la página: un id por referencia; `None` no filtra.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct Filtro{{ pascal }} {
-{% for r in refs %}    pub {{ r.name }}: Option<Id{{ r.ref_target }}>,
+{% for r in refs %}    pub {{ r.name }}: {{ r.filter_type }},
 {% endfor %}}
 {% endif %}
 #[async_trait]
