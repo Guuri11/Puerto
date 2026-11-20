@@ -27,6 +27,9 @@ const puerto = (args, cwd) =>
   execFileSync(BIN, args, { cwd, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
 const bun = (args, cwd) => execFileSync('bun', args, { cwd, stdio: ['ignore', 'ignore', 'inherit'] });
 
+// A block of the escaparate shows an entity (27.20 de Puerto): the project's public Producto.
+const entidadDe = (hueco) => (hueco === 'escaparate' ? ['Producto'] : []);
+
 // ── The catalog, as `puerto generar web-bloque` prints it ─────────────────────────────────────
 const LINEA = /^ {2}(\S+\/\S+)\s{2,}(.+?)(?: \((auth|portada|portada\/producto)\))?$/;
 const catalogo = puerto(['generar', 'web-bloque'])
@@ -61,9 +64,7 @@ function construir() {
     const vistos = new Set();
     const bloques = catalogo.map((bloque) => {
       const [hueco, variante] = bloque.id.split('/');
-      // A block of the escaparate shows an entity (27.20 de Puerto).
-      const entidad = hueco === 'escaparate' ? ['Producto'] : [];
-      const rutas = puerto(['generar', 'web-bloque', bloque.id, ...entidad, '--forzar'], proyecto)
+      const rutas = puerto(['generar', 'web-bloque', bloque.id, ...entidadDe(hueco), '--forzar'], proyecto)
         .split('\n')
         .map((linea) => linea.match(FICHERO)?.[1])
         .filter(Boolean);
@@ -86,7 +87,7 @@ function construir() {
 
     // Back to the default of every slot: the previews wrap a variant in the others' defaults.
     for (const bloque of bloques.filter((b) => b.porDefecto && b.hueco !== 'portada')) {
-      puerto(['generar', 'web-bloque', bloque.id, '--forzar'], proyecto);
+      puerto(['generar', 'web-bloque', bloque.id, ...entidadDe(bloque.hueco), '--forzar'], proyecto);
     }
 
     const web = join(proyecto, 'web');
@@ -173,10 +174,11 @@ const VISTA_HTML = `<!doctype html>
 </html>
 `;
 
-const VITE_CONFIG = `import { mergeConfig } from "vite";
+// The project's config is a function of the mode (it reads SERVICE_PORT from .env, 27.1 de Puerto).
+const VITE_CONFIG = `import { defineConfig, mergeConfig } from "vite";
 import base from "./vite.config.ts";
 
-export default mergeConfig(base, {
+export default defineConfig((entorno) => mergeConfig(base(entorno), {
   base: "/bloques/vista/",
   build: {
     outDir: "dist-vista",
@@ -190,7 +192,7 @@ export default mergeConfig(base, {
       },
     },
   },
-});
+}));
 `;
 
 const VISTA_TSX_CABECERA = `import "./vista.css";
