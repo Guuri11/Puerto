@@ -129,12 +129,18 @@ verdad, una regla o una orquestación, escríbela a mano donde corresponda.
 | `String`, `Uuid` | `string` | input de texto, `required` |
 | `i64`, `f64` | `number` | input numérico (`step=any` para `f64`) |
 | `bool` | `boolean` | checkbox |
-| `DateTime` | `string` (ISO 8601) | `datetime-local` |
+| `DateTime` | `string` (ISO 8601) | `datetime-local`; se muestra en castellano («5 dic 2026, 21:00»), sea cual sea el idioma del navegador |
 | `opt:T` | `T`, opcional; `null` cuando falta | como `T`, no obligatorio; un input vacío no se manda |
 | `vec:T` | `T[]` | texto, separado por comas |
 | `map` | `Record<string, string>` | textarea, una línea `clave=valor` por entrada |
-| objeto valor enum | `string` | `<select>` con sus variantes |
-| `ref:Cliente` | `string` | `<select>` con los 100 primeros clientes; en el detalle, un enlace con la etiqueta del cliente, que carga el contenedor |
+| objeto valor enum | `string` | `<select>` con sus variantes, que se leen como texto: `EnRevision` → En revisión, o lo que diga `textos` |
+| objeto valor `email` | `string` | `<input type="email">` |
+| objeto valor `dinero` | `number` (céntimos) | texto en euros con coma («12,50»); se muestra con `euros()` («12,50 €») |
+| `ref:Cliente` | `string` | `<select>` con los 100 primeros clientes; en la lista y el detalle, la etiqueta del cliente. `/pedidos/nuevo?clienteId=…` abre el formulario con ese cliente elegido |
+
+Cada control lleva la etiqueta del campo con sus tildes (`codigo_postal` → Código postal), o la
+que le des en `[[entidad.campos]] etiqueta`. Un campo `--generado` no aparece en el formulario, y
+uno `--por-defecto` solo al editar: los pone el servidor.
 
 ## Los errores aparecen junto a su campo
 
@@ -142,14 +148,17 @@ El frontend no copia la validación del dominio: la autoridad es el servidor. Un
 su `codigo`, y `mensajes.ts`, generado de la misma lista que `errores.rs`, lo convierte en una
 frase y un campo:
 
-```ts title="web/src/contextos/cliente/mensajes.ts (fragmento)"
-"cliente.email_invalido": "Email: no válido",
-"cliente.validacion.nombre_vacio": "Nombre: obligatorio",
+```ts title="web/src/contextos/sala/mensajes.ts (fragmento)"
+"sala.validacion.nombre_vacio": "Nombre: campo obligatorio",
+"sala.email_invalido": "Contacto: no válido",
+"sala.duplicado": "Nombre: ya está en uso",
 ```
 
-`cliente.validacion.nombre_vacio` marca el input `nombre`. `cliente.duplicado` («Estos valores ya
-están en uso») va a la alerta del formulario. Un código para el que nadie escribió un mensaje se
-muestra tal cual.
+`sala.validacion.nombre_vacio` marca el input `nombre`, y `sala.duplicado` el campo único que
+choca (con un único sobre varios campos, «Sala y fecha: ya están en uso»). Lo que no es de un
+campo va a la alerta del formulario. Un código para el que nadie escribió un mensaje se muestra tal
+cual. Los tests de las pantallas sacan sus textos de `mensajes.ts`, así que cambiar una frase no
+rompe ninguno.
 
 ## Rutas
 

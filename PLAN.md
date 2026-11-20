@@ -3720,7 +3720,7 @@ marca cuando se pone `data-theme="light"` (ver 26.5).
 
 ## Fase 27 — Lo que encontró Aforo
 
-**Estado:** por hacer. Decidido por Sergio el 2026-11-19: todo lo que encontró Aforo
+**Estado:** hecha ✅ (2026-11-20), en la v0.28.0. Decidido por Sergio el 2026-11-19: todo lo que encontró Aforo
 (`~/dev/aforo`, venta de entradas para salas pequeñas, hecha con la 0.27.0 para enseñar todo
 Puerto: `--db --eventos db --auth local --portada`, cuatro entidades con referencias, eventos y
 casos de uso propios, dos consumidores, dos correos y bloques web) entra en Puerto. Los nombres
@@ -4129,10 +4129,14 @@ toca (sin ejemplo por entidad).
   - ~~`interno`, `Principal::sistema`, el helper de páginas, `--usa` y el módulo compartido del
     worker~~: `--interno` / `internos`, `Principal::sistema`, `todas_las_paginas`, `--usa`,
     `consumidores/comun.rs` (2026-11-19);
-  - `ejemplo`, las clases `email` y `dinero` (`dinero` se escribe en euros con coma, decidido el
-    2026-11-19);
-  - `por_defecto`, `generado`, `propietario` y la ruta `mis-<plural>`;
-  - el hueco de la lista pública y `sembrar` (`CONFIRM`, decidido el 2026-11-19).
+  - ~~`ejemplo`, las clases `email` y `dinero`~~: `[[objeto_valor]] ejemplo`, `email:Email:email`,
+    `precio:Precio:dinero` (`dinero` se escribe en euros con coma), 2026-11-19;
+  - ~~`por_defecto`, `generado`, `propietario` y la ruta `mis-<plural>`~~: `--por-defecto`,
+    `--generado`, `--propietario`, `GET /mis_<plural>` (2026-11-20);
+  - ~~el hueco de la lista pública y `sembrar`~~: `escaparate/tarjetas <Entidad>`,
+    `scripts/sembrar.sh` y `make sembrar` (2026-11-20; `CONFIRM`, 2026-11-19).
+
+  Todo en `docs/glosario.md` § Fase 27.
 
 ### Comprobado y descartado
 
@@ -4143,3 +4147,37 @@ toca (sin ejemplo por entidad).
 
 Kafka en Aforo; revisar el tema claro y el móvil; una pantalla de compra con pago; lo propio de Aforo
 (la regla del aforo por orden de compra y la compensación son del dominio, no de Puerto).
+
+## Fase 28 — Lo que encontró la Aforo de la 0.28
+
+**Estado:** por decidir con Sergio. Aforo rehecha desde cero el 2026-11-20 con el CLI de la 0.28
+(`~/dev/aforo`; la de la 0.27 queda en `~/dev/aforo-0.27`): `puerto nuevo --db --eventos db --auth
+local --portada --sin-demo`, las cuatro entidades con lo de la Fase 27 (`transicion`, `--interno`,
+`--usa`, `--propietario`, `--por-defecto`, `--generado`, `email`, `dinero`, `escaparate/tarjetas`,
+`sembrar.sh`). Lo escrito a mano: las reglas (capacidad, aforo, 1–10 entradas, las tres
+transiciones), los dos consumidores, las plantillas de los correos, la marca y los textos de la
+portada, y un «Comprar». Pasa clippy, 390 tests de Rust, 163 de la web y `make sembrar` de punta a
+punta contra la API y el worker. Lo que Puerto no cubrió:
+
+- **El propietario siempre actualiza.** Con `--propietario`, `actualizar` deja pasar al dueño
+  aunque la ruta tenga rol: un comprador podía revivir una entrada anulada (`estado`) o pedir más
+  de las que cupieron. Aforo cambió la comprobación a mano. Falta poder decir «esto, solo el rol».
+- **Las transiciones no saben del propietario.** `anular_entrada` sin `--rol` dejaría a cualquier
+  usuario con sesión anular la entrada de otro.
+- **Un objeto valor local no tiene `ejemplo`.** La regla `Cantidad` 1–10 rompió la madre (`42`); se
+  cambió a mano (27.15 solo cubre los compartidos).
+- **`textos` no tiene flag.** Se edita `puerto.toml` y después `generar web <E> --forzar` y
+  `web-bloque escaparate/tarjetas <E> --forzar`, que guarda su propia copia. Y `AlaVenta` se lee
+  «Ala venta» sin ellos.
+- **Ningún enlace a «crear un hijo».** 27.19 lee `?conciertoId=`, pero nada genera el «Comprar» del
+  detalle del concierto ni de la tarjeta del escaparate.
+- **El botón de una transición sale aunque la regla la rechace** (Cancelar en un concierto ya
+  cancelado: el diálogo y luego «No se puede cancelar»).
+- **Cada rechazo sale dos veces en el log** (`WARN` de la ruta, «… falló», y el `err` del caso de
+  uso de ADR-0026).
+- **El `Makefile` dice `:8080` y `:8081`** en la ayuda de `run` y `worker`, aunque los puertos ya
+  están en `.env` (27.1).
+- **`make sembrar` mezcla la salida de `docker compose`** (el `docker-compose/up` de
+  `auth/conceder`) con la de la demo.
+- **`portada/producto` pide `--forzar` en un proyecto recién creado**, porque `paginas/portada.tsx`
+  ya es la bienvenida.

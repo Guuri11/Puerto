@@ -264,28 +264,57 @@ ErrorRepositorio::Duplicado)` falla en el paso que nombres; una escritura rechaz
    Responde `ResultadoManejo::Ack` al terminar, `Reintentar` ante un fallo que puede pasar (un
    timeout, un servicio caído) y `ResultadoManejo::descartar(…)` ante uno que no pasará nunca.
 
-3. **Dale lo que necesita.** El worker construye cada consumidor una vez, con su pool de base de
-   datos, mediante el `construir` del propio fichero del consumidor. Guarda lo que necesita en los
-   campos del struct:
+3. **Dale lo que necesita.** Con `--usa`, el consumidor nace con los casos de uso a los que
+   llama:
 
-   ```rust title="presentacion/worker/src/consumidores/actualizar_clasificacion.rs (fragmento)"
-   pub struct ActualizarClasificacion {
-       recalcular: Arc<dyn RecalcularClasificacion>,
+   ```bash
+   puerto generar consumidor control_aforo --tras entrada_creado \
+     --usa obtener_concierto,agotar_concierto,listar_entradas,anular_entrada
+   ```
+
+   ```rust title="presentacion/worker/src/consumidores/control_aforo.rs (fragmento)"
+   pub struct ControlAforo {
+       pub obtener_concierto: Arc<dyn ObtenerConcierto>,
+       pub agotar_concierto: Arc<dyn AgotarConcierto>,
+       pub listar_entradas: Arc<dyn ListarEntradas>,
+       pub anular_entrada: Arc<dyn AnularEntrada>,
    }
 
-   impl ActualizarClasificacion {
+   impl ControlAforo {
        pub fn construir(pool: &PgPool) -> Self {
+           let concierto = cableado::concierto::construir(pool);
+           let entrada = cableado::entrada::construir(pool);
            Self {
-               recalcular: cableado::clasificacion::construir(pool).recalcular_clasificacion,
+               obtener_concierto: concierto.obtener_concierto,
+               agotar_concierto: concierto.agotar_concierto,
+               listar_entradas: entrada.listar_entradas,
+               anular_entrada: entrada.anular_entrada,
            }
        }
    }
    ```
 
    `cableado::<contexto>::construir(pool)` da los casos de uso de un contexto, los mismos que
-   sirve la API. Añade `cableado = { workspace = true }` a `presentacion/worker/Cargo.toml` la
-   primera vez; el esqueleto no depende de él, así que un proyecto sin un consumidor así no recibe
-   el aviso de dependencia sin usar. Los tests construyen el struct con el doble del caso de uso.
+   sirve la API, y el generador añade `cableado` y cada `aplicacion_<contexto>` al `Cargo.toml` del
+   worker. Sus tests construyen el struct con un doble de cada caso de uso. Sin `--usa`, el
+   consumidor no tiene campos: añádelos así, a mano.
+
+   El worker no tiene usuario. Un caso de uso protegido recibe como `actor`
+   `Principal::sistema("control_aforo")`, y una lista entera se lee sin paginar a mano:
+
+   ```rust
+   let entradas = puerto_nucleo::todas_las_paginas(|pagina| {
+       self.listar_entradas.ejecutar(ParamsListarEntradas {
+           actor: Principal::sistema("control_aforo"),
+           pagina,
+           concierto_id: Some(concierto_id),
+       })
+   })
+   .await?;
+   ```
+
+   Lo que comparten varios consumidores va en `consumidores/comun.rs`, que es tuyo y no es un
+   consumidor (ninguno puede llamarse `comun`).
 
 4. **Hazlo idempotente.** La entrega es **al menos una vez**: tras una caída o un despliegue, el
    mismo evento puede llegar dos veces, con el mismo `evento.id`. Comprueba si el trabajo ya se

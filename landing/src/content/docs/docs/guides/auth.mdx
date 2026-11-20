@@ -143,15 +143,36 @@ llamante. Las rutas protegidas responden la entidad entera, porque quien las lla
 sesión. Los campos privados son texto (`String`, `Option<String>` o un objeto valor sobre uno de
 ellos); el flag queda en `[[entidad.campos]] privado = true`.
 
+## El propietario de una fila
+
+«Mis entradas», «mis pedidos»: la regla más común depende de quién creó la fila. Declárala en el
+scaffold, con el campo `Uuid` que la guarda:
+
+```bash
+puerto generar scaffold Entrada --propietario comprador_id --rol listar_entradas=admin \
+  -- concierto_id:ref:Concierto comprador_id:Uuid cantidad:i64
+```
+
+- `comprador_id` no va en ninguna petición: `crear` lo rellena con quien llama
+  (`actor.id_usuario`) y `actualizar` lo conserva.
+- `obtener`, `actualizar` y `borrar` dejan pasar a su propietario o a quien tiene **todos** los
+  roles de esa ruta; a cualquier otro, `403 entrada.prohibido`. Esos roles los comprueba el caso de
+  uso, no `#[requiere_rol]`, que dejaría fuera al propietario. Sin rol, solo el propietario.
+- `GET /mis_entradas` lista las filas de quien llama (el caso de uso `listar_mis_entradas`), y la
+  web gana «Mis entradas» en el menú. Editar y Borrar se ven para el propietario o con el rol.
+
+Vale en los dos modos de auth: con OIDC, el aprovisionamiento crea el `Usuario` y pone su id. El
+campo queda en `[[entidad]] propietario`.
+
 ## Reglas que dependen de los datos
 
-«Solo puede editarlo quien lo creó» no es un atributo: depende de la fila. Los casos de uso
-protegidos reciben a quien llama como `actor: Principal` (`id_usuario`, `sujeto`, `email`,
-`nombre`, `roles`) y deciden. Con un campo `propietario:Uuid` en la entidad:
+Las demás reglas sobre quién puede qué las escribes tú. Los casos de uso protegidos reciben a
+quien llama como `actor: Principal` (`id_usuario`, `sujeto`, `email`, `nombre`, `roles`) y
+deciden. Que el propietario no cambie su entrada, por ejemplo, solo la taquilla:
 
-```rust
-if producto.propietario != params.actor.id_usuario {
-    return Err(ErrorProducto::Prohibido);   // 403 producto.prohibido
+```rust title="contextos/entrada/aplicacion/src/actualizar_entrada.rs (fragmento)"
+if !params.actor.tiene_rol("admin") {
+    return Err(ErrorEntrada::Prohibido);   // 403 entrada.prohibido
 }
 ```
 

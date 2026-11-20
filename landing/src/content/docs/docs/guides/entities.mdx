@@ -123,6 +123,27 @@ repositorio en memoria: una segunda fila con el mismo jugador y el mismo partido
 `ORDER BY puntos DESC, jugador_id, creado_en DESC, id`. Los dos quedan en el bloque `[[entidad]]`
 (`unicos`, `orden`), y un re-scaffold sin el flag conserva lo que dice el bloque.
 
+## Lo que pone el servidor
+
+Hay campos que quien llama no debe elegir: el estado de una entrada nueva, su código. Son flags
+del scaffold:
+
+```bash
+puerto generar scaffold Entrada \
+  --por-defecto estado=Confirmada \
+  --generado codigo \
+  -- comprador:String codigo:CodigoEntrada:String! estado:EstadoEntrada:enum:Confirmada/Anulada
+```
+
+- `--por-defecto` (una variante, o un valor de su tipo) saca el campo de la petición y de los
+  params de crear: `crear` lo pone. `actualizar` sí lo cambia.
+- `--generado` (un `String` único, o su objeto valor) lo saca de las dos peticiones. `crear` lo
+  pide a `Entrada::generar_codigo()`, en `dominio/src/generados.rs`, que es tuyo: por defecto, 8
+  caracteres `A-Z0-9`. `actualizar` conserva el que tenía.
+
+La web no los ofrece al crear. Quedan en el campo (`por_defecto`, `generado`), y un re-scaffold
+sin los flags los conserva.
+
 ## Cada entidad tiene su propio tipo de id
 
 ```rust

@@ -114,6 +114,23 @@ que arráncala antes con `make docker-compose/up`. Cada uno es un
 con el único migrador del proyecto, así que ningún test lleva su propia copia de las migraciones.
 Las filas que necesita un test salen del `pruebas::siembra::sembrar` del crate.
 
+## Datos de ejemplo
+
+Para probar la app a mano, `puerto nuevo` escribe una vez `scripts/sembrar.sh`, que es tuyo, y
+`make sembrar` lo ejecuta contra la API en marcha con el `.env` cargado. Trae los helpers: `peticion`
+(imprime el estado y el cuerpo), `crear` (devuelve el id, o sale si no es un `201`) y, según el
+auth, `sesion` y `conceder`:
+
+```bash title="scripts/sembrar.sh (fragmento)"
+ADA=$(sesion ada@aforo.es "Ada Lovelace")
+conceder ada@aforo.es admin
+SALA=$(crear /salas "$ADA" '{"nombre":"La Ribera","ciudad":"Madrid","direccion":"C/ Embajadores 41","capacidad":450,"contacto":"booking@laribera.es"}')
+peticion GET "/salas/$SALA"
+```
+
+Necesita `curl` y `jq`. Sobre una base de datos con datos, una segunda pasada choca (`409`) con la
+primera: `CONFIRM=DESTRUIR make db/reiniciar` la vacía sin preguntar.
+
 <Aside type="note" title="Cómo se prueba Puerto">
 La batería de Puerto genera proyectos en todas las combinaciones (en memoria, `--db`, eventos sobre
 `db` y sobre Kafka, auth, web) y ejecuta su clippy, sus tests y su `fmt --check`, además de tests

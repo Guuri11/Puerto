@@ -227,6 +227,60 @@ Los snippets `poem-endpoint-action`, `poem-response-enum` y `poem-route-test` te
 pasos 6 y 7 en Zed y VS Code. Mira [Snippets del IDE](/docs/guides/configuration/#snippets-del-ide).
 </Aside>
 
+## Un cambio de estado, de punta a punta
+
+Muchos casos de uso son iguales: buscar por id, aplicar una regla de la entidad, guardar. Cancelar
+un concierto, publicar un producto, anular una entrada. Para esos, `generar transicion` escribe el
+camino entero, en una entidad CRUD:
+
+```bash
+puerto generar transicion Concierto cancelar --evento concierto_cancelado --rol admin
+```
+
+- **Dominio:** `contextos/concierto/dominio/src/cancelar.rs`, un `impl Concierto { fn cancelar }`
+  aparte, así que `modelo.rs` no cambia. La regla es tuya: un comentario marca dónde va, y su test
+  de rechazo lleva `#[ignore = "escribe la regla"]` hasta que la escribes.
+- **Aplicación:** el caso de uso `cancelar_concierto` entero, con sus tests: lo hace, no existe, la
+  regla lo rechaza sin guardar nada.
+- **REST:** `POST /api/conciertos/:id/cancelar` en `rest/src/cancelar_concierto.rs`, con su propio
+  `ApiCancelarConcierto`, que `bootstrap.rs` monta junto a `ApiConcierto`; `rutas.rs` no cambia.
+  Un test por estado: 200, 404, 422 y, con auth, 401 y 403.
+- **Web:** `BotonCancelarConcierto` en el detalle, con un diálogo de confirmación, oculto sin el
+  rol, y el mensaje del rechazo en `mensajes.ts`.
+
+La regla devuelve el código `concierto.validacion.no_se_puede_cancelar`, que la API responde con un
+`422`:
+
+```rust title="contextos/concierto/dominio/src/cancelar.rs"
+impl Concierto {
+    pub fn cancelar(&mut self) -> Result<EventoConcierto, ErrorConcierto> {
+        if matches!(self.estado, EstadoConcierto::Cancelado | EstadoConcierto::Celebrado) {
+            return Err(ErrorConcierto::Validacion("no_se_puede_cancelar".into()));
+        }
+        self.estado = EstadoConcierto::Cancelado;
+        self.actualizado_en = chrono::Utc::now();
+        Ok(EventoConcierto::Cancelado(SnapshotConcierto::from_entidad(self)))
+    }
+}
+```
+
+`--evento` declara el evento propio que emite (sin él, `concierto_actualizado`); en un proyecto sin
+eventos, la transición devuelve `()`. El verbo queda en `[[entidad]] transiciones`.
+
+## Casos de uso internos
+
+Algunos casos de uso no tienen ruta: los llama el worker. Agotar un concierto cuando un consumidor
+ve el aforo lleno es uno:
+
+```bash
+puerto generar transicion Concierto agotar --interno
+puerto generar caso-de-uso Concierto recalcular_aforo --interno
+```
+
+Un caso de uso interno no tiene campo en `Api<Entidad>`, ni ruta, ni botón, y sus params no llevan
+`actor`. `cableado` lo construye igual, así que un consumidor lo saca de ahí con `--usa` (mira
+[Eventos de dominio](/docs/guides/events/)). Queda en `[[entidad]] internos`.
+
 ## En un proyecto con eventos de dominio
 
 Ahí la entidad emite sus eventos y el repositorio no tiene `guardar`: las escrituras van por la
@@ -256,4 +310,5 @@ aviso que `make lint` rechaza: `EventoProducto` es `#[must_use]`. Mira
 
 Los params de un caso de uso protegido llevan `actor: Principal`, que el handler rellena con
 `auth.0`. Las reglas que dependen de quién pregunta («solo edita quien lo creó») van en el caso de
-uso, y devuelven `ErrorProducto::Prohibido`. Mira [Autenticación](/docs/guides/auth/).
+uso, y devuelven `ErrorProducto::Prohibido`; para la más común, la del dueño de cada fila, está
+`--propietario`. Mira [Autenticación](/docs/guides/auth/#el-propietario-de-una-fila).

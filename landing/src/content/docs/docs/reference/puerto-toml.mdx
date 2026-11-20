@@ -134,6 +134,9 @@ tras = ["cliente_creado"]
 | `eventos` | string[] | `generar evento` | Tipos de evento propios, además de `_creado`, `_actualizado`, `_borrado` |
 | `unicos` | string[][] | `scaffold --unico`, `dominio --unico` | Únicos sobre varios campos: un índice único parcial cada uno, que también comprueba el repositorio en memoria |
 | `orden` | string[] | `scaffold --orden`, `dominio --orden` | El orden de la lista: campos propios, `-` para descendente; después, lo más nuevo primero |
+| `transiciones` | string[] | `generar transicion` | Los verbos de sus cambios de estado: cada uno es el método `dominio/src/<verbo>.rs`, el caso de uso `<verbo>_<entidad>` y, salvo interno, la ruta `POST /<plural>/:id/<verbo>` |
+| `internos` | string[] | `--interno` en `caso-de-uso` y `transicion` | Casos de uso sin ruta: los llama el worker. Sin `actor`, sin campo en `Api<Entidad>`; `cableado` los construye igual |
+| `propietario` | string | `scaffold --propietario` | Proyectos con auth: el campo `Uuid` de quien es cada fila. Lo pone `crear`; `obtener`, `actualizar` y `borrar` dejan pasar a su propietario o a quien tiene los roles de la ruta; añade `GET /mis_<plural>` |
 
 ## `[[entidad.campos]]`
 
@@ -143,16 +146,21 @@ tras = ["cliente_creado"]
 | `tipo` | string | `String`, `i64`, `f64`, `bool`, `Uuid`, `DateTime<Utc>`, `HashMap<String, String>`, o `Option<…>` / `Vec<…>` de ellos. Mira [Tipos de campo](/docs/reference/field-types/) |
 | `unico` | bool | Un índice único parcial, y un `409` ante un duplicado |
 | `privado` | bool | Proyectos con auth, campos de texto: las rutas públicas solo lo dan a quien tiene sesión (`scaffold --privado`) |
+| `por_defecto` | string | Lo que pone `crear` en vez de pedirlo: una variante o un valor de su tipo (`scaffold --por-defecto estado=Pendiente`). `actualizar` sí lo cambia |
+| `generado` | bool | Un `String` único que inventa el dominio al crear, `<Entidad>::generar_<campo>()` en `dominio/src/generados.rs` (`scaffold --generado codigo`). Fuera de las dos peticiones; `actualizar` lo conserva |
+| `etiqueta` | string | Lo que dicen las pantallas de él. Sin ella, su nombre con tildes: `anio` → Año, `codigo_postal` → Código postal |
+| `textos` | tabla | Objetos valor enum: lo que se lee de cada variante, `{ AlaVenta = "A la venta" }`. Sin él, su nombre en palabras: `EnRevision` → En revisión |
 | `objeto_valor` | string | El objeto valor que lo envuelve, local o compartido |
-| `clase_objeto_valor` | `"enum"` | Un objeto valor enum; entonces `tipo` es `String` |
+| `clase_objeto_valor` | `"enum"` \| `"email"` \| `"dinero"` | Un objeto valor con forma: un enum (`tipo` es `String`), un email (`String`, `usuario@dominio.tld`) o dinero (`i64` de céntimos, nunca negativo). Mira [Objetos valor](/docs/guides/value-objects/) |
 | `variantes` | string[] | Sus variantes en PascalCase |
 | `referencia` | string | Otra entidad CRUD cuyo id guarda este campo; entonces `tipo` es `Uuid` u `Option<Uuid>`. Una clave foránea en los proyectos `db`. Mira [Referencias](/docs/reference/field-types/#referencias) |
 
 ## `[[objeto_valor]]`
 
-Los objetos valor compartidos, que declara `generar objeto-valor`: `nombre` (en PascalCase) y
-`tipo` (su primitivo interno). Viven en el crate `nucleo`. Un campo que nombra uno sin tipo usa
-este.
+Los objetos valor compartidos, que declara `generar objeto-valor`: `nombre` (en PascalCase),
+`tipo` (su primitivo interno), `clase` (`email` o `dinero`, si tiene una) y `ejemplo` (el valor
+válido que usan los tests de sus campos, `--ejemplo`). Viven en el crate `nucleo`. Un campo que
+nombra uno sin tipo usa este, y recibe su clase y su ejemplo.
 
 ## `[[consumidor]]`
 
@@ -176,5 +184,7 @@ Lo escribe `generar correo`: `nombre`, y `tras` cuando el worker lo envía tras 
   `publicos` y `roles`; cada `referencia` nombra otra entidad CRUD declarada, es un `Uuid` u
   `Option<Uuid>` y no cierra un ciclo entre contextos; cada grupo de `unicos` y cada clave de
   `orden` nombran campos simples y obligatorios de la entidad; `privado` solo en campos de texto
-  de un proyecto con auth.
+  de un proyecto con auth; `por_defecto` es una variante o un valor de su tipo, y `generado` va en
+  un `String` único; `propietario` es un campo `Uuid` de un proyecto con auth; cada `ejemplo` se
+  lee como su tipo; `textos` solo nombra variantes del enum.
 - El runtime: un aviso por cada crate `puerto-*` que esté en otra minor que la CLI.

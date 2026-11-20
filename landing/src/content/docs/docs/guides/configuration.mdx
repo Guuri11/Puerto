@@ -23,6 +23,11 @@ envía tráfico.
 | `AUTH_*` | — | [Autenticación](/docs/guides/auth/) |
 | `SMTP_URL`, `MAIL_FROM` | — | [Correo](/docs/guides/mail/#mailpit-y-smtp) |
 
+Los puertos de lo que corre en `docker-compose.yml` también están en `.env`: `DB_HOST_PORT`
+(Postgres), `SMTP_HOST_PORT` y `MAILPIT_UI_PORT` (Mailpit). Si `puerto nuevo` o el primer
+`generar correo` encuentran ocupado uno, lo avisan; cámbialo ahí, y también en `DATABASE_URL` o
+`SMTP_URL`. El proxy de `make web/dev` sigue a `SERVICE_PORT`.
+
 `.env.example` documenta cada variable que usa el proyecto, y `.env` es su copia de desarrollo.
 
 ## Lo que te da el servidor

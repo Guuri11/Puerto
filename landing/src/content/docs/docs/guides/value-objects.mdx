@@ -1,6 +1,6 @@
 ---
 title: Objetos valor
-description: Envuelve los campos primitivos en tipos propios, valídalos una vez en el dominio y compártelos entre entidades con puerto generar objeto-valor.
+description: Envuelve los campos primitivos en tipos propios, valídalos una vez en el dominio, usa las clases email y dinero y compártelos entre entidades.
 ---
 
 import { Aside } from '@astrojs/starlight/components';
@@ -61,6 +61,34 @@ Implementa `FromStr` y no un `from_str` propio, así que clippy no se queja y `.
 import ([ADR-0001](/docs/decisions/adr/0001-enum-value-objects-implement-fromstr/)). En el JSON es
 una cadena, y el formulario web ofrece sus variantes en un `<select>`.
 
+## Email y dinero: las clases con regla
+
+Dos formas son tan comunes que Puerto ya trae su regla. Van donde va `enum`, y el tipo sale de la
+clase:
+
+```bash
+puerto generar scaffold Concierto -- titulo:String precio:Precio:dinero contacto:Contacto:email
+```
+
+`dinero` es un `i64` de céntimos que nunca es negativo; `email`, un `String` recortado con la forma
+`usuario@dominio.tld`:
+
+```rust title="contextos/concierto/dominio/src/valores.rs"
+impl Precio {
+    pub fn new(valor: i64) -> Result<Self, ErrorConcierto> {
+        if valor < 0 {
+            return Err(ErrorConcierto::PrecioInvalido);
+        }
+        Ok(Self(valor))
+    }
+}
+```
+
+La forma, no que el buzón exista. `valores.rs` lleva un test por regla. En la web, un `email` es un
+`<input type="email">`, y el dinero se escribe en euros con coma («12,50») y se muestra con
+`euros()` («12,50 €»): el formulario lo convierte con `aImporte` y `deImporte`, en
+`compartido/formularios.ts`. La API sigue hablando en céntimos.
+
 ## Opcionales y repetidos
 
 ```bash
@@ -107,6 +135,29 @@ impl Email {
 
 Cada entidad lo sigue contando en sus términos: un email inválido en un cliente es
 `cliente.email_invalido`, y en un proveedor `proveedor.email_invalido`.
+
+Un compartido también puede tener clase, `puerto generar objeto-valor Email email`, y sus campos la
+reciben (`[[objeto_valor]] clase = "email"`).
+
+## El valor de los tests
+
+Los tests generados construyen cada campo con un valor válido: `"example"` en un `String`, `42` en
+un número. Cuando la regla de un compartido rechaza ese valor, rompería las madres de todas las
+entidades que lo usan. Dale un ejemplo al declararlo:
+
+```bash
+puerto generar objeto-valor Email email --ejemplo hola@aforo.es
+```
+
+```rust title="contextos/sala/dominio/src/pruebas/madres.rs"
+Email::new("hola@aforo.es".to_string())
+```
+
+Lo usan la madre, los cuerpos de los tests de rutas y de casos de uso, la siembra de los tests de
+Postgres y la madre de la web. Vale en un `String` no vacío, un `i64`, un `f64` o un `bool`, y
+`puerto validar` comprueba que se lee como su tipo. Sin `--ejemplo`, un `email` usa
+`ana@ejemplo.es`. En un objeto valor local que endureces a mano, cambia el valor en su madre (mira
+[Tests](/docs/guides/testing/#las-madres)).
 
 ## Hasta dónde llegan los objetos valor
 
