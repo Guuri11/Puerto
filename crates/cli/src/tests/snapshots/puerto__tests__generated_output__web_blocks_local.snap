@@ -10000,20 +10000,24 @@ export function MenuUsuario() {
 import { describe, expect, test } from "bun:test";
 import { fireEvent, screen, waitFor } from "@testing-library/react";
 import { apiFalsa } from "../../../pruebas/api-falsa";
+import { MadreUsuarioActual } from "../../../pruebas/auth";
 import { coleccionPedido, MadrePedido } from "../../../pruebas/pedido";
 import { renderizarPantalla } from "../../../pruebas/renderizar";
 import { ContenedorDetallePedido } from "./detalle-pedido";
 
+/** Quien edita y borra en estos tests: el propietario de lo que se siembra (27.18). */
+const PROPIETARIO = MadreUsuarioActual.llamante();
+
 describe("ContenedorDetallePedido", () => {
   test("debería mostrar el detalle cuando existe", async () => {
     // Preparar
-    const sembrado = MadrePedido.aleatorio();
+    const sembrado = MadrePedido.aleatorio({ compradorId: PROPIETARIO.id });
     const api = apiFalsa([coleccionPedido([sembrado])]);
 
     const pantalla = <ContenedorDetallePedido id={sembrado.id} />;
 
     // Actuar
-    renderizarPantalla(pantalla, { api });
+    renderizarPantalla(pantalla, { api }, "/", { usuario: PROPIETARIO });
 
     // Comprobar
     expect(await screen.findByText("Editar")).toBeTruthy();
@@ -10033,11 +10037,11 @@ describe("ContenedorDetallePedido", () => {
 
   test("debería borrar solo tras confirmar el borrado", async () => {
     // Preparar
-    const sembrado = MadrePedido.aleatorio();
+    const sembrado = MadrePedido.aleatorio({ compradorId: PROPIETARIO.id });
     const guardados = coleccionPedido([sembrado]);
     const api = apiFalsa([guardados]);
     const pantalla = <ContenedorDetallePedido id={sembrado.id} />;
-    const { historial } = renderizarPantalla(pantalla, { api });
+    const { historial } = renderizarPantalla(pantalla, { api }, "/", { usuario: PROPIETARIO });
     fireEvent.click(await screen.findByText("Borrar", { selector: ".card-actions button" }));
     expect(guardados.elementos.has(sembrado.id)).toBe(true);
 
@@ -10051,11 +10055,11 @@ describe("ContenedorDetallePedido", () => {
 
   test("debería mostrar auth.prohibido cuando la API rechaza el borrado", async () => {
     // Preparar
-    const sembrado = MadrePedido.aleatorio();
+    const sembrado = MadrePedido.aleatorio({ compradorId: PROPIETARIO.id });
     const fallos = { "DELETE /pedidos": "auth.prohibido" };
     const api = apiFalsa([coleccionPedido([sembrado])], fallos);
     const pantalla = <ContenedorDetallePedido id={sembrado.id} />;
-    renderizarPantalla(pantalla, { api });
+    renderizarPantalla(pantalla, { api }, "/", { usuario: PROPIETARIO });
     fireEvent.click(await screen.findByText("Borrar", { selector: ".card-actions button" }));
 
     // Actuar
@@ -10064,12 +10068,44 @@ describe("ContenedorDetallePedido", () => {
     // Comprobar
     expect((await screen.findByRole("alert")).textContent).toBe("auth.prohibido");
   });
+
+  test("no debería ofrecer Editar ni Borrar a quien no es su propietario", async () => {
+    // Preparar
+    const sembrado = MadrePedido.aleatorio();
+    const api = apiFalsa([coleccionPedido([sembrado])]);
+    const usuario = MadreUsuarioActual.aleatorio();
+    const pantalla = <ContenedorDetallePedido id={sembrado.id} />;
+
+    // Actuar
+    renderizarPantalla(pantalla, { api }, "/", { usuario });
+
+    // Comprobar
+    expect(await screen.findByText("Total", { selector: "dt" })).toBeTruthy();
+    expect(screen.queryByText("Editar", { selector: ".card-actions *" })).toBeNull();
+    expect(screen.queryByText("Borrar", { selector: ".card-actions *" })).toBeNull();
+  });
+
+  test("debería ofrecer Editar y Borrar a su propietario aunque no tenga roles", async () => {
+    // Preparar
+    const usuario = MadreUsuarioActual.aleatorio();
+    const sembrado = MadrePedido.aleatorio({ compradorId: usuario.id });
+    const api = apiFalsa([coleccionPedido([sembrado])]);
+    const pantalla = <ContenedorDetallePedido id={sembrado.id} />;
+
+    // Actuar
+    renderizarPantalla(pantalla, { api }, "/", { usuario });
+
+    // Comprobar
+    expect(await screen.findByText("Editar", { selector: ".card-actions *" })).toBeTruthy();
+    expect(screen.getByText("Borrar", { selector: ".card-actions *" })).toBeTruthy();
+  });
 });
 
 === web/src/contextos/pedido/contenedores/detalle-pedido.tsx ===
 import { useState } from "react";
 import { Link, useLocation } from "wouter";
 import { desenvolver } from "../../../api/http";
+import { useAuth } from "../../../auth/auth";
 import { AlertaError } from "../../../compartido/ui/alerta-error";
 import { DialogoConfirmar } from "../../../compartido/ui/dialogo-confirmar";
 import { useCarga } from "../../../compartido/use-carga";
@@ -10079,10 +10115,13 @@ import { BotonPagarPedido } from "./pagar-pedido";
 
 export function ContenedorDetallePedido({ id }: { id: string }) {
   const { api } = useDependencias();
+  const { usuario } = useAuth();
   const pedido = useCarga(
     () => desenvolver(api.GET("/pedidos/{id}", { params: { path: { id } } })),
     [api, id],
   );
+  // 27.18: su propietario lo edita y lo borra aunque no tenga los roles.
+  const propio = pedido.estado === "listo" && usuario?.id === pedido.datos.compradorId;
   const [, navegar] = useLocation();
   const [confirmando, setConfirmando] = useState(false);
   const [fallo, setFallo] = useState<unknown>(null);
@@ -10109,12 +10148,20 @@ export function ContenedorDetallePedido({ id }: { id: string }) {
             <VistaDetallePedido pedido={pedido.datos} />
             <div className="card-actions justify-end">
               <BotonPagarPedido id={id} alTerminar={pedido.recargar} />
-              <Link href={`/pedidos/${id}/editar`} className="btn">
-                Editar
-              </Link>
-              <button type="button" className="btn btn-error" onClick={() => setConfirmando(true)}>
-                Borrar
-              </button>
+              {propio && (
+                <Link href={`/pedidos/${id}/editar`} className="btn">
+                  Editar
+                </Link>
+              )}
+              {propio && (
+                <button
+                  type="button"
+                  className="btn btn-error"
+                  onClick={() => setConfirmando(true)}
+                >
+                  Borrar
+                </button>
+              )}
             </div>
           </div>
         </div>
@@ -10137,7 +10184,6 @@ import { describe, expect, test } from "bun:test";
 import { fireEvent, screen, waitFor } from "@testing-library/react";
 import type { Esquemas } from "../../../api/cliente";
 import { apiFalsa } from "../../../pruebas/api-falsa";
-import { MadreUsuarioActual } from "../../../pruebas/auth";
 import { coleccionPedido, MadrePedido } from "../../../pruebas/pedido";
 import { renderizarPantalla } from "../../../pruebas/renderizar";
 import { aProblema } from "../mensajes";
@@ -10171,22 +10217,6 @@ describe("ContenedorFormularioPedido", () => {
     const [creado] = guardados.elementos.values();
     expect(creado).toMatchObject(peticion);
     expect(historial.at(-1)).toBe(`/pedidos/${creado?.id}`);
-  });
-
-  test("debería ir al panel tras crear cuando no puede ver lo creado", async () => {
-    // Preparar
-    const peticion = MadrePedido.peticion();
-    const api = apiFalsa([coleccionPedido()]);
-    const pantalla = <ContenedorFormularioPedido />;
-    const usuario = MadreUsuarioActual.aleatorio();
-    const { historial } = renderizarPantalla(pantalla, { api }, "/", { usuario });
-    await rellenar(peticion);
-
-    // Actuar
-    fireEvent.click(screen.getByText("Guardar"));
-
-    // Comprobar
-    await waitFor(() => expect(historial.at(-1)).toBe("/?guardado"));
   });
 
   test("debería guardar la edición cuando se envía el formulario", async () => {
@@ -10243,7 +10273,6 @@ import { useState } from "react";
 import { Link, useLocation } from "wouter";
 import type { Esquemas } from "../../../api/cliente";
 import { desenvolver } from "../../../api/http";
-import { useAuth } from "../../../auth/auth";
 import { AlertaError, codigoError } from "../../../compartido/ui/alerta-error";
 import { useCarga } from "../../../compartido/use-carga";
 import { useDependencias } from "../../../dependencias";
@@ -10283,7 +10312,6 @@ export function ContenedorFormularioPedido({ id }: { id?: string }) {
 
 function FormularioPedido({ existente }: { existente: Pedido | null }) {
   const { api } = useDependencias();
-  const { puede } = useAuth();
   const [, navegar] = useLocation();
   const [valores, setValores] = useState(aFormularioPedido(existente));
   const [guardando, setGuardando] = useState(false);
@@ -10300,12 +10328,7 @@ function FormularioPedido({ existente }: { existente: Pedido | null }) {
           ? api.POST("/pedidos", { body: cuerpo })
           : api.PUT("/pedidos/{id}", { params: { path: { id: existente.id } }, body: cuerpo }),
       );
-      // Lo creado se ve con `admin`: sin ese rol, su detalle daría un 403.
-      if (existente !== null || puede("admin")) {
-        navegar(`/pedidos/${guardado.id}`);
-      } else {
-        navegar("/?guardado");
-      }
+      navegar(`/pedidos/${guardado.id}`);
     } catch (error) {
       setFallo(error);
       setGuardando(false);
@@ -10331,12 +10354,25 @@ function FormularioPedido({ existente }: { existente: Pedido | null }) {
 === web/src/contextos/pedido/contenedores/lista-pedido.test.tsx ===
 import { describe, expect, test } from "bun:test";
 import { fireEvent, screen } from "@testing-library/react";
-import { apiFalsa } from "../../../pruebas/api-falsa";
+import { apiFalsa, coleccion } from "../../../pruebas/api-falsa";
 import { coleccionPedido, MadrePedido } from "../../../pruebas/pedido";
 import { renderizarPantalla } from "../../../pruebas/renderizar";
 import { ContenedorListaPedido } from "./lista-pedido";
 
 describe("ContenedorListaPedido", () => {
+  test("debería mostrar solo las propias cuando se le pide", async () => {
+    // Preparar: `GET /mis_pedidos` responde las de quien llama; la lista entera, otras
+    const otras = coleccionPedido([MadrePedido.aleatorio(), MadrePedido.aleatorio()]);
+    const propias = coleccion("/mis_pedidos", "pedido", [MadrePedido.aleatorio()]);
+    const api = apiFalsa([otras, propias]);
+
+    // Actuar
+    renderizarPantalla(<ContenedorListaPedido propias />, { api });
+
+    // Comprobar
+    expect(await screen.findByText("Mis pedidos")).toBeTruthy();
+    expect(await screen.findAllByText("Ver")).toHaveLength(1);
+  });
   test("debería mostrar una fila por cada pedido", async () => {
     // Preparar
     const semilla = [MadrePedido.aleatorio(), MadrePedido.aleatorio()];
@@ -10412,21 +10448,27 @@ import { useDependencias } from "../../../dependencias";
 import { VistaListaPedido } from "../vistas/lista-pedido";
 
 /** La lista, página a página; la página va en la URL (`?pagina=2`): recargar y volver la mantienen. */
-export function ContenedorListaPedido() {
+/** Con `propias`, solo las de quien usa la app (`GET /mis_pedidos`, 27.18). */
+export function ContenedorListaPedido({ propias = false }: { propias?: boolean }) {
   const { api } = useDependencias();
   const [ubicacion, navegar] = useLocation();
   const desplazamiento = desplazamientoDeUrl(useSearch(), TAMANO_PAGINA);
   const irA = (siguiente: number) => navegar(ubicacion + busquedaPagina(siguiente, TAMANO_PAGINA));
   const consulta = { limite: TAMANO_PAGINA, desplazamiento };
   const pedidos = useCarga(
-    () => desenvolver(api.GET("/pedidos", { params: { query: consulta } })),
-    [api, desplazamiento],
+    () =>
+      desenvolver(
+        propias
+          ? api.GET("/mis_pedidos", { params: { query: consulta } })
+          : api.GET("/pedidos", { params: { query: consulta } }),
+      ),
+    [api, desplazamiento, propias],
   );
 
   return (
     <section className="space-y-4">
       <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold">Pedidos</h1>
+        <h1 className="text-2xl font-bold">{propias ? "Mis pedidos" : "Pedidos"}</h1>
         <Link href="/pedidos/nuevo" className="btn btn-primary">
           Crear pedido
         </Link>
@@ -11688,7 +11730,7 @@ describe("useEntradasMenu", () => {
 // GENERADO por puerto. Edita puerto.toml y después ejecuta `puerto generar bootstrap`.
 
 import type { ReactNode } from "react";
-import { Route, Switch, useSearch } from "wouter";
+import { Route, Switch } from "wouter";
 import { contarTotal, PAGINA_DE_UNO } from "../api/http";
 import { RequiereAuth, useAuth } from "../auth/auth";
 import { type EntradaMenu, Marco } from "../compartido/ui/marco";
@@ -11711,6 +11753,11 @@ export const entradasMenu: EntradaMenu[] = [
     etiqueta: "Pedidos",
     href: "/pedidos",
     total: ({ api }) => contarTotal(api.GET("/pedidos", PAGINA_DE_UNO)),
+  },
+  {
+    etiqueta: "Mis pedidos",
+    href: "/mis_pedidos",
+    total: ({ api }) => contarTotal(api.GET("/mis_pedidos", PAGINA_DE_UNO)),
   },
   {
     etiqueta: "Productos",
@@ -11738,16 +11785,9 @@ export function MarcoApp({ children }: { children: ReactNode }) {
 
 export function RutasApp() {
   const entradas = useEntradasMenu();
-  // Lo que se crea sin poder verlo después vuelve aquí con `?guardado` (27.8 de Puerto).
-  const guardado = new URLSearchParams(useSearch()).has("guardado");
   return (
     <Switch>
       <Route path="/">
-        {guardado && (
-          <div role="status" className="alert alert-success mb-6">
-            Guardado
-          </div>
-        )}
         <RequiereAuth>
           <PaginaPanel entradas={entradas} />
         </RequiereAuth>
@@ -11758,6 +11798,11 @@ export function RutasApp() {
         </RequiereAuth>
       </Route>
       {rutasPropias}
+      <Route path="/mis_pedidos">
+        <RequiereAuth>
+          <ContenedorListaPedido propias />
+        </RequiereAuth>
+      </Route>
       <Route path="/pedidos">
         <RequiereAuth>
           <ContenedorListaPedido />

@@ -94,6 +94,11 @@ impl Access {
         self.roles.get(use_case).cloned().unwrap_or_default()
     }
 
+    /// The entity has an owner (27.18): its owner reads, edits and deletes its rows.
+    pub fn is_owned(&self) -> bool {
+        !self.owner_checked.is_empty()
+    }
+
     /// The roles its route requires (`#[requiere_rol]`): [`Self::roles`], but none for a use case
     /// that checks them itself, next to the owner (27.18).
     pub fn route_roles(&self, use_case: &str) -> Vec<String> {

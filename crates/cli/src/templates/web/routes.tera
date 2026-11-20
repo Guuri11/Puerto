@@ -42,6 +42,18 @@ export const entradasMenu: EntradaMenu[] = [
       contarTotal(api.GET("/{{ e.plural }}", PAGINA_DE_UNO)),
 {%- endif %}
   },
+{%- if e.owner %}
+  {
+    etiqueta: "Mis {{ e.words_plural }}",
+    href: "/mis_{{ e.plural }}",
+{%- if e.mine_total_inline %}
+    total: ({ api }) => contarTotal(api.GET("/mis_{{ e.plural }}", PAGINA_DE_UNO)),
+{%- else %}
+    total: ({ api }) =>
+      contarTotal(api.GET("/mis_{{ e.plural }}", PAGINA_DE_UNO)),
+{%- endif %}
+  },
+{%- endif %}
 {%- endfor %}
 {%- if entities %}
 {% endif %}];
@@ -103,6 +115,13 @@ export function RutasApp() {
 {%- endif %}
       {rutasPropias}
 {%- for e in entities %}
+{%- if e.owner %}
+      <Route path="/mis_{{ e.plural }}">
+        <RequiereAuth>
+          <ContenedorLista{{ e.pascal }} propias />
+        </RequiereAuth>
+      </Route>
+{%- endif %}
       <Route path="/{{ e.plural }}">
 {%- if e.list_guarded %}
         <RequiereAuth>

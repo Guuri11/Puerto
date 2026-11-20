@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { Link, useLocation } from "wouter";
 import { desenvolver } from "../../../api/http";
-{% if access.update_roles or access.delete_roles -%}
+{% if access.update_guard or access.delete_guard -%}
 import { useAuth } from "../../../auth/auth";
 {% endif -%}
 import { AlertaError } from "../../../compartido/ui/alerta-error";
@@ -13,7 +13,11 @@ import { VistaDetalle{{ pascal }} } from "../vistas/detalle-{{ kebab }}";
 {% endfor %}
 export function ContenedorDetalle{{ pascal }}({ id }: { id: string }) {
   const { api } = useDependencias();
-{%- if access.update_roles or access.delete_roles %}
+{%- if owner_camel and (access.update_roles or access.delete_roles) %}
+  const { puede, usuario } = useAuth();
+{%- elif owner_camel %}
+  const { usuario } = useAuth();
+{%- elif access.update_roles or access.delete_roles %}
   const { puede } = useAuth();
 {%- endif %}
 {%- if detail_load_inline %}
@@ -23,6 +27,10 @@ export function ContenedorDetalle{{ pascal }}({ id }: { id: string }) {
     () => desenvolver(api.GET("/{{ plural }}/{id}", { params: { path: { id } } })),
     [api, id],
   );
+{%- endif %}
+{%- if owner_camel %}
+  // 27.18: su propietario lo edita y lo borra aunque no tenga los roles.
+  const propio = {{ ident }}.estado === "listo" && usuario?.id === {{ ident }}.datos.{{ owner_camel }};
 {%- endif %}
   const [, navegar] = useLocation();
   const [confirmando, setConfirmando] = useState(false);
@@ -68,8 +76,8 @@ export function ContenedorDetalle{{ pascal }}({ id }: { id: string }) {
 {%- for t in transitions %}
 {{ t.element }}
 {%- endfor %}
-{%- if access.update_roles %}
-              {{ "{" }}{% for r in access.update_roles %}puede("{{ r }}") && {% endfor %}(
+{%- if access.update_guard %}
+              {{ "{" }}{{ access.update_guard }} && (
                 <Link href={`/{{ plural }}/${id}/editar`} className="btn">
                   Editar
                 </Link>
@@ -79,8 +87,8 @@ export function ContenedorDetalle{{ pascal }}({ id }: { id: string }) {
                 Editar
               </Link>
 {%- endif %}
-{%- if access.delete_roles %}
-              {{ "{" }}{% for r in access.delete_roles %}puede("{{ r }}") && {% endfor %}(
+{%- if access.delete_guard %}
+              {{ "{" }}{{ access.delete_guard }} && (
                 <button
                   type="button"
                   className="btn btn-error"

@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { fireEvent, screen, waitFor } from "@testing-library/react";
 import { apiFalsa } from "../../../pruebas/api-falsa";
-{% if access.update_roles or access.delete_roles -%}
+{% if access.update_roles or access.delete_roles or owner_camel -%}
 import { MadreUsuarioActual } from "../../../pruebas/auth";
 {% endif -%}
 {% for t in targets -%}
@@ -11,16 +11,21 @@ import { coleccion{{ pascal }}, Madre{{ pascal }} } from "../../../pruebas/{{ ke
 import { renderizarPantalla } from "../../../pruebas/renderizar";
 import { ContenedorDetalle{{ pascal }} } from "./detalle-{{ kebab }}";
 
+{% if owner_camel -%}
+/** Quien edita y borra en estos tests: el propietario de lo que se siembra (27.18). */
+const PROPIETARIO = MadreUsuarioActual.llamante();
+
+{% endif -%}
 describe("ContenedorDetalle{{ pascal }}", () => {
   test("debería mostrar el detalle cuando existe", async () => {
     // Preparar
-    const sembrado = Madre{{ pascal }}.aleatorio();
+    const sembrado = Madre{{ pascal }}.aleatorio({% if owner_camel %}{ {{ owner_camel }}: PROPIETARIO.id }{% endif %});
     const api = apiFalsa([coleccion{{ pascal }}([sembrado])]);
 
     const pantalla = <ContenedorDetalle{{ pascal }} id={sembrado.id} />;
 
     // Actuar
-    renderizarPantalla(pantalla, { api });
+    renderizarPantalla(pantalla, { api }{% if owner_camel %}, "/", { usuario: PROPIETARIO }{% endif %});
 
     // Comprobar
     expect(await screen.findByText("Editar")).toBeTruthy();
@@ -70,11 +75,11 @@ describe("ContenedorDetalle{{ pascal }}", () => {
 
   test("debería borrar solo tras confirmar el borrado", async () => {
     // Preparar
-    const sembrado = Madre{{ pascal }}.aleatorio();
+    const sembrado = Madre{{ pascal }}.aleatorio({% if owner_camel %}{ {{ owner_camel }}: PROPIETARIO.id }{% endif %});
     const guardados = coleccion{{ pascal }}([sembrado]);
     const api = apiFalsa([guardados]);
     const pantalla = <ContenedorDetalle{{ pascal }} id={sembrado.id} />;
-    const { historial } = renderizarPantalla(pantalla, { api });
+    const { historial } = renderizarPantalla(pantalla, { api }{% if owner_camel %}, "/", { usuario: PROPIETARIO }{% endif %});
     fireEvent.click(await screen.findByText("Borrar", { selector: ".card-actions button" }));
     expect(guardados.elementos.has(sembrado.id)).toBe(true);
 
@@ -109,11 +114,11 @@ describe("ContenedorDetalle{{ pascal }}", () => {
 
   test("debería mostrar auth.prohibido cuando la API rechaza el borrado", async () => {
     // Preparar
-    const sembrado = Madre{{ pascal }}.aleatorio();
+    const sembrado = Madre{{ pascal }}.aleatorio({% if owner_camel %}{ {{ owner_camel }}: PROPIETARIO.id }{% endif %});
     const fallos = { "DELETE /{{ plural }}": "auth.prohibido" };
     const api = apiFalsa([coleccion{{ pascal }}([sembrado])], fallos);
     const pantalla = <ContenedorDetalle{{ pascal }} id={sembrado.id} />;
-    renderizarPantalla(pantalla, { api });
+    renderizarPantalla(pantalla, { api }{% if owner_camel %}, "/", { usuario: PROPIETARIO }{% endif %});
     fireEvent.click(await screen.findByText("Borrar", { selector: ".card-actions button" }));
 
     // Actuar
@@ -121,6 +126,39 @@ describe("ContenedorDetalle{{ pascal }}", () => {
 
     // Comprobar
     expect((await screen.findByRole("alert")).textContent).toBe("auth.prohibido");
+  });
+{%- endif %}
+{%- if owner_camel %}
+
+  test("no debería ofrecer Editar ni Borrar a quien no es su propietario", async () => {
+    // Preparar
+    const sembrado = Madre{{ pascal }}.aleatorio();
+    const api = apiFalsa([coleccion{{ pascal }}([sembrado])]);
+    const usuario = MadreUsuarioActual.aleatorio();
+    const pantalla = <ContenedorDetalle{{ pascal }} id={sembrado.id} />;
+
+    // Actuar
+    renderizarPantalla(pantalla, { api }, "/", { usuario });
+
+    // Comprobar
+    expect(await screen.findByText("{{ fields[0].label }}", { selector: "dt" })).toBeTruthy();
+    expect(screen.queryByText("Editar", { selector: ".card-actions *" })).toBeNull();
+    expect(screen.queryByText("Borrar", { selector: ".card-actions *" })).toBeNull();
+  });
+
+  test("debería ofrecer Editar y Borrar a su propietario aunque no tenga roles", async () => {
+    // Preparar
+    const usuario = MadreUsuarioActual.aleatorio();
+    const sembrado = Madre{{ pascal }}.aleatorio({ {{ owner_camel }}: usuario.id });
+    const api = apiFalsa([coleccion{{ pascal }}([sembrado])]);
+    const pantalla = <ContenedorDetalle{{ pascal }} id={sembrado.id} />;
+
+    // Actuar
+    renderizarPantalla(pantalla, { api }, "/", { usuario });
+
+    // Comprobar
+    expect(await screen.findByText("Editar", { selector: ".card-actions *" })).toBeTruthy();
+    expect(screen.getByText("Borrar", { selector: ".card-actions *" })).toBeTruthy();
   });
 {%- endif %}
 });

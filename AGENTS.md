@@ -491,6 +491,12 @@ make format/fix    # cargo fmt --all
   `cableado::<c>::construir`, `cableado` y `aplicacion_<c>` en el `Cargo.toml` del worker, un doble
   en sus tests) y `consumidores/comun.rs` (lo que comparten, escrito una vez; ningún consumidor se
   llama `comun`)
+- `--propietario <campo>` (27.18, proyectos con auth, `[[entidad]] propietario`): el campo `Uuid`
+  fuera de las peticiones y los Params de crear y actualizar (`crear` pone `actor.id_usuario`,
+  `actualizar` lo conserva); `obtener`/`actualizar`/`borrar` dejan pasar al propietario o a quien
+  tiene todos los roles de la ruta (los comprueba el caso de uso, `Access::route_roles` los quita de
+  la ruta); `listar_mis_<plural>` y `GET /mis_<plural>`; `Filtro<Entidad>` gana el propietario. Web:
+  «Mis <plural>» (`ContenedorLista<Entidad> propias`), Editar/Borrar con `propio || puede(…)`
 - `--interno` (27.13) en `generar caso-de-uso` y `generar transicion`: `[[entidad]] internos`, los
   `Params` sin `actor`, sin campo en `Api<Entidad>` (tampoco tras `scaffold --forzar`) y, en una
   transición, sin `Api<Caso>` ni botón; `cableado` los construye igual

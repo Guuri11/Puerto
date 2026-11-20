@@ -4040,7 +4040,7 @@ re-scaffold sin ellos conserva los del bloque, como `--privado`).
   fichero de `generados.rs`, la web; compile matrix con los dos en un escenario con web y otro en
   Postgres.
 
-### 27.18 — El propietario de una fila
+### 27.18 — El propietario de una fila ✅
 
 La regla «solo lo mío» es el caso típico de auth, y en Aforo faltaba «Mis entradas».
 `[[entidad]] propietario = "<campo>"` (un `Uuid` que se rellena con `actor.id_usuario`, sin ir en la

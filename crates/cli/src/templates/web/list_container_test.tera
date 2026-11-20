@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { fireEvent, screen } from "@testing-library/react";
-import { apiFalsa } from "../../../pruebas/api-falsa";
+import { apiFalsa{% if owner_camel %}, coleccion{% endif %} } from "../../../pruebas/api-falsa";
 {% if access.create_roles -%}
 import { MadreUsuarioActual } from "../../../pruebas/auth";
 {% endif -%}
@@ -12,6 +12,22 @@ import { renderizarPantalla } from "../../../pruebas/renderizar";
 import { ContenedorLista{{ pascal }} } from "./lista-{{ kebab }}";
 
 describe("ContenedorLista{{ pascal }}", () => {
+{%- if owner_camel %}
+  test("debería mostrar solo las propias cuando se le pide", async () => {
+    // Preparar: `GET /mis_{{ plural }}` responde las de quien llama; la lista entera, otras
+    const otras = coleccion{{ pascal }}([Madre{{ pascal }}.aleatorio(), Madre{{ pascal }}.aleatorio()]);
+    const propias = coleccion("/mis_{{ plural }}", "{{ snake }}", [Madre{{ pascal }}.aleatorio()]);
+    const api = apiFalsa([otras, propias]);
+
+    // Actuar
+    renderizarPantalla(<ContenedorLista{{ pascal }} propias />, { api });
+
+    // Comprobar
+    expect(await screen.findByText("Mis {{ words_plural }}")).toBeTruthy();
+    expect(await screen.findAllByText("Ver")).toHaveLength(1);
+  });
+
+{%- endif %}
   test("debería mostrar una fila por cada {{ words }}", async () => {
     // Preparar
     const semilla = [Madre{{ pascal }}.aleatorio(), Madre{{ pascal }}.aleatorio()];

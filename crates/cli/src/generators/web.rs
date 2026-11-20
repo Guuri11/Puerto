@@ -235,16 +235,42 @@ struct WebAccessCtx {
     update_roles: Vec<String>,
     delete_roles: Vec<String>,
     delete_protected: bool,
+    /// What shows Editar and Borrar (`puede("admin") && puede("…")`; `""` for everyone): with an
+    /// owner (27.18), `propio` or those roles.
+    update_guard: String,
+    delete_guard: String,
+}
+
+/// The condition that shows an action needing `roles` — and, on an owned entity, its owner.
+fn guard(access: &Access, roles: &[String]) -> String {
+    let roles_guard = roles
+        .iter()
+        .map(|r| format!("puede(\"{r}\")"))
+        .collect::<Vec<_>>()
+        .join(" && ");
+    match (access.is_owned(), roles.len()) {
+        (false, _) => roles_guard,
+        (true, 0) => "propio".to_string(),
+        (true, 1) => format!("(propio || {roles_guard})"),
+        (true, _) => format!("(propio || ({roles_guard}))"),
+    }
 }
 
 fn web_access_ctx(access: &Access, snake: &str) -> WebAccessCtx {
     let uc = |action: &str| crud_use_case(action, snake);
+    // 27.18: who creates a row owns it, so they always see its detail.
+    let get_roles = if access.is_owned() {
+        vec![]
+    } else {
+        access.roles(&uc("get"))
+    };
     WebAccessCtx {
         auth: access.is_auth(),
-        get_roles: access.roles(&uc("get")),
+        update_guard: guard(access, &access.roles(&uc("update"))),
+        delete_guard: guard(access, &access.roles(&uc("delete"))),
+        get_roles: get_roles.clone(),
         list_roles: access.roles(&uc("list")),
-        list_reachable: !access
-            .roles(&uc("get"))
+        list_reachable: !get_roles
             .iter()
             .all(|role| access.roles(&uc("list")).contains(role)),
         create_roles: access.roles(&uc("create")),
@@ -444,6 +470,14 @@ fn entity_template_ctx(
     ctx.insert("display_helpers", &helpers(|f| &f.display_helpers));
     let declared = config.and_then(|c| c.entity.iter().find(|e| e.name == pascal));
     let groups = declared.map(|e| e.uniques.clone()).unwrap_or_default();
+    // 27.18: the owner's field, which the detail compares with who is using the app.
+    ctx.insert(
+        "owner_camel",
+        &eff.iter()
+            .find(|f| f.owner)
+            .map(|f| snake_to_camel(&f.name))
+            .unwrap_or_default(),
+    );
     // The transitions with a route: an internal one (27.13) has no button.
     let verbs: Vec<String> = declared
         .map(|e| {
@@ -1014,6 +1048,9 @@ struct RoutedEntityCtx {
     /// Creating goes to the panel's `?guardado`: neither its detail nor its list is the creator's
     /// to see without their roles.
     saved_notice: bool,
+    /// 27.18: it has an owner — «Mis …» in the menu, on `/mis_<plural>` — and its total fits a line.
+    owner: bool,
+    mine_total_inline: bool,
 }
 
 /// Indentation of a `<Route>` inside `RutasApp`.
@@ -1045,13 +1082,19 @@ fn generated_ctx(config: &PuertoConfig) -> tera::Context {
                     "    total: ({{ api }}) => contarTotal(api.GET(\"/{}\", PAGINA_DE_UNO)),",
                     entity.plural
                 )),
+                owner: access.is_owned(),
+                mine_total_inline: fits(&format!(
+                    "    total: ({{ api }}) => contarTotal(api.GET(\"/mis_{}\", PAGINA_DE_UNO)),",
+                    entity.plural
+                )),
                 list_guarded: guarded("list"),
                 new_guarded: guarded("create"),
                 // The form loads the entity, then saves it.
                 edit_guarded: guarded("get") || guarded("update"),
                 detail_guarded: guarded("get"),
                 list_roles: access.roles(&crud_use_case("list", &entity.snake)),
-                saved_notice: !access.roles(&crud_use_case("get", &entity.snake)).is_empty()
+                saved_notice: !access.is_owned()
+                    && !access.roles(&crud_use_case("get", &entity.snake)).is_empty()
                     && !access.roles(&crud_use_case("list", &entity.snake)).is_empty(),
                 entity,
             }

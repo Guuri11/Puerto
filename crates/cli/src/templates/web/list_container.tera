@@ -19,7 +19,12 @@ const PRIMERA_PAGINA = { params: { query: { limite: LIMITE_PAGINA_MAXIMO } } };
 {%- endif %}
 
 /** La lista, página a página; la página va en la URL (`?pagina=2`): recargar y volver la mantienen. */
+{%- if owner_camel %}
+/** Con `propias`, solo las de quien usa la app (`GET /mis_{{ plural }}`, 27.18). */
+export function ContenedorLista{{ pascal }}({ propias = false }: { propias?: boolean }) {
+{%- else %}
 export function ContenedorLista{{ pascal }}() {
+{%- endif %}
   const { api } = useDependencias();
 {%- if access.create_roles %}
   const { puede } = useAuth();
@@ -28,7 +33,17 @@ export function ContenedorLista{{ pascal }}() {
   const desplazamiento = desplazamientoDeUrl(useSearch(), TAMANO_PAGINA);
   const irA = (siguiente: number) => navegar(ubicacion + busquedaPagina(siguiente, TAMANO_PAGINA));
   const consulta = { limite: TAMANO_PAGINA, desplazamiento };
-{%- if list_load_inline %}
+{%- if owner_camel %}
+  const {{ plural_ident }} = useCarga(
+    () =>
+      desenvolver(
+        propias
+          ? api.GET("/mis_{{ plural }}", { params: { query: consulta } })
+          : api.GET("/{{ plural }}", { params: { query: consulta } }),
+      ),
+    [api, desplazamiento, propias],
+  );
+{%- elif list_load_inline %}
   const {{ plural_ident }} = useCarga(() => desenvolver(api.GET("/{{ plural }}", { params: { query: consulta } })), [api, desplazamiento]);
 {%- else %}
   const {{ plural_ident }} = useCarga(
@@ -58,7 +73,11 @@ export function ContenedorLista{{ pascal }}() {
   return (
     <section className="space-y-4">
       <div className="flex items-center justify-between">
+{%- if owner_camel %}
+        <h1 className="text-2xl font-bold">{propias ? "Mis {{ words_plural }}" : "{{ label_plural }}"}</h1>
+{%- else %}
         <h1 className="text-2xl font-bold">{{ label_plural }}</h1>
+{%- endif %}
 {%- if access.create_roles %}
         {{ "{" }}{% for r in access.create_roles %}puede("{{ r }}") && {% endfor %}(
           <Link href="/{{ plural }}/nuevo" className="btn btn-primary">

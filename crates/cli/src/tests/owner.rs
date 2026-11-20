@@ -233,3 +233,63 @@ fn an_owned_entity_lists_its_callers_rows() {
     );
     cleanup(&dir);
 }
+
+// ── 27.18 (c): the web ─────────────────────────────────────────────────────
+
+#[test]
+fn the_web_lists_mine_and_lets_the_owner_edit_and_delete() {
+    let dir = temp_dir("owner_web");
+    cleanup(&dir);
+    fs::create_dir_all(&dir).unwrap();
+    let output = new_project(
+        Some("owner-web".into()),
+        NewOptions {
+            no_db: true,
+            auth: Some("oidc".into()),
+            no_portada: true,
+            ..Default::default()
+        },
+        Some(dir.clone()),
+    )
+    .unwrap();
+
+    scaffold_entrada(&output, "comprador_id", &["borrar_entrada=admin"], &[]).unwrap();
+
+    let list = read(
+        &output,
+        "web/src/contextos/entrada/contenedores/lista-entrada.tsx",
+    );
+    assert!(
+        list.contains("{ propias = false }: { propias?: boolean }"),
+        "{list}"
+    );
+    assert!(list.contains("api.GET(\"/mis_entradas\""), "{list}");
+    let routes = read(&output, "web/src/generado/rutas.tsx");
+    assert!(routes.contains("etiqueta: \"Mis entradas\""), "{routes}");
+    assert!(
+        routes.contains("<ContenedorListaEntrada propias />"),
+        "{routes}"
+    );
+    let detail = read(
+        &output,
+        "web/src/contextos/entrada/contenedores/detalle-entrada.tsx",
+    );
+    assert!(
+        detail.contains("usuario?.id === entrada.datos.compradorId"),
+        "{detail}"
+    );
+    assert!(detail.contains("{propio && ("), "edit, no role: {detail}");
+    assert!(
+        detail.contains("{(propio || puede(\"admin\")) && ("),
+        "delete: {detail}"
+    );
+    let test = read(
+        &output,
+        "web/src/contextos/entrada/contenedores/detalle-entrada.test.tsx",
+    );
+    assert!(
+        test.contains("a su propietario aunque no tenga roles"),
+        "{test}"
+    );
+    cleanup(&dir);
+}

@@ -50,6 +50,8 @@ src/contextos/<entidad>/
   contenedores/                     lista · detalle · formulario (crear + editar): estado y llamadas (+ tests)
     lista-<entidad>.tsx             ContenedorLista<Entidad>
     <verbo>-<entidad>.tsx           Boton<Verbo><Entidad>: una transición (`puerto generar transicion`), en el detalle
+                                    (con `--propietario`, `ContenedorLista<Entidad> propias` es «Mis …», en
+                                    `/mis_<plural>`, y Editar/Borrar se ven para el propietario o con el rol)
   vistas/                           lista · detalle · formulario: solo props
     lista-<entidad>.tsx             VistaLista<Entidad>
 src/pruebas/<entidad>.ts            Madre<Entidad> (peticion / aleatorio) + coleccion<Entidad> para la API falsa
